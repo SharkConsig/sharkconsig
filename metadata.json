@@ -1,0 +1,5 @@
+{
+  "name": "SharkConsig",
+  "description": "Sistema de Gestão de Crédito Consignado",
+  "requestFramePermissions": ["geolocation"]
+}

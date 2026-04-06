@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0F172A;
+  --color-sidebar: #FFFFFF;
+  --color-background: #F8FAFC;
+  --color-accent: #2563EB;
+  
+  --radius-lg: 0.75rem;
+  --radius-md: 0.5rem;
+  --radius-sm: 0.25rem;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-slate-900 antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+.card-shadow {
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.sidebar-shadow {
+  box-shadow: 4px 0px 20px rgba(0, 0, 0, 0.03);
+}
+
+.header-shadow {
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
+}
+
+@media print {
+  /* Hide all dashboard elements */
+  .sidebar-shadow, 
+  .header-shadow, 
+  aside, 
+  header, 
+  nav,
+  .print-hidden {
+    display: none !important;
+  }
+  
+  /* Reset layout for print */
+  body, html {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Hide everything by default when printing */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Show only the modal and its children */
+  .print-content, .print-content * {
+    visibility: visible;
+  }
+  
+  /* Position the modal content at the top left and remove constraints */
+  .print-content {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    visibility: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Force colors to print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

@@ -1,0 +1,720 @@
+"use client"
+
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Header } from "@/components/layout/header"
+import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, User, Phone, MapPin, Hash, Briefcase, DollarSign, Calendar } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { cn } from "@/lib/utils"
+import { translateOrgao } from "@/lib/orgaos-mapping"
+import { getContractTypeInfo } from "@/lib/contratos-mapping"
+import { supabase } from "@/lib/supabase"
+
+// Helper to normalize CPF
+const normalizeCPF = (cpf: string) => {
+  if (!cpf) return "";
+  return cpf.replace(/\D/g, "");
+};
+
+// Helper to normalize Phone
+const normalizePhone = (phone: string) => {
+  if (!phone) return "";
+  return phone.replace(/\D/g, "");
+};
+
+// Helper for retries
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    if (retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return withRetry(fn, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+}
+
+// Mock data for contracts
+const MOCK_CONTRACTS = [
+  { banco: "CAIXA ECONOMICA FEDERAL", contrato: "20369111000314400", parcela: 1130.97, prazo: 91, tipo: "1" }, // Empréstimo
+  { banco: "PARANA BANCO", contrato: "856101599", parcela: 83.37, prazo: 89, tipo: "2" }, // Empréstimo
+  { banco: "PARANA BANCO", contrato: "856101568", parcela: 71.00, prazo: 89, tipo: "3" }, // Empréstimo
+  { banco: "PARANA BANCO", contrato: "856101583", parcela: 54.00, prazo: 89, tipo: "4" }, // Empréstimo
+  { banco: "EAGLE", contrato: "999999", parcela: 253.23, prazo: 0, tipo: "34998" }, // Cartão Consignado (CAPITAL na mapping, but using code 34998)
+  { banco: "CAPITAL CONSIG", contrato: "888888", parcela: 161.53, prazo: 0, tipo: "35007" }, // Cartão Benefício (CAPITAL na mapping)
+  { banco: "CAPITAL CONSIG", contrato: "777777", parcela: 105.03, prazo: 0, tipo: "35013" }, // Cartão Benefício (BMG na mapping, testing code 35013)
+];
+
+function LoanRow({ loan }: { loan: any }) {
+  const [taxa, setTaxa] = useState(1.5);
+  const i = taxa / 100;
+  const n = loan.prazo;
+  const p = loan.parcela;
+  // Formula: SD = P * [(1 - (1 + i)^-n) / i]
+  const saldo = p * ((1 - Math.pow(1 + i, -n)) / i);
+
+  return (
+    <tr className="group bg-blue-50/30 hover:bg-blue-50/50 transition-colors">
+      <td className="py-4 pl-4 text-[12px] font-bold text-slate-700 rounded-l-xl border-y border-l border-blue-100">{loan.banco}</td>
+      <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.contrato}</td>
+      <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">
+        {loan.parcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+      </td>
+      <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.prazo}</td>
+      <td className="py-4 text-center border-y border-blue-100">
+        <div className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-sm">
+          <input 
+            type="number" 
+            value={taxa}
+            onChange={(e) => setTaxa(Number(e.target.value))}
+            className="w-14 bg-transparent text-[12px] font-bold text-slate-900 focus:outline-none text-right pr-1"
+            step="0.01"
+          />
+          <span className="text-[10px] font-bold text-slate-400">%</span>
+        </div>
+      </td>
+      <td className="py-4 pr-4 text-[12px] font-bold text-slate-900 text-right rounded-r-xl border-y border-r border-blue-100">
+        {saldo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+      </td>
+    </tr>
+  );
+}
+
+export default function SearchClientPage() {
+  const router = useRouter()
+  const [searchQuery, setSearchQuery] = useState("")
+  const [showProfile, setShowProfile] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [showSensitiveData, setShowSensitiveData] = useState(false)
+  
+  const [client, setClient] = useState<any>(null)
+  const [registrations, setRegistrations] = useState<any[]>([])
+  const [activeRegIndex, setActiveRegIndex] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSearch = async () => {
+    if (!searchQuery) return
+    
+    setIsLoading(true)
+    setError(null)
+    setShowProfile(false)
+    setShowSensitiveData(false)
+    setClient(null)
+    setRegistrations([])
+    setActiveRegIndex(0)
+
+    try {
+      const digits = searchQuery.replace(/\D/g, "")
+      if (!digits) {
+        setError("Por favor, insira um CPF ou telefone.")
+        setIsLoading(false)
+        return
+      }
+      
+      // 1. Search Client
+      let query = supabase.from('clientes').select('*')
+      
+      if (digits.length <= 11) {
+        // Se tem 11 ou menos dígitos, pode ser um CPF (com zeros ocultos) ou um telefone
+        const paddedCpf = digits.padStart(11, '0')
+        query = query.or(`cpf.eq.${paddedCpf},telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
+      } else {
+        // Mais de 11 dígitos, busca apenas nos telefones
+        query = query.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
+      }
+
+      const { data: clientData, error: clientError } = await withRetry<any>(async () => await query.single())
+
+      if (clientError || !clientData) {
+        setError("Cliente não encontrado.")
+        setIsLoading(false)
+        return
+      }
+
+      setClient(clientData)
+
+      // 2. Search Registrations
+      const { data: regData, error: regError } = await withRetry<any>(async () => 
+        await supabase
+          .from('matriculas')
+          .select(`
+            *,
+            instituidores (
+              *,
+              itens_credito (*)
+            )
+          `)
+          .eq('cliente_cpf', clientData.cpf)
+      )
+
+      if (regError) {
+        console.error("Erro ao buscar matrículas:", regError)
+      }
+
+      setRegistrations(regData || [])
+      setShowProfile(true)
+    } catch (err: any) {
+      console.error("Erro na busca:", err)
+      setError("Ocorreu um erro ao buscar os dados.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const maskCPF = (cpf: string) => {
+    if (!cpf) return ""
+    if (showSensitiveData) {
+      return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
+    }
+    return cpf.replace(/(\d{3})\d{6}(\d{2})/, "$1.***.***-$2")
+  }
+
+  const maskPhone = (phone: string) => {
+    if (!phone) return "NÃO INFORMADO"
+    if (showSensitiveData) {
+      // Format as (XX) XXXXX-XXXX
+      const cleaned = phone.replace(/\D/g, "")
+      if (cleaned.length === 11) {
+        return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3")
+      }
+      return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
+    }
+    return phone.replace(/\d{4}$/, "****")
+  }
+
+  const calculateAge = (birthDate: string) => {
+    if (!birthDate) return null
+    const birth = new Date(birthDate)
+    const today = new Date()
+    let age = today.getFullYear() - birth.getFullYear()
+    const m = today.getMonth() - birth.getMonth()
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    return age
+  }
+
+  const formatCurrency = (value: number | null) => {
+    if (value === null || value === undefined) return "R$ 0,00"
+    return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  }
+
+  const getUtilizadaStatus = (bruta: number | null, liquida: number | null, utilizada?: number | null) => {
+    // Se a líquida for 0 ou null, o usuário quer que mostre SIM e fique vermelho
+    if (liquida === null || liquida <= 0) return "SIM"
+    
+    if (bruta === null) return "NÃO"
+    
+    // Se temos o valor de utilizada explicitamente, usamos para maior precisão
+    if (utilizada !== undefined && utilizada !== null && utilizada > 0) {
+      return "PARCIAL"
+    }
+
+    // Se a líquida for igual ou maior que a bruta, nada foi usado
+    if (liquida >= bruta && bruta > 0) return "NÃO"
+    
+    // Se a líquida for menor que a bruta mas maior que zero, é parcial
+    return "PARCIAL"
+  }
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "NÃO INFORMADO"
+    const [year, month, day] = dateStr.split('-')
+    return `${day}/${month}/${year}`
+  }
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <Header title="ACESSAR CLIENTE" />
+      
+      <div className="p-3 sm:p-4 lg:p-8 space-y-6 max-w-[1400px] mx-auto w-full">
+        <Card className="card-shadow">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex flex-col md:flex-row gap-3 sm:gap-4 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+              <div className="flex-1">
+                <Input 
+                  placeholder="Buscar Cliente por CPF ou Telefone" 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  icon={<Search className="w-4 h-4" />}
+                  className="h-11 text-[12px]"
+                />
+              </div>
+              <Button 
+                onClick={handleSearch}
+                disabled={isLoading}
+                className="h-11 px-12 text-[12px] font-bold uppercase tracking-widest w-full md:w-auto"
+              >
+                {isLoading ? "Buscando..." : "Buscar"}
+              </Button>
+            </div>
+            {error && (
+              <p className="mt-2 text-[11px] font-bold text-red-500 uppercase tracking-wider pl-1">
+                {error}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {showProfile && client && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
+            {/* Dados Pessoais */}
+            <Card className="card-shadow border border-slate-200">
+              <CardContent className="p-8 space-y-10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                    <h3 className="text-[16px] font-bold text-slate-900">Dados Pessoais</h3>
+                  </div>
+                  <button 
+                    onClick={() => setShowSensitiveData(!showSensitiveData)}
+                    className="text-slate-500 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100 rounded-full"
+                  >
+                    {showSensitiveData ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-y-10 gap-x-12">
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome</p>
+                    <p className="text-[13px] font-bold text-slate-900 uppercase">{client.nome || "NÃO INFORMADO"}</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CPF</p>
+                    <p className="text-[13px] font-bold text-slate-900">{maskCPF(client.cpf)}</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data de Nascimento</p>
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-[13px] font-bold text-slate-900">{formatDate(client.data_nascimento)}</p>
+                      {client.data_nascimento && (
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">{calculateAge(client.data_nascimento)} Anos</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 1</p>
+                    <p className="text-[13px] font-bold text-slate-900">{maskPhone(client.telefone_1)}</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 2</p>
+                    <p className="text-[13px] font-bold text-slate-900">{maskPhone(client.telefone_2)}</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 3</p>
+                    <p className="text-[13px] font-bold text-slate-900">{maskPhone(client.telefone_3)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Matrículas Section */}
+            {(() => {
+              const allRegs = registrations.flatMap(reg => {
+                if (!reg.instituidores || reg.instituidores.length === 0) {
+                  return [{ ...reg, currentInstituidor: "", currentInstituidorId: null }];
+                }
+                return reg.instituidores.map((inst: any) => ({
+                  ...reg,
+                  ...inst,
+                  id: reg.id, // Keep registration ID as the main ID for the tab
+                  instituidor_id: inst.id, // Keep track of the specific instituidor ID
+                  currentInstituidor: inst.nome,
+                  currentInstituidorId: inst.id
+                }));
+              });
+
+              if (allRegs.length === 0) return null;
+
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {allRegs.map((reg, idx) => (
+                      <button
+                        key={`tab-${reg.id}-${idx}`}
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)]" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        <div className="flex flex-col items-center">
+                          <span>Matrícula {reg.numero_matricula}</span>
+                          <span className="text-[8px] opacity-70 truncate max-w-[120px]">{reg.currentInstituidor}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Active Content */}
+                  {allRegs[activeRegIndex] && (
+                    <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                      <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                        <div className="space-y-8 sm:space-y-10">
+                          <div className="flex items-center gap-3">
+                            <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                            <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula</h3>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                            <div className="space-y-1.5">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                              <p className="text-[13px] font-bold text-slate-900">{allRegs[activeRegIndex].numero_matricula}</p>
+                            </div>
+                            <div className="space-y-1.5">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                              <p className="text-[13px] font-bold text-slate-900">{translateOrgao(allRegs[activeRegIndex].orgao)}</p>
+                            </div>
+                            <div className="space-y-1.5">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Situação Funcional</p>
+                              <p className="text-[13px] font-bold text-slate-900 uppercase">{allRegs[activeRegIndex].situacao_funcional || "NÃO INFORMADO"}</p>
+                            </div>
+                            <div className="space-y-1.5">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Salário</p>
+                              <p className="text-[13px] font-bold text-slate-900">{formatCurrency(allRegs[activeRegIndex].salario)}</p>
+                            </div>
+                            <div className="space-y-1.5">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Instituidor</p>
+                              <p className="text-[13px] font-bold text-slate-900 uppercase">
+                                {allRegs[activeRegIndex].currentInstituidor}
+                              </p>
+                            </div>
+                            <div className="space-y-1.5">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Regime Jurídico</p>
+                              <p className="text-[13px] font-bold text-slate-900 uppercase">{allRegs[activeRegIndex].regime_juridico || "NÃO INFORMADO"}</p>
+                            </div>
+                            <div className="space-y-1.5">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UPAG</p>
+                              <p className="text-[13px] font-bold text-slate-900 uppercase">{allRegs[activeRegIndex].upag || "NÃO INFORMADO"}</p>
+                            </div>
+                            <div className="space-y-1.5">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF</p>
+                              <p className="text-[13px] font-bold text-slate-900 uppercase">{allRegs[activeRegIndex].uf || "NÃO INFORMADO"}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Margens Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                          <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Saldo 70%</p>
+                            <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(allRegs[activeRegIndex].saldo_70)}</p>
+                          </div>
+                          <div className={cn(
+                            "p-3.5 border rounded-xl space-y-0.5",
+                            allRegs[activeRegIndex].margem_35 === null ? "bg-[#F1F5F9] border-slate-200" :
+                            (allRegs[activeRegIndex].margem_35 || 0) > 0 
+                              ? "bg-emerald-100/50 border-emerald-200" 
+                              : "bg-red-100/50 border-red-200"
+                          )}>
+                            <p className={cn(
+                              "text-[9px] font-bold uppercase tracking-widest",
+                              allRegs[activeRegIndex].margem_35 === null ? "text-slate-400" :
+                              (allRegs[activeRegIndex].margem_35 || 0) > 0 ? "text-emerald-700/60" : "text-red-700/60"
+                            )}>Margem 35%</p>
+                            <p className={cn(
+                              "text-[17px] font-bold tracking-tight",
+                              allRegs[activeRegIndex].margem_35 === null ? "text-slate-900" :
+                              (allRegs[activeRegIndex].margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700"
+                            )}>{formatCurrency(allRegs[activeRegIndex].margem_35)}</p>
+                          </div>
+                          <div className="p-3.5 bg-orange-100/50 border border-orange-200 rounded-xl space-y-0.5">
+                            <p className="text-[9px] font-bold text-orange-700/60 uppercase tracking-widest">Soma das Margens Líquidas</p>
+                            <p className="text-[17px] font-bold text-orange-700 tracking-tight">
+                              {formatCurrency((allRegs[activeRegIndex].margem_35 || 0) + (allRegs[activeRegIndex].liquida_5 || 0) + (allRegs[activeRegIndex].beneficio_liquida_5 || 0))}
+                            </p>
+                          </div>
+                          <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta 5%</p>
+                            <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(allRegs[activeRegIndex].bruta_5)}</p>
+                          </div>
+                          <div className={cn(
+                            "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
+                            allRegs[activeRegIndex].bruta_5 === null && allRegs[activeRegIndex].liquida_5 !== null && (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "bg-[#F1F5F9] border-slate-200" :
+                            getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "PARCIAL" ? "bg-slate-300 border-slate-400" :
+                            getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "SIM" ? "bg-red-100/50 border-red-200" :
+                            "bg-emerald-100/50 border-emerald-200"
+                          )}>
+                            <p className={cn(
+                              "text-[9px] font-bold uppercase tracking-widest",
+                              allRegs[activeRegIndex].bruta_5 === null && allRegs[activeRegIndex].liquida_5 !== null && (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "text-slate-400" :
+                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "PARCIAL" ? "text-slate-600" :
+                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "SIM" ? "text-red-700/60" :
+                              "text-emerald-700/60"
+                            )}>Utilizada 5%</p>
+                            <p className={cn(
+                              "text-[17px] font-bold tracking-tight uppercase",
+                              allRegs[activeRegIndex].bruta_5 === null && allRegs[activeRegIndex].liquida_5 !== null && (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "text-slate-900" :
+                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "PARCIAL" ? "text-slate-800" :
+                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "SIM" ? "text-red-700" :
+                              "text-emerald-700"
+                            )}>
+                              {getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5)}
+                            </p>
+                          </div>
+                          <div className={cn(
+                            "p-3.5 border rounded-xl space-y-0.5",
+                            (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                          )}>
+                            <p className={cn(
+                              "text-[9px] font-bold uppercase tracking-widest",
+                              (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "text-emerald-700/60" : "text-red-700/60"
+                            )}>Líquida 5%</p>
+                            <div className="flex flex-col">
+                              <p className={cn(
+                                "text-[17px] font-bold tracking-tight",
+                                (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "text-emerald-700" : "text-red-700"
+                              )}>{formatCurrency(allRegs[activeRegIndex].liquida_5)}</p>
+                              <div className="flex items-center gap-1.5">
+                                <div className={cn("w-1.5 h-1.5 rounded-full", (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                <span className={cn("text-[8px] font-bold uppercase tracking-widest", (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
+                                  {(allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Benefício Bruta 5%</p>
+                            <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(allRegs[activeRegIndex].beneficio_bruta_5)}</p>
+                          </div>
+                          <div className={cn(
+                            "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
+                            allRegs[activeRegIndex].beneficio_bruta_5 === null && allRegs[activeRegIndex].beneficio_liquida_5 !== null && (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "bg-[#F1F5F9] border-slate-200" :
+                            getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "PARCIAL" ? "bg-slate-300 border-slate-400" :
+                            getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "SIM" ? "bg-red-100/50 border-red-200" :
+                            "bg-emerald-100/50 border-emerald-200"
+                          )}>
+                            <p className={cn(
+                              "text-[9px] font-bold uppercase tracking-widest",
+                              allRegs[activeRegIndex].beneficio_bruta_5 === null && allRegs[activeRegIndex].beneficio_liquida_5 !== null && (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "text-slate-400" :
+                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "PARCIAL" ? "text-slate-600" :
+                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "SIM" ? "text-red-700/60" :
+                              "text-emerald-700/60"
+                            )}>Benefício Utilizada 5%</p>
+                            <p className={cn(
+                              "text-[17px] font-bold tracking-tight uppercase",
+                              allRegs[activeRegIndex].beneficio_bruta_5 === null && allRegs[activeRegIndex].beneficio_liquida_5 !== null && (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "text-slate-900" :
+                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "PARCIAL" ? "text-slate-800" :
+                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "SIM" ? "text-red-700" :
+                              "text-emerald-700"
+                            )}>
+                              {getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5)}
+                            </p>
+                          </div>
+                          <div className={cn(
+                            "p-3.5 border rounded-xl space-y-0.5",
+                            (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                          )}>
+                            <p className={cn(
+                              "text-[9px] font-bold uppercase tracking-widest",
+                              (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "text-emerald-700/60" : "text-red-700/60"
+                            )}>Benefício Líquida 5%</p>
+                            <div className="flex flex-col">
+                              <p className={cn(
+                                "text-[17px] font-bold tracking-tight",
+                                (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "text-emerald-700" : "text-red-700"
+                              )}>{formatCurrency(allRegs[activeRegIndex].beneficio_liquida_5)}</p>
+                              <div className="flex items-center gap-1.5">
+                                <div className={cn("w-1.5 h-1.5 rounded-full", (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                <span className={cn("text-[8px] font-bold uppercase tracking-widest", (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
+                                  {(allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Contratos Section */}
+                        {(() => {
+                          const currentReg = allRegs[activeRegIndex];
+                          const filteredContracts = currentReg.itens_credito || [];
+
+                          return (
+                            <div className="space-y-8">
+                              <div className="flex items-center gap-3">
+                                <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Contratos de Empréstimo</h3>
+                              </div>
+                              
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left border-separate border-spacing-y-2">
+                                  <thead>
+                                    <tr>
+                                      <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Contrato</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Parcela</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Prazo</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Taxa</th>
+                                      <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Saldo</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {filteredContracts.filter((c: any) => getContractTypeInfo(c.tipo).category === "EMPRESTIMO").length > 0 ? (
+                                      filteredContracts
+                                        .filter((c: any) => getContractTypeInfo(c.tipo).category === "EMPRESTIMO")
+                                        .map((loan: any, lIdx: number) => (
+                                          <LoanRow key={lIdx} loan={{
+                                            banco: loan.banco,
+                                            contrato: loan.numero_contrato,
+                                            parcela: loan.parcela,
+                                            prazo: loan.prazo,
+                                            tipo: loan.tipo
+                                          }} />
+                                        ))
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={6} className="py-8 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                                          Nenhum contrato de empréstimo encontrado
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Cartões Section */}
+                        {(() => {
+                          const currentReg = allRegs[activeRegIndex];
+                          const filteredContracts = currentReg.itens_credito || [];
+
+                          const consignadoCards = filteredContracts.filter((c: any) => getContractTypeInfo(c.tipo).category === "CARTAO_CONSIGNADO");
+                          const beneficioCards = filteredContracts.filter((c: any) => getContractTypeInfo(c.tipo).category === "CARTAO_BENEFICIO");
+
+                          return (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                              <div className="space-y-8">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-1 h-5 bg-emerald-500 rounded-full"></div>
+                                  <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Cartão Consignado</h3>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3">
+                                  {consignadoCards.length > 0 ? (
+                                    consignadoCards.map((card: any, cIdx: number) => {
+                                      const info = getContractTypeInfo(card.tipo);
+                                      return (
+                                        <div key={cIdx} className="p-5 bg-blue-50/30 border border-blue-100 rounded-2xl flex items-center justify-between group hover:border-emerald-200 transition-colors">
+                                          <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-slate-50">
+                                              <Landmark className="w-5 h-5 text-slate-300" />
+                                            </div>
+                                            <div>
+                                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</p>
+                                              <p className="text-[12px] font-bold text-slate-900 uppercase">{info.bank || card.banco}</p>
+                                            </div>
+                                          </div>
+                                          <div className="text-right">
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Parcela</p>
+                                            <p className="text-[14px] font-black text-slate-900 tracking-tight">
+                                              {formatCurrency(card.parcela)}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="p-8 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                                      Nenhum cartão consignado
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="space-y-8">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-1 h-5 bg-purple-500 rounded-full"></div>
+                                  <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Cartão Benefício</h3>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3">
+                                  {beneficioCards.length > 0 ? (
+                                    beneficioCards.map((card: any, bIdx: number) => {
+                                      const info = getContractTypeInfo(card.tipo);
+                                      return (
+                                        <div key={bIdx} className="p-5 bg-blue-50/30 border border-blue-100 rounded-2xl flex items-center justify-between group hover:border-purple-200 transition-colors">
+                                          <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-slate-50">
+                                              <Landmark className="w-5 h-5 text-slate-300" />
+                                            </div>
+                                            <div>
+                                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</p>
+                                              <p className="text-[12px] font-bold text-slate-900 uppercase">{info.bank || card.banco}</p>
+                                            </div>
+                                          </div>
+                                          <div className="text-right">
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Parcela</p>
+                                            <p className="text-[14px] font-black text-slate-900 tracking-tight">
+                                              {formatCurrency(card.parcela)}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="p-8 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                                      Nenhum cartão benefício
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Footer Buttons */}
+                        <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                          <Button 
+                            onClick={() => {
+                              const params = new URLSearchParams({
+                                nome: client.nome || "NOME NÃO INFORMADO",
+                                cpf: maskCPF(client.cpf),
+                                tel1: maskPhone(client.telefone_1),
+                                tel2: maskPhone(client.telefone_2),
+                                tel3: maskPhone(client.telefone_3),
+                                margem: formatCurrency(allRegs[activeRegIndex].margem_35),
+                                convenio: translateOrgao(allRegs[activeRegIndex].orgao)
+                              });
+                              router.push(`/chamados/novo?${params.toString()}`);
+                            }}
+                            variant="outline" 
+                            className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest border-slate-200 text-slate-600 hover:bg-slate-50 transition-all"
+                          >
+                            <MessageSquare className="w-4 h-4 mr-2" />
+                            Abrir Chamado
+                          </Button>
+                          <Button 
+                            onClick={() => {
+                              const params = new URLSearchParams({
+                                nome: client.nome || "NOME NÃO INFORMADO",
+                                cpf: client.cpf,
+                                nascimento: formatDate(client.data_nascimento),
+                                idLead: allRegs[activeRegIndex].numero_matricula,
+                                origem: "pesquisa"
+                              });
+                              router.push(`/propostas/nova?${params.toString()}`);
+                            }}
+                            className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
+                          >
+                            <FileEdit className="w-4 h-4 mr-2" />
+                            Digitar Proposta
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
