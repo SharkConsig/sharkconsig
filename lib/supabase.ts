@@ -5,11 +5,11 @@ const getEnvVarByPrefix = (prefix: string) => {
   return key ? process.env[key] : '';
 };
 
-const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_URL')) || '';
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_URL')) || 'https://placeholder.supabase.co';
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || 
                         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
                         getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_PUBLISHABLE') ||
-                        getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_ANON')) || '';
+                        getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_ANON')) || 'placeholder';
 
 if (typeof window !== 'undefined') {
   console.log('Supabase URL carregada:', !!supabaseUrl);
@@ -22,7 +22,9 @@ if (typeof window !== 'undefined') {
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
   supabaseAnonKey && 
-  supabaseUrl.startsWith('http')
+  supabaseUrl.startsWith('http') &&
+  !supabaseUrl.includes('placeholder') &&
+  supabaseAnonKey !== 'placeholder'
 );
 
 if (!isSupabaseConfigured) {
