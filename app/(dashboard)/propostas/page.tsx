@@ -1,7 +1,6 @@
 "use client"
 
 import React, { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -122,7 +121,6 @@ const proposals = [
 ]
 
 export default function ProposalsPage() {
-  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)

@@ -3,8 +3,8 @@
 import { ChevronDown, LogOut, Menu, MessageSquarePlus, MessageSquareText, ClipboardList, FileEdit } from "lucide-react"
 import Image from "next/image"
 import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useSidebar } from "@/context/sidebar-context"
 import { supabase } from "@/lib/supabase"
 
@@ -12,20 +12,14 @@ interface HeaderProps {
   title: string
 }
 
-export function Header({ title }: HeaderProps) {
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const [userEmail, setUserEmail] = useState<string | null>(null)
-  const dropdownRef = useRef<HTMLDivElement>(null)
-  const router = useRouter()
-  const { toggleSidebar } = useSidebar()
+import { useAuth } from "@/context/auth-context"
 
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setUserEmail(session?.user?.email || "Usuário")
-    }
-    getUser()
-  }, [])
+export function Header({ title }: HeaderProps) {
+  const router = useRouter()
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const { toggleSidebar } = useSidebar()
+  const { perfil, user, isAdmin } = useAuth()
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -44,8 +38,14 @@ export function Header({ title }: HeaderProps) {
   }, [isDropdownOpen])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push("/auth/login")
+    try {
+      await supabase.auth.signOut()
+      // O layout cuidará do redirecionamento através do onAuthStateChange
+    } catch (error) {
+      console.error("Erro ao sair:", error)
+      // Fallback em caso de erro extremo
+      router.replace("/auth/login")
+    }
   }
 
   return (
@@ -99,9 +99,13 @@ export function Header({ title }: HeaderProps) {
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-6 border-l border-slate-100 hover:opacity-80 transition-opacity"
           >
-            <div className="text-right hidden xs:block">
-              <p className="text-sm font-bold text-slate-900 truncate max-w-[120px]">{userEmail}</p>
-              <p className="text-[10px] font-bold text-slate-400 uppercase hidden sm:block">SharkConsig</p>
+            <div className="text-right flex flex-col justify-center mr-2 min-w-[80px]">
+              <p className="text-[11px] font-black text-slate-900 leading-tight truncate max-w-[150px] sm:max-w-[200px]">
+                {perfil?.nome || user?.email || 'Usuário'}
+              </p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">
+                {isAdmin ? 'Administrador' : 'Corretor'}
+              </p>
             </div>
             <div className="relative w-10 h-10 rounded-full overflow-hidden bg-slate-200 border-2 border-slate-50">
               <Image

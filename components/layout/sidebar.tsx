@@ -21,19 +21,22 @@ import {
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
+import { useAuth } from "@/context/auth-context"
+
 const menuItems = [
   {
     title: "GESTÃO DE CLIENTES",
     items: [
-      { name: "IMPORTAR LOTE", href: "/importar", icon: FileUp },
-      { name: "CRIAR CAMPANHA", href: "/campanhas/nova", icon: PlusCircle },
-      { name: "MINHAS CAMPANHAS", href: "/campanhas", icon: Users },
-      { name: "ACESSAR CLIENTE", href: "/", icon: Search },
-      { name: "ABRIR CHAMADO", href: "/chamados/novo", icon: MessageSquarePlus },
-      { name: "CHAMADOS ABERTOS", href: "/chamados", icon: MessageSquareText },
-      { name: "DIGITAR PROPOSTA", href: "/propostas/nova", icon: FileEdit },
-      { name: "LISTA DE PROPOSTAS", href: "/propostas", icon: ClipboardList },
-      { name: "CONFIGURAÇÕES", href: "/configuracoes", icon: Settings },
+      { name: "IMPORTAR LOTE", href: "/importar", icon: FileUp, roles: ["admin"] },
+      { name: "CRIAR CAMPANHA", href: "/campanhas/nova", icon: PlusCircle, roles: ["admin"] },
+      { name: "MINHAS CAMPANHAS", href: "/campanhas", icon: Users, roles: ["admin"] },
+      { name: "ACESSAR CLIENTE", href: "/", icon: Search, roles: ["admin", "corretor"] },
+      { name: "ABRIR CHAMADO", href: "/chamados/novo", icon: MessageSquarePlus, roles: ["admin", "corretor"] },
+      { name: "CHAMADOS ABERTOS", href: "/chamados", icon: MessageSquareText, roles: ["admin", "corretor"] },
+      { name: "DIGITAR PROPOSTA", href: "/propostas/nova", icon: FileEdit, roles: ["admin", "corretor"] },
+      { name: "LISTA DE PROPOSTAS", href: "/propostas", icon: ClipboardList, roles: ["admin", "corretor"] },
+      { name: "GESTÃO DE USUÁRIOS", href: "/configuracoes/usuarios", icon: Users, roles: ["admin"] },
+      { name: "CONFIGURAÇÕES", href: "/configuracoes", icon: Settings, roles: ["admin"] },
     ]
   }
 ]
@@ -46,6 +49,23 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const { isCollapsed, toggleCollapse } = useSidebar()
+  const { isAdmin, isCorretor } = useAuth()
+
+  const filteredMenuItems = menuItems.map(section => ({
+    ...section,
+    items: section.items.filter(item => {
+      // Se não estiver logado, não mostra nada
+      if (!isAdmin && !isCorretor) return false
+      
+      // Admin vê tudo que tem role admin ou corretor
+      if (isAdmin) return true
+      
+      // Corretor vê apenas o que tem role corretor
+      if (isCorretor && item.roles.includes("corretor")) return true
+      
+      return false
+    })
+  }))
 
   return (
     <>
@@ -106,7 +126,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         )}
 
         <nav className="flex-1 px-4 py-4 overflow-y-auto no-scrollbar">
-          {menuItems.map((section) => (
+          {filteredMenuItems.map((section) => (
             <div key={section.title} className="mb-8">
               {!isCollapsed && (
                 <h2 className="px-4 text-[10px] font-bold text-slate-400 tracking-widest mb-4">

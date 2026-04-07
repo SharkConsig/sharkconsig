@@ -6,14 +6,24 @@ import { Input } from "@/components/ui/input"
 import { Mail, Lock, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
 import { supabase } from "@/lib/supabase"
 
 export default function LoginPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        router.replace("/")
+      }
+    }
+    checkSession()
+  }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,9 +42,16 @@ export default function LoginPage() {
         return
       }
 
+      // Redireciona para importar usando router para melhor UX
       router.push("/importar")
+      
+      // Fallback: se em 5 segundos não mudar de página, libera o botão
+      setTimeout(() => {
+        setIsLoading(false)
+      }, 5000)
     } catch (err: any) {
-      setError("Ocorreu um erro inesperado.")
+      console.error("Erro de login:", err)
+      setError(err.message || "Ocorreu um erro inesperado.")
       setIsLoading(false)
     }
   }

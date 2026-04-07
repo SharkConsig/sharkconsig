@@ -19,24 +19,33 @@ import {
   Info
 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
+import { useAuth } from "@/context/auth-context"
+
 export default function CampaignsPage() {
+  const router = useRouter()
+  const { isAdmin, isLoading: authLoading } = useAuth()
   const [campaigns, setCampaigns] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
 
   useEffect(() => {
+    if (!authLoading && !isAdmin) {
+      router.replace('/')
+      return
+    }
     fetchCampaigns()
-  }, [])
+  }, [authLoading, isAdmin, router])
 
   const fetchCampaigns = async () => {
-    if (!isSupabaseConfigured) return
+    if (!isSupabaseConfigured || !isAdmin) return
     setIsLoading(true)
     setError(null)
     try {
@@ -308,6 +317,16 @@ export default function CampaignsPage() {
                             </td>
                             <td className="px-8 py-5 text-right">
                               <div className="flex items-center justify-end gap-2">
+                                <Link href={`/campanhas/distribuir/${campaign.id}`}>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-8 px-3 text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-primary hover:bg-primary/5"
+                                  >
+                                    <Users className="w-3.5 h-3.5 mr-1.5" />
+                                    Distribuir
+                                  </Button>
+                                </Link>
                                 <Button 
                                   onClick={() => handleExport(campaign)}
                                   variant="ghost" 

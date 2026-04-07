@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,7 +29,6 @@ import {
 import { cn } from "@/lib/utils"
 
 export default function ProposalDetailsPage() {
-  const router = useRouter()
   const params = useParams()
   const id = params.id as string
   const [activeTab, setActiveTab] = useState<"visualizar" | "historico">("visualizar")

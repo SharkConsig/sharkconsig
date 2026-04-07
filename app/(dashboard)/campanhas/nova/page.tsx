@@ -141,8 +141,11 @@ const filterSections = [
   }
 ]
 
+import { useAuth } from "@/context/auth-context"
+
 export default function NewCampaignPage() {
   const router = useRouter()
+  const { isAdmin, isLoading: authLoading } = useAuth()
   const [selectedFilters, setSelectedFilters] = useState<string[]>([])
   const [filters, setFilters] = useState({
     orgaos: [] as string[],
@@ -161,6 +164,12 @@ export default function NewCampaignPage() {
     cardMargemMin: "",
     cardBeneficioMin: "",
   })
+
+  useEffect(() => {
+    if (!authLoading && !isAdmin) {
+      router.replace('/')
+    }
+  }, [authLoading, isAdmin, router])
 
   const [isCalculating, setIsCalculating] = useState(false)
   const [estimatedAudience, setEstimatedAudience] = useState(0)

@@ -4,8 +4,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
-import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, User, Phone, MapPin, Hash, Briefcase, DollarSign, Calendar } from "lucide-react"
-import { useState, useEffect } from "react"
+import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit } from "lucide-react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { translateOrgao } from "@/lib/orgaos-mapping"
@@ -83,8 +83,11 @@ function LoanRow({ loan }: { loan: any }) {
   );
 }
 
+import { useAuth } from "@/context/auth-context"
+
 export default function SearchClientPage() {
   const router = useRouter()
+  const { perfil, isCorretor } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
   const [showProfile, setShowProfile] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -118,11 +121,9 @@ export default function SearchClientPage() {
       let query = supabase.from('clientes').select('*')
       
       if (digits.length <= 11) {
-        // Se tem 11 ou menos dígitos, pode ser um CPF (com zeros ocultos) ou um telefone
         const paddedCpf = digits.padStart(11, '0')
         query = query.or(`cpf.eq.${paddedCpf},telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
       } else {
-        // Mais de 11 dígitos, busca apenas nos telefones
         query = query.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
       }
 
@@ -132,6 +133,22 @@ export default function SearchClientPage() {
         setError("Cliente não encontrado.")
         setIsLoading(false)
         return
+      }
+
+      // 2. Trava de Segurança para Corretor
+      if (isCorretor) {
+        const { data: atribuicao, error: attrError } = await supabase
+          .from('atribuicoes_leads')
+          .select('id')
+          .eq('cliente_cpf', clientData.cpf)
+          .eq('corretor_id', perfil?.id)
+          .maybeSingle()
+
+        if (!atribuicao || attrError) {
+          setError("Você não tem permissão para acessar este cliente ou ele não está na sua carteira.")
+          setIsLoading(false)
+          return
+        }
       }
 
       setClient(clientData)

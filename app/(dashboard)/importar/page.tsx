@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,7 +34,11 @@ interface Batch {
   erro?: string;
 }
 
+import { useAuth } from "@/context/auth-context"
+
 export default function ImportBatchPage() {
+  const router = useRouter()
+  const { isAdmin, isLoading: authLoading } = useAuth()
   const [batchList, setBatchList] = useState<Batch[]>([]);
   const [totalBase, setTotalBase] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
@@ -45,6 +50,12 @@ export default function ImportBatchPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!authLoading && !isAdmin) {
+      router.replace('/')
+    }
+  }, [authLoading, isAdmin, router])
 
   async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
     try {
@@ -672,7 +683,7 @@ export default function ImportBatchPage() {
       
       if (!session) {
         setImportError("Sua sessão expirou. Por favor, faça login novamente.");
-        window.location.href = "/auth/login";
+        router.replace("/auth/login");
         return;
       }
 
@@ -770,7 +781,6 @@ export default function ImportBatchPage() {
       }
 
       let processedCount = 0;
-      let totalRows = 0;
 
       Papa.parse(selectedFile, {
         header: true,
@@ -785,8 +795,6 @@ export default function ImportBatchPage() {
             console.log("[PAPA] Exemplo da primeira linha:", results.data[0]);
           }
 
-          totalRows += results.data.length;
-          
           try {
             await withRetry(async () => {
               if (type === "SIAPE") {
@@ -797,7 +805,7 @@ export default function ImportBatchPage() {
             });
             
             processedCount += results.data.length;
-            const progress = Math.min(99, Math.floor((processedCount / totalRows) * 100));
+            const progress = Math.min(99, Math.floor((results.meta.cursor / selectedFile.size) * 100));
             
             // Update UI
             setBatchList(prev => prev.map(b => 
@@ -1127,7 +1135,7 @@ export default function ImportBatchPage() {
                               <div className="space-y-2 min-w-[120px]">
                                 <div className="flex items-center justify-between">
                                   <span className="text-[8.5px] font-bold text-primary uppercase tracking-widest">
-                                    {batch.progresso && batch.progresso > 70 ? "Traduzindo Órgãos..." : "Processando"}
+                                    Processando...
                                   </span>
                                   <span className="text-[8.5px] font-bold text-primary">{batch.progresso}%</span>
                                 </div>
