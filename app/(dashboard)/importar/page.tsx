@@ -759,7 +759,7 @@ export default function ImportBatchPage() {
       setIsImporting(true);
       setDescription("");
 
-      // Nova regra: Se for modelo CONTRATOS, apaga todos os dados de 'itens_credito' antes de importar
+      /*// Nova regra: Se for modelo CONTRATOS, apaga todos os dados de 'itens_credito' antes de importar
       if (type === "CONTRATOS") {
         setCleaningLog(["Limpando base de contratos anterior..."]);
         const { error: deleteError } = await withRetry(async () => {
@@ -778,7 +778,7 @@ export default function ImportBatchPage() {
         }
         console.log("Tabela itens_credito limpa com sucesso.");
         setCleaningLog(["Base de contratos limpa. Iniciando importação..."]);
-      }
+      }*/
 
       let processedCount = 0;
 
