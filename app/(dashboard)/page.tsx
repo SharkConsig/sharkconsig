@@ -219,6 +219,19 @@ export default function SearchClientPage() {
     return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   }
 
+  const handlePhoneClick = (phone: string | null | undefined) => {
+    if (!phone || phone === '0' || phone === 'NÃO INFORMADO') return;
+    
+    // Clean phone number (remove non-digits)
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) return;
+    
+    // Add country code if missing (assuming Brazil 55)
+    const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+    
+    window.open(`https://wa.me/${finalPhone}`, '_blank');
+  };
+
   const getUtilizadaStatus = (bruta: number | null, liquida: number | null, utilizada?: number | null) => {
     // Se a líquida for 0 ou null, o usuário quer que mostre SIM e fique vermelho
     if (liquida === null || liquida <= 0) return "SIM"
@@ -315,15 +328,39 @@ export default function SearchClientPage() {
                   </div>
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 1</p>
-                    <p className="text-[13px] font-bold text-slate-900">{maskPhone(client.telefone_1)}</p>
+                    <p 
+                      className={cn(
+                        "text-[13px] font-bold text-slate-900",
+                        client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                      )}
+                      onClick={() => handlePhoneClick(client.telefone_1)}
+                    >
+                      {maskPhone(client.telefone_1)}
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 2</p>
-                    <p className="text-[13px] font-bold text-slate-900">{maskPhone(client.telefone_2)}</p>
+                    <p 
+                      className={cn(
+                        "text-[13px] font-bold text-slate-900",
+                        client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                      )}
+                      onClick={() => handlePhoneClick(client.telefone_2)}
+                    >
+                      {maskPhone(client.telefone_2)}
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 3</p>
-                    <p className="text-[13px] font-bold text-slate-900">{maskPhone(client.telefone_3)}</p>
+                    <p 
+                      className={cn(
+                        "text-[13px] font-bold text-slate-900",
+                        client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                      )}
+                      onClick={() => handlePhoneClick(client.telefone_3)}
+                    >
+                      {maskPhone(client.telefone_3)}
+                    </p>
                   </div>
                 </div>
               </CardContent>

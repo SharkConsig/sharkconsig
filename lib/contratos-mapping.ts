@@ -35,7 +35,17 @@ export const CONTRATOS_TIPO_MAPPING: Record<string, ContractTypeInfo> = {
 };
 
 export function getContractTypeInfo(codigo: string): ContractTypeInfo {
-  const info = CONTRATOS_TIPO_MAPPING[codigo];
+  if (!codigo) {
+    return {
+      category: "EMPRESTIMO",
+      label: "CONTRATO DE EMPRÉSTIMO",
+    };
+  }
+
+  // Pega apenas os 5 primeiros dígitos para identificar se é cartão
+  const prefixo = codigo.toString().trim().substring(0, 5);
+  const info = CONTRATOS_TIPO_MAPPING[prefixo];
+  
   if (info) return info;
   
   return {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -78,7 +78,7 @@ export default function ImportBatchPage() {
     }
   }
 
-  const fetchBatches = async () => {
+  const fetchBatches = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     try {
       const { data, error } = await withRetry(async () => {
@@ -97,9 +97,9 @@ export default function ImportBatchPage() {
     } catch (err: any) {
       console.warn("Erro ao buscar lotes (retry failed):", err);
     }
-  };
+  }, []);
 
-  const fetchTotalBase = async () => {
+  const fetchTotalBase = useCallback(async () => {
     if (!isSupabaseConfigured) {
       console.warn("Supabase is not configured. Total base count will remain 0.");
       return;
@@ -132,7 +132,7 @@ export default function ImportBatchPage() {
     } finally {
       setIsRefreshingTotal(false);
     }
-  };
+  }, []);
 
   const handleRefreshTotal = () => {
     fetchTotalBase();
@@ -141,7 +141,7 @@ export default function ImportBatchPage() {
   useEffect(() => {
     fetchTotalBase();
     fetchBatches();
-  }, []);
+  }, [fetchTotalBase, fetchBatches]);
 
   const normalizeCPF = (cpf: string) => {
     if (!cpf) return "";
@@ -190,8 +190,8 @@ export default function ImportBatchPage() {
     // Handle DD/MM/YYYY or DD/MM/YY or DD-MM-YYYY
     const parts = date.split(/[/-]/);
     if (parts.length === 3) {
-      let day = parts[0].padStart(2, '0');
-      let month = parts[1].padStart(2, '0');
+      const day = parts[0].padStart(2, '0');
+      const month = parts[1].padStart(2, '0');
       let year = parts[2];
       
       if (year.length === 2) {
@@ -365,7 +365,6 @@ export default function ImportBatchPage() {
           if (isPension && !row.instituidor) continue;
 
           const instName = isPension ? normalizeText(row.instituidor) : '';
-          const existingInst = existingInstituidores.get(`${reg.id}_${instName}`);
           
           const instUpdate: any = {
             matricula_id: reg.id,
@@ -759,7 +758,7 @@ export default function ImportBatchPage() {
       setIsImporting(true);
       setDescription("");
 
-      /*// Nova regra: Se for modelo CONTRATOS, apaga todos os dados de 'itens_credito' antes de importar
+      /* // Nova regra: Se for modelo CONTRATOS, apaga todos os dados de 'itens_credito' antes de importar
       if (type === "CONTRATOS") {
         setCleaningLog(["Limpando base de contratos anterior..."]);
         const { error: deleteError } = await withRetry(async () => {

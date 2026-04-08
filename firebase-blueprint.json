@@ -1,0 +1,29 @@
+{
+  "entities": {
+    "Perfil": {
+      "title": "Perfil do Usuário",
+      "description": "Dados de perfil e permissões do usuário no sistema SharkConsig",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do usuário (UUID do Auth)" },
+        "username": { "type": "string", "description": "Nome de usuário único" },
+        "email": { "type": "string", "format": "email", "description": "E-mail do usuário" },
+        "nome": { "type": "string", "description": "Nome completo do usuário" },
+        "role": { 
+          "type": "string", 
+          "enum": ["Desenvolvedor", "Administrador", "Operacional", "Supervisor", "Corretor"],
+          "description": "Função do usuário no sistema"
+        },
+        "status": { 
+          "type": "string", 
+          "enum": ["Ativo", "Inativo"],
+          "description": "Status da conta"
+        },
+        "permissoes": { "type": "object", "description": "Configurações de permissões específicas" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "username", "email", "role"]
+    }
+  }
+}

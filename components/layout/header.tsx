@@ -104,7 +104,7 @@ export function Header({ title }: HeaderProps) {
                 {perfil?.nome || user?.email || 'Usuário'}
               </p>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">
-                {isAdmin ? 'Administrador' : 'Corretor'}
+                {perfil?.role || (isAdmin ? 'Administrador' : 'Corretor')}
               </p>
             </div>
             <div className="relative w-10 h-10 rounded-full overflow-hidden bg-slate-200 border-2 border-slate-50">

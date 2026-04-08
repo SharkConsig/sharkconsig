@@ -15,7 +15,6 @@ import {
   MessageSquareText,
   ClipboardList,
   FileEdit,
-  Settings,
   ChevronLeft,
   ChevronRight
 } from "lucide-react"
@@ -36,7 +35,6 @@ const menuItems = [
       { name: "DIGITAR PROPOSTA", href: "/propostas/nova", icon: FileEdit, roles: ["admin", "corretor"] },
       { name: "LISTA DE PROPOSTAS", href: "/propostas", icon: ClipboardList, roles: ["admin", "corretor"] },
       { name: "GESTÃO DE USUÁRIOS", href: "/configuracoes/usuarios", icon: Users, roles: ["admin"] },
-      { name: "CONFIGURAÇÕES", href: "/configuracoes", icon: Settings, roles: ["admin"] },
     ]
   }
 ]

@@ -1,12 +1,10 @@
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
+import { Inter, Geist } from "next/font/google"
 import "./globals.css"
 import { AuthProvider } from "@/context/auth-context"
+import { cn } from "@/lib/utils";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans",
-})
+const geist = Geist({subsets:['latin'],variable:'--font-sans'})
 
 export const metadata: Metadata = {
   title: "SharkConsig",
@@ -19,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="pt-BR" className={inter.variable} suppressHydrationWarning>
+    <html lang="pt-BR" className={cn("font-sans", geist.variable)} suppressHydrationWarning>
       <body className="antialiased" suppressHydrationWarning>
         <AuthProvider>
           {children}

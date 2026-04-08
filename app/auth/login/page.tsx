@@ -85,38 +85,40 @@ export default function LoginPage() {
               </div>
             )}
             <div className="space-y-2">
-              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">
-                E-mail
+              <label className="text-[10px] font-bold text-[#7E97B8] uppercase tracking-widest ml-1">
+                E-MAIL
               </label>
-              <Input 
-                type="email" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu@email.com" 
-                icon={<Mail className="w-4 h-4" />}
-                className="h-[37px] text-[12px] bg-[#E8F0FE] border-slate-100 focus-visible:ring-blue-200"
-                required
-              />
+              <div className="relative group">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#0F172A]" />
+                <Input 
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="seu@email.com" 
+                  className="h-[45px] pl-11 text-[14px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
+                  required
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">
-                Senha
+              <label className="text-[10px] font-bold text-[#7E97B8] uppercase tracking-widest ml-1">
+                SENHA
               </label>
-              <div className="relative">
+              <div className="relative group">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#0F172A]" />
                 <Input 
                   type={showPassword ? "text" : "password"} 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••" 
-                  icon={<Lock className="w-4 h-4" />}
-                  className="h-[37px] text-[12px] bg-[#E8F0FE] border-slate-100 focus-visible:ring-blue-200"
+                  placeholder="........" 
+                  className="h-[45px] pl-11 pr-11 text-[17px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
                   required
                 />
                 <button 
                   type="button" 
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7E97B8]/40 hover:text-[#7E97B8] transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -126,9 +128,9 @@ export default function LoginPage() {
             <Button 
               type="submit"
               disabled={isLoading}
-              className="w-full h-[37px] text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200"
+              className="w-full h-[45px] bg-[#0F172A] hover:bg-[#1e293b] text-white text-[13px] font-extrabold uppercase tracking-[0.15em] rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-[0.98]"
             >
-              {isLoading ? "Entrando..." : "Entrar"}
+              {isLoading ? "ENTRANDO..." : "ENTRAR"}
             </Button>
           </form>
 
