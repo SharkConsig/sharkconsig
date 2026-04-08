@@ -1,20 +1,34 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
-// Cliente admin do Supabase (usa service_role key)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
+export const dynamic = 'force-dynamic'
+
+// Função para obter o cliente admin do Supabase de forma preguiçosa (lazy)
+// Isso evita erros durante o build se as variáveis de ambiente não estiverem presentes
+let supabaseAdminInstance: any = null;
+
+function getSupabaseAdmin() {
+  if (!supabaseAdminInstance) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !key) {
+      throw new Error('Configuração do Supabase Admin incompleta. Verifique NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.');
     }
+
+    supabaseAdminInstance = createClient(url, key, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
   }
-)
+  return supabaseAdminInstance;
+}
 
 export async function GET() {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers()
     
     if (error) throw error
@@ -27,7 +41,7 @@ export async function GET() {
     if (perfisError) throw perfisError
 
     // Mesclar dados
-    const combinedUsers = users.map(user => {
+    const combinedUsers = users.map((user: any) => {
       const perfil = perfis?.find(p => p.id === user.id)
       return {
         id: user.id,
@@ -50,6 +64,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const body = await request.json()
     const { email, password, nome, username, role, status } = body
 
@@ -95,6 +110,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const body = await request.json()
     const { id, email, password, nome, username, role, status } = body
 
@@ -142,6 +158,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
