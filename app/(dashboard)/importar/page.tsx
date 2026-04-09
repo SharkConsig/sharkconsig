@@ -339,12 +339,8 @@ export default function ImportBatchPage() {
       if (regError) throw new Error(`Erro ao salvar matrículas: ${regError.message}`);
 
       // Rule 1.2: Handle Instituidores and Margins
-      // Fetch existing instituidores to apply merge rules
       const regIds = regData.map(r => r.id);
-      const existingInstituidoresRaw = await fetchInBatches<any>('instituidores', 'matricula_id', regIds);
-      // Use normalizeText for the key to ensure consistency with NULL/empty strings
-      const existingInstituidores = new Map(existingInstituidoresRaw.map(i => [`${i.matricula_id}_${normalizeText(i.nome)}`, i]));
-
+      
       const instituidoresToUpsertMap = new Map<string, any>();
       
       for (const reg of regData) {
@@ -358,9 +354,11 @@ export default function ImportBatchPage() {
           if (!row.matricula) continue;
           
           const isPension = reg.situacao_funcional === 'BENEFICIARIO PENSAO';
-          if (isPension && !row.instituidor) continue;
-
-          const instName = isPension ? normalizeText(row.instituidor) : '';
+          
+          // Rule: If pension, use instituidor. If not, use orgao (New Rule).
+          const instName = isPension ? normalizeText(row.instituidor) : normalizeText(row.orgao);
+          
+          if (!instName) continue;
           
           const instUpdate: any = {
             matricula_id: reg.id,
@@ -577,13 +575,14 @@ export default function ImportBatchPage() {
       const existingReg = existingRegs.get(`${cpf}_${regNum}`);
       
       if (regId && row.matricula) {
-        // Rule: Determine instituidor name based on situacao_funcional (Non-pension = '')
         const sitFunc = existingReg?.situacao_funcional;
+        const isPension = sitFunc === 'BENEFICIARIO PENSAO';
         
-        // Rule: If pension, instituidor is required
-        if (sitFunc === 'BENEFICIARIO PENSAO' && !row.instituidor) continue;
+        // Rule: Determine instituidor name based on situacao_funcional (Non-pension = orgao)
+        const instName = isPension ? normalizeText(row.instituidor) : normalizeText(row.orgao);
+        
+        if (!instName) continue;
 
-        const instName = sitFunc === 'BENEFICIARIO PENSAO' ? normalizeText(row.instituidor) : '';
         const existingInst = existingInstituidores.get(`${regId}_${instName}`);
         
         // Rule: Only create instituidor if it doesn't exist. Do NOT update if it does.
@@ -638,11 +637,12 @@ export default function ImportBatchPage() {
       
       if (regId && row.matricula) {
         const sitFunc = existingReg?.situacao_funcional;
+        const isPension = sitFunc === 'BENEFICIARIO PENSAO';
         
-        // Rule: If pension, instituidor is required
-        if (sitFunc === 'BENEFICIARIO PENSAO' && !row.instituidor) continue;
+        const instName = isPension ? normalizeText(row.instituidor) : normalizeText(row.orgao);
+        
+        if (!instName) continue;
 
-        const instName = sitFunc === 'BENEFICIARIO PENSAO' ? normalizeText(row.instituidor) : '';
         const instId = instMap.get(`${regId}_${instName}`) || null;
         const contractNum = row.numero_do_contrato || '0';
         
@@ -651,6 +651,7 @@ export default function ImportBatchPage() {
             instituidor_id: instId,
             numero_contrato: contractNum,
             banco: normalizeText(row.banco) || null,
+            orgao: normalizeText(row.orgao) || null,
             tipo: normalizeText(row.tipo) || 'EMPRESTIMO',
             uf: normalizeText(row.uf) || null,
             parcela: normalizeMoney(row.parcela),
@@ -720,7 +721,7 @@ export default function ImportBatchPage() {
                 resolve(isValid);
               } else if (type === "CONTRATOS") {
                 // Cabeçalhos essenciais do modelo CONTRATOS
-                const required = ["cpf", "numero_do_contrato", "banco", "parcela"];
+                const required = ["cpf", "numero_do_contrato", "banco", "parcela", "orgao"];
                 const isValid = required.every(h => headers.includes(h));
                 resolve(isValid);
               } else {
@@ -910,7 +911,7 @@ export default function ImportBatchPage() {
   const downloadCSV = (type: 'siape' | 'contratos') => {
     const headers = type === 'siape' 
       ? "cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,matricula,orgao,situacao_funcional,salario,instituidor,regime_juridico,uf,saldo_70%,margem_35%,bruta_5,utilizada_5,liquida_5,beneficio_bruta_5,beneficio_utilizada_5,beneficio_liquida_5"
-      : "cpf,nome,uf,matricula,instituidor,banco,tipo,numero_do_contrato,parcela,prazo";
+      : "cpf,nome,uf,matricula,orgao,instituidor,banco,tipo,numero_do_contrato,parcela,prazo";
     
     const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");

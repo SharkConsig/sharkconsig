@@ -271,23 +271,10 @@ export default function NewCampaignPage() {
     }, 15000) // 15 seconds timeout
     
     try {
-      // Build select string based on active filters
-      let selectStr = 'cpf'
-      const hasMatriculasFilter = filters.orgaos.length > 0 || filters.situacoes.length > 0 || filters.regimes.length > 0 || filters.ufs.length > 0
-      const hasInstituidoresFilter = filters.margemMin || filters.margemMax || filters.saldoMin || filters.saldoMax || filters.cardMargemMin || filters.cardBeneficioMin
-      const hasItensCreditoFilter = filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0
+      // Build query
+      let query = supabase.from('clientes').select('cpf', { count: 'planned', head: true })
 
-      if (hasItensCreditoFilter) {
-        selectStr = 'cpf, matriculas!inner(instituidores!inner(itens_credito!inner(id)))'
-      } else if (hasInstituidoresFilter) {
-        selectStr = 'cpf, matriculas!inner(instituidores!inner(id))'
-      } else if (hasMatriculasFilter) {
-        selectStr = 'cpf, matriculas!inner(id)'
-      }
-
-      let query = supabase.from('clientes').select(selectStr, { count: 'planned', head: true })
-
-      // Apply filters
+      // Apply filters using !inner for joins to ensure filtering works correctly
       if (filters.orgaos.length > 0) {
         const orgaoCodes = filters.orgaos.flatMap(name => 
           Object.entries(ORGAOS_MAPPING)
@@ -295,34 +282,34 @@ export default function NewCampaignPage() {
             .map(([code]) => code)
         );
         const finalOrgaos = orgaoCodes.length > 0 ? orgaoCodes : filters.orgaos;
-        query = query.in('matriculas.orgao', finalOrgaos)
+        query = query.in('matriculas!inner.orgao', finalOrgaos)
       }
-      if (filters.situacoes.length > 0) query = query.in('matriculas.situacao_funcional', filters.situacoes)
-      if (filters.regimes.length > 0) query = query.in('matriculas.regime_juridico', filters.regimes)
-      if (filters.ufs.length > 0) query = query.in('matriculas.uf', filters.ufs)
+      if (filters.situacoes.length > 0) query = query.in('matriculas!inner.situacao_funcional', filters.situacoes)
+      if (filters.regimes.length > 0) query = query.in('matriculas!inner.regime_juridico', filters.regimes)
+      if (filters.ufs.length > 0) query = query.in('matriculas!inner.uf', filters.ufs)
 
       if (filters.margemMin && !isNaN(parseFloat(filters.margemMin))) 
-        query = query.gte('matriculas.instituidores.margem_35', parseFloat(filters.margemMin))
+        query = query.gte('matriculas!inner.instituidores!inner.margem_35', parseFloat(filters.margemMin))
       if (filters.margemMax && !isNaN(parseFloat(filters.margemMax))) 
-        query = query.lte('matriculas.instituidores.margem_35', parseFloat(filters.margemMax))
+        query = query.lte('matriculas!inner.instituidores!inner.margem_35', parseFloat(filters.margemMax))
       if (filters.saldoMin && !isNaN(parseFloat(filters.saldoMin))) 
-        query = query.gte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMin))
+        query = query.gte('matriculas!inner.instituidores!inner.saldo_70', parseFloat(filters.saldoMin))
       if (filters.saldoMax && !isNaN(parseFloat(filters.saldoMax))) 
-        query = query.lte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMax))
+        query = query.lte('matriculas!inner.instituidores!inner.saldo_70', parseFloat(filters.saldoMax))
       
       if (filters.cardMargemMin && !isNaN(parseFloat(filters.cardMargemMin))) 
-        query = query.gte('matriculas.instituidores.bruta_5', parseFloat(filters.cardMargemMin))
+        query = query.gte('matriculas!inner.instituidores!inner.liquida_5', parseFloat(filters.cardMargemMin))
       if (filters.cardBeneficioMin && !isNaN(parseFloat(filters.cardBeneficioMin))) 
-        query = query.gte('matriculas.instituidores.beneficio_bruta_5', parseFloat(filters.cardBeneficioMin))
+        query = query.gte('matriculas!inner.instituidores!inner.beneficio_liquida_5', parseFloat(filters.cardBeneficioMin))
 
       if (filters.loanBanks.length > 0) {
         const normalizedBanks = filters.loanBanks.map(b => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
-        query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
+        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.banco', normalizedBanks)
       }
       if (filters.loanPrazoMin && !isNaN(parseInt(filters.loanPrazoMin))) 
-        query = query.gte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMin))
+        query = query.gte('matriculas!inner.instituidores!inner.itens_credito!inner.prazo', parseInt(filters.loanPrazoMin))
       if (filters.loanPrazoMax && !isNaN(parseInt(filters.loanPrazoMax))) 
-        query = query.lte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMax))
+        query = query.lte('matriculas!inner.instituidores!inner.itens_credito!inner.prazo', parseInt(filters.loanPrazoMax))
       
       if (filters.cardTypes.length > 0) {
         const cardCodes = filters.cardTypes.flatMap(label => 
@@ -331,11 +318,11 @@ export default function NewCampaignPage() {
             .map(([code]) => code)
         );
         const finalCardTypes = cardCodes.length > 0 ? cardCodes : filters.cardTypes;
-        query = query.in('matriculas.instituidores.itens_credito.tipo', finalCardTypes)
+        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.tipo', finalCardTypes)
       }
       if (filters.cardBanks.length > 0) {
         const normalizedBanks = filters.cardBanks.map(b => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
-        query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
+        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.banco', normalizedBanks)
       }
 
       if (filters.idadeMin || filters.idadeMax) {
@@ -461,27 +448,27 @@ export default function NewCampaignPage() {
             .map(([code]) => code)
         );
         const finalOrgaos = orgaoCodes.length > 0 ? orgaoCodes : filters.orgaos;
-        query = query.in('matriculas.orgao', finalOrgaos)
+        query = query.in('matriculas!inner.orgao', finalOrgaos)
       }
-      if (filters.situacoes.length > 0) query = query.in('matriculas.situacao_funcional', filters.situacoes)
-      if (filters.regimes.length > 0) query = query.in('matriculas.regime_juridico', filters.regimes)
-      if (filters.ufs.length > 0) query = query.in('matriculas.uf', filters.ufs)
-      if (filters.margemMin) query = query.gte('matriculas.instituidores.margem_35', parseFloat(filters.margemMin))
-      if (filters.margemMax) query = query.lte('matriculas.instituidores.margem_35', parseFloat(filters.margemMax))
-      if (filters.saldoMin) query = query.gte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMin))
-      if (filters.saldoMax) query = query.lte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMax))
-      if (filters.cardMargemMin) query = query.gte('matriculas.instituidores.bruta_5', parseFloat(filters.cardMargemMin))
-      if (filters.cardBeneficioMin) query = query.gte('matriculas.instituidores.beneficio_bruta_5', parseFloat(filters.cardBeneficioMin))
+      if (filters.situacoes.length > 0) query = query.in('matriculas!inner.situacao_funcional', filters.situacoes)
+      if (filters.regimes.length > 0) query = query.in('matriculas!inner.regime_juridico', filters.regimes)
+      if (filters.ufs.length > 0) query = query.in('matriculas!inner.uf', filters.ufs)
+      if (filters.margemMin) query = query.gte('matriculas!inner.instituidores!inner.margem_35', parseFloat(filters.margemMin))
+      if (filters.margemMax) query = query.lte('matriculas!inner.instituidores!inner.margem_35', parseFloat(filters.margemMax))
+      if (filters.saldoMin) query = query.gte('matriculas!inner.instituidores!inner.saldo_70', parseFloat(filters.saldoMin))
+      if (filters.saldoMax) query = query.lte('matriculas!inner.instituidores!inner.saldo_70', parseFloat(filters.saldoMax))
+      if (filters.cardMargemMin) query = query.gte('matriculas!inner.instituidores!inner.liquida_5', parseFloat(filters.cardMargemMin))
+      if (filters.cardBeneficioMin) query = query.gte('matriculas!inner.instituidores!inner.beneficio_liquida_5', parseFloat(filters.cardBeneficioMin))
       
       if (filters.loanBanks.length > 0) {
         const normalizedBanks = filters.loanBanks.map(b => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
-        query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
+        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.banco', normalizedBanks)
       }
-      if (filters.loanPrazoMin) query = query.gte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMin))
-      if (filters.loanPrazoMax) query = query.lte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMax))
+      if (filters.loanPrazoMin) query = query.gte('matriculas!inner.instituidores!inner.itens_credito!inner.prazo', parseInt(filters.loanPrazoMin))
+      if (filters.loanPrazoMax) query = query.lte('matriculas!inner.instituidores!inner.itens_credito!inner.prazo', parseInt(filters.loanPrazoMax))
       if (filters.cardBanks.length > 0) {
         const normalizedBanks = filters.cardBanks.map(b => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
-        query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
+        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.banco', normalizedBanks)
       }
 
       if (filters.cardTypes.length > 0) {
@@ -491,7 +478,7 @@ export default function NewCampaignPage() {
             .map(([code]) => code)
         );
         const finalCardTypes = cardCodes.length > 0 ? cardCodes : filters.cardTypes;
-        query = query.in('matriculas.instituidores.itens_credito.tipo', finalCardTypes)
+        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.tipo', finalCardTypes)
       }
 
       if (filters.idadeMin || filters.idadeMax) {
@@ -715,7 +702,7 @@ export default function NewCampaignPage() {
                   <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
                     <Wallet className="w-4 h-4 text-slate-400" />
                   </div>
-                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">6. MARGEM</h3>
+                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">6. MARGEM 35%</h3>
                 </div>
                 <button 
                   onClick={() => setFilters(prev => ({ ...prev, margemMin: "", margemMax: "" }))}
@@ -908,7 +895,7 @@ export default function NewCampaignPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Margem 5% (Mínima)</label>
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Líquida 5% (Mínima)</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
                     <Input 
@@ -920,7 +907,7 @@ export default function NewCampaignPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício 5% (Mínima)</label>
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício Líquida 5% (Mínima)</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
                     <Input 

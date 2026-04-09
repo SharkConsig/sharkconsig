@@ -36,6 +36,7 @@ function LoanRow({ loan }: { loan: any }) {
   return (
     <tr className="group bg-blue-50/30 hover:bg-blue-50/50 transition-colors">
       <td className="py-4 pl-4 text-[12px] font-bold text-slate-700 rounded-l-xl border-y border-l border-blue-100">{loan.banco}</td>
+      <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.orgao || "-"}</td>
       <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.contrato}</td>
       <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">
         {loan.parcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -361,15 +362,21 @@ export default function SearchClientPage() {
             {/* Matrículas Section */}
             {(() => {
               const allRegs = registrations.flatMap(reg => {
+                const isPension = reg.situacao_funcional === 'BENEFICIARIO PENSAO';
                 if (!reg.instituidores || reg.instituidores.length === 0) {
-                  return [{ ...reg, currentInstituidor: "", currentInstituidorId: null }];
+                  const rawName = isPension ? "" : (reg.orgao || "");
+                  return [{ 
+                    ...reg, 
+                    currentInstituidor: isPension ? rawName : translateOrgao(rawName), 
+                    currentInstituidorId: null 
+                  }];
                 }
                 return reg.instituidores.map((inst: any) => ({
                   ...reg,
                   ...inst,
                   id: reg.id, // Keep registration ID as the main ID for the tab
                   instituidor_id: inst.id, // Keep track of the specific instituidor ID
-                  currentInstituidor: inst.nome,
+                  currentInstituidor: inst.nome ? (isPension ? inst.nome : translateOrgao(inst.nome)) : (isPension ? "" : translateOrgao(reg.orgao || "")),
                   currentInstituidorId: inst.id
                 }));
               });
@@ -393,7 +400,12 @@ export default function SearchClientPage() {
                       >
                         <div className="flex flex-col items-center">
                           <span>Matrícula {reg.numero_matricula}</span>
-                          <span className="text-[8px] opacity-70 truncate max-w-[120px]">{reg.currentInstituidor}</span>
+                          <span 
+                            className="text-[8px] opacity-70 truncate max-w-[120px]"
+                            title={reg.currentInstituidor}
+                          >
+                            {reg.currentInstituidor}
+                          </span>
                         </div>
                       </button>
                     ))}
@@ -427,7 +439,9 @@ export default function SearchClientPage() {
                               <p className="text-[13px] font-bold text-slate-900">{formatCurrency(allRegs[activeRegIndex].salario)}</p>
                             </div>
                             <div className="space-y-1.5">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Instituidor</p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                {allRegs[activeRegIndex].situacao_funcional === 'BENEFICIARIO PENSAO' ? 'Instituidor' : 'Órgão (Vínculo)'}
+                              </p>
                               <p className="text-[13px] font-bold text-slate-900 uppercase">
                                 {allRegs[activeRegIndex].currentInstituidor}
                               </p>
@@ -612,6 +626,7 @@ export default function SearchClientPage() {
                                   <thead>
                                     <tr>
                                       <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Órgão</th>
                                       <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Contrato</th>
                                       <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Parcela</th>
                                       <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Prazo</th>
@@ -626,6 +641,7 @@ export default function SearchClientPage() {
                                         .map((loan: any, lIdx: number) => (
                                           <LoanRow key={lIdx} loan={{
                                             banco: loan.banco,
+                                            orgao: loan.orgao,
                                             contrato: loan.numero_contrato,
                                             parcela: loan.parcela,
                                             prazo: loan.prazo,
@@ -634,7 +650,7 @@ export default function SearchClientPage() {
                                         ))
                                     ) : (
                                       <tr>
-                                        <td colSpan={6} className="py-8 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                                        <td colSpan={7} className="py-8 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
                                           Nenhum contrato de empréstimo encontrado
                                         </td>
                                       </tr>

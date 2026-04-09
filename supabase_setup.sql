@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS itens_credito (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     instituidor_id UUID REFERENCES instituidores(id) ON DELETE CASCADE,
     banco VARCHAR(255),
+    orgao VARCHAR(255),
     tipo VARCHAR(50), -- 'EMPRESTIMO', 'CARTAO CONSIGNADO', 'CARTAO BENEFICIO'
     numero_do_contrato VARCHAR(100),
     parcela DECIMAL(15, 2),

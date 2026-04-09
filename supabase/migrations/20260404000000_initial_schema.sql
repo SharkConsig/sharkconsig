@@ -63,6 +63,7 @@ CREATE TABLE public.itens_credito (
     instituidor_id UUID NOT NULL REFERENCES public.instituidores(id) ON DELETE CASCADE,
     numero_contrato TEXT NOT NULL,
     banco TEXT,
+    orgao TEXT,
     tipo TEXT,
     parcela NUMERIC(15, 2),
     prazo INTEGER,
