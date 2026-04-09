@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
-import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit } from "lucide-react"
+import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle } from "lucide-react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -305,39 +305,54 @@ export default function SearchClientPage() {
                   </div>
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 1</p>
-                    <p 
-                      className={cn(
-                        "text-[13px] font-bold text-slate-900",
-                        client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                    <div className="flex items-center gap-1.5">
+                      <p 
+                        className={cn(
+                          "text-[13px] font-bold text-slate-900",
+                          client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                        )}
+                        onClick={() => handlePhoneClick(client.telefone_1)}
+                      >
+                        {maskPhone(client.telefone_1)}
+                      </p>
+                      {client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && (
+                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10" />
                       )}
-                      onClick={() => handlePhoneClick(client.telefone_1)}
-                    >
-                      {maskPhone(client.telefone_1)}
-                    </p>
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 2</p>
-                    <p 
-                      className={cn(
-                        "text-[13px] font-bold text-slate-900",
-                        client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                    <div className="flex items-center gap-1.5">
+                      <p 
+                        className={cn(
+                          "text-[13px] font-bold text-slate-900",
+                          client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                        )}
+                        onClick={() => handlePhoneClick(client.telefone_2)}
+                      >
+                        {maskPhone(client.telefone_2)}
+                      </p>
+                      {client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && (
+                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10" />
                       )}
-                      onClick={() => handlePhoneClick(client.telefone_2)}
-                    >
-                      {maskPhone(client.telefone_2)}
-                    </p>
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 3</p>
-                    <p 
-                      className={cn(
-                        "text-[13px] font-bold text-slate-900",
-                        client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                    <div className="flex items-center gap-1.5">
+                      <p 
+                        className={cn(
+                          "text-[13px] font-bold text-slate-900",
+                          client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                        )}
+                        onClick={() => handlePhoneClick(client.telefone_3)}
+                      >
+                        {maskPhone(client.telefone_3)}
+                      </p>
+                      {client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && (
+                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10" />
                       )}
-                      onClick={() => handlePhoneClick(client.telefone_3)}
-                    >
-                      {maskPhone(client.telefone_3)}
-                    </p>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -430,6 +445,56 @@ export default function SearchClientPage() {
 
                         {/* Margens Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                          {/* Row 1: Principais */}
+                          <div className="p-3.5 bg-slate-300/60 border border-slate-400/40 rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]">
+                            <div>
+                              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Saldo 70%</p>
+                              <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(allRegs[activeRegIndex].saldo_70)}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 invisible">
+                              <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                              <span className="text-[8px] font-bold uppercase tracking-widest">STATUS</span>
+                            </div>
+                          </div>
+                          <div className={cn(
+                            "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]",
+                            (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                          )}>
+                            <div>
+                              <p className={cn(
+                                "text-[9px] font-bold uppercase tracking-widest",
+                                (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "text-emerald-700/60" : "text-red-700/60"
+                              )}>Margem 35%</p>
+                              <p className={cn(
+                                "text-[17px] font-bold tracking-tight",
+                                (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "text-emerald-700" : "text-red-700"
+                              )}>{formatCurrency(allRegs[activeRegIndex].margem_35)}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 invisible">
+                              <div className={cn("w-1.5 h-1.5 rounded-full", (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                              <span className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
+                                STATUS
+                              </span>
+                            </div>
+                          </div>
+                          <div className="p-3.5 bg-orange-100/50 border border-orange-200 rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]">
+                            <div>
+                              <p className="text-[9px] font-bold text-orange-700/60 uppercase tracking-widest">Soma das Margens Líquidas</p>
+                              <p className="text-[17px] font-bold text-orange-700 tracking-tight">
+                                {formatCurrency(
+                                  (Number(allRegs[activeRegIndex].margem_35) || 0) + 
+                                  (Number(allRegs[activeRegIndex].liquida_5) || 0) + 
+                                  (Number(allRegs[activeRegIndex].beneficio_liquida_5) || 0)
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 invisible">
+                              <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                              <span className="text-[8px] font-bold uppercase tracking-widest">STATUS</span>
+                            </div>
+                          </div>
+
+                          {/* Row 2: 5% */}
                           <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta 5%</p>
                             <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(allRegs[activeRegIndex].bruta_5)}</p>

@@ -24,7 +24,6 @@ import {
   Image as ImageIcon,
   Paperclip
 } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 const convenios = [
   "FEDERAL",
@@ -33,11 +32,11 @@ const convenios = [
 ]
 
 const bancos = [
-  "AMIGOZ", "BANCO BMG", "BANCO DAYCOVAL", "BANCO DIGIO SA.", 
+  "ALFA", "AMIGOZ", "BANCO BMG", "BANCO DAYCOVAL", "BANCO DIGIO SA.", 
   "BANCO DO BRASIL", "BANCO MERCANTIL DO BRASIL", "BANCO NEO CRÉDITO", 
   "BANCO PAULISTA", "BANCO SAFRA", "BARU FINANCEIRA", 
   "BRB - CRÉDITO, FINANCIAMENTO E INVESTIMENTO", "BTW BANK", 
-  "CAPITAL CONSIG SCD S.A.", "FUTURO PREVIDÊNCIA", "MEU CASHCARD", 
+  "CAPITAL CONSIG SCD S.A.", "FUTURO PREVIDÊNCIA", "INTERMEDIUM", "MEU CASHCARD", 
   "PEGCARD", "PHTECH", "PRESENÇA BANK", "XN BANK"
 ]
 

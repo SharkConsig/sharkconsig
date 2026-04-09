@@ -7,10 +7,8 @@ import { Header } from "@/components/layout/header"
 import { 
   Search, 
   Filter, 
-  Calculator, 
   PlusCircle,
   Info,
-  ChevronDown,
   Wallet,
   Landmark,
   CreditCard,
@@ -29,7 +27,7 @@ import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 const filterSections = [
   {
     id: "1",
-    title: "1. ÓRGÃO",
+    title: "2. ÓRGÃO",
     options: [
       "ADVOCACIA-GERAL DA UNIAO", "AGENCIA BRASILEIRA DE INTELIGENCIA", "AGENCIA ESPACIAL BRASILEIRA",
       "AGENCIA NAC PETROLEO GAS NAT BIOCOMBUSTI", "AGENCIA NACIONAL DE AGUAS", "AGENCIA NACIONAL DE AVIACAO CIVIL",
@@ -107,7 +105,7 @@ const filterSections = [
   },
   {
     id: "2",
-    title: "2. SITUAÇÃO FUNCIONAL",
+    title: "3. SITUAÇÃO FUNCIONAL",
     options: [
       "ANIST PRIVADO L10559", "ANIST PUBLICO L10559", "ANISTIADO ADCT CF",
       "APOSENTADO", "APOSENTADO TCU733 94", "APRENDIZ",
@@ -127,14 +125,14 @@ const filterSections = [
   },
   {
     id: "3",
-    title: "3. REGIME JURÍDICO",
+    title: "4. REGIME JURÍDICO",
     options: [
       "ANS", "CDT", "CLT", "EST", "MRD", "NES", "RMI"
     ]
   },
   {
     id: "4",
-    title: "4. UF (ESTADO)",
+    title: "5. UF (ESTADO)",
     options: [
       "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"
     ]
@@ -146,7 +144,6 @@ import { useAuth } from "@/context/auth-context"
 export default function NewCampaignPage() {
   const router = useRouter()
   const { isAdmin, isLoading: authLoading } = useAuth()
-  const [selectedFilters, setSelectedFilters] = useState<string[]>([])
   const [filters, setFilters] = useState({
     orgaos: [] as string[],
     situacoes: [] as string[],
@@ -163,6 +160,8 @@ export default function NewCampaignPage() {
     cardBanks: [] as string[],
     cardMargemMin: "",
     cardBeneficioMin: "",
+    idadeMin: "",
+    idadeMax: "",
   })
 
   useEffect(() => {
@@ -192,7 +191,9 @@ export default function NewCampaignPage() {
       filters.cardMargemMin !== "" ||
       filters.cardBeneficioMin !== "" ||
       filters.cardTypes.length > 0 ||
-      filters.cardBanks.length > 0
+      filters.cardBanks.length > 0 ||
+      filters.idadeMin !== "" ||
+      filters.idadeMax !== ""
     )
   }
 
@@ -213,9 +214,6 @@ export default function NewCampaignPage() {
         : [...current, value]
       return { ...prev, [category]: next }
     })
-    // Also update selectedFilters for UI compatibility if needed, 
-    // but better to use the structured state
-    setSelectedFilters(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
   }
 
   const selectAll = (category: keyof typeof filters, options: string[]) => {
@@ -223,7 +221,6 @@ export default function NewCampaignPage() {
       ...prev,
       [category]: Array.from(new Set([...(prev[category] as string[]), ...options]))
     }))
-    setSelectedFilters(prev => Array.from(new Set([...prev, ...options])))
   }
 
   const clearAll = (category: keyof typeof filters, options: string[]) => {
@@ -231,7 +228,6 @@ export default function NewCampaignPage() {
       ...prev,
       [category]: (prev[category] as string[]).filter(v => !options.includes(v))
     }))
-    setSelectedFilters(prev => prev.filter(v => !options.includes(v)))
   }
 
   const handleSearch = (id: string, query: string) => {
@@ -247,7 +243,7 @@ export default function NewCampaignPage() {
         const matchesName = opt.toLowerCase().includes(query);
         // Find if any code for this name matches the query
         const codes = Object.entries(ORGAOS_MAPPING)
-          .filter(([_, val]) => val === opt)
+          .filter(([, val]) => val === opt)
           .map(([code]) => code);
         const matchesCode = codes.some(code => code.includes(query));
         return matchesName || matchesCode;
@@ -269,50 +265,33 @@ export default function NewCampaignPage() {
     if (!isSupabaseConfigured) return
     setIsCalculating(true)
     
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      controller.abort()
+    }, 15000) // 15 seconds timeout
+    
     try {
-      let query = supabase
-        .from('clientes')
-        .select('cpf', { count: 'exact', head: true })
-
-      // Build complex filter
-      // Since we need to filter on joined tables, we use !inner
+      // Build select string based on active filters
       let selectStr = 'cpf'
-      let joinConditions: string[] = []
+      const hasMatriculasFilter = filters.orgaos.length > 0 || filters.situacoes.length > 0 || filters.regimes.length > 0 || filters.ufs.length > 0
+      const hasInstituidoresFilter = filters.margemMin || filters.margemMax || filters.saldoMin || filters.saldoMax || filters.cardMargemMin || filters.cardBeneficioMin
+      const hasItensCreditoFilter = filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0
 
-      if (filters.orgaos.length > 0 || filters.situacoes.length > 0 || filters.regimes.length > 0 || filters.ufs.length > 0) {
-        selectStr += ', matriculas!inner(id)'
+      if (hasItensCreditoFilter) {
+        selectStr = 'cpf, matriculas!inner(instituidores!inner(itens_credito!inner(id)))'
+      } else if (hasInstituidoresFilter) {
+        selectStr = 'cpf, matriculas!inner(instituidores!inner(id))'
+      } else if (hasMatriculasFilter) {
+        selectStr = 'cpf, matriculas!inner(id)'
       }
 
-      if (filters.margemMin || filters.margemMax || filters.saldoMin || filters.saldoMax || filters.cardMargemMin || filters.cardBeneficioMin) {
-        // If we didn't add matriculas yet, add it
-        if (!selectStr.includes('matriculas')) {
-          selectStr += ', matriculas!inner(id, instituidores!inner(id))'
-        } else {
-          selectStr = selectStr.replace('matriculas!inner(id)', 'matriculas!inner(id, instituidores!inner(id))')
-        }
-      }
-
-      if (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) {
-        // Ensure instituidores is joined
-        if (!selectStr.includes('instituidores')) {
-          if (!selectStr.includes('matriculas')) {
-            selectStr += ', matriculas!inner(id, instituidores!inner(id, itens_credito!inner(id)))'
-          } else {
-            selectStr = selectStr.replace('matriculas!inner(id)', 'matriculas!inner(id, instituidores!inner(id, itens_credito!inner(id)))')
-          }
-        } else {
-          selectStr = selectStr.replace('instituidores!inner(id)', 'instituidores!inner(id, itens_credito!inner(id))')
-        }
-      }
-
-      // Re-run query with joins
-      query = supabase.from('clientes').select(selectStr, { count: 'exact', head: true })
+      let query = supabase.from('clientes').select(selectStr, { count: 'planned', head: true })
 
       // Apply filters
       if (filters.orgaos.length > 0) {
         const orgaoCodes = filters.orgaos.flatMap(name => 
           Object.entries(ORGAOS_MAPPING)
-            .filter(([_, val]) => val === name)
+            .filter(([, val]) => val === name)
             .map(([code]) => code)
         );
         const finalOrgaos = orgaoCodes.length > 0 ? orgaoCodes : filters.orgaos;
@@ -322,25 +301,33 @@ export default function NewCampaignPage() {
       if (filters.regimes.length > 0) query = query.in('matriculas.regime_juridico', filters.regimes)
       if (filters.ufs.length > 0) query = query.in('matriculas.uf', filters.ufs)
 
-      if (filters.margemMin) query = query.gte('matriculas.instituidores.margem_35', parseFloat(filters.margemMin))
-      if (filters.margemMax) query = query.lte('matriculas.instituidores.margem_35', parseFloat(filters.margemMax))
-      if (filters.saldoMin) query = query.gte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMin))
-      if (filters.saldoMax) query = query.lte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMax))
+      if (filters.margemMin && !isNaN(parseFloat(filters.margemMin))) 
+        query = query.gte('matriculas.instituidores.margem_35', parseFloat(filters.margemMin))
+      if (filters.margemMax && !isNaN(parseFloat(filters.margemMax))) 
+        query = query.lte('matriculas.instituidores.margem_35', parseFloat(filters.margemMax))
+      if (filters.saldoMin && !isNaN(parseFloat(filters.saldoMin))) 
+        query = query.gte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMin))
+      if (filters.saldoMax && !isNaN(parseFloat(filters.saldoMax))) 
+        query = query.lte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMax))
       
-      if (filters.cardMargemMin) query = query.gte('matriculas.instituidores.bruta_5', parseFloat(filters.cardMargemMin))
-      if (filters.cardBeneficioMin) query = query.gte('matriculas.instituidores.beneficio_bruta_5', parseFloat(filters.cardBeneficioMin))
+      if (filters.cardMargemMin && !isNaN(parseFloat(filters.cardMargemMin))) 
+        query = query.gte('matriculas.instituidores.bruta_5', parseFloat(filters.cardMargemMin))
+      if (filters.cardBeneficioMin && !isNaN(parseFloat(filters.cardBeneficioMin))) 
+        query = query.gte('matriculas.instituidores.beneficio_bruta_5', parseFloat(filters.cardBeneficioMin))
 
       if (filters.loanBanks.length > 0) {
         const normalizedBanks = filters.loanBanks.map(b => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
         query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
       }
-      if (filters.loanPrazoMin) query = query.gte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMin))
-      if (filters.loanPrazoMax) query = query.lte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMax))
+      if (filters.loanPrazoMin && !isNaN(parseInt(filters.loanPrazoMin))) 
+        query = query.gte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMin))
+      if (filters.loanPrazoMax && !isNaN(parseInt(filters.loanPrazoMax))) 
+        query = query.lte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMax))
       
       if (filters.cardTypes.length > 0) {
         const cardCodes = filters.cardTypes.flatMap(label => 
           Object.entries(CONTRATOS_TIPO_MAPPING)
-            .filter(([_, info]) => info.label === label)
+            .filter(([, info]) => info.label === label)
             .map(([code]) => code)
         );
         const finalCardTypes = cardCodes.length > 0 ? cardCodes : filters.cardTypes;
@@ -351,17 +338,40 @@ export default function NewCampaignPage() {
         query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
       }
 
-      const { count, error } = await query
+      if (filters.idadeMin || filters.idadeMax) {
+        const today = new Date();
+        if (filters.idadeMin) {
+          const minDate = new Date(today.getFullYear() - parseInt(filters.idadeMin), today.getMonth(), today.getDate());
+          query = query.lte('data_nascimento', minDate.toISOString().split('T')[0]);
+        }
+        if (filters.idadeMax) {
+          const maxDate = new Date(today.getFullYear() - (parseInt(filters.idadeMax) + 1), today.getMonth(), today.getDate() + 1);
+          query = query.gte('data_nascimento', maxDate.toISOString().split('T')[0]);
+        }
+      }
+
+      const { count, error, status } = await query.abortSignal(controller.signal)
       
       if (error) {
-        console.error("Erro ao calcular audiência:", error.message || error)
+        console.error("Erro ao calcular audiência:", error)
+        if (error.message?.includes("timeout") || error.code === '57014' || status === 504) {
+          alert("A consulta demorou muito devido ao grande volume de dados. Tente usar filtros mais específicos para reduzir o tempo de busca.")
+        } else {
+          alert(`Erro ao calcular audiência: ${error.message || "Erro desconhecido"}`)
+        }
         setEstimatedAudience(0)
       } else {
         setEstimatedAudience(count || 0)
       }
     } catch (err: any) {
-      console.error("Erro inesperado:", err.message || err)
+      if (err.name === 'AbortError') {
+        alert("A consulta foi cancelada porque demorou muito. Tente usar filtros mais específicos.")
+      } else {
+        console.error("Erro inesperado ao calcular audiência:", err)
+        alert(`Erro inesperado: ${err.message || "Erro desconhecido"}`)
+      }
     } finally {
+      clearTimeout(timeoutId)
       setIsCalculating(false)
     }
   }
@@ -447,7 +457,7 @@ export default function NewCampaignPage() {
       if (filters.orgaos.length > 0) {
         const orgaoCodes = filters.orgaos.flatMap(name => 
           Object.entries(ORGAOS_MAPPING)
-            .filter(([_, val]) => val === name)
+            .filter(([, val]) => val === name)
             .map(([code]) => code)
         );
         const finalOrgaos = orgaoCodes.length > 0 ? orgaoCodes : filters.orgaos;
@@ -477,11 +487,23 @@ export default function NewCampaignPage() {
       if (filters.cardTypes.length > 0) {
         const cardCodes = filters.cardTypes.flatMap(label => 
           Object.entries(CONTRATOS_TIPO_MAPPING)
-            .filter(([_, info]) => info.label === label)
+            .filter(([, info]) => info.label === label)
             .map(([code]) => code)
         );
         const finalCardTypes = cardCodes.length > 0 ? cardCodes : filters.cardTypes;
         query = query.in('matriculas.instituidores.itens_credito.tipo', finalCardTypes)
+      }
+
+      if (filters.idadeMin || filters.idadeMax) {
+        const today = new Date();
+        if (filters.idadeMin) {
+          const minDate = new Date(today.getFullYear() - parseInt(filters.idadeMin), today.getMonth(), today.getDate());
+          query = query.lte('data_nascimento', minDate.toISOString().split('T')[0]);
+        }
+        if (filters.idadeMax) {
+          const maxDate = new Date(today.getFullYear() - (parseInt(filters.idadeMax) + 1), today.getMonth(), today.getDate() + 1);
+          query = query.gte('data_nascimento', maxDate.toISOString().split('T')[0]);
+        }
       }
 
       const { data, error } = await query.limit(5000) // Limit for safety in browser
@@ -531,8 +553,8 @@ export default function NewCampaignPage() {
   }
 
   const LOAN_BANKS = [
-    "BMG", "BRADESCO", "BRB", "C6", "DAYCOVAL", 
-    "DIGIMAIS", "DIGIO", "DO BRASIL", "ITAU", 
+    "ALFA", "BMG", "BRADESCO", "BRB", "C6", "DAYCOVAL", 
+    "DIGIMAIS", "DIGIO", "DO BRASIL", "INTERMEDIUM", "ITAU", 
     "ITAU CONSIGNADO", "PAN", "SAFRA", "SANTANDER", 
     "SEGURO", "BANRISUL", "BRB FINANCEIRA", "CAIXA ECONOMICA FEDERAL", 
     "CAPITAL CONSIG", "EAGLE", "MEUCASH", "NEOCREDITO", "NUBANK", 
@@ -554,6 +576,52 @@ export default function NewCampaignPage() {
         <div className="flex-1 space-y-6 order-2 lg:order-1">
           <p className="text-[13px] font-medium text-slate-400 px-1">Defina os filtros para segmentar seu público-alvo.</p>
           
+          {/* 1. IDADE */}
+          <Card className="card-shadow">
+            <CardContent className="p-6 lg:p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
+                    <Users className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">1. IDADE</h3>
+                </div>
+                <button 
+                  onClick={() => setFilters(prev => ({ ...prev, idadeMin: "", idadeMax: "" }))}
+                  className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                >
+                  Limpar
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Idade Mínima</label>
+                  <div className="relative">
+                    <Input 
+                      className="h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                      placeholder="Ex: 18" 
+                      type="number"
+                      value={filters.idadeMin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, idadeMin: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Idade Máxima</label>
+                  <div className="relative">
+                    <Input 
+                      className="h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                      placeholder="Ex: 80" 
+                      type="number"
+                      value={filters.idadeMax}
+                      onChange={(e) => setFilters(prev => ({ ...prev, idadeMax: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {filterSections.map((section) => (
             <Card key={section.id} className="card-shadow">
               <CardContent className="p-6 lg:p-8 space-y-6">
@@ -639,7 +707,7 @@ export default function NewCampaignPage() {
             </Card>
           ))}
 
-          {/* 5. MARGEM */}
+          {/* 6. MARGEM */}
           <Card className="card-shadow">
             <CardContent className="p-6 lg:p-8 space-y-6">
               <div className="flex items-center justify-between">
@@ -647,7 +715,7 @@ export default function NewCampaignPage() {
                   <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
                     <Wallet className="w-4 h-4 text-slate-400" />
                   </div>
-                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">5. MARGEM</h3>
+                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">6. MARGEM</h3>
                 </div>
                 <button 
                   onClick={() => setFilters(prev => ({ ...prev, margemMin: "", margemMax: "" }))}
@@ -685,7 +753,7 @@ export default function NewCampaignPage() {
             </CardContent>
           </Card>
 
-          {/* 6. SALDO 70% */}
+          {/* 7. SALDO 70% */}
           <Card className="card-shadow">
             <CardContent className="p-6 lg:p-8 space-y-6">
               <div className="flex items-center justify-between">
@@ -693,7 +761,7 @@ export default function NewCampaignPage() {
                   <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
                     <Landmark className="w-4 h-4 text-slate-400" />
                   </div>
-                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">6. SALDO 70%</h3>
+                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">7. SALDO 70%</h3>
                 </div>
                 <button 
                   onClick={() => setFilters(prev => ({ ...prev, saldoMin: "", saldoMax: "" }))}
@@ -731,14 +799,14 @@ export default function NewCampaignPage() {
             </CardContent>
           </Card>
 
-          {/* 7. EMPRÉSTIMOS */}
+          {/* 8. EMPRÉSTIMOS */}
           <Card className="card-shadow">
             <CardContent className="p-6 lg:p-8 space-y-8">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
                   <CreditCard className="w-4 h-4 text-slate-400" />
                 </div>
-                <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">7. EMPRÉSTIMOS</h3>
+                <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">8. EMPRÉSTIMOS</h3>
               </div>
 
               <div className="space-y-4">
@@ -828,7 +896,7 @@ export default function NewCampaignPage() {
                   <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
                     <CreditCard className="w-4 h-4 text-slate-400" />
                   </div>
-                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">8. CARTÕES</h3>
+                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">9. CARTÕES</h3>
                 </div>
                 <button 
                   onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "" }))}
