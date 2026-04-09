@@ -506,8 +506,10 @@ export default function ImportBatchPage() {
         } else if (newUf) {
           // If it exists, update UF only if newUf is present (Rule 1.9)
           const baseReg = currentRegInMap || existingReg;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { id: _id, ...regWithoutId } = baseReg;
           registrationsToUpsertMap.set(regKey, {
-            ...baseReg,
+            ...regWithoutId,
             uf: newUf,
             updated_at: new Date().toISOString()
           });
