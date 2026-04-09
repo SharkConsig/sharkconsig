@@ -62,7 +62,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 lg:p-8">
-      <Card className="w-full max-w-[324px] border border-slate-200 card-shadow">
+      <Card className="w-full max-w-[340px] border border-slate-200 card-shadow">
         <CardContent className="p-6 lg:p-10 space-y-6">
           <div className="flex flex-col items-center gap-4">
             <div className="relative w-48 h-12">
@@ -95,7 +95,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu@email.com" 
-                  className="h-[45px] pl-11 text-[14px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
+                  className="h-[42px] pl-11 text-[14px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] placeholder:text-[13.3px] placeholder:font-semibold focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
                   required
                 />
               </div>
@@ -112,7 +112,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="........" 
-                  className="h-[45px] pl-11 pr-11 text-[17px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
+                  className="h-[42px] pl-11 pr-11 text-[17px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] placeholder:text-[19px] placeholder:font-semibold focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
                   required
                 />
                 <button 
@@ -128,7 +128,7 @@ export default function LoginPage() {
             <Button 
               type="submit"
               disabled={isLoading}
-              className="w-full h-[45px] bg-[#0F172A] hover:bg-[#1e293b] text-white text-[13px] font-extrabold uppercase tracking-[0.15em] rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-[0.98]"
+              className="w-full h-[42px] bg-[#0F172A] hover:bg-[#1e293b] text-white text-[12.5px] font-bold uppercase tracking-[0.15em] rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-[0.98] mt-[15px]"
             >
               {isLoading ? "ENTRANDO..." : "ENTRAR"}
             </Button>

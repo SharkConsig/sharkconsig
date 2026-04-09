@@ -8,10 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
 import { 
   ChevronLeft, 
-  Search, 
   Calendar, 
   Save, 
-  FileText,
   Bold,
   Italic,
   Underline,

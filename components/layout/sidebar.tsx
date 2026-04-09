@@ -9,8 +9,6 @@ import {
   PlusCircle, 
   Users, 
   Search,
-  LayoutDashboard,
-  X,
   MessageSquarePlus,
   MessageSquareText,
   ClipboardList,

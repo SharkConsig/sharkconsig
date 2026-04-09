@@ -12,18 +12,6 @@ import { translateOrgao } from "@/lib/orgaos-mapping"
 import { getContractTypeInfo } from "@/lib/contratos-mapping"
 import { supabase } from "@/lib/supabase"
 
-// Helper to normalize CPF
-const normalizeCPF = (cpf: string) => {
-  if (!cpf) return "";
-  return cpf.replace(/\D/g, "");
-};
-
-// Helper to normalize Phone
-const normalizePhone = (phone: string) => {
-  if (!phone) return "";
-  return phone.replace(/\D/g, "");
-};
-
 // Helper for retries
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
   try {
@@ -36,17 +24,6 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Pr
     throw error;
   }
 }
-
-// Mock data for contracts
-const MOCK_CONTRACTS = [
-  { banco: "CAIXA ECONOMICA FEDERAL", contrato: "20369111000314400", parcela: 1130.97, prazo: 91, tipo: "1" }, // Empréstimo
-  { banco: "PARANA BANCO", contrato: "856101599", parcela: 83.37, prazo: 89, tipo: "2" }, // Empréstimo
-  { banco: "PARANA BANCO", contrato: "856101568", parcela: 71.00, prazo: 89, tipo: "3" }, // Empréstimo
-  { banco: "PARANA BANCO", contrato: "856101583", parcela: 54.00, prazo: 89, tipo: "4" }, // Empréstimo
-  { banco: "EAGLE", contrato: "999999", parcela: 253.23, prazo: 0, tipo: "34998" }, // Cartão Consignado (CAPITAL na mapping, but using code 34998)
-  { banco: "CAPITAL CONSIG", contrato: "888888", parcela: 161.53, prazo: 0, tipo: "35007" }, // Cartão Benefício (CAPITAL na mapping)
-  { banco: "CAPITAL CONSIG", contrato: "777777", parcela: 105.03, prazo: 0, tipo: "35013" }, // Cartão Benefício (BMG na mapping, testing code 35013)
-];
 
 function LoanRow({ loan }: { loan: any }) {
   const [taxa, setTaxa] = useState(1.5);
@@ -308,7 +285,7 @@ export default function SearchClientPage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-y-10 gap-x-12">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-12">
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome</p>
                     <p className="text-[13px] font-bold text-slate-900 uppercase">{client.nome || "NÃO INFORMADO"}</p>
@@ -445,10 +422,6 @@ export default function SearchClientPage() {
                               <p className="text-[13px] font-bold text-slate-900 uppercase">{allRegs[activeRegIndex].regime_juridico || "NÃO INFORMADO"}</p>
                             </div>
                             <div className="space-y-1.5">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UPAG</p>
-                              <p className="text-[13px] font-bold text-slate-900 uppercase">{allRegs[activeRegIndex].upag || "NÃO INFORMADO"}</p>
-                            </div>
-                            <div className="space-y-1.5">
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF</p>
                               <p className="text-[13px] font-bold text-slate-900 uppercase">{allRegs[activeRegIndex].uf || "NÃO INFORMADO"}</p>
                             </div>
@@ -457,34 +430,6 @@ export default function SearchClientPage() {
 
                         {/* Margens Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                          <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Saldo 70%</p>
-                            <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(allRegs[activeRegIndex].saldo_70)}</p>
-                          </div>
-                          <div className={cn(
-                            "p-3.5 border rounded-xl space-y-0.5",
-                            allRegs[activeRegIndex].margem_35 === null ? "bg-[#F1F5F9] border-slate-200" :
-                            (allRegs[activeRegIndex].margem_35 || 0) > 0 
-                              ? "bg-emerald-100/50 border-emerald-200" 
-                              : "bg-red-100/50 border-red-200"
-                          )}>
-                            <p className={cn(
-                              "text-[9px] font-bold uppercase tracking-widest",
-                              allRegs[activeRegIndex].margem_35 === null ? "text-slate-400" :
-                              (allRegs[activeRegIndex].margem_35 || 0) > 0 ? "text-emerald-700/60" : "text-red-700/60"
-                            )}>Margem 35%</p>
-                            <p className={cn(
-                              "text-[17px] font-bold tracking-tight",
-                              allRegs[activeRegIndex].margem_35 === null ? "text-slate-900" :
-                              (allRegs[activeRegIndex].margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700"
-                            )}>{formatCurrency(allRegs[activeRegIndex].margem_35)}</p>
-                          </div>
-                          <div className="p-3.5 bg-orange-100/50 border border-orange-200 rounded-xl space-y-0.5">
-                            <p className="text-[9px] font-bold text-orange-700/60 uppercase tracking-widest">Soma das Margens Líquidas</p>
-                            <p className="text-[17px] font-bold text-orange-700 tracking-tight">
-                              {formatCurrency((allRegs[activeRegIndex].margem_35 || 0) + (allRegs[activeRegIndex].liquida_5 || 0) + (allRegs[activeRegIndex].beneficio_liquida_5 || 0))}
-                            </p>
-                          </div>
                           <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta 5%</p>
                             <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(allRegs[activeRegIndex].bruta_5)}</p>

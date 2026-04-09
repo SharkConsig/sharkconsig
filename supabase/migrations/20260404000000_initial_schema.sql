@@ -32,7 +32,6 @@ CREATE TABLE public.matriculas (
     situacao_funcional TEXT,
     salario NUMERIC(15, 2),
     regime_juridico TEXT,
-    upag TEXT,
     uf TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),

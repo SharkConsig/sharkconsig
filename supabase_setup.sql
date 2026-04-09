@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS matriculas (
     orgao VARCHAR(255),
     situacao_funcional VARCHAR(255),
     regime_juridico VARCHAR(255),
-    upag VARCHAR(255),
     salario DECIMAL(15, 2),
     uf VARCHAR(2),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

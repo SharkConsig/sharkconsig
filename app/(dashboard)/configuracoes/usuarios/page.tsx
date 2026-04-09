@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic'
+
 import { Header } from "@/components/layout/header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,13 +24,9 @@ import {
   MoreVertical, 
   UserPlus, 
   Download, 
-  CheckCircle2, 
-  History, 
-  ShieldCheck,
-  ChevronLeft,
+  ChevronLeft, 
   ChevronRight
 } from "lucide-react"
-import { motion } from "motion/react"
 import { useState } from "react"
 import { NovoUsuarioModal } from "@/components/usuarios/novo-usuario-modal"
 
@@ -126,12 +124,9 @@ export default function UsuariosPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {MOCK_USERS.map((usuario, index) => (
-                    <motion.tr 
+                  {MOCK_USERS.map((usuario) => (
+                    <tr 
                       key={usuario.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
                       className="group hover:bg-slate-50/50 transition-colors"
                     >
                       <td className="px-8 py-4">
@@ -168,7 +163,7 @@ export default function UsuariosPage() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>
-                    </motion.tr>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -199,71 +194,6 @@ export default function UsuariosPage() {
           </CardContent>
         </Card>
 
-        {/* Stats Grid */}
-        <div className="flex flex-wrap justify-center gap-4 mb-8">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3 }}
-            className="w-full md:w-auto"
-          >
-            <Card className="card-shadow border border-slate-200 border-t-4 border-t-emerald-500 bg-white rounded-xl overflow-hidden w-full md:w-[260px] h-[90px]">
-              <CardContent className="p-4 flex items-center gap-3 h-full">
-                <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5 truncate">Usuários Ativos</p>
-                  <div className="flex items-end gap-1.5">
-                    <p className="text-2xl font-black text-slate-900 leading-none">38</p>
-                    <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest mb-0.5">Usuário(s)</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.4 }}
-            className="w-full md:w-auto"
-          >
-            <Card className="card-shadow border border-slate-200 border-t-4 border-t-blue-500 bg-white rounded-xl overflow-hidden w-full md:w-[260px] h-[90px]">
-              <CardContent className="p-4 flex items-center gap-3 h-full">
-                <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center shrink-0">
-                  <History className="w-5 h-5 text-blue-500" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5 truncate">Últimos 30 dias</p>
-                  <div className="flex items-baseline gap-1.5">
-                    <p className="text-2xl font-black text-slate-900 leading-none">+12</p>
-                    <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">novos</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.5 }}
-            className="w-full md:w-auto"
-          >
-            <Card className="card-shadow border border-slate-200 bg-[#1a2332] rounded-xl overflow-hidden text-white w-full md:w-[260px] h-[90px]">
-              <CardContent className="p-4 flex items-center gap-3 h-full">
-                <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
-                  <ShieldCheck className="w-5 h-5 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest mb-0.5 truncate">Segurança</p>
-                  <p className="text-[13px] font-bold text-white leading-tight uppercase tracking-tight">Logs de auditoria em dia</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
       </div>
 
       <NovoUsuarioModal 

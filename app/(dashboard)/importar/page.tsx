@@ -295,7 +295,6 @@ export default function ImportBatchPage() {
           situacao_funcional: currentRegInMap?.situacao_funcional ?? existingReg?.situacao_funcional ?? null,
           salario: currentRegInMap?.salario ?? existingReg?.salario ?? null,
           regime_juridico: currentRegInMap?.regime_juridico ?? existingReg?.regime_juridico ?? null,
-          upag: currentRegInMap?.upag ?? existingReg?.upag ?? null,
           uf: currentRegInMap?.uf ?? existingReg?.uf ?? null,
           updated_at: new Date().toISOString()
         };
@@ -311,9 +310,6 @@ export default function ImportBatchPage() {
 
         const regime = normalizeText(row.regime_juridico);
         if (regime) regUpdate.regime_juridico = regime;
-
-        const upag = normalizeText(row.upag);
-        if (upag) regUpdate.upag = upag;
 
         const uf = normalizeText(row.uf);
         if (uf) regUpdate.uf = uf;
@@ -493,12 +489,29 @@ export default function ImportBatchPage() {
       }
 
       // Rule: Only create registration if it exists in the row and doesn't exist in DB.
-      if (row.matricula && !existingReg && !registrationsToUpsertMap.has(`${cpf}_${regNum}`)) {
-        registrationsToUpsertMap.set(`${cpf}_${regNum}`, {
-          cliente_cpf: cpf,
-          numero_matricula: regNum,
-          updated_at: new Date().toISOString()
-        });
+      // Rule 1.9: UF from CONTRATOS updates matricula UF if present
+      const newUf = normalizeText(row.uf);
+
+      if (row.matricula) {
+        const regKey = `${cpf}_${regNum}`;
+        const currentRegInMap = registrationsToUpsertMap.get(regKey);
+        
+        if (!existingReg && !currentRegInMap) {
+          registrationsToUpsertMap.set(regKey, {
+            cliente_cpf: cpf,
+            numero_matricula: regNum,
+            uf: newUf || null,
+            updated_at: new Date().toISOString()
+          });
+        } else if (newUf) {
+          // If it exists, update UF only if newUf is present (Rule 1.9)
+          const baseReg = currentRegInMap || existingReg;
+          registrationsToUpsertMap.set(regKey, {
+            ...baseReg,
+            uf: newUf,
+            updated_at: new Date().toISOString()
+          });
+        }
       }
     }
 
@@ -637,6 +650,7 @@ export default function ImportBatchPage() {
             numero_contrato: contractNum,
             banco: normalizeText(row.banco) || null,
             tipo: normalizeText(row.tipo) || 'EMPRESTIMO',
+            uf: normalizeText(row.uf) || null,
             parcela: normalizeMoney(row.parcela),
             prazo: parseInt(row.prazo) || null,
             updated_at: new Date().toISOString()
@@ -893,7 +907,7 @@ export default function ImportBatchPage() {
 
   const downloadCSV = (type: 'siape' | 'contratos') => {
     const headers = type === 'siape' 
-      ? "cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,matricula,orgao,situacao_funcional,salario,instituidor,regime_juridico,upag,uf,saldo_70%,margem_35%,bruta_5,utilizada_5,liquida_5,beneficio_bruta_5,beneficio_utilizada_5,beneficio_liquida_5"
+      ? "cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,matricula,orgao,situacao_funcional,salario,instituidor,regime_juridico,uf,saldo_70%,margem_35%,bruta_5,utilizada_5,liquida_5,beneficio_bruta_5,beneficio_utilizada_5,beneficio_liquida_5"
       : "cpf,nome,uf,matricula,instituidor,banco,tipo,numero_do_contrato,parcela,prazo";
     
     const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
