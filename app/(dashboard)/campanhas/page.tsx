@@ -14,37 +14,35 @@ import {
   Users,
   Calendar,
   MoreVertical,
-  ArrowRight,
   Loader2,
   Info
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState, useEffect } from "react"
-import { cn } from "@/lib/utils"
+import { useState, useEffect, useCallback } from "react"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
 import { useAuth } from "@/context/auth-context"
 
+interface Campaign {
+  id: string;
+  nome: string;
+  created_at: string;
+  publico_estimado: number;
+  filtros: any; // Filtros são complexos, mantemos any por enquanto ou definimos interface se necessário
+}
+
 export default function CampaignsPage() {
   const router = useRouter()
   const { isAdmin, isLoading: authLoading } = useAuth()
-  const [campaigns, setCampaigns] = useState<any[]>([])
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
 
-  useEffect(() => {
-    if (!authLoading && !isAdmin) {
-      router.replace('/')
-      return
-    }
-    fetchCampaigns()
-  }, [authLoading, isAdmin, router])
-
-  const fetchCampaigns = async () => {
+  const fetchCampaigns = useCallback(async () => {
     if (!isSupabaseConfigured || !isAdmin) return
     setIsLoading(true)
     setError(null)
@@ -60,21 +58,36 @@ export default function CampaignsPage() {
       } else {
         setCampaigns(data || [])
       }
-    } catch (err: any) {
-      console.error("Erro inesperado:", err.message || err)
-      setError(err.message || "Ocorreu um erro inesperado.")
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("Erro inesperado:", error.message || error)
+      setError(error.message || "Ocorreu um erro inesperado.")
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [isAdmin])
 
-  const handleExport = async (campaign: any) => {
+  useEffect(() => {
+    if (!authLoading && !isAdmin) {
+      router.replace('/')
+      return
+    }
+    fetchCampaigns()
+  }, [authLoading, isAdmin, router, fetchCampaigns])
+
+  const handleExport = async (campaign: Campaign) => {
     // Similar export logic as in nova/page.tsx but using campaign.filtros
     const filters = campaign.filtros
     setIsLoading(true)
     
     try {
-      let selectStr = `
+      const needsLoanCardInner = (filters.loanBanks?.length > 0) || filters.loanPrazoMin || filters.loanPrazoMax || (filters.cardBanks?.length > 0) || (filters.cardTypes?.length > 0);
+      const needsInstituidorInner = needsLoanCardInner || filters.margemMin || filters.margemMax || filters.saldoMin || filters.saldoMax || filters.cardMargemMin || filters.cardBeneficioMin;
+
+      const icJoin = needsLoanCardInner ? 'itens_credito!inner(id, uf)' : 'itens_credito(id, uf)'
+      const instJoin = needsInstituidorInner ? 'instituidores!inner' : 'instituidores'
+
+      const selectStr = `
         cpf, 
         nome, 
         telefone_1, 
@@ -83,7 +96,7 @@ export default function CampaignsPage() {
         matriculas!inner(
           orgao, 
           uf,
-          instituidores!inner(
+          ${instJoin}(
             saldo_70, 
             margem_35, 
             bruta_5, 
@@ -91,25 +104,11 @@ export default function CampaignsPage() {
             liquida_5, 
             beneficio_bruta_5, 
             beneficio_utilizada_5, 
-            beneficio_liquida_5
+            beneficio_liquida_5,
+            ${icJoin}
           )
         )
       `
-
-      // If any loan/card filters are active, we need to join itens_credito
-      const hasItensCreditoFilters = 
-        (filters.loanBanks?.length > 0) || 
-        filters.loanPrazoMin || 
-        filters.loanPrazoMax || 
-        (filters.cardBanks?.length > 0) || 
-        (filters.cardTypes?.length > 0);
-
-      if (hasItensCreditoFilters) {
-        selectStr = selectStr.replace(
-          'beneficio_liquida_5',
-          'beneficio_liquida_5, itens_credito!inner(id)'
-        );
-      }
 
       let query = supabase
         .from('clientes')
@@ -118,7 +117,7 @@ export default function CampaignsPage() {
       if (filters.orgaos?.length > 0) {
         const orgaoCodes = filters.orgaos.flatMap((name: string) => 
           Object.entries(ORGAOS_MAPPING)
-            .filter(([_, val]) => val === name)
+            .filter(([, val]) => val === name)
             .map(([code]) => code)
         );
         const finalOrgaos = orgaoCodes.length > 0 ? orgaoCodes : filters.orgaos;
@@ -126,7 +125,10 @@ export default function CampaignsPage() {
       }
       if (filters.situacoes?.length > 0) query = query.in('matriculas.situacao_funcional', filters.situacoes)
       if (filters.regimes?.length > 0) query = query.in('matriculas.regime_juridico', filters.regimes)
-      if (filters.ufs?.length > 0) query = query.in('matriculas.uf', filters.ufs)
+      
+      if (filters.ufs?.length > 0) {
+        query = query.in('matriculas.uf', filters.ufs)
+      }
       if (filters.margemMin) query = query.gte('matriculas.instituidores.margem_35', parseFloat(filters.margemMin))
       if (filters.margemMax) query = query.lte('matriculas.instituidores.margem_35', parseFloat(filters.margemMax))
       if (filters.saldoMin) query = query.gte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMin))
@@ -148,7 +150,7 @@ export default function CampaignsPage() {
       if (filters.cardTypes?.length > 0) {
         const cardCodes = filters.cardTypes.flatMap((label: string) => 
           Object.entries(CONTRATOS_TIPO_MAPPING)
-            .filter(([_, info]) => info.label === label)
+            .filter(([, info]) => info.label === label)
             .map(([code]) => code)
         );
         const finalCardTypes = cardCodes.length > 0 ? cardCodes : filters.cardTypes;
@@ -164,14 +166,18 @@ export default function CampaignsPage() {
         const csvRows = (data as any[]).map(c => {
           const m = c.matriculas?.[0]
           const i = m?.instituidores?.[0]
+          
+          // Rule 5: UF from itens_credito is primary, fallback to matriculas.uf
+          const effectiveUf = i?.itens_credito?.find((ic: any) => ic.uf)?.uf || m?.uf || ""
+          
           return [
             c.cpf,
             c.nome,
             c.telefone_1 || "",
             c.telefone_2 || "",
             c.telefone_3 || "",
-            m?.orgao || "",
-            m?.uf || "",
+            m?.orgao ? (ORGAOS_MAPPING[m.orgao] || m.orgao) : "",
+            effectiveUf,
             i?.saldo_70 || 0,
             i?.margem_35 || 0,
             i?.bruta_5 || 0,
@@ -193,9 +199,10 @@ export default function CampaignsPage() {
         link.click()
         document.body.removeChild(link)
       }
-    } catch (err: any) {
-      console.error("Erro ao exportar:", err.message || err)
-      alert(`Erro ao exportar dados: ${err.message || "Erro desconhecido"}`)
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("Erro ao exportar:", error.message || error)
+      alert(`Erro ao exportar dados: ${error.message || "Erro desconhecido"}`)
     } finally {
       setIsLoading(false)
     }
@@ -317,16 +324,6 @@ export default function CampaignsPage() {
                             </td>
                             <td className="px-8 py-5 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <Link href={`/campanhas/distribuir/${campaign.id}`}>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm" 
-                                    className="h-8 px-3 text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-primary hover:bg-primary/5"
-                                  >
-                                    <Users className="w-3.5 h-3.5 mr-1.5" />
-                                    Distribuir
-                                  </Button>
-                                </Link>
                                 <Button 
                                   onClick={() => handleExport(campaign)}
                                   variant="ghost" 

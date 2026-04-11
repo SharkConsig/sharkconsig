@@ -65,7 +65,7 @@ import { useAuth } from "@/context/auth-context"
 
 export default function SearchClientPage() {
   const router = useRouter()
-  const { perfil, isCorretor } = useAuth()
+  const { } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
   const [showProfile, setShowProfile] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -111,22 +111,6 @@ export default function SearchClientPage() {
         setError("Cliente não encontrado.")
         setIsLoading(false)
         return
-      }
-
-      // 2. Trava de Segurança para Corretor
-      if (isCorretor) {
-        const { data: atribuicao, error: attrError } = await supabase
-          .from('atribuicoes_leads')
-          .select('id')
-          .eq('cliente_cpf', clientData.cpf)
-          .eq('corretor_id', perfil?.id)
-          .maybeSingle()
-
-        if (!atribuicao || attrError) {
-          setError("Você não tem permissão para acessar este cliente ou ele não está na sua carteira.")
-          setIsLoading(false)
-          return
-        }
       }
 
       setClient(clientData)
@@ -400,12 +384,6 @@ export default function SearchClientPage() {
                       >
                         <div className="flex flex-col items-center">
                           <span>Matrícula {reg.numero_matricula}</span>
-                          <span 
-                            className="text-[8px] opacity-70 truncate max-w-[120px]"
-                            title={reg.currentInstituidor}
-                          >
-                            {reg.currentInstituidor}
-                          </span>
                         </div>
                       </button>
                     ))}
@@ -425,10 +403,6 @@ export default function SearchClientPage() {
                             <div className="space-y-1.5">
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
                               <p className="text-[13px] font-bold text-slate-900">{allRegs[activeRegIndex].numero_matricula}</p>
-                            </div>
-                            <div className="space-y-1.5">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                              <p className="text-[13px] font-bold text-slate-900">{translateOrgao(allRegs[activeRegIndex].orgao)}</p>
                             </div>
                             <div className="space-y-1.5">
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Situação Funcional</p>

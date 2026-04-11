@@ -339,8 +339,6 @@ export default function ImportBatchPage() {
       if (regError) throw new Error(`Erro ao salvar matrículas: ${regError.message}`);
 
       // Rule 1.2: Handle Instituidores and Margins
-      const regIds = regData.map(r => r.id);
-      
       const instituidoresToUpsertMap = new Map<string, any>();
       
       for (const reg of regData) {

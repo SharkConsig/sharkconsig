@@ -12,6 +12,7 @@ import {
   Wallet,
   Landmark,
   CreditCard,
+  DollarSign,
   Check,
   Download,
   Loader2,
@@ -24,84 +25,56 @@ import { useRouter } from "next/navigation"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
+interface ItemCredito {
+  id: string;
+  orgao?: string;
+  banco?: string;
+  tipo?: string;
+  prazo?: number;
+}
+
+interface Instituidor {
+  id: string;
+  saldo_70?: number;
+  margem_35?: number;
+  bruta_5?: number;
+  utilizada_5?: number;
+  liquida_5?: number;
+  beneficio_bruta_5?: number;
+  beneficio_utilizada_5?: number;
+  beneficio_liquida_5?: number;
+  itens_credito?: ItemCredito[];
+}
+
+interface Matricula {
+  id: string;
+  orgao?: string;
+  uf?: string;
+  salario?: number;
+  situacao_funcional?: string;
+  regime_juridico?: string;
+  instituidores?: Instituidor[];
+}
+
+interface Cliente {
+  cpf: string;
+  nome: string;
+  data_nascimento?: string;
+  telefone_1?: string;
+  telefone_2?: string;
+  telefone_3?: string;
+  matriculas?: Matricula[];
+}
+
+const orgaoOptions = Array.from(new Set(Object.values(ORGAOS_MAPPING)))
+  .filter(name => name && name.trim() !== "")
+  .sort();
+
 const filterSections = [
   {
     id: "1",
     title: "2. ÓRGÃO",
-    options: [
-      "ADVOCACIA-GERAL DA UNIAO", "AGENCIA BRASILEIRA DE INTELIGENCIA", "AGENCIA ESPACIAL BRASILEIRA",
-      "AGENCIA NAC PETROLEO GAS NAT BIOCOMBUSTI", "AGENCIA NACIONAL DE AGUAS", "AGENCIA NACIONAL DE AVIACAO CIVIL",
-      "AGENCIA NACIONAL DE ENERGIA ELETRICA", "AGENCIA NACIONAL DE MINERACAO", "AGENCIA NACIONAL DE SAUDE SUPLEMENTAR",
-      "AGENCIA NACIONAL DE TELECOMUNICACOES", "AGENCIA NACIONAL DE VIGILANCIA SANITARIA", "AGENCIA NACIONAL DO CINEMA",
-      "AMAZONIA AZUL TECNOLOGIAS DE DEFESA SA", "AMAZONIA AZUL TECNOLOGIAS ...", "ANIST PRIVADO L10559",
-      "ANIST PUBLICO L10559", "ANISTIADO ADCT CF", "ANTIGO EST.GUANABARA E DISTRITO FEDERAL",
-      "CAIXA DE FINANCIAMENTO IMOB.AERONAUTICA", "CENTRO FED.DE EDUC.TECNOL.MINAS GERAIS", "CENTRO FED.EDUC.TECNOL.CELSO S. FONSECA",
-      "CENTRO NAC.TECNO.ELETRONICA AVANCADA S.A", "COLEGIO PEDRO II", "COMANDO DA AERONAUTICA",
-      "COMANDO DA MARINHA", "COMANDO DO EXERCITO", "COMISSAO DE VALORES MOBILIARIOS",
-      "COMISSAO NACIONAL DE ENERGIA NUCLEAR", "COMPANHIA BRASILEIRA DE TRENS URBANOS", "COMPANHIA DESENV. DO VALE SAO FRANCISCO",
-      "COMPANHIA DE PESQUISA DE REC. MINERAIS", "COMPANHIA NACIONAL DE ABASTECIMENTO", "CONSELHO ADMINIST.DE DEFESA ECONOMICA",
-      "CONS. DE CONTROLE DE ATIV. FINANCEIRAS", "CONSELHO NAC.DE DESEN.CIEN.E TECNOLOGICO", "CORPO DE BOMBEIROS MILITAR DO DIST FED",
-      "DEP.DE CENTRAL.SERV.DE INATIVOS E PENS.", "DEPARTAMENTO DE POLICIA FEDERAL", "DEPARTAMENTO NAC.DE INFRAEST. DE TRANSP.",
-      "DEPTO. DE POLICIA RODOVIARIA FEDERAL", "DEPTO. NACIONAL DE OBRAS CONTRA AS SECAS", "EMPRESA BRASIL DE COMUNICACAO",
-      "EMPRESA BRASILEIRA DE PESQ. AGROPECUARIA", "EMPRESA BRAS. DE SERVICOS HOSPITALARES", "EMPRESA DE TRENS URBANOS DE PORTO ALEGRE",
-      "FUNDACAO ALEXANDRE DE GUSMAO", "FUNDACAO BIBLIOTECA NACIONAL", "FUNDACAO CASA DE RUI BARBOSA",
-      "FUND COORD APERF PESSOAL NIVEL SUPERIOR", "FUNDACAO CULTURAL PALMARES", "FUNDACAO ESCOLA NACIONAL DE ADM. PUBLICA",
-      "FUNDACAO JOAQUIM NABUCO", "FUND.JORGE DUPRAT FIG. SEG. MED.TRABALHO", "FUNDACAO NACIONAL DE ARTES",
-      "FUNDACAO NACIONAL DE SAUDE", "FUNDACAO NACIONAL DOS POVOS INDIGENAS", "FUNDACAO OSORIO",
-      "FUNDACAO OSWALDO CRUZ", "FUNDACAO UNIVERSIDADE DE BRASILIA", "FUNDACAO UNIVERSIDADE DE SAO JOAO DEL REI",
-      "FUNDACAO UNIVERSIDADE DO AMAZONAS", "FUNDACAO UNIVERSIDADE DO MARANHAO", "FUNDACAO UNIVERSIDADE FED. DO TOCANTINS",
-      "FUNDACAO UNIVERSIDADE FEDERAL DE OURO PRETO", "FUNDACAO UNIVERSIDADE FEDERAL DE PELOTAS", "FUNDACAO UNIVERSIDADE FEDERAL DE RONDONIA",
-      "FUNDACAO UNIVERSIDADE FEDERAL DE SERGIPE", "FUNDACAO UNIVERSIDADE FEDERAL DO ABC", "FUNDACAO UNIVERSIDADE FEDERAL DO PAMPA",
-      "FUNDACAO UNVERSIDADE FEDERAL DO AMAPA", "FUND.UNIV.FED.CIENC.SAUDE D PORTO ALEGRE", "FUND.UNIV.FED.DO VALE DO SAO FRANCISCO",
-      "FUNDACAO UNIV. FEDERAL DE UBERLANDIA", "GOVERNO DO EX-TERRITORIO DE RONDONIA", "GOVERNO DO EX-TERRITORIO DO AMAPA",
-      "GOVERNO DO EX-TERRITORIO DE RORAIMA", "HOSPITAL DE CLINICAS DE PORTO ALEGRE", "INSTITUTO BRASILEIRO DE MUSEUS",
-      "INST. BR. MEIO AMB. REC. NAT. RENOVAVEIS", "INSTITUTO CHICO MENDES CONSERV.BIODIVER.", "INSTITUTO DE PESQUISA ECONOMICA APLICADA",
-      "INSTITUTO DE PESQ. JARDIM BOTANICO DO RJ", "INSTITUTO DO PATR.HIST.E ART. NACIONAL", "INSTITUTO FEDERAL BAIANO",
-      "INSTITUTO FEDERAL CATARINENSE", "INSTITUTO FEDERAL DA BAHIA", "INSTITUTO FEDERAL DA PARAIBA",
-      "INSTITUTO FEDERAL DE ALAGOAS", "INSTITUTO FEDERAL DE BRASILIA", "INSTITUTO FEDERAL DE GOIAS",
-      "INSTITUTO FEDERAL DE MATO GROSSO DO SUL", "INSTITUTO FEDERAL DE MINAS GERAIS", "INSTITUTO FEDERAL DE PERNAMBUCO",
-      "INSTITUTO FEDERAL DE RONDONIA", "INSTITUTO FEDERAL DE RORAIMA", "INSTITUTO FEDERAL DE SANTA CATARINA",
-      "INSTITUTO FEDERAL DE SAO PAULO", "INSTITUTO FEDERAL DE SERGIPE", "INSTITUTO FEDERAL DO ACRE",
-      "INSTITUTO FEDERAL DO AMAPA", "INSTITUTO FEDERAL DO AMAZONAS", "INSTITUTO FEDERAL DO ESPIRITO SANTO",
-      "INSTITUTO FEDERAL DO MARANHAO", "INSTITUTO FEDERAL DO PARA", "INSTITUTO FEDERAL DO PARANA",
-      "INSTITUTO FEDERAL DO PIAUI", "INSTITUTO FEDERAL DO RIO DE JANEIRO", "INSTITUTO FEDERAL DO RIO GRANDE DO NORTE",
-      "INSTITUTO FEDERAL DO RIO GRANDE DO SUL", "INSTITUTO FEDERAL DO SERTAO PERNAMBUCANO", "INSTITUTO FEDERAL DO SUL DE MINAS GERAIS",
-      "INSTITUTO FEDERAL DO TOCANTINS", "INSTITUTO FEDERAL DO TRIANGULO MINEIRO", "INSTITUTO FEDERAL FARROUPILHA",
-      "INSTITUTO FEDERAL FLUMINENSE", "INSTITUTO FEDERAL GOIANO", "INSTITUTO FEDERAL SUL RIO-GRANDENSE",
-      "INSTITUTO FED. DO NORTE DE MINAS GERAIS", "INSTITUTO FED.DO SUDESTE DE MINAS GERAIS",
-      "INSTITUTO NAC. DA PROPRIEDADE INDUSTRIAL", "INSTITUTO NACIONAL DE SEGURO SOCIAL", "INST.NACIONAL DE EST.E PESQ.EDUCACIONAIS",
-      "INST.NAC.METROLOGIA,NORM.E QUAL.INDL.", "INSTITUTO NAC. DE COLONIZ E REF AGRARIA", "INST NAC DE TECN DA INFORMACAO",
-      "MINISTERIO CIENCIA TECNOLOGIA INOVA", "MINISTERIO DA AGRICULTURA E PECUARIA", "MINISTERIO DA CULTURA",
-      "MINISTERIO DA DEFESA", "MINISTERIO DA EDUCACAO", "MINISTERIO DA PESCA E AQUICULTURA",
-      "MINISTERIO DA PREVIDENCIA SOCIAL", "MINISTERIO DA SAUDE", "MINISTERIO DAS CIDADES",
-      "MINISTERIO DAS COMUNICACOES", "MINISTERIO DAS MULHERES", "MINISTERIO DAS RELACOES EXTERIORES",
-      "MINISTERIO DE MINAS E ENERGIA", "MINISTERIO DE PORTOS E AEROPORTOS", "MINISTERIO DO ESPORTE",
-      "MINISTERIO DO MEIO AMBIENTE", "MINISTERIO DO PLANEJAMENTO E ORCAMENTO", "MINISTERIO DO TRABALHO E EMPREGO",
-      "MINISTERIO DO TURISMO", "MINISTERIO DOS POVOS INDIGENAS", "MINIST. DA JUSTICA E SEGURANCA PUBLICA",
-      "MIN DESENV ASSIS SOCI FAMIL COMBATE FOME", "MIN DESENVOLV IND COMERCIO E SERVICOS", "MIN DO DESENV AGR E AGRIC FAMILIAR",
-      "MIN DA INTEG E DO DESENV REGIONAL", "MIN DOS DIR HUM E DA CIDADANIA", "MINISTERIO DA IGUALDADE RACIAL",
-      "NUCLEBRAS EQUIPAMENTOS PESADOS", "POLICIA CIVIL DO DISTRITO FEDERAL", "POLICIA MILITAR DO DISTRITO FEDERAL",
-      "PRESIDENCIA DA REPUBLICA", "SUPERINTENDENCIA DO DESENV. DA AMAZONIA", "SUPERINTENDENCIA DO DESENV. DO NORDESTE",
-      "SUPERINTENDENCIA DE SEGUROS PRIVADOS", "SUPERINTENDENCIA ZONA FRANCA DE MANAUS", "SUPERINT.NAC.DE PREVIDENCIA COMPLEMENTAR",
-      "SUP.DE DESENVOLVIMENTO DO CENTRO OESTE", "TELEBRAS - TELECOM. BRASILEIRAS S.A.", "UNIVERSIDADE DO RIO DE JANEIRO",
-      "UNIVERSIDADE FEDERAL DA BAHIA", "UNIVERSIDADE FEDERAL DA PARAIBA", "UNIVERSIDADE FEDERAL DE ALAGOAS",
-      "UNIVERSIDADE FEDERAL DE ALFENAS", "UNIVERSIDADE FEDERAL DE CAMPINA GRANDE", "UNIVERSIDADE FEDERAL DE CATALAO",
-      "UNIVERSIDADE FEDERAL DE GOIAS", "UNIVERSIDADE FEDERAL DE ITAJUBA", "UNIVERSIDADE FEDERAL DE JATAI",
-      "UNIVERSIDADE FEDERAL DE JUIZ DE FORA", "UNIVERSIDADE FEDERAL DE LAVRAS", "UNIVERSIDADE FEDERAL DE MATO GROSSO",
-      "UNIVERSIDADE FEDERAL DE MINAS GERAIS", "UNIVERSIDADE FEDERAL DE RORAIMA", "UNIVERSIDADE FEDERAL DE SAO CARLOS",
-      "UNIVERSIDADE FEDERAL DE SAO PAULO", "UNIVERSIDADE FEDERAL DE VICOSA", "UNIVERSIDADE FEDERAL DO ACRE",
-      "UNIVERSIDADE FEDERAL DO CARIRI", "UNIVERSIDADE FEDERAL DO CEARA", "UNIVERSIDADE FEDERAL DO ESPIRITO SANTO",
-      "UNIVERSIDADE FEDERAL DO PARA", "UNIVERSIDADE FEDERAL DO PARANA", "UNIVERSIDADE FEDERAL DO PIAUI",
-      "UNIVERSIDADE FEDERAL DO RIO GRANDE", "UNIVERSIDADE FEDERAL FLUMINENSE", "UNIVERSIDADE FEDERAL RURAL DA AMAZONIA",
-      "UNIVERSIDADE FEDERAL RURAL DE PERNAMBUCO", "UNIVERSIDADE FED. DO RIO GRANDE DO NORTE", "UNIVERSIDADE FED. DO RIO GRANDE DO SUL",
-      "UNIVERSIDADE FED. RURAL DO RIO DE JANEIRO", "UNIVERSIDADE FED. RURAL DO SEMI-ARIDO", "UNIVERSIDADE FED. SUL SUDESTE DO PARA",
-      "UNIVERSIDADE FED.DO TRIANGULO MINEIRO",
-      "UNIVER. FEDERAL DO AGRESTE DE PERNAMBUCO", "UNIV. FEDERAL DO DELTA DO PARNAIBA", "UNIV. FEDERAL DO RECONCAVO DA BAHIA",
-      "UNIV. FEDERAL DE MATO GROSSO DO SUL", "UNIV. FEDERAL DO OESTE DO PARA", "UNIV. FEDERAL DO SUL DA BAHIA",
-      "UNIV. FEDERAL DO OESTE DA BAHIA", "UNIV. FEDERAL NORTE DO TOCANTINS", "UNIV. FEDERAL DO RONDONOPOLIS",
-      "UNIV.FED. DA INTEGRACAO LATINO-AMERICANA", "UNIV.FED. VALES DO JEQUITINHONHA E MUCURI", "UNIVERS. TECNOLOGICA FEDERAL DO PARANA",
-      "VICE-PRESIDENCIA DA REPUBLICA"
-    ]
+    options: orgaoOptions
   },
   {
     id: "2",
@@ -141,6 +114,13 @@ const filterSections = [
 
 import { useAuth } from "@/context/auth-context"
 
+const CATEGORY_MAP: Record<string, string> = {
+  "1": "orgaos",
+  "2": "situacoes",
+  "3": "regimes",
+  "4": "ufs"
+};
+
 export default function NewCampaignPage() {
   const router = useRouter()
   const { isAdmin, isLoading: authLoading } = useAuth()
@@ -162,6 +142,8 @@ export default function NewCampaignPage() {
     cardBeneficioMin: "",
     idadeMin: "",
     idadeMax: "",
+    salarioMin: "",
+    salarioMax: "",
   })
 
   useEffect(() => {
@@ -268,48 +250,81 @@ export default function NewCampaignPage() {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => {
       controller.abort()
-    }, 15000) // 15 seconds timeout
+    }, 60000) // Aumentado para 60 segundos
     
     try {
       // Build query
-      let query = supabase.from('clientes').select('cpf', { count: 'planned', head: true })
+      // Usamos 'exact' com um select extremamente enxuto para performance
+      
+      // Determinamos a necessidade de joins !inner para filtrar a tabela principal (clientes)
+      const hasLoanCardFilters = filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax || filters.cardBanks.length > 0 || filters.cardTypes.length > 0;
+      const hasInstituidorFilters = filters.margemMin || filters.margemMax || filters.saldoMin || filters.saldoMax || filters.cardMargemMin || filters.cardBeneficioMin;
+      const hasMatriculaFilters = filters.orgaos.length > 0 || filters.situacoes.length > 0 || filters.regimes.length > 0 || filters.salarioMin || filters.salarioMax;
+      const hasUfFilter = filters.ufs.length > 0;
 
-      // Apply filters using !inner for joins to ensure filtering works correctly
+      // Se tiver filtros específicos de empréstimo/cartão, precisamos de !inner neles e em toda a cadeia acima
+      const needsLoanCardInner = hasLoanCardFilters;
+      const needsInstituidorInner = hasInstituidorFilters || needsLoanCardInner;
+      const needsMatriculaInner = hasMatriculaFilters || needsInstituidorInner || hasUfFilter;
+
+      // Para o cálculo de audiência (COUNT), não precisamos de colunas, apenas da estrutura de joins
+      let selectStr = 'cpf'
+      if (needsMatriculaInner) {
+        let matriculaContent = 'id'
+        if (needsInstituidorInner) {
+          let instituidorContent = 'id'
+          if (needsLoanCardInner) {
+            instituidorContent += ',itens_credito!inner(id)'
+          }
+          matriculaContent += `,instituidores!inner(${instituidorContent})`
+        }
+        selectStr = `cpf,matriculas!inner(${matriculaContent})`
+      }
+
+      let query = supabase.from('clientes').select(selectStr, { count: 'exact', head: true })
+
+      // Apply filters using standard dot notation for joined tables
+      // No PostgREST, filtros em tabelas relacionadas (ponto) funcionam como INNER JOIN 
+      // para o propósito de filtrar a tabela principal.
       if (filters.orgaos.length > 0) {
         const orgaoCodes = filters.orgaos.flatMap(name => 
           Object.entries(ORGAOS_MAPPING)
             .filter(([, val]) => val === name)
             .map(([code]) => code)
         );
-        const finalOrgaos = orgaoCodes.length > 0 ? orgaoCodes : filters.orgaos;
-        query = query.in('matriculas!inner.orgao', finalOrgaos)
+        if (orgaoCodes.length > 0) {
+          query = query.in('matriculas.orgao', orgaoCodes)
+        }
       }
-      if (filters.situacoes.length > 0) query = query.in('matriculas!inner.situacao_funcional', filters.situacoes)
-      if (filters.regimes.length > 0) query = query.in('matriculas!inner.regime_juridico', filters.regimes)
-      if (filters.ufs.length > 0) query = query.in('matriculas!inner.uf', filters.ufs)
+      if (filters.situacoes.length > 0) query = query.in('matriculas.situacao_funcional', filters.situacoes)
+      if (filters.regimes.length > 0) query = query.in('matriculas.regime_juridico', filters.regimes)
+      
+      if (filters.ufs.length > 0) {
+        query = query.in('matriculas.uf', filters.ufs)
+      }
 
       if (filters.margemMin && !isNaN(parseFloat(filters.margemMin))) 
-        query = query.gte('matriculas!inner.instituidores!inner.margem_35', parseFloat(filters.margemMin))
+        query = query.gte('matriculas.instituidores.margem_35', parseFloat(filters.margemMin))
       if (filters.margemMax && !isNaN(parseFloat(filters.margemMax))) 
-        query = query.lte('matriculas!inner.instituidores!inner.margem_35', parseFloat(filters.margemMax))
+        query = query.lte('matriculas.instituidores.margem_35', parseFloat(filters.margemMax))
       if (filters.saldoMin && !isNaN(parseFloat(filters.saldoMin))) 
-        query = query.gte('matriculas!inner.instituidores!inner.saldo_70', parseFloat(filters.saldoMin))
+        query = query.gte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMin))
       if (filters.saldoMax && !isNaN(parseFloat(filters.saldoMax))) 
-        query = query.lte('matriculas!inner.instituidores!inner.saldo_70', parseFloat(filters.saldoMax))
+        query = query.lte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMax))
       
       if (filters.cardMargemMin && !isNaN(parseFloat(filters.cardMargemMin))) 
-        query = query.gte('matriculas!inner.instituidores!inner.liquida_5', parseFloat(filters.cardMargemMin))
+        query = query.gte('matriculas.instituidores.liquida_5', parseFloat(filters.cardMargemMin))
       if (filters.cardBeneficioMin && !isNaN(parseFloat(filters.cardBeneficioMin))) 
-        query = query.gte('matriculas!inner.instituidores!inner.beneficio_liquida_5', parseFloat(filters.cardBeneficioMin))
+        query = query.gte('matriculas.instituidores.beneficio_liquida_5', parseFloat(filters.cardBeneficioMin))
 
       if (filters.loanBanks.length > 0) {
         const normalizedBanks = filters.loanBanks.map(b => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
-        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.banco', normalizedBanks)
+        query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
       }
       if (filters.loanPrazoMin && !isNaN(parseInt(filters.loanPrazoMin))) 
-        query = query.gte('matriculas!inner.instituidores!inner.itens_credito!inner.prazo', parseInt(filters.loanPrazoMin))
+        query = query.gte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMin))
       if (filters.loanPrazoMax && !isNaN(parseInt(filters.loanPrazoMax))) 
-        query = query.lte('matriculas!inner.instituidores!inner.itens_credito!inner.prazo', parseInt(filters.loanPrazoMax))
+        query = query.lte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMax))
       
       if (filters.cardTypes.length > 0) {
         const cardCodes = filters.cardTypes.flatMap(label => 
@@ -318,11 +333,11 @@ export default function NewCampaignPage() {
             .map(([code]) => code)
         );
         const finalCardTypes = cardCodes.length > 0 ? cardCodes : filters.cardTypes;
-        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.tipo', finalCardTypes)
+        query = query.in('matriculas.instituidores.itens_credito.tipo', finalCardTypes)
       }
       if (filters.cardBanks.length > 0) {
         const normalizedBanks = filters.cardBanks.map(b => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
-        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.banco', normalizedBanks)
+        query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
       }
 
       if (filters.idadeMin || filters.idadeMax) {
@@ -337,25 +352,41 @@ export default function NewCampaignPage() {
         }
       }
 
+      if (filters.salarioMin && !isNaN(parseFloat(filters.salarioMin))) 
+        query = query.gte('matriculas.salario', parseFloat(filters.salarioMin))
+      if (filters.salarioMax && !isNaN(parseFloat(filters.salarioMax))) 
+        query = query.lte('matriculas.salario', parseFloat(filters.salarioMax))
+
       const { count, error, status } = await query.abortSignal(controller.signal)
       
       if (error) {
-        console.error("Erro ao calcular audiência:", error)
-        if (error.message?.includes("timeout") || error.code === '57014' || status === 504) {
-          alert("A consulta demorou muito devido ao grande volume de dados. Tente usar filtros mais específicos para reduzir o tempo de busca.")
+        // Capturamos o erro de forma robusta
+        console.error("Erro Supabase Detalhado:", JSON.stringify(error, null, 2));
+        console.error("Status HTTP:", status);
+        
+        const errorMsg = error.message || error.details || (error.code ? `Código: ${error.code}` : "Erro desconhecido");
+        
+        // PGRST103 é timeout do PostgREST. 57014 é timeout do Postgres.
+        if (errorMsg.includes("timeout") || error.code === '57014' || error.code === 'PGRST103' || status === 504 || (error.message === "" && status === 0)) {
+          alert("A consulta excedeu o tempo limite devido ao volume de dados (1.3M+ registros). Tente aplicar filtros mais restritivos (ex: UF específica ou faixa de salário) para reduzir o processamento.")
         } else {
-          alert(`Erro ao calcular audiência: ${error.message || "Erro desconhecido"}`)
+          alert(`Erro ao calcular audiência: ${errorMsg}`)
         }
         setEstimatedAudience(0)
       } else {
         setEstimatedAudience(count || 0)
       }
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        alert("A consulta foi cancelada porque demorou muito. Tente usar filtros mais específicos.")
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        alert("O cálculo da audiência foi interrompido porque excedeu 60 segundos. Isso acontece em bases muito grandes. Por favor, use filtros mais específicos para acelerar a busca.")
       } else {
-        console.error("Erro inesperado ao calcular audiência:", err)
-        alert(`Erro inesperado: ${err.message || "Erro desconhecido"}`)
+        const error = err as Error;
+        if (error.message === "Failed to fetch") {
+          alert("Erro de conexão com o servidor. A consulta pode ter sido interrompida por excesso de carga. Tente filtros mais restritivos.")
+        } else {
+          console.error("Erro inesperado ao calcular audiência:", error)
+          alert(`Erro inesperado: ${error.message || "Erro desconhecido"}`)
+        }
       }
     } finally {
       clearTimeout(timeoutId)
@@ -385,8 +416,9 @@ export default function NewCampaignPage() {
       } else {
         router.push("/campanhas")
       }
-    } catch (err: any) {
-      console.error("Erro inesperado:", err.message || err)
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("Erro inesperado:", error.message || error)
     } finally {
       setIsCreating(false)
     }
@@ -398,8 +430,13 @@ export default function NewCampaignPage() {
     
     try {
       // Fetch data for export
-      // Similar query but with data
-      let selectStr = `
+      const needsLoanCardInner = filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax || filters.cardBanks.length > 0 || filters.cardTypes.length > 0;
+      const needsInstituidorInner = needsLoanCardInner || filters.margemMin || filters.margemMax || filters.saldoMin || filters.saldoMax || filters.cardMargemMin || filters.cardBeneficioMin;
+
+      const icJoin = needsLoanCardInner ? 'itens_credito!inner(id, uf)' : 'itens_credito(id, uf)'
+      const instJoin = needsInstituidorInner ? 'instituidores!inner' : 'instituidores'
+
+      const selectStr = `
         cpf, 
         nome, 
         telefone_1, 
@@ -408,7 +445,10 @@ export default function NewCampaignPage() {
         matriculas!inner(
           orgao, 
           uf,
-          instituidores!inner(
+          salario,
+          situacao_funcional,
+          regime_juridico,
+          ${instJoin}(
             saldo_70, 
             margem_35, 
             bruta_5, 
@@ -416,25 +456,11 @@ export default function NewCampaignPage() {
             liquida_5, 
             beneficio_bruta_5, 
             beneficio_utilizada_5, 
-            beneficio_liquida_5
+            beneficio_liquida_5,
+            ${icJoin}
           )
         )
       `
-
-      // If any loan/card filters are active, we need to join itens_credito
-      const hasItensCreditoFilters = 
-        (filters.loanBanks.length > 0) || 
-        filters.loanPrazoMin || 
-        filters.loanPrazoMax || 
-        (filters.cardBanks.length > 0) || 
-        (filters.cardTypes.length > 0);
-
-      if (hasItensCreditoFilters) {
-        selectStr = selectStr.replace(
-          'beneficio_liquida_5',
-          'beneficio_liquida_5, itens_credito!inner(id)'
-        );
-      }
 
       let query = supabase
         .from('clientes')
@@ -447,28 +473,32 @@ export default function NewCampaignPage() {
             .filter(([, val]) => val === name)
             .map(([code]) => code)
         );
-        const finalOrgaos = orgaoCodes.length > 0 ? orgaoCodes : filters.orgaos;
-        query = query.in('matriculas!inner.orgao', finalOrgaos)
+        if (orgaoCodes.length > 0) {
+          query = query.in('matriculas.orgao', orgaoCodes)
+        }
       }
-      if (filters.situacoes.length > 0) query = query.in('matriculas!inner.situacao_funcional', filters.situacoes)
-      if (filters.regimes.length > 0) query = query.in('matriculas!inner.regime_juridico', filters.regimes)
-      if (filters.ufs.length > 0) query = query.in('matriculas!inner.uf', filters.ufs)
-      if (filters.margemMin) query = query.gte('matriculas!inner.instituidores!inner.margem_35', parseFloat(filters.margemMin))
-      if (filters.margemMax) query = query.lte('matriculas!inner.instituidores!inner.margem_35', parseFloat(filters.margemMax))
-      if (filters.saldoMin) query = query.gte('matriculas!inner.instituidores!inner.saldo_70', parseFloat(filters.saldoMin))
-      if (filters.saldoMax) query = query.lte('matriculas!inner.instituidores!inner.saldo_70', parseFloat(filters.saldoMax))
-      if (filters.cardMargemMin) query = query.gte('matriculas!inner.instituidores!inner.liquida_5', parseFloat(filters.cardMargemMin))
-      if (filters.cardBeneficioMin) query = query.gte('matriculas!inner.instituidores!inner.beneficio_liquida_5', parseFloat(filters.cardBeneficioMin))
+      if (filters.situacoes.length > 0) query = query.in('matriculas.situacao_funcional', filters.situacoes)
+      if (filters.regimes.length > 0) query = query.in('matriculas.regime_juridico', filters.regimes)
+      
+      if (filters.ufs.length > 0) {
+        query = query.in('matriculas.uf', filters.ufs)
+      }
+      if (filters.margemMin) query = query.gte('matriculas.instituidores.margem_35', parseFloat(filters.margemMin))
+      if (filters.margemMax) query = query.lte('matriculas.instituidores.margem_35', parseFloat(filters.margemMax))
+      if (filters.saldoMin) query = query.gte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMin))
+      if (filters.saldoMax) query = query.lte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMax))
+      if (filters.cardMargemMin) query = query.gte('matriculas.instituidores.liquida_5', parseFloat(filters.cardMargemMin))
+      if (filters.cardBeneficioMin) query = query.gte('matriculas.instituidores.beneficio_liquida_5', parseFloat(filters.cardBeneficioMin))
       
       if (filters.loanBanks.length > 0) {
         const normalizedBanks = filters.loanBanks.map(b => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
-        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.banco', normalizedBanks)
+        query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
       }
-      if (filters.loanPrazoMin) query = query.gte('matriculas!inner.instituidores!inner.itens_credito!inner.prazo', parseInt(filters.loanPrazoMin))
-      if (filters.loanPrazoMax) query = query.lte('matriculas!inner.instituidores!inner.itens_credito!inner.prazo', parseInt(filters.loanPrazoMax))
+      if (filters.loanPrazoMin) query = query.gte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMin))
+      if (filters.loanPrazoMax) query = query.lte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMax))
       if (filters.cardBanks.length > 0) {
         const normalizedBanks = filters.cardBanks.map(b => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
-        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.banco', normalizedBanks)
+        query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
       }
 
       if (filters.cardTypes.length > 0) {
@@ -478,7 +508,7 @@ export default function NewCampaignPage() {
             .map(([code]) => code)
         );
         const finalCardTypes = cardCodes.length > 0 ? cardCodes : filters.cardTypes;
-        query = query.in('matriculas!inner.instituidores!inner.itens_credito!inner.tipo', finalCardTypes)
+        query = query.in('matriculas.instituidores.itens_credito.tipo', finalCardTypes)
       }
 
       if (filters.idadeMin || filters.idadeMax) {
@@ -493,23 +523,30 @@ export default function NewCampaignPage() {
         }
       }
 
+      if (filters.salarioMin) query = query.gte('matriculas.salario', parseFloat(filters.salarioMin))
+      if (filters.salarioMax) query = query.lte('matriculas.salario', parseFloat(filters.salarioMax))
+
       const { data, error } = await query.limit(5000) // Limit for safety in browser
       
       if (error) throw error
 
       if (data) {
         const headers = "cpf,nome,telefone 1,telefone 2,telefone 3,orgao,uf,saldo_70%,margem_35%,bruta_5,utilizada_5,liquida_5,beneficio_bruta_5,beneficio_utilizada_5,beneficio_liquida_5\n"
-        const csvRows = (data as any[]).map(c => {
+        const csvRows = (data as unknown as Cliente[]).map(c => {
           const m = c.matriculas?.[0]
           const i = m?.instituidores?.[0]
+          
+          // Rule 5: UF from itens_credito is primary, fallback to matriculas.uf
+          const effectiveUf = i?.itens_credito?.find(ic => ic.uf)?.uf || m?.uf || ""
+          
           return [
             c.cpf,
             c.nome,
             c.telefone_1 || "",
             c.telefone_2 || "",
             c.telefone_3 || "",
-            m?.orgao || "",
-            m?.uf || "",
+            m?.orgao ? (ORGAOS_MAPPING[m.orgao] || m.orgao) : "",
+            effectiveUf,
             i?.saldo_70 || 0,
             i?.margem_35 || 0,
             i?.bruta_5 || 0,
@@ -531,9 +568,10 @@ export default function NewCampaignPage() {
         link.click()
         document.body.removeChild(link)
       }
-    } catch (err: any) {
-      console.error("Erro ao exportar:", err.message || err)
-      alert(`Erro ao exportar dados: ${err.message || "Erro desconhecido"}`)
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("Erro ao exportar:", error.message || error)
+      alert(`Erro ao exportar dados: ${error.message || "Erro desconhecido"}`)
     } finally {
       setIsCalculating(false)
     }
@@ -622,13 +660,8 @@ export default function NewCampaignPage() {
                   <div className="flex gap-4">
                     <button 
                       onClick={() => {
-                        const categoryMap: Record<string, keyof typeof filters> = {
-                          "1": "orgaos",
-                          "2": "situacoes",
-                          "3": "regimes",
-                          "4": "ufs"
-                        };
-                        selectAll(categoryMap[section.id], section.options);
+                        const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+                        if (category) selectAll(category, section.options);
                       }}
                       className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:underline"
                     >
@@ -636,13 +669,8 @@ export default function NewCampaignPage() {
                     </button>
                     <button 
                       onClick={() => {
-                        const categoryMap: Record<string, keyof typeof filters> = {
-                          "1": "orgaos",
-                          "2": "situacoes",
-                          "3": "regimes",
-                          "4": "ufs"
-                        };
-                        clearAll(categoryMap[section.id], section.options);
+                        const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+                        if (category) clearAll(category, section.options);
                       }}
                       className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
                     >
@@ -663,13 +691,9 @@ export default function NewCampaignPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                   {getFilteredOptions(section.options, section.id).map((option) => {
-                    const categoryMap: Record<string, keyof typeof filters> = {
-                      "1": "orgaos",
-                      "2": "situacoes",
-                      "3": "regimes",
-                      "4": "ufs"
-                    };
-                    const category = categoryMap[section.id];
+                    const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+                    if (!category) return null;
+                    
                     const isSelected = (filters[category] as string[]).includes(option);
 
                     return (
@@ -742,7 +766,7 @@ export default function NewCampaignPage() {
 
           {/* 7. SALDO 70% */}
           <Card className="card-shadow">
-            <CardContent className="p-6 lg:p-8 space-y-6">
+            <CardContent className="p-6 lg:p-8 space-y-8">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
@@ -779,6 +803,52 @@ export default function NewCampaignPage() {
                       placeholder="0,00" 
                       value={filters.saldoMax}
                       onChange={(e) => setFilters(prev => ({ ...prev, saldoMax: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 7.1. SALÁRIO */}
+          <Card className="card-shadow">
+            <CardContent className="p-6 lg:p-8 space-y-8">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
+                    <DollarSign className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">7.1. SALÁRIO</h3>
+                </div>
+                <button 
+                  onClick={() => setFilters(prev => ({ ...prev, salarioMin: "", salarioMax: "" }))}
+                  className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                >
+                  Limpar
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Salário Mínimo</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                    <Input 
+                      className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                      placeholder="0,00" 
+                      value={filters.salarioMin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, salarioMin: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Salário Máximo</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                    <Input 
+                      className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                      placeholder="0,00" 
+                      value={filters.salarioMax}
+                      onChange={(e) => setFilters(prev => ({ ...prev, salarioMax: e.target.value }))}
                     />
                   </div>
                 </div>

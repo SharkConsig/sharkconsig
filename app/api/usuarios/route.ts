@@ -33,23 +33,15 @@ export async function GET() {
     
     if (error) throw error
 
-    // Buscar perfis para complementar os dados
-    const { data: perfis, error: perfisError } = await supabaseAdmin
-      .from('perfis')
-      .select('*')
-
-    if (perfisError) throw perfisError
-
     // Mesclar dados
     const combinedUsers = users.map((user: any) => {
-      const perfil = perfis?.find(p => p.id === user.id)
       return {
         id: user.id,
         email: user.email,
-        nome: perfil?.nome || user.user_metadata?.full_name || 'Sem Nome',
-        username: perfil?.username || user.user_metadata?.username,
-        role: perfil?.role || 'Corretor',
-        status: perfil?.status || 'Ativo',
+        nome: user.user_metadata?.full_name || 'Sem Nome',
+        username: user.user_metadata?.username,
+        role: 'Usuário',
+        status: 'Ativo',
         created_at: user.created_at,
         last_sign_in_at: user.last_sign_in_at
       }
@@ -66,7 +58,7 @@ export async function POST(request: Request) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
     const body = await request.json()
-    const { email, password, nome, username, role, status } = body
+    const { email, password, nome, username } = body
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email e senha são obrigatórios' }, { status: 400 })
@@ -82,25 +74,6 @@ export async function POST(request: Request) {
 
     if (authError) throw authError
 
-    // 2. Criar/Atualizar perfil na tabela perfis
-    const { error: perfilError } = await supabaseAdmin
-      .from('perfis')
-      .upsert({
-        id: authUser.user.id,
-        email,
-        nome,
-        username,
-        role,
-        status,
-        permissoes: {}
-      })
-
-    if (perfilError) {
-      // Se falhar ao criar o perfil, vamos remover o usuário do auth para manter consistência
-      await supabaseAdmin.auth.admin.deleteUser(authUser.user.id)
-      throw perfilError
-    }
-
     return NextResponse.json({ user: authUser.user })
   } catch (error: any) {
     console.error('Erro ao criar usuário:', error)
@@ -112,7 +85,7 @@ export async function PUT(request: Request) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
     const body = await request.json()
-    const { id, email, password, nome, username, role, status } = body
+    const { id, email, password, nome, username } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 })
@@ -134,20 +107,6 @@ export async function PUT(request: Request) {
       const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, updateData)
       if (authError) throw authError
     }
-
-    // 2. Atualizar Perfil
-    const { error: perfilError } = await supabaseAdmin
-      .from('perfis')
-      .update({
-        nome,
-        username,
-        role,
-        status,
-        email // Sincronizar email se mudou
-      })
-      .eq('id', id)
-
-    if (perfilError) throw perfilError
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
