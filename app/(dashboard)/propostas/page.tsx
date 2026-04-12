@@ -11,7 +11,6 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  Eye,
   ChevronDown,
   ChevronUp
 } from "lucide-react"

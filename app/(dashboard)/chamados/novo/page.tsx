@@ -19,10 +19,8 @@ import {
   Type, 
   Link2, 
   Image as ImageIcon, 
-  Type as FontIcon,
-  Paperclip
+  Type as FontIcon
 } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 function NewTicketForm() {
   const router = useRouter()

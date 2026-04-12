@@ -12,14 +12,11 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  MoreHorizontal,
-  Eye,
   ChevronDown,
   ChevronUp,
   FileEdit
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import Link from "next/link"
 import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
 
 const statusCards = [

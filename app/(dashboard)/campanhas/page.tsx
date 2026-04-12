@@ -26,12 +26,75 @@ import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
 import { useAuth } from "@/context/auth-context"
 
+interface ItemCredito {
+  uf?: string;
+  orgao?: string;
+  banco?: string;
+  tipo?: string;
+  prazo?: number;
+}
+
+interface Instituidor {
+  id: string;
+  saldo_70?: number;
+  margem_35?: number;
+  bruta_5?: number;
+  utilizada_5?: number;
+  liquida_5?: number;
+  beneficio_bruta_5?: number;
+  beneficio_utilizada_5?: number;
+  beneficio_liquida_5?: number;
+  itens_credito?: ItemCredito[];
+}
+
+interface Matricula {
+  id: string;
+  orgao?: string;
+  uf?: string;
+  salario?: number;
+  situacao_funcional?: string;
+  regime_juridico?: string;
+  instituidores?: Instituidor[];
+}
+
+interface Cliente {
+  cpf: string;
+  nome: string;
+  data_nascimento?: string;
+  telefone_1?: string;
+  telefone_2?: string;
+  telefone_3?: string;
+  matriculas?: Matricula[];
+}
+
+interface CampaignFilters {
+  orgaos: string[];
+  situacoes: string[];
+  regimes: string[];
+  ufs: string[];
+  margemMin: string;
+  margemMax: string;
+  saldoMin: string;
+  saldoMax: string;
+  cardMargemMin: string;
+  cardBeneficioMin: string;
+  loanBanks: string[];
+  loanPrazoMin: string;
+  loanPrazoMax: string;
+  cardBanks: string[];
+  cardTypes: string[];
+  idadeMin: string;
+  idadeMax: string;
+  salarioMin: string;
+  salarioMax: string;
+}
+
 interface Campaign {
   id: string;
   nome: string;
   created_at: string;
   publico_estimado: number;
-  filtros: any; // Filtros são complexos, mantemos any por enquanto ou definimos interface se necessário
+  filtros: CampaignFilters;
 }
 
 export default function CampaignsPage() {
@@ -133,8 +196,8 @@ export default function CampaignsPage() {
       if (filters.margemMax) query = query.lte('matriculas.instituidores.margem_35', parseFloat(filters.margemMax))
       if (filters.saldoMin) query = query.gte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMin))
       if (filters.saldoMax) query = query.lte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMax))
-      if (filters.cardMargemMin) query = query.gte('matriculas.instituidores.bruta_5', parseFloat(filters.cardMargemMin))
-      if (filters.cardBeneficioMin) query = query.gte('matriculas.instituidores.beneficio_bruta_5', parseFloat(filters.cardBeneficioMin))
+      if (filters.cardMargemMin) query = query.gte('matriculas.instituidores.liquida_5', parseFloat(filters.cardMargemMin))
+      if (filters.cardBeneficioMin) query = query.gte('matriculas.instituidores.beneficio_liquida_5', parseFloat(filters.cardBeneficioMin))
 
       if (filters.loanBanks?.length > 0) {
         const normalizedBanks = filters.loanBanks.map((b: string) => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
@@ -163,12 +226,12 @@ export default function CampaignsPage() {
 
       if (data) {
         const headers = "cpf,nome,telefone 1,telefone 2,telefone 3,orgao,uf,saldo_70%,margem_35%,bruta_5,utilizada_5,liquida_5,beneficio_bruta_5,beneficio_utilizada_5,beneficio_liquida_5\n"
-        const csvRows = (data as any[]).map(c => {
+        const csvRows = (data as unknown as Cliente[]).map(c => {
           const m = c.matriculas?.[0]
           const i = m?.instituidores?.[0]
           
           // Rule 5: UF from itens_credito is primary, fallback to matriculas.uf
-          const effectiveUf = i?.itens_credito?.find((ic: any) => ic.uf)?.uf || m?.uf || ""
+          const effectiveUf = i?.itens_credito?.find((ic: { uf?: string }) => ic.uf)?.uf || m?.uf || ""
           
           return [
             c.cpf,

@@ -19,7 +19,6 @@ import {
   Link2, 
   Image as ImageIcon, 
   Type as FontIcon,
-  Paperclip,
   ArrowRight,
   FileText,
   FileEdit
