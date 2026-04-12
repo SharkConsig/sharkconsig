@@ -36,6 +36,28 @@ interface Batch {
 
 import { useAuth } from "@/context/auth-context"
 
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
+  try {
+    return await fn();
+  } catch (err: unknown) {
+    const error = err as any;
+    const isNetworkError = 
+      !error.status || // No status often means network failure
+      error.message?.includes('fetch') || 
+      error.message?.includes('NetworkError') || 
+      error.message?.includes('Failed to fetch') ||
+      error.code === 'PGRST301' || // JWT expired (sometimes retry helps if it's a glitch)
+      error.code === 'ECONNRESET';
+
+    if (retries > 0 && isNetworkError) {
+      console.warn(`[RETRY] Falha na rede (${error.message || error.code}), tentando novamente em ${delay}ms... (${retries} tentativas restantes)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return withRetry(fn, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+}
+
 export default function ImportBatchPage() {
   const router = useRouter()
   const { isAdmin, isLoading: authLoading } = useAuth()
@@ -57,27 +79,6 @@ export default function ImportBatchPage() {
     }
   }, [authLoading, isAdmin, router])
 
-  async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
-    try {
-      return await fn();
-    } catch (error: any) {
-      const isNetworkError = 
-        !error.status || // No status often means network failure
-        error.message?.includes('fetch') || 
-        error.message?.includes('NetworkError') || 
-        error.message?.includes('Failed to fetch') ||
-        error.code === 'PGRST301' || // JWT expired (sometimes retry helps if it's a glitch)
-        error.code === 'ECONNRESET';
-
-      if (retries > 0 && isNetworkError) {
-        console.warn(`[RETRY] Falha na rede (${error.message || error.code}), tentando novamente em ${delay}ms... (${retries} tentativas restantes)`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return withRetry(fn, retries - 1, delay * 2);
-      }
-      throw error;
-    }
-  }
-
   const fetchBatches = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     try {
@@ -94,10 +95,10 @@ export default function ImportBatchPage() {
         return;
       }
       setBatchList(data || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn("Erro ao buscar lotes (retry failed):", err);
     }
-  }, []);
+  }, [isSupabaseConfigured]);
 
   const fetchTotalBase = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -127,12 +128,13 @@ export default function ImportBatchPage() {
         return;
       }
       setTotalBase(count || 0);
-    } catch (err: any) {
-      console.warn("Aviso inesperado ao buscar total da base:", err?.message || err);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.warn("Aviso inesperado ao buscar total da base:", error?.message || error);
     } finally {
       setIsRefreshingTotal(false);
     }
-  }, []);
+  }, [isSupabaseConfigured]);
 
   const handleRefreshTotal = () => {
     fetchTotalBase();

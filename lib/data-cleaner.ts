@@ -61,7 +61,7 @@ export function normalizePhone(phone: string | null | undefined): string {
  * Parses currency strings into numbers.
  * Handles: "R$ 1.222,45", "1.222,45", "1222.45", "R$1222", etc.
  */
-export function parseCurrency(value: any): number {
+export function parseCurrency(value: string | number | null | undefined): number {
   if (typeof value === "number") return value;
   if (!value) return 0;
 
@@ -88,7 +88,7 @@ export function parseCurrency(value: any): number {
  * Parses various date formats into ISO strings or Date objects.
  * Handles: dd/mm/aaaa, dd-mm-aaaa, d/m/aa, etc.
  */
-export function parseDate(dateStr: any): string {
+export function parseDate(dateStr: string | Date | null | undefined): string {
   if (!dateStr) return "";
   if (dateStr instanceof Date) return dateStr.toISOString();
 
@@ -98,8 +98,8 @@ export function parseDate(dateStr: any): string {
   const parts = str.split(/[/\-.]/);
   
   if (parts.length === 3) {
-    let day = parseInt(parts[0]);
-    let month = parseInt(parts[1]);
+    const day = parseInt(parts[0]);
+    const month = parseInt(parts[1]);
     let year = parseInt(parts[2]);
 
     // Handle 2-digit years
@@ -122,13 +122,13 @@ export function parseDate(dateStr: any): string {
 /**
  * Full row normalization for a "Client" or "Contract" object
  */
-export function normalizeData(data: any): any {
+export function normalizeData<T extends Record<string, any>>(data: T): T {
   const normalized = { ...data };
 
-  if (normalized.nome) normalized.nome = cleanText(normalized.nome).toUpperCase();
-  if (normalized.cpf) normalized.cpf = normalizeCPF(normalized.cpf);
-  if (normalized.telefone) normalized.telefone = normalizePhone(normalized.telefone);
-  if (normalized.celular) normalized.celular = normalizePhone(normalized.celular);
+  if (normalized.nome && typeof normalized.nome === 'string') normalized.nome = cleanText(normalized.nome).toUpperCase();
+  if (normalized.cpf && typeof normalized.cpf === 'string') normalized.cpf = normalizeCPF(normalized.cpf);
+  if (normalized.telefone && typeof normalized.telefone === 'string') normalized.telefone = normalizePhone(normalized.telefone);
+  if (normalized.celular && typeof normalized.celular === 'string') normalized.celular = normalizePhone(normalized.celular);
   if (normalized.dataNascimento) normalized.dataNascimento = parseDate(normalized.dataNascimento);
   if (normalized.parcela) normalized.parcela = parseCurrency(normalized.parcela);
   if (normalized.valor) normalized.valor = parseCurrency(normalized.valor);

@@ -138,6 +138,13 @@ export default function CampaignsPage() {
     fetchCampaigns()
   }, [authLoading, isAdmin, router, fetchCampaigns])
 
+  const parseSafeNumber = (val: string) => {
+    if (!val || typeof val !== 'string') return NaN;
+    const cleaned = val.replace(/\./g, '').replace(',', '.');
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) ? NaN : parsed;
+  };
+
   const handleExport = async (campaign: Campaign) => {
     // Similar export logic as in nova/page.tsx but using campaign.filtros
     const filters = campaign.filtros
@@ -183,8 +190,9 @@ export default function CampaignsPage() {
             .filter(([, val]) => val === name)
             .map(([code]) => code)
         );
-        const finalOrgaos = orgaoCodes.length > 0 ? orgaoCodes : filters.orgaos;
-        query = query.in('matriculas.orgao', finalOrgaos)
+        if (orgaoCodes.length > 0) {
+          query = query.in('matriculas.orgao', orgaoCodes)
+        }
       }
       if (filters.situacoes?.length > 0) query = query.in('matriculas.situacao_funcional', filters.situacoes)
       if (filters.regimes?.length > 0) query = query.in('matriculas.regime_juridico', filters.regimes)
@@ -192,19 +200,36 @@ export default function CampaignsPage() {
       if (filters.ufs?.length > 0) {
         query = query.in('matriculas.uf', filters.ufs)
       }
-      if (filters.margemMin) query = query.gte('matriculas.instituidores.margem_35', parseFloat(filters.margemMin))
-      if (filters.margemMax) query = query.lte('matriculas.instituidores.margem_35', parseFloat(filters.margemMax))
-      if (filters.saldoMin) query = query.gte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMin))
-      if (filters.saldoMax) query = query.lte('matriculas.instituidores.saldo_70', parseFloat(filters.saldoMax))
-      if (filters.cardMargemMin) query = query.gte('matriculas.instituidores.liquida_5', parseFloat(filters.cardMargemMin))
-      if (filters.cardBeneficioMin) query = query.gte('matriculas.instituidores.beneficio_liquida_5', parseFloat(filters.cardBeneficioMin))
+
+      // Margem 35%
+      const mMin = parseSafeNumber(filters.margemMin);
+      const mMax = parseSafeNumber(filters.margemMax);
+      if (!isNaN(mMin)) query = query.gte('matriculas.instituidores.margem_35', mMin)
+      if (!isNaN(mMax)) query = query.lte('matriculas.instituidores.margem_35', mMax)
+
+      // Saldo 70%
+      const slMin = parseSafeNumber(filters.saldoMin);
+      const slMax = parseSafeNumber(filters.saldoMax);
+      if (!isNaN(slMin)) query = query.gte('matriculas.instituidores.saldo_70', slMin)
+      if (!isNaN(slMax)) query = query.lte('matriculas.instituidores.saldo_70', slMax)
+
+      const cmMin = parseSafeNumber(filters.cardMargemMin);
+      if (!isNaN(cmMin)) query = query.gte('matriculas.instituidores.liquida_5', cmMin)
+      
+      const cbMin = parseSafeNumber(filters.cardBeneficioMin);
+      if (!isNaN(cbMin)) query = query.gte('matriculas.instituidores.beneficio_liquida_5', cbMin)
 
       if (filters.loanBanks?.length > 0) {
         const normalizedBanks = filters.loanBanks.map((b: string) => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
         query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
       }
-      if (filters.loanPrazoMin) query = query.gte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMin))
-      if (filters.loanPrazoMax) query = query.lte('matriculas.instituidores.itens_credito.prazo', parseInt(filters.loanPrazoMax))
+
+      // Prazo Empréstimo
+      const lpMin = parseInt(filters.loanPrazoMin);
+      const lpMax = parseInt(filters.loanPrazoMax);
+      if (!isNaN(lpMin)) query = query.gte('matriculas.instituidores.itens_credito.prazo', lpMin)
+      if (!isNaN(lpMax)) query = query.lte('matriculas.instituidores.itens_credito.prazo', lpMax)
+
       if (filters.cardBanks?.length > 0) {
         const normalizedBanks = filters.cardBanks.map((b: string) => b.replace(/^BANCO\s+/i, "").trim().toUpperCase());
         query = query.in('matriculas.instituidores.itens_credito.banco', normalizedBanks)
@@ -220,6 +245,24 @@ export default function CampaignsPage() {
         query = query.in('matriculas.instituidores.itens_credito.tipo', finalCardTypes)
       }
 
+      if (filters.idadeMin || filters.idadeMax) {
+        const today = new Date();
+        if (filters.idadeMin) {
+          const minDate = new Date(today.getFullYear() - parseInt(filters.idadeMin), today.getMonth(), today.getDate());
+          query = query.lte('data_nascimento', minDate.toISOString().split('T')[0]);
+        }
+        if (filters.idadeMax) {
+          const maxDate = new Date(today.getFullYear() - (parseInt(filters.idadeMax) + 1), today.getMonth(), today.getDate() + 1);
+          query = query.gte('data_nascimento', maxDate.toISOString().split('T')[0]);
+        }
+      }
+
+      // Salário
+      const sMin = parseSafeNumber(filters.salarioMin);
+      const sMax = parseSafeNumber(filters.salarioMax);
+      if (!isNaN(sMin)) query = query.gte('matriculas.salario', sMin)
+      if (!isNaN(sMax)) query = query.lte('matriculas.salario', sMax)
+
       const { data, error } = await query.limit(5000)
       
       if (error) throw error
@@ -230,8 +273,10 @@ export default function CampaignsPage() {
           const m = c.matriculas?.[0]
           const i = m?.instituidores?.[0]
           
-          // Rule 5: UF from itens_credito is primary, fallback to matriculas.uf
+          // Rule: UF and ORGAO from itens_credito are primary, fallback to matriculas
           const effectiveUf = i?.itens_credito?.find((ic: { uf?: string }) => ic.uf)?.uf || m?.uf || ""
+          const effectiveOrgaoCode = i?.itens_credito?.find((ic: { orgao?: string }) => ic.orgao)?.orgao || m?.orgao || ""
+          const effectiveOrgao = effectiveOrgaoCode ? (ORGAOS_MAPPING[effectiveOrgaoCode] || effectiveOrgaoCode) : ""
           
           return [
             c.cpf,
@@ -239,7 +284,7 @@ export default function CampaignsPage() {
             c.telefone_1 || "",
             c.telefone_2 || "",
             c.telefone_3 || "",
-            m?.orgao ? (ORGAOS_MAPPING[m.orgao] || m.orgao) : "",
+            effectiveOrgao,
             effectiveUf,
             i?.saldo_70 || 0,
             i?.margem_35 || 0,
