@@ -32,8 +32,10 @@ async function checkPermission(request: Request) {
   if (!authHeader) return false;
 
   const token = authHeader.replace('Bearer ', '');
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || '';
+  
+  if (!url || !anonKey) return false;
   
   const supabase = createClient(url, anonKey);
   

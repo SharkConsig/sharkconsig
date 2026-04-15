@@ -1,9 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Eye, History, Printer, FileText, Plus, Save, Bold, Italic, Underline, Quote, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, Link as LinkIcon, Image as ImageIcon, Type } from "lucide-react"
+import { Eye, History, FileText, Plus, Save } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { FichaPropostaModal } from "./ficha-proposta-modal"
 

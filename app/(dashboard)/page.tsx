@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import { translateOrgao } from "@/lib/orgaos-mapping"
 import { getContractTypeInfo } from "@/lib/contratos-mapping"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/context/auth-context"
 
 // Helper for retries
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
@@ -60,8 +61,6 @@ function LoanRow({ loan }: { loan: any }) {
     </tr>
   );
 }
-
-import { useAuth } from "@/context/auth-context"
 
 export default function SearchClientPage() {
   const router = useRouter()

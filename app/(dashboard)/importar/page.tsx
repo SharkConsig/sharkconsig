@@ -23,6 +23,7 @@ import {
 import { cn, normalizeText } from "@/lib/utils"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import Papa from "papaparse"
+import { useAuth } from "@/context/auth-context"
 
 interface Batch {
   id: string;
@@ -34,8 +35,6 @@ interface Batch {
   progresso?: number;
   erro?: string;
 }
-
-import { useAuth } from "@/context/auth-context"
 
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
   try {
