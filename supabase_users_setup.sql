@@ -1,47 +1,38 @@
--- supabase_users_setup.sql
+-- SQL para configurar a gestão de usuários (perfis) no SharkConsig
 
--- 1. Remover a tabela antiga se existir
-DROP TABLE IF EXISTS perfis CASCADE;
-
--- 2. Criar a nova tabela de perfis com os campos solicitados
-CREATE TABLE perfis (
+-- 1. Tabela de Perfis (Usuários do Sistema)
+CREATE TABLE IF NOT EXISTS perfis (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email VARCHAR(255) UNIQUE NOT NULL,
-    nome VARCHAR(255),
-    username VARCHAR(255),
+    nome VARCHAR(255) NOT NULL,
+    username VARCHAR(100) UNIQUE NOT NULL,
     role VARCHAR(50) DEFAULT 'Corretor', -- 'Desenvolvedor', 'Administrador', 'Operacional', 'Supervisor', 'Corretor'
     status VARCHAR(20) DEFAULT 'Ativo', -- 'Ativo', 'Inativo'
-    permissoes JSONB DEFAULT '{}',
+    avatar_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. Habilitar RLS
+-- Habilitar RLS
 ALTER TABLE perfis ENABLE ROW LEVEL SECURITY;
 
--- 4. Políticas de Segurança
--- Todos os usuários autenticados podem ler os perfis (necessário para o sistema funcionar)
-CREATE POLICY "Leitura de perfis para autenticados" ON perfis FOR SELECT USING (auth.role() = 'authenticated');
+-- Grant permissions
+GRANT ALL ON TABLE perfis TO authenticated, anon, service_role;
 
--- Apenas Administradores e Desenvolvedores podem gerenciar perfis (CRUD completo)
-CREATE POLICY "Admins e Devs gerenciam perfis" ON perfis FOR ALL USING (
-    EXISTS (
-        SELECT 1 FROM perfis 
-        WHERE id = auth.uid() 
-        AND (role = 'Administrador' OR role = 'Desenvolvedor')
-    )
-);
-
--- Usuários podem atualizar seu próprio perfil
-CREATE POLICY "Usuários atualizam próprio perfil" ON perfis FOR UPDATE USING (auth.uid() = id);
-
--- 5. Trigger para atualizar o updated_at
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+-- Criar política (Usando DO block para evitar erro se já existir)
+DO $$
 BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'perfis' AND policyname = 'Permitir tudo para todos'
+    ) THEN
+        CREATE POLICY "Permitir tudo para todos" ON perfis FOR ALL USING (true) WITH CHECK (true);
+    END IF;
+END
+$$;
 
-CREATE TRIGGER update_perfis_updated_at BEFORE UPDATE ON perfis FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+-- Configuração de Storage para Avatares (Referência)
+-- Nota: O bucket deve ser criado via Dashboard ou API
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true);
+-- CREATE POLICY "Avatares públicos" ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
+-- CREATE POLICY "Usuários podem subir seus próprios avatares" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars');

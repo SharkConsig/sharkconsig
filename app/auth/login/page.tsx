@@ -9,21 +9,19 @@ import Image from "next/image"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/context/auth-context"
 
 export default function LoginPage() {
   const router = useRouter()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        router.replace("/")
-      }
+    if (!isAuthLoading && user) {
+      router.replace("/")
     }
-    checkSession()
-  }, [router])
+  }, [user, isAuthLoading, router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,8 +29,26 @@ export default function LoginPage() {
     setError(null)
 
     try {
+      let loginEmail = email;
+
+      // Se não for um email (não contém @), tenta buscar o email pelo username
+      if (!email.includes("@")) {
+        const { data: perfil, error: perfilError } = await supabase
+          .from('perfis')
+          .select('email')
+          .eq('username', email)
+          .single();
+        
+        if (perfilError || !perfil) {
+          setError("Usuário não encontrado.");
+          setIsLoading(false);
+          return;
+        }
+        loginEmail = perfil.email;
+      }
+
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: loginEmail,
         password,
       })
 
@@ -86,15 +102,15 @@ export default function LoginPage() {
             )}
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-[#7E97B8] uppercase tracking-widest ml-1">
-                E-MAIL
+                E-MAIL OU USUÁRIO
               </label>
               <div className="relative group">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#0F172A]" />
                 <Input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="seu@email.com" 
+                   type="text" 
+                   value={email}
+                   onChange={(e) => setEmail(e.target.value)}
+                   placeholder="seu@email.com ou username" 
                   className="h-[42px] pl-11 text-[14px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] placeholder:text-[13.3px] placeholder:font-semibold focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
                   required
                 />

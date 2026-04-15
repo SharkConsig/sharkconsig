@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
+import { toast } from "sonner"
 import { 
   Upload, 
   FileText, 
@@ -19,7 +20,7 @@ import {
   AlertCircle,
   Loader2
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, normalizeText } from "@/lib/utils"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import Papa from "papaparse"
 
@@ -60,7 +61,7 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Pr
 
 export default function ImportBatchPage() {
   const router = useRouter()
-  const { isAdmin, isLoading: authLoading } = useAuth()
+  const { isAdmin, session, isLoading: authLoading } = useAuth()
   const [batchList, setBatchList] = useState<Batch[]>([]);
   const [totalBase, setTotalBase] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
@@ -108,7 +109,6 @@ export default function ImportBatchPage() {
 
     setIsRefreshingTotal(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
       console.log("Estado da Sessão (fetchTotalBase):", session ? `Logado como ${session.user.email}` : "Não logado");
 
       const { count, error } = await withRetry(async () => {
@@ -168,15 +168,6 @@ export default function ImportBatchPage() {
     
     const num = parseFloat(clean);
     return isNaN(num) ? null : num;
-  };
-
-  const normalizeText = (text: string) => {
-    if (!text) return "";
-    return text
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "") // Remove accents
-      .toUpperCase()
-      .trim();
   };
 
   const normalizePhone = (phone: string) => {
@@ -692,9 +683,6 @@ export default function ImportBatchPage() {
     }
 
     try {
-      const { data: { session } } = await withRetry(async () => {
-        return await supabase.auth.getSession();
-      });
       console.log("Sessão atual:", session ? `Usuário: ${session.user.email}` : "Nenhuma sessão encontrada");
       
       if (!session) {
@@ -890,7 +878,7 @@ export default function ImportBatchPage() {
       });
     } catch (err: any) {
       console.error("Erro inesperado na importação:", err);
-      alert(`Erro inesperado: ${err.message}`);
+      toast.error(`Erro inesperado: ${err.message}`);
       setIsImporting(false);
     }
   };

@@ -85,8 +85,23 @@ GRANT ALL ON TABLE campanhas TO authenticated, anon, service_role;
 
 -- Criar políticas simples (Permitir tudo para usuários autenticados ou anon conforme sua config)
 -- Exemplo: Permitir leitura e escrita para todos (ajuste conforme necessário)
-CREATE POLICY "Permitir tudo para todos" ON clientes FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Permitir tudo para todos" ON matriculas FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Permitir tudo para todos" ON instituidores FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Permitir tudo para todos" ON itens_credito FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Permitir tudo para todos" ON campanhas FOR ALL USING (true) WITH CHECK (true);
+-- Nota: Usamos DO block para evitar erro se a política já existir
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'clientes' AND policyname = 'Permitir tudo para todos') THEN
+        CREATE POLICY "Permitir tudo para todos" ON clientes FOR ALL USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'matriculas' AND policyname = 'Permitir tudo para todos') THEN
+        CREATE POLICY "Permitir tudo para todos" ON matriculas FOR ALL USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'instituidores' AND policyname = 'Permitir tudo para todos') THEN
+        CREATE POLICY "Permitir tudo para todos" ON instituidores FOR ALL USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'itens_credito' AND policyname = 'Permitir tudo para todos') THEN
+        CREATE POLICY "Permitir tudo para todos" ON itens_credito FOR ALL USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'campanhas' AND policyname = 'Permitir tudo para todos') THEN
+        CREATE POLICY "Permitir tudo para todos" ON campanhas FOR ALL USING (true) WITH CHECK (true);
+    END IF;
+END
+$$;

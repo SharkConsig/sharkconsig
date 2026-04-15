@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Sidebar } from "@/components/layout/sidebar"
 import { SidebarContext } from "@/context/sidebar-context"
-import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/context/auth-context"
 import { Loader2 } from "lucide-react"
 
 export default function DashboardLayout({
@@ -13,37 +13,17 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.replace("/auth/login")
-      } else {
-        setIsLoading(false)
-      }
+    if (!isAuthLoading && !user) {
+      router.replace("/auth/login")
     }
+  }, [user, isAuthLoading, router])
 
-    checkSession()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || (!session && event === 'INITIAL_SESSION')) {
-        if (window.location.pathname !== '/auth/login') {
-          setIsLoading(true)
-          router.replace("/auth/login")
-        }
-      } else if (session) {
-        setIsLoading(false)
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [router])
-
-  if (isLoading) {
+  if (isAuthLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
@@ -53,6 +33,8 @@ export default function DashboardLayout({
       </div>
     )
   }
+
+  if (!user) return null
 
   return (
     <div className="flex min-h-screen bg-background">

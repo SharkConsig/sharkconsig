@@ -4,9 +4,9 @@ import { ChevronDown, LogOut, Menu, MessageSquarePlus, MessageSquareText, Clipbo
 import Image from "next/image"
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { useSidebar } from "@/context/sidebar-context"
 import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 
 interface HeaderProps {
   title: string
@@ -15,7 +15,6 @@ interface HeaderProps {
 import { useAuth } from "@/context/auth-context"
 
 export function Header({ title }: HeaderProps) {
-  const router = useRouter()
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { toggleSidebar } = useSidebar()
@@ -39,12 +38,31 @@ export function Header({ title }: HeaderProps) {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut()
-      // O layout cuidará do redirecionamento através do onAuthStateChange
-    } catch (error) {
-      console.error("Erro ao sair:", error)
-      // Fallback em caso de erro extremo
-      router.replace("/auth/login")
+      setIsDropdownOpen(false)
+      toast.loading("Saindo...", { id: "logout" })
+      
+      // Criar uma promessa de timeout para o signOut
+      const signOutPromise = supabase.auth.signOut()
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Timeout ao sair")), 5000)
+      )
+
+      // Tenta sair, mas não trava se demorar demais
+      try {
+        await Promise.race([signOutPromise, timeoutPromise])
+      } catch (timeoutErr) {
+        console.warn("SignOut demorou demais ou falhou, forçando redirecionamento:", timeoutErr)
+      }
+      
+      toast.success("Até logo!", { id: "logout" })
+      
+      // Limpar qualquer estado local se necessário e redirecionar
+      window.location.href = "/auth/login"
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("Erro crítico ao sair:", error)
+      toast.error("Erro ao sair. Redirecionando...", { id: "logout" })
+      window.location.href = "/auth/login"
     }
   }
 
@@ -109,11 +127,12 @@ export function Header({ title }: HeaderProps) {
             </div>
             <div className="relative w-10 h-10 rounded-full overflow-hidden bg-slate-200 border-2 border-slate-50">
               <Image
-                src="https://picsum.photos/seed/admin/100/100"
+                src={perfil?.avatar_url || "https://picsum.photos/seed/admin/100/100"}
                 alt="User"
                 fill
                 className="object-cover"
                 referrerPolicy="no-referrer"
+                unoptimized={!perfil?.avatar_url}
               />
             </div>
             <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
@@ -122,8 +141,13 @@ export function Header({ title }: HeaderProps) {
           {isDropdownOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-100 shadow-xl py-2 z-50">
               <button 
-                onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors"
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleLogout();
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
                 Sair

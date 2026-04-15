@@ -6,7 +6,7 @@ import { Header } from "@/components/layout/header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,24 +25,58 @@ import {
   UserPlus, 
   Download, 
   ChevronLeft, 
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { NovoUsuarioModal } from "@/components/usuarios/novo-usuario-modal"
-
-const MOCK_USERS = [
-  { id: "1", nome: "Nathali Beneduzi", email: "nathali.beneduzi@sharkconsig.com.br", funcao: "SUPERVISOR", status: "ATIVO", iniciais: "NB" },
-  { id: "2", nome: "Felícia Moraes", email: "F=felicia.moraes@sharkconsig.com.br", funcao: "CORRETOR", status: "ATIVO", iniciais: "FM" },
-  { id: "3", nome: "Talia Alves", email: "talia.alves@consig.net", funcao: "CORRETOR", status: "INATIVO", iniciais: "TA" },
-  { id: "4", nome: "Jorge Fabrício", email: "jorge.fabrício@sharkconsig.com.br", funcao: "CORRETOR", status: "ATIVO", iniciais: "JF" },
-  { id: "5", nome: "Gabriel Nicolas", email: "gabriel.nicolas@sharkconsig.com.br", funcao: "CORRETOR", status: "ATIVO", iniciais: "GN" },
-]
+import { useAuth } from "@/context/auth-context"
 
 export default function UsuariosPage() {
+  const { isAdmin, isDeveloper, session } = useAuth()
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [usuarios, setUsuarios] = useState<Record<string, unknown>[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchUsuarios = async () => {
+    try {
+      setIsLoading(true)
+      
+      if (!session) {
+        throw new Error('Sessão não encontrada')
+      }
+      
+      const response = await fetch('/api/usuarios', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+
+      if (!response.ok) {
+        const result = await response.json()
+        throw new Error(result.error || 'Erro ao carregar usuários')
+      }
+
+      const data = await response.json()
+      setUsuarios(data)
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error(error)
+      setError(error.message)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (session) {
+      fetchUsuarios()
+    }
+  }, [session])
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    switch (status?.toUpperCase()) {
       case "ATIVO":
         return "bg-emerald-100 text-emerald-600 hover:bg-emerald-100"
       case "INATIVO":
@@ -54,6 +88,27 @@ export default function UsuariosPage() {
 
   const getFuncaoColor = () => {
     return "bg-slate-100 text-slate-500 hover:bg-slate-100 font-bold"
+  }
+
+  const getIniciais = (nome: string) => {
+    if (!nome) return "??"
+    return nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+  }
+
+  const canManage = isAdmin || isDeveloper
+
+  if (!canManage && !isLoading) {
+    return (
+      <div className="flex-1 flex flex-col bg-slate-50/50 min-h-screen">
+        <Header title="GESTÃO DE USUÁRIOS" />
+        <div className="p-8 flex flex-col items-center justify-center space-y-4">
+          <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 font-bold uppercase tracking-widest text-[11px]">
+            Acesso Restrito
+          </div>
+          <p className="text-slate-500 text-sm">Você não tem permissão para acessar esta página.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -75,8 +130,11 @@ export default function UsuariosPage() {
                     </SelectTrigger>
                     <SelectContent className="rounded-xl border-slate-100">
                       <SelectItem value="todas">Todas as funções</SelectItem>
-                      <SelectItem value="admin">Administrador</SelectItem>
-                      <SelectItem value="corretor">Corretor</SelectItem>
+                      <SelectItem value="Administrador">Administrador</SelectItem>
+                      <SelectItem value="Corretor">Corretor</SelectItem>
+                      <SelectItem value="Supervisor">Supervisor</SelectItem>
+                      <SelectItem value="Operacional">Operacional</SelectItem>
+                      <SelectItem value="Desenvolvedor">Desenvolvedor</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -89,8 +147,8 @@ export default function UsuariosPage() {
                     </SelectTrigger>
                     <SelectContent className="rounded-xl border-slate-100">
                       <SelectItem value="todos">Todos</SelectItem>
-                      <SelectItem value="ativo">Ativo</SelectItem>
-                      <SelectItem value="inativo">Inativo</SelectItem>
+                      <SelectItem value="Ativo">Ativo</SelectItem>
+                      <SelectItem value="Inativo">Inativo</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -113,60 +171,76 @@ export default function UsuariosPage() {
 
             {/* Table */}
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/50">
-                    <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome</th>
-                    <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">E-mail</th>
-                    <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Função</th>
-                    <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
-                    <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {MOCK_USERS.map((usuario) => (
-                    <tr 
-                      key={usuario.id}
-                      className="group hover:bg-slate-50/50 transition-colors"
-                    >
-                      <td className="px-8 py-4">
-                        <div className="flex items-center gap-4">
-                          <Avatar className="w-9 h-9 border-2 border-white shadow-sm">
-                            <AvatarFallback className="bg-blue-100 text-blue-600 font-bold text-[10px]">
-                              {usuario.iniciais}
-                            </AvatarFallback>
-                          </Avatar>
-                          <p className="text-[10.5px] font-bold text-slate-700 uppercase tracking-tight">{usuario.nome}</p>
-                        </div>
-                      </td>
-                      <td className="px-8 py-4">
-                        <p className="text-[12px] font-medium text-slate-500">{usuario.email}</p>
-                      </td>
-                      <td className="px-8 py-4">
-                        <Badge className={`rounded-full px-3 py-0.5 text-[9px] tracking-widest ${getFuncaoColor()}`}>
-                          {usuario.funcao}
-                        </Badge>
-                      </td>
-                      <td className="px-8 py-4">
-                        <Badge className={`rounded-full px-3 py-0.5 text-[9px] tracking-widest font-extrabold ${getStatusColor(usuario.status)}`}>
-                          {usuario.status}
-                        </Badge>
-                      </td>
-                      <td className="px-8 py-4 text-center">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger className="h-8 w-8 text-slate-300 hover:text-primary hover:bg-primary/5 rounded-full transition-all flex items-center justify-center outline-none mx-auto">
-                            <MoreVertical className="w-4 h-4" />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="rounded-xl border-slate-100 shadow-xl">
-                            <DropdownMenuItem className="font-bold text-[11px] py-2.5 cursor-pointer uppercase tracking-wider">Editar Usuário</DropdownMenuItem>
-                            <DropdownMenuItem className="font-bold text-[11px] py-2.5 cursor-pointer text-rose-500 hover:text-rose-500 hover:bg-rose-50 uppercase tracking-wider">Inativar Usuário</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
+              {isLoading ? (
+                <div className="p-20 flex flex-col items-center justify-center gap-4">
+                  <Loader2 className="w-8 h-8 animate-spin text-slate-300" />
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando usuários...</p>
+                </div>
+              ) : error ? (
+                <div className="p-20 text-center">
+                  <p className="text-rose-500 font-bold uppercase text-[11px] tracking-widest">{error}</p>
+                </div>
+              ) : (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/50">
+                      <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome</th>
+                      <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">E-mail</th>
+                      <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Usuário</th>
+                      <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Função</th>
+                      <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+                      <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {usuarios.map((usuario) => (
+                      <tr 
+                        key={usuario.id}
+                        className="group hover:bg-slate-50/50 transition-colors"
+                      >
+                        <td className="px-8 py-4">
+                          <div className="flex items-center gap-4">
+                            <Avatar className="w-9 h-9 border-2 border-white shadow-sm">
+                              <AvatarImage src={usuario.avatar_url || undefined} />
+                              <AvatarFallback className="bg-blue-100 text-blue-600 font-bold text-[10px]">
+                                {getIniciais(usuario.nome)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <p className="text-[10.5px] font-bold text-slate-700 uppercase tracking-tight">{usuario.nome}</p>
+                          </div>
+                        </td>
+                        <td className="px-8 py-4">
+                          <p className="text-[12px] font-medium text-slate-500">{usuario.email}</p>
+                        </td>
+                        <td className="px-8 py-4">
+                          <p className="text-[12px] font-bold text-slate-400">{usuario.username}</p>
+                        </td>
+                        <td className="px-8 py-4">
+                          <Badge className={`rounded-full px-3 py-0.5 text-[9px] tracking-widest ${getFuncaoColor()}`}>
+                            {usuario.role}
+                          </Badge>
+                        </td>
+                        <td className="px-8 py-4">
+                          <Badge className={`rounded-full px-3 py-0.5 text-[9px] tracking-widest font-extrabold ${getStatusColor(usuario.status)}`}>
+                            {usuario.status}
+                          </Badge>
+                        </td>
+                        <td className="px-8 py-4 text-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger className="h-8 w-8 text-slate-300 hover:text-primary hover:bg-primary/5 rounded-full transition-all flex items-center justify-center outline-none mx-auto">
+                              <MoreVertical className="w-4 h-4" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="rounded-xl border-slate-100 shadow-xl">
+                              <DropdownMenuItem className="font-bold text-[11px] py-2.5 cursor-pointer uppercase tracking-wider">Editar Usuário</DropdownMenuItem>
+                              <DropdownMenuItem className="font-bold text-[11px] py-2.5 cursor-pointer text-rose-500 hover:text-rose-500 hover:bg-rose-50 uppercase tracking-wider">Inativar Usuário</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             {/* Pagination Footer */}
@@ -180,7 +254,7 @@ export default function UsuariosPage() {
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">
-                  1-5 de 42
+                  1-{usuarios.length} de {usuarios.length}
                 </span>
                 <button className="p-1 text-slate-400 hover:text-primary">
                   <ChevronRight className="w-5 h-5" />
@@ -199,6 +273,7 @@ export default function UsuariosPage() {
       <NovoUsuarioModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
+        onSuccess={fetchUsuarios}
       />
     </div>
   )
