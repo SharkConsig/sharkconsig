@@ -24,15 +24,60 @@ const menuItems = [
   {
     title: "GESTÃO DE CLIENTES",
     items: [
-      { name: "IMPORTAR LOTE", href: "/importar", icon: FileUp, roles: ["admin"] },
-      { name: "CRIAR CAMPANHA", href: "/campanhas/nova", icon: PlusCircle, roles: ["admin"] },
-      { name: "MINHAS CAMPANHAS", href: "/campanhas", icon: Users, roles: ["admin"] },
-      { name: "ACESSAR CLIENTE", href: "/", icon: Search, roles: ["admin", "corretor"] },
-      { name: "ABRIR CHAMADO", href: "/chamados/novo", icon: MessageSquarePlus, roles: ["admin", "corretor"] },
-      { name: "CHAMADOS ABERTOS", href: "/chamados", icon: MessageSquareText, roles: ["admin", "corretor"] },
-      { name: "DIGITAR PROPOSTA", href: "/propostas/nova", icon: FileEdit, roles: ["admin", "corretor"] },
-      { name: "LISTA DE PROPOSTAS", href: "/propostas", icon: ClipboardList, roles: ["admin", "corretor"] },
-      { name: "GESTÃO DE USUÁRIOS", href: "/configuracoes/usuarios", icon: Users, roles: ["admin"] },
+      { 
+        name: "IMPORTAR LOTE", 
+        href: "/importar", 
+        icon: FileUp, 
+        roles: ["Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "CRIAR CAMPANHA", 
+        href: "/campanhas/nova", 
+        icon: PlusCircle, 
+        roles: ["Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "MINHAS CAMPANHAS", 
+        href: "/campanhas", 
+        icon: Users, 
+        roles: ["Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "ACESSAR CLIENTE", 
+        href: "/", 
+        icon: Search, 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+      },
+      { 
+        name: "ABRIR CHAMADO", 
+        href: "/chamados/novo", 
+        icon: MessageSquarePlus, 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+      },
+      { 
+        name: "CHAMADOS ABERTOS", 
+        href: "/chamados", 
+        icon: MessageSquareText, 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+      },
+      { 
+        name: "DIGITAR PROPOSTA", 
+        href: "/propostas/nova", 
+        icon: FileEdit, 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+      },
+      { 
+        name: "LISTA DE PROPOSTAS", 
+        href: "/propostas", 
+        icon: ClipboardList, 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+      },
+      { 
+        name: "GESTÃO DE USUÁRIOS", 
+        href: "/configuracoes/usuarios", 
+        icon: Users, 
+        roles: ["Administrador", "Desenvolvedor"] 
+      },
     ]
   }
 ]
@@ -45,19 +90,18 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const { isCollapsed, toggleCollapse } = useSidebar()
-  const { isAdmin, isCorretor } = useAuth()
+  const { perfil, isAdmin } = useAuth()
 
   const filteredMenuItems = menuItems.map(section => ({
     ...section,
     items: section.items.filter(item => {
-      // Se não estiver logado, não mostra nada
-      if (!isAdmin && !isCorretor) return false
-      
-      // Admin vê tudo que tem role admin ou corretor
+      // Se for admin via email (superadmin), vê tudo
       if (isAdmin) return true
       
-      // Corretor vê apenas o que tem role corretor
-      if (isCorretor && item.roles.includes("corretor")) return true
+      // Se tiver o perfil carregado, verifica a role
+      if (perfil?.role && item.roles.includes(perfil.role)) {
+        return true
+      }
       
       return false
     })

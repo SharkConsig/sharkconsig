@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
-import { toast } from "sonner"
 import { 
   Search, 
   Plus, 
@@ -59,7 +58,7 @@ interface Campaign {
 
 export default function CampaignsPage() {
   const router = useRouter()
-  const { isAdmin, isLoading: authLoading } = useAuth()
+  const { canAccessAdminAreas, isLoading: authLoading } = useAuth()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
@@ -68,7 +67,7 @@ export default function CampaignsPage() {
   const [exportProgress, setExportProgress] = useState<{current: number, total: number} | null>(null)
 
   const fetchCampaigns = useCallback(async () => {
-    if (!isSupabaseConfigured || !isAdmin) return
+    if (!isSupabaseConfigured || !canAccessAdminAreas) return
     setIsLoading(true)
     setError(null)
     try {
@@ -90,15 +89,15 @@ export default function CampaignsPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [isAdmin])
+  }, [canAccessAdminAreas])
 
   useEffect(() => {
-    if (!authLoading && !isAdmin) {
+    if (!authLoading && !canAccessAdminAreas) {
       router.replace('/')
       return
     }
     fetchCampaigns()
-  }, [authLoading, isAdmin, router, fetchCampaigns])
+  }, [authLoading, canAccessAdminAreas, router, fetchCampaigns])
 
   const parseSafeNumber = (val: string) => {
     if (!val || typeof val !== 'string') return NaN;
@@ -237,16 +236,9 @@ export default function CampaignsPage() {
           }
         }
 
-        const { data: cpfData, error: cpfError, status, statusText } = await cpfQuery;
+        const { data: cpfData, error: cpfError } = await cpfQuery;
         
         if (cpfError) {
-          console.error("Erro na exportação (Supabase):", cpfError);
-          console.error("Status HTTP:", status, statusText);
-          
-          if (status === 500) {
-            throw new Error("O servidor encontrou um erro (500) ao processar a exportação. Isso ocorre devido ao grande volume de dados. Tente filtrar mais o público antes de exportar.");
-          }
-          
           if (cpfError.message?.includes("timeout") || cpfError.code === "57014") {
             throw new Error("A consulta demorou muito tempo. Tente aplicar mais filtros para reduzir o volume de dados.");
           }
@@ -267,7 +259,7 @@ export default function CampaignsPage() {
       matchingCpfs = Array.from(uniqueCpfs);
 
       if (matchingCpfs.length === 0) {
-        toast.info("Nenhum cliente encontrado com os filtros aplicados.");
+        alert("Nenhum cliente encontrado com os filtros aplicados.");
         return;
       }
 
@@ -296,13 +288,13 @@ export default function CampaignsPage() {
         }
 
         if (batchData) {
-          const batchRows = (batchData as Record<string, unknown>[]).map(c => {
+          const batchRows = (batchData as any[]).map(c => {
             return [
-              String(c.cpf || ""),
-              `"${String(c.nome || '')}"`,
-              String(c.telefone_1 || ""),
-              String(c.telefone_2 || ""),
-              String(c.telefone_3 || "")
+              c.cpf,
+              `"${c.nome || ''}"`,
+              c.telefone_1 || "",
+              c.telefone_2 || "",
+              c.telefone_3 || ""
             ].join(",")
           });
           csvRows.push(...batchRows);
@@ -333,7 +325,7 @@ export default function CampaignsPage() {
       } else if (typeof err === 'string') {
         errorMessage = err;
       }
-      toast.error(`Erro ao exportar dados: ${errorMessage}`)
+      alert(`Erro ao exportar dados: ${errorMessage}`)
     } finally {
       setIsExporting(false)
       setExportProgress(null)

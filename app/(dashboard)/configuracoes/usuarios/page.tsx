@@ -26,57 +26,79 @@ import {
   Download, 
   ChevronLeft, 
   ChevronRight,
-  Loader2
+  Loader2,
+  RefreshCw
 } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { NovoUsuarioModal } from "@/components/usuarios/novo-usuario-modal"
+import { toast } from "sonner"
+
 import { useAuth } from "@/context/auth-context"
+import { useRouter } from "next/navigation"
+
+interface Usuario {
+  id: string
+  nome: string
+  email: string
+  username: string
+  funcao: string
+  status: string
+  avatar_url?: string
+  created_at: string
+}
 
 export default function UsuariosPage() {
-  const { isAdmin, isDeveloper, session } = useAuth()
+  const router = useRouter()
+  const { canAccessAdminAreas, isLoading: authLoading } = useAuth()
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [usuarios, setUsuarios] = useState<Record<string, unknown>[]>([])
+  const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [filtroFuncao, setFiltroFuncao] = useState("todas")
+  const [filtroStatus, setFiltroStatus] = useState("todos")
 
-  const fetchUsuarios = async () => {
+  useEffect(() => {
+    if (!authLoading && !canAccessAdminAreas) {
+      router.replace("/")
+    }
+  }, [authLoading, canAccessAdminAreas, router])
+
+  const fetchUsuarios = useCallback(async () => {
+    setIsLoading(true)
     try {
-      setIsLoading(true)
-      
-      if (!session) {
-        throw new Error('Sessão não encontrada')
-      }
-      
-      const response = await fetch('/api/usuarios', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      })
-
-      if (!response.ok) {
-        const result = await response.json()
-        throw new Error(result.error || 'Erro ao carregar usuários')
-      }
-
+      const response = await fetch("/api/usuarios")
+      if (!response.ok) throw new Error("Erro ao carregar usuários")
       const data = await response.json()
       setUsuarios(data)
-    } catch (err: unknown) {
-      const error = err as Error;
+    } catch (error) {
       console.error(error)
-      setError(error.message)
+      toast.error("Erro ao carregar lista de usuários")
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    if (session) {
+    fetchUsuarios()
+  }, [fetchUsuarios])
+
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir este usuário?")) return
+
+    try {
+      const response = await fetch(`/api/usuarios?id=${id}`, {
+        method: "DELETE"
+      })
+      if (!response.ok) throw new Error("Erro ao excluir usuário")
+      toast.success("Usuário excluído com sucesso")
       fetchUsuarios()
+    } catch (error) {
+      console.error(error)
+      toast.error("Erro ao excluir usuário")
     }
-  }, [session])
+  }
 
   const getStatusColor = (status: string) => {
-    switch (status?.toUpperCase()) {
+    switch (status.toUpperCase()) {
       case "ATIVO":
         return "bg-emerald-100 text-emerald-600 hover:bg-emerald-100"
       case "INATIVO":
@@ -90,26 +112,11 @@ export default function UsuariosPage() {
     return "bg-slate-100 text-slate-500 hover:bg-slate-100 font-bold"
   }
 
-  const getIniciais = (nome: string) => {
-    if (!nome) return "??"
-    return nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
-  }
-
-  const canManage = isAdmin || isDeveloper
-
-  if (!canManage && !isLoading) {
-    return (
-      <div className="flex-1 flex flex-col bg-slate-50/50 min-h-screen">
-        <Header title="GESTÃO DE USUÁRIOS" />
-        <div className="p-8 flex flex-col items-center justify-center space-y-4">
-          <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 font-bold uppercase tracking-widest text-[11px]">
-            Acesso Restrito
-          </div>
-          <p className="text-slate-500 text-sm">Você não tem permissão para acessar esta página.</p>
-        </div>
-      </div>
-    )
-  }
+  const filteredUsers = usuarios.filter(user => {
+    const matchFuncao = filtroFuncao === "todas" || user.funcao.toLowerCase() === filtroFuncao.toLowerCase()
+    const matchStatus = filtroStatus === "todos" || user.status.toLowerCase() === filtroStatus.toLowerCase()
+    return matchFuncao && matchStatus
+  })
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50/50 min-h-screen">
@@ -124,7 +131,7 @@ export default function UsuariosPage() {
               <div className="flex flex-wrap items-center gap-6">
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Filtrar Função</label>
-                  <Select defaultValue="todas">
+                  <Select value={filtroFuncao} onValueChange={setFiltroFuncao}>
                     <SelectTrigger className="w-[180px] h-[38px] bg-slate-50/50 border-slate-100 rounded-lg font-bold text-[11px] text-slate-700">
                       <SelectValue placeholder="Todas as funções" />
                     </SelectTrigger>
@@ -141,17 +148,27 @@ export default function UsuariosPage() {
 
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Status</label>
-                  <Select defaultValue="todos">
+                  <Select value={filtroStatus} onValueChange={setFiltroStatus}>
                     <SelectTrigger className="w-[140px] h-[38px] bg-slate-50/50 border-slate-100 rounded-lg font-bold text-[11px] text-slate-700">
                       <SelectValue placeholder="Todos" />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl border-slate-100">
                       <SelectItem value="todos">Todos</SelectItem>
-                      <SelectItem value="Ativo">Ativo</SelectItem>
-                      <SelectItem value="Inativo">Inativo</SelectItem>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="inativo">Inativo</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={fetchUsuarios}
+                  disabled={isLoading}
+                  className="mt-5 text-slate-400 hover:text-slate-600"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                </Button>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -170,15 +187,15 @@ export default function UsuariosPage() {
             </div>
 
             {/* Table */}
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto min-h-[400px]">
               {isLoading ? (
-                <div className="p-20 flex flex-col items-center justify-center gap-4">
-                  <Loader2 className="w-8 h-8 animate-spin text-slate-300" />
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando usuários...</p>
+                <div className="flex flex-col items-center justify-center h-[400px] gap-4">
+                  <Loader2 className="w-8 h-8 text-slate-300 animate-spin" />
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Carregando usuários...</p>
                 </div>
-              ) : error ? (
-                <div className="p-20 text-center">
-                  <p className="text-rose-500 font-bold uppercase text-[11px] tracking-widest">{error}</p>
+              ) : filteredUsers.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-[400px] gap-4">
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum usuário encontrado</p>
                 </div>
               ) : (
                 <table className="w-full text-left border-collapse">
@@ -186,14 +203,13 @@ export default function UsuariosPage() {
                     <tr className="bg-slate-50/50">
                       <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome</th>
                       <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">E-mail</th>
-                      <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Usuário</th>
                       <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Função</th>
                       <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
                       <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {usuarios.map((usuario) => (
+                    {filteredUsers.map((usuario) => (
                       <tr 
                         key={usuario.id}
                         className="group hover:bg-slate-50/50 transition-colors"
@@ -201,23 +217,25 @@ export default function UsuariosPage() {
                         <td className="px-8 py-4">
                           <div className="flex items-center gap-4">
                             <Avatar className="w-9 h-9 border-2 border-white shadow-sm">
-                              <AvatarImage src={usuario.avatar_url || undefined} />
+                              {usuario.avatar_url ? (
+                                <AvatarImage src={usuario.avatar_url || undefined} />
+                              ) : null}
                               <AvatarFallback className="bg-blue-100 text-blue-600 font-bold text-[10px]">
-                                {getIniciais(usuario.nome)}
+                                {usuario.nome.substring(0, 2).toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
-                            <p className="text-[10.5px] font-bold text-slate-700 uppercase tracking-tight">{usuario.nome}</p>
+                            <div className="flex flex-col">
+                              <p className="text-[10.5px] font-bold text-slate-700 uppercase tracking-tight">{usuario.nome}</p>
+                              <p className="text-[9px] font-medium text-slate-400">@{usuario.username}</p>
+                            </div>
                           </div>
                         </td>
                         <td className="px-8 py-4">
                           <p className="text-[12px] font-medium text-slate-500">{usuario.email}</p>
                         </td>
                         <td className="px-8 py-4">
-                          <p className="text-[12px] font-bold text-slate-400">{usuario.username}</p>
-                        </td>
-                        <td className="px-8 py-4">
                           <Badge className={`rounded-full px-3 py-0.5 text-[9px] tracking-widest ${getFuncaoColor()}`}>
-                            {usuario.role}
+                            {usuario.funcao}
                           </Badge>
                         </td>
                         <td className="px-8 py-4">
@@ -232,7 +250,12 @@ export default function UsuariosPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="rounded-xl border-slate-100 shadow-xl">
                               <DropdownMenuItem className="font-bold text-[11px] py-2.5 cursor-pointer uppercase tracking-wider">Editar Usuário</DropdownMenuItem>
-                              <DropdownMenuItem className="font-bold text-[11px] py-2.5 cursor-pointer text-rose-500 hover:text-rose-500 hover:bg-rose-50 uppercase tracking-wider">Inativar Usuário</DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteUser(usuario.id)}
+                                className="font-bold text-[11px] py-2.5 cursor-pointer text-rose-500 hover:text-rose-500 hover:bg-rose-50 uppercase tracking-wider"
+                              >
+                                Excluir Usuário
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>
@@ -254,7 +277,7 @@ export default function UsuariosPage() {
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">
-                  1-{usuarios.length} de {usuarios.length}
+                  {filteredUsers.length} usuários
                 </span>
                 <button className="p-1 text-slate-400 hover:text-primary">
                   <ChevronRight className="w-5 h-5" />
@@ -272,8 +295,10 @@ export default function UsuariosPage() {
 
       <NovoUsuarioModal 
         isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onSuccess={fetchUsuarios}
+        onClose={() => {
+          setIsModalOpen(false)
+          fetchUsuarios()
+        }} 
       />
     </div>
   )

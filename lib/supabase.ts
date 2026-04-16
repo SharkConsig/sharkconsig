@@ -5,20 +5,16 @@ const getEnvVarByPrefix = (prefix: string) => {
   return key ? process.env[key] : '';
 };
 
-const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_URL')) || 'https://placeholder.supabase.co';
+let supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_URL'))?.trim() || 'https://placeholder.supabase.co';
+// Remove trailing slash if present
+if (supabaseUrl.endsWith('/')) {
+  supabaseUrl = supabaseUrl.slice(0, -1);
+}
+
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || 
                         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
                         getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_PUBLISHABLE') ||
-                        getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_ANON')) || 'placeholder';
-
-if (typeof window !== 'undefined') {
-  const maskedUrl = supabaseUrl.includes('placeholder') ? 'PLACEHOLDER' : supabaseUrl.substring(0, 15) + '...';
-  console.log('Supabase URL detectada:', maskedUrl);
-  console.log('Supabase Key detectada:', supabaseAnonKey !== 'placeholder' ? 'OK (Real)' : 'ERRO (Placeholder)');
-  if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
-    console.log('Env vars disponíveis:', Object.keys(process.env).filter(k => k.includes('SUPAB')));
-  }
-}
+                        getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_ANON'))?.trim() || 'placeholder';
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -28,10 +24,37 @@ export const isSupabaseConfigured = Boolean(
   supabaseAnonKey !== 'placeholder'
 );
 
-if (!isSupabaseConfigured) {
-  if (typeof window !== 'undefined') {
-    console.warn('Supabase não configurado ou URL inválida. Certifique-se de configurar NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY no seu arquivo .env.');
+if (typeof window !== 'undefined') {
+  const maskedUrl = supabaseUrl.includes('placeholder') ? 'PLACEHOLDER' : supabaseUrl.substring(0, 15) + '...';
+  console.log('Supabase URL detectada:', maskedUrl);
+  console.log('Supabase Key detectada:', supabaseAnonKey !== 'placeholder' ? 'OK (Real)' : 'ERRO (Placeholder)');
+  
+  if (!isSupabaseConfigured) {
+    console.warn('Supabase não configurado corretamente. Verifique as variáveis na aba Secrets.');
   }
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: 'sharkconsig-auth-token'
+  },
+  global: {
+    headers: { 'x-application-name': 'sharkconsig' }
+  }
+});
+
+export const createAdminClient = () => {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!serviceRoleKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not defined');
+  }
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+};

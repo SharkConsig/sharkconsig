@@ -9,19 +9,27 @@ import Image from "next/image"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { useAuth } from "@/context/auth-context"
+import { withRetry } from "@/lib/utils"
 
 export default function LoginPage() {
   const router = useRouter()
-  const { user, isLoading: isAuthLoading } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
-    if (!isAuthLoading && user) {
-      router.replace("/")
+    const checkSession = async () => {
+      try {
+        const { data: { session }, error } = await withRetry(() => supabase.auth.getSession())
+        if (error) throw error
+        if (session) {
+          router.replace("/")
+        }
+      } catch (err) {
+        console.error("Erro ao verificar sessão no login:", err)
+      }
     }
-  }, [user, isAuthLoading, router])
+    checkSession()
+  }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,22 +37,10 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      let loginEmail = email;
-
-      // Se não for um email (não contém @), tenta buscar o email pelo username
-      if (!email.includes("@")) {
-        const { data: perfil, error: perfilError } = await supabase
-          .from('perfis')
-          .select('email')
-          .eq('username', email)
-          .single();
-        
-        if (perfilError || !perfil) {
-          setError("Usuário não encontrado.");
-          setIsLoading(false);
-          return;
-        }
-        loginEmail = perfil.email;
+      // Converte username para email interno (sanitizado)
+      let loginEmail = username.trim().toLowerCase()
+      if (!loginEmail.includes("@")) {
+        loginEmail = `${loginEmail.replace(/\s+/g, '.')}@sharkconsig.com`
       }
 
       const { error } = await supabase.auth.signInWithPassword({
@@ -53,10 +49,13 @@ export default function LoginPage() {
       })
 
       if (error) {
-        setError(error.message)
+        setError(error.message === "Invalid login credentials" ? "Usuário ou senha incorretos" : error.message)
         setIsLoading(false)
         return
       }
+
+      // Pequena pausa para garantir que o Supabase persistiu a sessão no storage/cookie
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Redireciona para importar usando router para melhor UX
       router.push("/importar")
@@ -65,14 +64,15 @@ export default function LoginPage() {
       setTimeout(() => {
         setIsLoading(false)
       }, 5000)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Erro de login:", err)
-      setError(err.message || "Ocorreu um erro inesperado.")
+      const message = err instanceof Error ? err.message : "Ocorreu um erro inesperado.";
+      setError(message)
       setIsLoading(false)
     }
   }
 
-  const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
 
@@ -102,15 +102,15 @@ export default function LoginPage() {
             )}
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-[#7E97B8] uppercase tracking-widest ml-1">
-                E-MAIL OU USUÁRIO
+                USUÁRIO
               </label>
               <div className="relative group">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#0F172A]" />
                 <Input 
-                   type="text" 
-                   value={email}
-                   onChange={(e) => setEmail(e.target.value)}
-                   placeholder="seu@email.com ou username" 
+                  type="text" 
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Seu usuário" 
                   className="h-[42px] pl-11 text-[14px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] placeholder:text-[13.3px] placeholder:font-semibold focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
                   required
                 />

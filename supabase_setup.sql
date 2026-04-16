@@ -65,43 +65,52 @@ CREATE TABLE IF NOT EXISTS campanhas (
     nome VARCHAR(255) NOT NULL,
     filtros JSONB NOT NULL,
     publico_estimado INTEGER DEFAULT 0,
-    user_id UUID, -- Opcional: para vincular ao usuário do Supabase Auth
+    user_id UUID REFERENCES auth.users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Habilitar RLS (Row Level Security) - Opcional, mas recomendado
+-- 6. Tabela de Lotes (Histórico de Importação)
+CREATE TABLE IF NOT EXISTS lotes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    descricao TEXT,
+    tipo VARCHAR(50),
+    status VARCHAR(50) DEFAULT 'PROCESSING',
+    progresso INTEGER DEFAULT 0,
+    total_linhas VARCHAR(50) DEFAULT '0',
+    erro TEXT,
+    user_id UUID REFERENCES auth.users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Habilitar RLS (Row Level Security)
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matriculas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE instituidores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE itens_credito ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campanhas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lotes ENABLE ROW LEVEL SECURITY;
 
 -- Grant permissions explicitly
-GRANT ALL ON TABLE clientes TO authenticated, anon, service_role;
-GRANT ALL ON TABLE matriculas TO authenticated, anon, service_role;
-GRANT ALL ON TABLE instituidores TO authenticated, anon, service_role;
-GRANT ALL ON TABLE itens_credito TO authenticated, anon, service_role;
-GRANT ALL ON TABLE campanhas TO authenticated, anon, service_role;
+GRANT ALL ON TABLE clientes TO authenticated, service_role;
+GRANT ALL ON TABLE matriculas TO authenticated, service_role;
+GRANT ALL ON TABLE instituidores TO authenticated, service_role;
+GRANT ALL ON TABLE itens_credito TO authenticated, service_role;
+GRANT ALL ON TABLE campanhas TO authenticated, service_role;
+GRANT ALL ON TABLE lotes TO authenticated, service_role;
 
--- Criar políticas simples (Permitir tudo para usuários autenticados ou anon conforme sua config)
--- Exemplo: Permitir leitura e escrita para todos (ajuste conforme necessário)
--- Nota: Usamos DO block para evitar erro se a política já existir
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'clientes' AND policyname = 'Permitir tudo para todos') THEN
-        CREATE POLICY "Permitir tudo para todos" ON clientes FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'matriculas' AND policyname = 'Permitir tudo para todos') THEN
-        CREATE POLICY "Permitir tudo para todos" ON matriculas FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'instituidores' AND policyname = 'Permitir tudo para todos') THEN
-        CREATE POLICY "Permitir tudo para todos" ON instituidores FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'itens_credito' AND policyname = 'Permitir tudo para todos') THEN
-        CREATE POLICY "Permitir tudo para todos" ON itens_credito FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'campanhas' AND policyname = 'Permitir tudo para todos') THEN
-        CREATE POLICY "Permitir tudo para todos" ON campanhas FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-END
-$$;
+-- Remover políticas antigas se existirem
+DROP POLICY IF EXISTS "Permitir tudo para todos" ON clientes;
+DROP POLICY IF EXISTS "Permitir tudo para todos" ON matriculas;
+DROP POLICY IF EXISTS "Permitir tudo para todos" ON instituidores;
+DROP POLICY IF EXISTS "Permitir tudo para todos" ON itens_credito;
+DROP POLICY IF EXISTS "Permitir tudo para todos" ON campanhas;
+DROP POLICY IF EXISTS "Permitir tudo para todos" ON lotes;
+
+-- Criar políticas para usuários autenticados (CRUD completo)
+CREATE POLICY "Acesso total para autenticados" ON clientes FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total para autenticados" ON matriculas FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total para autenticados" ON instituidores FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total para autenticados" ON itens_credito FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total para autenticados" ON campanhas FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total para autenticados" ON lotes FOR ALL TO authenticated USING (true) WITH CHECK (true);

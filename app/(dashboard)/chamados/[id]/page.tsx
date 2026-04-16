@@ -126,7 +126,7 @@ export default function TicketDetailsPage({ params }: { params: Promise<{ id: st
               {messages.map((msg) => (
                 <div key={msg.id} className="flex flex-col sm:flex-row gap-4">
                   <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
-                    <Image src={msg.avatar} alt={msg.user} fill className="object-cover" />
+                    <Image src={msg.avatar || undefined} alt={msg.user} fill className="object-cover" />
                   </div>
                   <div className="flex-1 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">

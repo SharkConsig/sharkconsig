@@ -3,7 +3,6 @@ import { Geist } from "next/font/google"
 import "./globals.css"
 import { AuthProvider } from "@/context/auth-context"
 import { cn } from "@/lib/utils";
-import { Toaster } from "sonner";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'})
 
@@ -22,7 +21,6 @@ export default function RootLayout({
       <body className="antialiased" suppressHydrationWarning>
         <AuthProvider>
           {children}
-          <Toaster position="top-right" richColors />
         </AuthProvider>
       </body>
     </html>

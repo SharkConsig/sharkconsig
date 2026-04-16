@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
-import { toast } from "sonner"
 import { 
   Search, 
   Filter, 
@@ -83,7 +82,7 @@ const CATEGORY_MAP: Record<string, string> = {
 
 export default function NewCampaignPage() {
   const router = useRouter()
-  const { isAdmin, session, isLoading: authLoading } = useAuth()
+  const { canAccessAdminAreas, isLoading: authLoading } = useAuth()
   const [filters, setFilters] = useState({
     orgaos: [] as string[],
     situacoes: [] as string[],
@@ -107,10 +106,10 @@ export default function NewCampaignPage() {
   const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    if (!authLoading && !isAdmin) {
+    if (!authLoading && !canAccessAdminAreas) {
       router.replace('/')
     }
-  }, [authLoading, isAdmin, router])
+  }, [authLoading, canAccessAdminAreas, router])
 
   const [isCalculating, setIsCalculating] = useState(false)
   const [estimatedAudience, setEstimatedAudience] = useState(0)
@@ -396,15 +395,8 @@ export default function NewCampaignPage() {
       const { count, error, status, statusText } = await query.abortSignal(controller.signal)
       
       if (error) {
-        console.error("Erro retornado pelo Supabase (Objeto):", error);
-        console.error("Erro retornado pelo Supabase (String):", JSON.stringify(error));
+        console.error("Erro retornado pelo Supabase:", error);
         console.error("Status HTTP:", status, statusText);
-        
-        // Se for erro 500, pode ser timeout ou query muito complexa
-        if (status === 500) {
-          throw new Error("O servidor do banco de dados encontrou um erro (500). Isso geralmente acontece quando a consulta é muito complexa para o volume de dados atual (1.3M+ registros). Tente aplicar filtros mais específicos (ex: selecione um Órgão ou UF específica) para reduzir a carga no banco.");
-        }
-        
         throw error;
       }
       
@@ -416,23 +408,23 @@ export default function NewCampaignPage() {
       
       let errorMsg = "Erro desconhecido";
       if (err instanceof Error) {
-        errorMsg = err.message;
+        errorMsg = `${err.name}: ${err.message}`;
         console.error("Stack trace:", err.stack);
       } else if (typeof err === 'object' && err !== null) {
-        const e = err as Record<string, unknown>;
+        const e = err as any;
         // Tenta extrair o máximo de informação possível do objeto de erro
-        const message = String(e.message || e.error_description || e.error || "");
-        const code = String(e.code || "");
-        const details = String(e.details || "");
-        const hint = String(e.hint || "");
+        const message = e.message || e.error_description || e.error || "";
+        const code = e.code || "";
+        const details = e.details || "";
+        const hint = e.hint || "";
         
-        console.error("Detalhes do erro extraídos:", { message, code, details, hint, status: e.status });
-
         if (message || code || details) {
           errorMsg = `[${code}] ${message} ${details ? `(${details})` : ""} ${hint ? `Dica: ${hint}` : ""}`.trim();
         } else {
           errorMsg = JSON.stringify(err);
         }
+        
+        console.error("Detalhes do erro extraídos:", { message, code, details, hint, status: e.status });
       } else {
         errorMsg = String(err);
       }
@@ -441,7 +433,7 @@ export default function NewCampaignPage() {
         errorMsg = "Erro de banco de dados ou timeout. Verifique os filtros e tente novamente.";
       }
 
-      toast.error(`Erro ao calcular audiência: ${errorMsg}`);
+      alert(`Erro ao calcular audiência: ${errorMsg}`);
       setEstimatedAudience(0);
     } finally {
       setIsCalculating(false)
@@ -450,16 +442,13 @@ export default function NewCampaignPage() {
 
   const handleCreateCampaign = async () => {
     if (!campaignName || estimatedAudience === 0) {
-      toast.warning("Por favor, defina um nome para a campanha e realize a busca do público.")
+      alert("Por favor, defina um nome para a campanha e realize a busca do público.")
       return
     }
     setIsCreating(true)
     
     try {
-      if (!session) {
-        toast.error("Sessão não encontrada. Por favor, faça login novamente.")
-        return
-      }
+      const { data: { session } } = await supabase.auth.getSession()
       
       const { error } = await supabase
         .from('campanhas')
@@ -467,7 +456,7 @@ export default function NewCampaignPage() {
           nome: campaignName,
           filtros: filters,
           publico_estimado: estimatedAudience,
-          user_id: session.user.id
+          user_id: session?.user?.id
         })
 
       if (error) throw error
@@ -476,7 +465,7 @@ export default function NewCampaignPage() {
     } catch (err: unknown) {
       const error = err as Error;
       console.error("Erro ao criar campanha:", error)
-      toast.error(`Erro ao criar campanha: ${error.message}`)
+      alert(`Erro ao criar campanha: ${error.message}`)
     } finally {
       setIsCreating(false)
     }
@@ -612,16 +601,9 @@ export default function NewCampaignPage() {
             }
           }
 
-          const { data, error, status, statusText } = await cpfQuery;
+          const { data, error } = await cpfQuery;
           
           if (error) {
-            console.error("Erro na exportação (Supabase):", error);
-            console.error("Status HTTP:", status, statusText);
-
-            if (status === 500) {
-              throw new Error("O servidor encontrou um erro (500) ao processar a exportação. Isso ocorre devido ao grande volume de dados. Tente filtrar mais o público antes de exportar.");
-            }
-
             if ((error.message?.includes("timeout") || error.code === "57014") && retryCount < 2) {
               console.warn(`[RETRY] Timeout na busca de CPFs, tentativa ${retryCount + 1}...`);
               await new Promise(resolve => setTimeout(resolve, 1000));
@@ -648,7 +630,7 @@ export default function NewCampaignPage() {
       matchingCpfs = Array.from(uniqueCpfs);
 
       if (matchingCpfs.length === 0) {
-        toast.info("Nenhum cliente encontrado com os filtros aplicados.");
+        alert("Nenhum cliente encontrado com os filtros aplicados.");
         return;
       }
 
@@ -677,13 +659,13 @@ export default function NewCampaignPage() {
         }
 
         if (batchData) {
-          const batchRows = (batchData as Record<string, unknown>[]).map(c => {
+          const batchRows = (batchData as any[]).map(c => {
             return [
-              String(c.cpf || ""),
-              `"${String(c.nome || '')}"`,
-              String(c.telefone_1 || ""),
-              String(c.telefone_2 || ""),
-              String(c.telefone_3 || "")
+              c.cpf,
+              `"${c.nome || ''}"`,
+              c.telefone_1 || "",
+              c.telefone_2 || "",
+              c.telefone_3 || ""
             ].join(",")
           });
           csvRows.push(...batchRows);
@@ -714,7 +696,7 @@ export default function NewCampaignPage() {
       } else if (typeof err === 'string') {
         errorMessage = err;
       }
-      toast.error(`Erro ao exportar: ${errorMessage}`)
+      alert(`Erro ao exportar: ${errorMessage}`)
     } finally {
       setIsCalculating(false)
       setExportProgress(null)

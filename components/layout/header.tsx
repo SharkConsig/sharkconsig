@@ -4,9 +4,9 @@ import { ChevronDown, LogOut, Menu, MessageSquarePlus, MessageSquareText, Clipbo
 import Image from "next/image"
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useSidebar } from "@/context/sidebar-context"
 import { supabase } from "@/lib/supabase"
-import { toast } from "sonner"
 
 interface HeaderProps {
   title: string
@@ -15,6 +15,7 @@ interface HeaderProps {
 import { useAuth } from "@/context/auth-context"
 
 export function Header({ title }: HeaderProps) {
+  const router = useRouter()
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { toggleSidebar } = useSidebar()
@@ -37,32 +38,34 @@ export function Header({ title }: HeaderProps) {
   }, [isDropdownOpen])
 
   const handleLogout = async () => {
-    try {
-      setIsDropdownOpen(false)
-      toast.loading("Saindo...", { id: "logout" })
-      
-      // Criar uma promessa de timeout para o signOut
-      const signOutPromise = supabase.auth.signOut()
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout ao sair")), 5000)
-      )
-
-      // Tenta sair, mas não trava se demorar demais
+    // Limpa localmente primeiro para ser instantâneo e evitar problemas de rede
+    if (typeof window !== 'undefined') {
       try {
-        await Promise.race([signOutPromise, timeoutPromise])
-      } catch (timeoutErr) {
-        console.warn("SignOut demorou demais ou falhou, forçando redirecionamento:", timeoutErr)
+        localStorage.clear();
+        sessionStorage.clear();
+        // Limpa cookies do Supabase (padrão sb-...)
+        document.cookie.split(";").forEach((c) => {
+          const cookie = c.trim();
+          if (cookie.startsWith('sb-')) {
+            const eqPos = cookie.indexOf("=");
+            const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+          }
+        });
+      } catch (e) {
+        console.warn("Erro ao limpar storage:", e);
       }
-      
-      toast.success("Até logo!", { id: "logout" })
-      
-      // Limpar qualquer estado local se necessário e redirecionar
-      window.location.href = "/auth/login"
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error("Erro crítico ao sair:", error)
-      toast.error("Erro ao sair. Redirecionando...", { id: "logout" })
-      window.location.href = "/auth/login"
+    }
+
+    try {
+      // Tenta avisar o Supabase em background, mas não espera a resposta
+      // Isso evita que o erro de rede trave o redirecionamento
+      supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    } catch (error) {
+      console.error("Erro ao chamar signOut:", error)
+    } finally {
+      // Redireciona imediatamente
+      router.replace("/auth/login")
     }
   }
 
@@ -132,7 +135,6 @@ export function Header({ title }: HeaderProps) {
                 fill
                 className="object-cover"
                 referrerPolicy="no-referrer"
-                unoptimized={!perfil?.avatar_url}
               />
             </div>
             <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
@@ -141,13 +143,8 @@ export function Header({ title }: HeaderProps) {
           {isDropdownOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-100 shadow-xl py-2 z-50">
               <button 
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleLogout();
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors"
               >
                 <LogOut className="w-4 h-4" />
                 Sair

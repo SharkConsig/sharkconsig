@@ -114,9 +114,9 @@ export function TicketAtendimento({ ticket }: TicketAtendimentoProps) {
       <div className="space-y-8">
         {messages.map((msg) => (
           <div key={msg.id} className="flex flex-col sm:flex-row gap-4 text-left">
-            <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
-              <Image src={msg.avatar} alt={msg.user} fill className="object-cover" referrerPolicy="no-referrer" />
-            </div>
+              <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
+                <Image src={msg.avatar || undefined} alt={msg.user} fill className="object-cover" referrerPolicy="no-referrer" />
+              </div>
             <div className="flex-1 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[13px] font-bold text-slate-900">{msg.user}</span>

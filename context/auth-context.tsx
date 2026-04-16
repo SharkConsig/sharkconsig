@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
-import { User, Session } from "@supabase/supabase-js"
+import { User } from "@supabase/supabase-js"
 
 export type UserRole = 'Desenvolvedor' | 'Administrador' | 'Operacional' | 'Supervisor' | 'Corretor'
 
@@ -14,11 +14,11 @@ interface Perfil {
   role: UserRole
   status: 'Ativo' | 'Inativo'
   permissoes: any
+  avatar_url?: string
 }
 
 interface AuthContextType {
   user: User | null
-  session: Session | null
   perfil: Perfil | null
   isLoading: boolean
   isAdmin: boolean
@@ -26,108 +26,66 @@ interface AuthContextType {
   isSupervisor: boolean
   isOperational: boolean
   isCorretor: boolean
+  canAccessAdminAreas: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
   const [perfil, setPerfil] = useState<Perfil | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    let mounted = true;
-
-    // Função para inicializar o estado de forma mais rápida
-    const initAuth = async () => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       try {
-        // Tenta obter a sessão atual imediatamente
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        const currentUser = session?.user ?? null
+        setUser(currentUser)
         
-        if (!mounted) return;
-
-        if (initialSession) {
-          setSession(initialSession);
-          setUser(initialSession.user);
-          
-          // Liberamos o loading assim que temos o usuário básico
-          // O perfil será carregado em segundo plano
-          setIsLoading(false);
-
-          // Busca o perfil
-          const { data: perfilData } = await supabase
-            .from('perfis')
-            .select('*')
-            .eq('id', initialSession.user.id)
-            .single();
-          
-          if (mounted) setPerfil(perfilData);
+        if (currentUser) {
+          const metadata = currentUser.user_metadata
+          setPerfil({
+            id: currentUser.id,
+            email: currentUser.email || "",
+            nome: metadata.nome_completo || currentUser.email || "Usuário",
+            username: metadata.username,
+            role: metadata.funcao || "Corretor",
+            status: "Ativo",
+            permissoes: {},
+            avatar_url: metadata.avatar_url
+          })
         } else {
-          if (mounted) setIsLoading(false);
+          setPerfil(null)
         }
-      } catch (e) {
-        console.error("Erro na inicialização rápida do auth:", e);
-        if (mounted) setIsLoading(false);
+      } catch (err) {
+        console.error("Erro no AuthProvider onAuthStateChange:", err)
+      } finally {
+        setIsLoading(false)
       }
-    };
+    })
 
-    initAuth();
-
-    // Listener para mudanças de estado (login/logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-
-      console.log("Auth State Change:", event);
-      setSession(session);
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      
-      if (currentUser) {
-        try {
-          const { data: perfilData } = await supabase
-            .from('perfis')
-            .select('*')
-            .eq('id', currentUser.id)
-            .single();
-          
-          if (mounted) setPerfil(perfilData);
-        } catch (e) {
-          console.error("Erro ao carregar perfil no state change:", e);
-        }
-      } else {
-        if (mounted) setPerfil(null);
-      }
-      
-      if (mounted) setIsLoading(false);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
+    return () => subscription.unsubscribe()
+  }, [])
 
   const adminEmails = ['souendrionovo@gmail.com', 'acertofacilpromotoradecredito@gmail.com']
-  const isSpecialAdmin = user?.email ? adminEmails.includes(user.email) : false
-  
-  const isAdmin = isSpecialAdmin || perfil?.role === 'Administrador'
-  const isDeveloper = isSpecialAdmin || perfil?.role === 'Desenvolvedor'
-  const isSupervisor = isSpecialAdmin || perfil?.role === 'Supervisor'
-  const isOperational = isSpecialAdmin || perfil?.role === 'Operacional'
-  const isCorretor = isSpecialAdmin || perfil?.role === 'Corretor' || (!isAdmin && !!user)
+  const isAdmin = user?.email ? adminEmails.includes(user.email) || perfil?.role === 'Administrador' : false
+  const isDeveloper = isAdmin || perfil?.role === 'Desenvolvedor'
+  const isSupervisor = isAdmin || perfil?.role === 'Supervisor'
+  const isOperational = isAdmin || perfil?.role === 'Operacional'
+  const isCorretor = perfil?.role === 'Corretor' || (!isAdmin && !!user && !perfil?.role)
+  const canAccessAdminAreas = isAdmin || isDeveloper
 
   return (
     <AuthContext.Provider value={{ 
       user, 
-      session,
       perfil, 
       isLoading, 
       isAdmin, 
       isDeveloper,
       isSupervisor,
       isOperational,
-      isCorretor 
+      isCorretor,
+      canAccessAdminAreas
     }}>
       {children}
     </AuthContext.Provider>

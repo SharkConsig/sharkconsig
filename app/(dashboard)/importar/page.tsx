@@ -6,7 +6,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
-import { toast } from "sonner"
 import { 
   Upload, 
   FileText, 
@@ -23,7 +22,6 @@ import {
 import { cn, normalizeText } from "@/lib/utils"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import Papa from "papaparse"
-import { useAuth } from "@/context/auth-context"
 
 interface Batch {
   id: string;
@@ -35,6 +33,8 @@ interface Batch {
   progresso?: number;
   erro?: string;
 }
+
+import { useAuth } from "@/context/auth-context"
 
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
   try {
@@ -60,7 +60,7 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Pr
 
 export default function ImportBatchPage() {
   const router = useRouter()
-  const { isAdmin, session, isLoading: authLoading } = useAuth()
+  const { canAccessAdminAreas, isLoading: authLoading } = useAuth()
   const [batchList, setBatchList] = useState<Batch[]>([]);
   const [totalBase, setTotalBase] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
@@ -74,14 +74,20 @@ export default function ImportBatchPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!authLoading && !isAdmin) {
+    if (!authLoading && !canAccessAdminAreas) {
       router.replace('/')
     }
-  }, [authLoading, isAdmin, router])
+  }, [authLoading, canAccessAdminAreas, router])
 
   const fetchBatches = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("Sem sessão ativa para buscar lotes.");
+        return;
+      }
+
       const { data, error } = await withRetry(async () => {
         return await supabase
           .from('lotes')
@@ -94,11 +100,11 @@ export default function ImportBatchPage() {
         console.warn("Erro ao buscar lotes:", error);
         return;
       }
-      setBatchList(data || []);
+      setBatchList((data as Batch[]) || []);
     } catch (err: unknown) {
       console.warn("Erro ao buscar lotes (retry failed):", err);
     }
-  }, [isSupabaseConfigured]);
+  }, []);
 
   const fetchTotalBase = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -108,7 +114,16 @@ export default function ImportBatchPage() {
 
     setIsRefreshingTotal(true);
     try {
-      console.log("Estado da Sessão (fetchTotalBase):", session ? `Logado como ${session.user.email}` : "Não logado");
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        console.warn("Estado da Sessão (fetchTotalBase): Não logado");
+        setIsRefreshingTotal(false);
+        return;
+      }
+
+      console.log("Estado da Sessão (fetchTotalBase):", `Logado como ${session.user.email}`);
+      console.log("Token JWT (Tamanho):", session.access_token.length);
 
       const { count, error } = await withRetry(async () => {
         return await supabase
@@ -133,16 +148,18 @@ export default function ImportBatchPage() {
     } finally {
       setIsRefreshingTotal(false);
     }
-  }, [isSupabaseConfigured]);
+  }, []);
 
   const handleRefreshTotal = () => {
     fetchTotalBase();
   };
 
   useEffect(() => {
-    fetchTotalBase();
-    fetchBatches();
-  }, [fetchTotalBase, fetchBatches]);
+    if (!authLoading && canAccessAdminAreas) {
+      fetchTotalBase();
+      fetchBatches();
+    }
+  }, [fetchTotalBase, fetchBatches, authLoading, canAccessAdminAreas]);
 
   const normalizeCPF = (cpf: string) => {
     if (!cpf) return "";
@@ -682,6 +699,9 @@ export default function ImportBatchPage() {
     }
 
     try {
+      const { data: { session } } = await withRetry(async () => {
+        return await supabase.auth.getSession();
+      });
       console.log("Sessão atual:", session ? `Usuário: ${session.user.email}` : "Nenhuma sessão encontrada");
       
       if (!session) {
@@ -877,7 +897,7 @@ export default function ImportBatchPage() {
       });
     } catch (err: any) {
       console.error("Erro inesperado na importação:", err);
-      toast.error(`Erro inesperado: ${err.message}`);
+      alert(`Erro inesperado: ${err.message}`);
       setIsImporting(false);
     }
   };
