@@ -10,21 +10,17 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
-  Download,
   Users,
   Calendar,
   MoreVertical,
   Loader2,
   Info,
-  X
+  Download
 } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { normalizeText } from "@/lib/utils"
 import { useState, useEffect, useCallback } from "react"
-import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
-import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
+import { supabase } from "@/lib/supabase"
 
 import { useAuth } from "@/context/auth-context"
 
@@ -57,278 +53,333 @@ interface Campaign {
 }
 
 export default function CampaignsPage() {
-  const router = useRouter()
   const { canAccessAdminAreas, isLoading: authLoading } = useAuth()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [exportProgress, setExportProgress] = useState<{current: number, total: number} | null>(null)
 
   const fetchCampaigns = useCallback(async () => {
-    if (!isSupabaseConfigured || !canAccessAdminAreas) return
     setIsLoading(true)
     setError(null)
     try {
-      const { data, error: supabaseError } = await supabase
+      const { data, error: fetchError } = await supabase
         .from('campanhas')
         .select('*')
         .order('created_at', { ascending: false })
 
-      if (supabaseError) {
-        console.error("Erro ao buscar campanhas:", supabaseError.message || supabaseError)
-        setError(supabaseError.message)
-      } else {
-        setCampaigns(data || [])
-      }
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error("Erro inesperado:", error.message || error)
-      setError(error.message || "Ocorreu um erro inesperado.")
+      if (fetchError) throw fetchError
+      setCampaigns(data || [])
+    } catch (err: any) {
+      console.error("Erro ao buscar campanhas:", err)
+      setError(err.message || "Ocorreu um erro ao carregar as campanhas.")
     } finally {
       setIsLoading(false)
     }
-  }, [canAccessAdminAreas])
+  }, [])
 
   useEffect(() => {
-    if (!authLoading && !canAccessAdminAreas) {
-      router.replace('/')
-      return
+    if (!authLoading && canAccessAdminAreas) {
+      fetchCampaigns()
     }
-    fetchCampaigns()
-  }, [authLoading, canAccessAdminAreas, router, fetchCampaigns])
+  }, [authLoading, canAccessAdminAreas, fetchCampaigns])
+
+  const [isExporting, setIsExporting] = useState<string | null>(null)
+  const [exportProgress, setExportProgress] = useState(0)
 
   const parseSafeNumber = (val: string) => {
-    if (!val || typeof val !== 'string') return NaN;
-    const cleaned = val.replace(/\./g, '').replace(',', '.');
-    const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? NaN : parsed;
+    if (!val) return null;
+    let clean = val.replace(/[R$\s]/g, "");
+    
+    // Se houver vírgula e ponto, assumimos padrão BR (ponto milhar, vírgula decimal): 1.000,00 -> 1000.00
+    if (clean.includes(",") && clean.includes(".")) {
+      clean = clean.replace(/\./g, "").replace(",", ".");
+    } 
+    // Se houver apenas vírgula: 1000,00 -> 1000.00
+    else if (clean.includes(",")) {
+      clean = clean.replace(",", ".");
+    }
+    
+    const num = parseFloat(clean);
+    return isNaN(num) ? null : num;
   };
 
   const handleExport = async (campaign: Campaign) => {
     if (isExporting) return
-    const filters = campaign.filtros
-    setIsExporting(true)
+    setIsExporting(campaign.id)
+    setExportProgress(0)
     
     try {
-      const orgaoCodes = (filters.orgaos || []).flatMap((name: string) => {
-        if (name === "Todos") return [];
-        return Object.entries(ORGAOS_MAPPING)
-          .filter(([, val]) => val === name)
-          .map(([code]) => code);
-      });
+      const filters = campaign.filtros
+      const hasItemFilters = (filters.loanBanks?.length || 0) > 0 || 
+                          (filters.cardBanks?.length || 0) > 0 || 
+                          filters.loanPrazoMin !== "" || 
+                          filters.loanPrazoMax !== "";
 
-      const hasOrgaoFilter = orgaoCodes.length > 0;
-      const hasSituacaoFilter = filters.situacoes?.length > 0 && !filters.situacoes.includes("Todos");
-      const hasRegimeFilter = filters.regimes?.length > 0 && !filters.regimes.includes("Todos");
-      const hasUfFilter = filters.ufs?.length > 0 && !filters.ufs.includes("Todos");
-
-      const mMin = parseSafeNumber(filters.margemMin);
-      const mMax = parseSafeNumber(filters.margemMax);
-      const hasMargemFilter = !isNaN(mMin) || !isNaN(mMax);
-
-      const sMin = parseSafeNumber(filters.saldoMin);
-      const sMax = parseSafeNumber(filters.saldoMax);
-      const hasSaldoFilter = !isNaN(sMin) || !isNaN(sMax);
-
-      const cmMin = parseSafeNumber(filters.cardMargemMin);
-      const hasCardMargemFilter = !isNaN(cmMin);
-
-      const cbMin = parseSafeNumber(filters.cardBeneficioMin);
-      const hasCardBeneficioFilter = !isNaN(cbMin);
-
-      const hasLoanBankFilter = filters.loanBanks?.length > 0 && !filters.loanBanks.includes("Todos");
-      const lpMin = parseInt(filters.loanPrazoMin);
-      const lpMax = parseInt(filters.loanPrazoMax);
-      const hasLoanPrazoFilter = !isNaN(lpMin) || !isNaN(lpMax);
-
-      const hasCardTypeFilter = filters.cardTypes?.length > 0 && !filters.cardTypes.includes("Todos");
-      const hasCardBankFilter = filters.cardBanks?.length > 0 && !filters.cardBanks.includes("Todos");
-
-      const hasInstituidoresFilter = hasMargemFilter || hasSaldoFilter || hasCardMargemFilter || hasCardBeneficioFilter;
-      const hasItensCreditoFilter = hasLoanBankFilter || hasLoanPrazoFilter || hasCardTypeFilter || hasCardBankFilter;
-      const hasMatriculasFilter = hasOrgaoFilter || hasSituacaoFilter || hasRegimeFilter || hasUfFilter || hasInstituidoresFilter || hasItensCreditoFilter;
-
-      // Phase 1: Fetch matching CPFs first (much faster)
-      let matchingCpfs: string[] = [];
-      const MAX_TOTAL_RECORDS = 1000000;
-      const FETCH_BATCH_SIZE = 1000;
+      const allCsvRows: string[] = []
+      const uniqueRowsKeys = new Set()
       
-      setExportProgress({ current: 0, total: campaign.publico_estimado || 0 });
+      let page = 0
+      const pageSize = 1000 
+      let hasMore = true
+
+      // ESTRATÉGIA OTIMIZADA: Escolhemos o ponto de entrada mais seletivo
+      const hasMatriculaFilters = (filters.orgaos?.length || 0) > 0 || 
+                                 (filters.situacoes?.length || 0) > 0 || 
+                                 (filters.regimes?.length || 0) > 0 || 
+                                 (filters.ufs?.length || 0) > 0;
       
-      let selectStr = 'cpf';
-      if (hasMatriculasFilter) {
-        if (hasItensCreditoFilter) {
-          selectStr = 'cpf, matriculas!inner(instituidores!inner(itens_credito!inner()))';
-        } else if (hasInstituidoresFilter) {
-          selectStr = 'cpf, matriculas!inner(instituidores!inner())';
+      const hasFinanceFilters = filters.margemMin || filters.margemMax || 
+                               filters.saldoMin || filters.saldoMax || 
+                               filters.cardMargemMin || filters.cardBeneficioMin ||
+                               (filters.cardTypes?.length || 0) > 0;
+
+      const hasAgeFilters = !!(filters.idadeMin || filters.idadeMax);
+
+      // Se SÓ houver filtro de idade, começamos pela tabela 'clientes' (menor volume)
+      // Se houver qualquer filtro de vínculo ou financeiro, começamos por 'matriculas'
+      const baseTable = (hasMatriculaFilters || hasFinanceFilters || hasItemFilters) ? 'matriculas' : 'clientes';
+      const cpfColumn = baseTable === 'matriculas' ? 'cliente_cpf' : 'cpf';
+
+      while (hasMore) {
+        const from = page * pageSize
+        const to = from + pageSize - 1
+
+        let selectStr = cpfColumn;
+        if (baseTable === 'matriculas') {
+          if (hasAgeFilters) selectStr += ', clientes!inner(cpf)'
+          if (hasFinanceFilters || hasItemFilters) {
+            selectStr += `, instituidores!inner(id${hasItemFilters ? ', itens_credito!inner(id)' : ''})`
+          }
         } else {
-          selectStr = 'cpf, matriculas!inner()';
+          // Se base for clientes e houver outros filtros
+          if (hasMatriculaFilters || hasFinanceFilters || hasItemFilters) {
+             selectStr += `, matriculas!inner(id${hasFinanceFilters || hasItemFilters ? `, instituidores!inner(id${hasItemFilters ? ', itens_credito!inner(id)' : ''})` : ''})`
+          }
         }
-      }
 
-      let offset = 0;
-      let hasMore = true;
-      const uniqueCpfs = new Set<string>();
-
-      while (hasMore && uniqueCpfs.size < MAX_TOTAL_RECORDS) {
         let cpfQuery = supabase
-          .from('clientes')
+          .from(baseTable)
           .select(selectStr)
-          .range(offset, offset + FETCH_BATCH_SIZE - 1);
+          .range(from, to)
 
-        // Apply filters to cpfQuery (same filters as before)
-        if (filters.idadeMin || filters.idadeMax) {
-          const today = new Date();
-          if (filters.idadeMin) {
-            const minAge = parseInt(filters.idadeMin);
-            if (!isNaN(minAge)) {
-              const minDate = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
-              cpfQuery = cpfQuery.lte('data_nascimento', minDate.toISOString().split('T')[0]);
-            }
-          }
-          if (filters.idadeMax) {
-            const maxAge = parseInt(filters.idadeMax);
-            if (!isNaN(maxAge)) {
-              const maxDate = new Date(today.getFullYear() - (maxAge + 1), today.getMonth(), today.getDate() + 1);
-              cpfQuery = cpfQuery.gte('data_nascimento', maxDate.toISOString().split('T')[0]);
-            }
-          }
+        // Aplicação Dinâmica de Filtros
+        // 1. Filtros de Matrícula
+        const matriculaPrefix = baseTable === 'matriculas' ? '' : 'matriculas.'
+        if (filters.orgaos?.length > 0) {
+          const codeFilters = Object.entries(ORGAOS_MAPPING)
+            .filter(([, name]) => filters.orgaos.includes(name))
+            .map(([code]) => code);
+          if (codeFilters.length > 0) cpfQuery = cpfQuery.in(`${matriculaPrefix}orgao`, codeFilters);
         }
+        if (filters.situacoes?.length > 0) cpfQuery = cpfQuery.in(`${matriculaPrefix}situacao_funcional`, filters.situacoes)
+        if (filters.regimes?.length > 0) cpfQuery = cpfQuery.in(`${matriculaPrefix}regime_juridico`, filters.regimes)
+        if (filters.ufs?.length > 0) cpfQuery = cpfQuery.in(`${matriculaPrefix}uf`, filters.ufs)
 
-        if (hasOrgaoFilter) cpfQuery = cpfQuery.in('matriculas.orgao', orgaoCodes);
-        if (hasSituacaoFilter) cpfQuery = cpfQuery.in('matriculas.situacao_funcional', filters.situacoes);
-        if (hasRegimeFilter) cpfQuery = cpfQuery.in('matriculas.regime_juridico', filters.regimes);
-        if (hasUfFilter) cpfQuery = cpfQuery.in('matriculas.uf', filters.ufs);
-
-        if (hasInstituidoresFilter || hasItensCreditoFilter) {
-          if (hasMargemFilter) {
-            if (!isNaN(mMin)) cpfQuery = cpfQuery.gte('matriculas.instituidores.margem_35', mMin);
-            if (!isNaN(mMax)) cpfQuery = cpfQuery.lte('matriculas.instituidores.margem_35', mMax);
-          }
-          if (hasSaldoFilter) {
-            if (!isNaN(sMin)) cpfQuery = cpfQuery.gte('matriculas.instituidores.saldo_70', sMin);
-            if (!isNaN(sMax)) cpfQuery = cpfQuery.lte('matriculas.instituidores.saldo_70', sMax);
-          }
-          if (hasCardMargemFilter) cpfQuery = cpfQuery.gte('matriculas.instituidores.liquida_5', cmMin);
-          if (hasCardBeneficioFilter) cpfQuery = cpfQuery.gte('matriculas.instituidores.beneficio_liquida_5', cbMin);
-
-          if (hasItensCreditoFilter) {
-            if (hasLoanBankFilter) cpfQuery = cpfQuery.in('matriculas.instituidores.itens_credito.banco', filters.loanBanks);
-            if (hasLoanPrazoFilter) {
-              if (!isNaN(lpMin)) cpfQuery = cpfQuery.gte('matriculas.instituidores.itens_credito.prazo', lpMin);
-              if (!isNaN(lpMax)) cpfQuery = cpfQuery.lte('matriculas.instituidores.itens_credito.prazo', lpMax);
-            }
-            if (hasCardTypeFilter) {
-              const cardTypeCodes = filters.cardTypes.flatMap((type: string) => {
-                const normalizedType = normalizeText(type);
-                const category = normalizedType === "CARTAO CONSIGNADO" ? "CARTAO_CONSIGNADO" : "CARTAO_BENEFICIO";
-                const codes = Object.entries(CONTRATOS_TIPO_MAPPING)
-                  .filter(([, info]) => info.category === category)
-                  .map(([code]) => code);
-                
-                return [...codes, normalizedType];
-              });
-              cpfQuery = cpfQuery.in('matriculas.instituidores.itens_credito.tipo', cardTypeCodes);
-            }
-            if (hasCardBankFilter) cpfQuery = cpfQuery.in('matriculas.instituidores.itens_credito.banco', filters.cardBanks);
-          }
+        // 2. Filtros de Cliente (Idade)
+        const clientePrefix = baseTable === 'clientes' ? '' : 'clientes.'
+        if (filters.idadeMin) {
+          const d = new Date()
+          d.setFullYear(d.getFullYear() - parseInt(filters.idadeMin))
+          cpfQuery = cpfQuery.lte(`${clientePrefix}data_nascimento`, d.toISOString().split('T')[0])
         }
-
-        const { data: cpfData, error: cpfError } = await cpfQuery;
+        if (filters.idadeMax) {
+          const d = new Date()
+          d.setFullYear(d.getFullYear() - parseInt(filters.idadeMax) - 1)
+          d.setDate(d.getDate() + 1)
+          cpfQuery = cpfQuery.gte(`${clientePrefix}data_nascimento`, d.toISOString().split('T')[0])
+        }
         
-        if (cpfError) {
-          if (cpfError.message?.includes("timeout") || cpfError.code === "57014") {
-            throw new Error("A consulta demorou muito tempo. Tente aplicar mais filtros para reduzir o volume de dados.");
+        // 3. Filtros Financeiros (Margem e Saldo via Tabela Instituidores)
+        const instPrefix = baseTable === 'matriculas' ? 'instituidores.' : 'matriculas.instituidores.'
+        
+        // --- Filtro MARGEM 35% ---
+        const mMin = parseSafeNumber(filters.margemMin)
+        const mMax = parseSafeNumber(filters.margemMax)
+        if (mMin !== null || mMax !== null) {
+          // Excluir NULLs conforme solicitado
+          cpfQuery = cpfQuery.not(`${instPrefix}margem_35`, 'is', null);
+          
+          if (mMin !== null && mMax !== null) {
+            cpfQuery = cpfQuery.gte(`${instPrefix}margem_35`, mMin)
+                               .lte(`${instPrefix}margem_35`, mMax);
+          } else if (mMin !== null) {
+            cpfQuery = cpfQuery.gte(`${instPrefix}margem_35`, mMin);
+          } else if (mMax !== null) {
+            cpfQuery = cpfQuery.lte(`${instPrefix}margem_35`, mMax);
           }
-          throw cpfError;
         }
+
+        // --- Filtro SALDO 70% ---
+        const sMin = parseSafeNumber(filters.saldoMin)
+        const sMax = parseSafeNumber(filters.saldoMax)
+        if (sMin !== null || sMax !== null) {
+          // Excluir NULLs conforme solicitado
+          cpfQuery = cpfQuery.not(`${instPrefix}saldo_70`, 'is', null);
+          
+          if (sMin !== null && sMax !== null) {
+            cpfQuery = cpfQuery.gte(`${instPrefix}saldo_70`, sMin)
+                               .lte(`${instPrefix}saldo_70`, sMax);
+          } else if (sMin !== null) {
+            cpfQuery = cpfQuery.gte(`${instPrefix}saldo_70`, sMin);
+          } else if (sMax !== null) {
+            cpfQuery = cpfQuery.lte(`${instPrefix}saldo_70`, sMax);
+          }
+        }
+        
+        // --- Filtro CARTÕES (Líquida 5% e Benefício Líquida 5%) ---
+        const cMMin = parseSafeNumber(filters.cardMargemMin)
+        if (cMMin !== null) {
+          cpfQuery = cpfQuery.not(`${instPrefix}liquida_5`, 'is', null)
+                             .gte(`${instPrefix}liquida_5`, cMMin)
+        }
+        const cBMin = parseSafeNumber(filters.cardBeneficioMin)
+        if (cBMin !== null) {
+          cpfQuery = cpfQuery.not(`${instPrefix}beneficio_liquida_5`, 'is', null)
+                             .gte(`${instPrefix}beneficio_liquida_5`, cBMin)
+        }
+
+        // --- Lógica de Botões de Cartão (Consignado e Benefício) ---
+        const cardTypes = filters.cardTypes || [];
+        const isCardBinaryActive = cardTypes.includes('__ACTIVE__');
+        
+        if (isCardBinaryActive) {
+          const isConsignadoSelected = cardTypes.includes("CARTÃO CONSIGNADO");
+          const isBeneficioSelected = cardTypes.includes("CARTÃO BENEFÍCIO");
+          const fTable = instPrefix.endsWith('.') ? instPrefix.slice(0, -1) : instPrefix;
+
+          if (isConsignadoSelected) {
+            cpfQuery = cpfQuery.not(`${instPrefix}utilizada_5`, 'is', null)
+                               .neq(`${instPrefix}utilizada_5`, 0);
+          } else {
+            cpfQuery = cpfQuery.or(`utilizada_5.eq.0,utilizada_5.is.null`, { foreignTable: fTable });
+          }
+
+          if (isBeneficioSelected) {
+            cpfQuery = cpfQuery.not(`${instPrefix}beneficio_utilizada_5`, 'is', null)
+                               .neq(`${instPrefix}beneficio_utilizada_5`, 0);
+          } else {
+            cpfQuery = cpfQuery.or(`beneficio_utilizada_5.eq.0,beneficio_utilizada_5.is.null`, { foreignTable: fTable });
+          }
+        }
+
+        if (hasItemFilters) {
+          const itemPrefix = `${instPrefix}itens_credito.`
+          if (filters.loanBanks?.length > 0) cpfQuery = cpfQuery.in(`${itemPrefix}banco`, filters.loanBanks)
+          if (filters.cardBanks?.length > 0) cpfQuery = cpfQuery.in(`${itemPrefix}banco`, filters.cardBanks)
+          if (filters.loanPrazoMin) cpfQuery = cpfQuery.gte(`${itemPrefix}prazo`, parseInt(filters.loanPrazoMin))
+          if (filters.loanPrazoMax) cpfQuery = cpfQuery.lte(`${itemPrefix}prazo`, parseInt(filters.loanPrazoMax))
+        }
+
+        const { data: cpfData, error: cpfError } = await cpfQuery
+        if (cpfError) throw cpfError
 
         if (!cpfData || cpfData.length === 0) {
-          hasMore = false;
+          hasMore = false
         } else {
-          cpfData.forEach((item: Record<string, unknown>) => uniqueCpfs.add(String(item.cpf)));
-          offset += FETCH_BATCH_SIZE;
-          if (cpfData.length < FETCH_BATCH_SIZE) hasMore = false;
-          
-          setExportProgress({ current: uniqueCpfs.size, total: campaign.publico_estimado || uniqueCpfs.size });
+          // Passo 2: Buscar Dados Detalhados por CPF
+          // Atuamos SEMPRE somente nos CPFs filtrados na etapa anterior
+          const cpfsInBatch = Array.from(new Set(cpfData.map((item: any) => item[cpfColumn])))
+            
+            const { data: fullData, error: fullError } = await supabase
+              .from('clientes')
+              .select(`
+                cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3,
+                matriculas (
+                  numero_matricula, orgao, situacao_funcional, salario, regime_juridico, uf,
+                  instituidores (
+                    nome, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5
+                  )
+                )
+              `)
+              .in('cpf', cpfsInBatch)
+
+            if (fullError) throw fullError
+
+            // Passo 3: Montar linhas do CSV
+            fullData?.forEach((client: any) => {
+              client.matriculas?.forEach((matricula: any) => {
+                matricula.instituidores?.forEach((inst: any) => {
+                  const key = `${client.cpf}_${matricula.numero_matricula}_${inst.nome}`
+                  if (uniqueRowsKeys.has(key)) return
+                  uniqueRowsKeys.add(key)
+
+                  const row = [
+                    client.cpf,
+                    client.nome,
+                    client.data_nascimento || "",
+                    client.telefone_1 || "",
+                    client.telefone_2 || "",
+                    client.telefone_3 || "",
+                    matricula.numero_matricula || "",
+                    matricula.orgao || "",
+                    matricula.situacao_funcional || "",
+                    matricula.salario || 0,
+                    inst.nome || "",
+                    matricula.regime_juridico || "",
+                    matricula.uf || "",
+                    inst.saldo_70 || 0,
+                    inst.margem_35 || 0,
+                    inst.bruta_5 || 0,
+                    inst.utilizada_5 || 0,
+                    inst.liquida_5 || 0,
+                    inst.beneficio_bruta_5 || 0,
+                    inst.beneficio_utilizada_5 || 0,
+                    inst.beneficio_liquida_5 || 0
+                  ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")
+                  
+                  allCsvRows.push(row)
+                })
+              })
+            })
+
+            if (cpfData.length < pageSize) {
+              hasMore = false
+            } else {
+              page++
+            }
+            
+            const countForProgress = campaign.publico_estimado || 1
+            const progress = Math.min(Math.round((allCsvRows.length / countForProgress) * 100), 99)
+            setExportProgress(progress)
+          }
+
+          if (allCsvRows.length >= 1000000) hasMore = false
         }
+
+      if (allCsvRows.length === 0) {
+        alert("Nenhum dado encontrado para esta campanha.")
+        return
       }
 
-      matchingCpfs = Array.from(uniqueCpfs);
-
-      if (matchingCpfs.length === 0) {
-        alert("Nenhum cliente encontrado com os filtros aplicados.");
-        return;
-      }
-
-      // Phase 2: Fetch full details for the matching CPFs in batches
-      const csvRows: string[] = [];
-      const BATCH_SIZE = 500;
+      setExportProgress(100)
+      const headers = [
+        "cpf", "nome", "data_de_nascimento", "telefone_1", "telefone_2", "telefone_3",
+        "matricula", "orgao", "situacao_funcional", "salario", "instituidor", "regime_juridico", "uf",
+        "saldo_70%", "margem_35%", "bruta_5", "utilizada_5", "liquida_5", "beneficio_bruta_5", "beneficio_utilizada_5", "beneficio_liquida_5"
+      ]
       
-      for (let i = 0; i < matchingCpfs.length; i += BATCH_SIZE) {
-        const batch = matchingCpfs.slice(i, i + BATCH_SIZE);
-        
-        setExportProgress({ current: i, total: matchingCpfs.length });
+      const csvContent = [headers.join(","), ...allCsvRows].join("\n")
+      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement("a")
+      const url = URL.createObjectURL(blob)
+      link.setAttribute("href", url)
+      link.setAttribute("download", `campanha_${campaign.nome.toLowerCase().replace(/\s+/g, '_')}_${new Date().getTime()}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
 
-        // Pequeno delay entre batches
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-
-        const { data: batchData, error: batchError } = await supabase
-          .from('clientes')
-          .select('cpf, nome, telefone_1, telefone_2, telefone_3')
-          .in('cpf', batch);
-
-        if (batchError) {
-          console.warn("Erro ao buscar batch de detalhes:", batchError);
-          continue;
-        }
-
-        if (batchData) {
-          const batchRows = (batchData as any[]).map(c => {
-            return [
-              c.cpf,
-              `"${c.nome || ''}"`,
-              c.telefone_1 || "",
-              c.telefone_2 || "",
-              c.telefone_3 || ""
-            ].join(",")
-          });
-          csvRows.push(...batchRows);
-        }
-      }
-
-      if (csvRows.length > 0) {
-        setExportProgress({ current: matchingCpfs.length, total: matchingCpfs.length });
-        const headers = "cpf,nome,telefone 1,telefone 2,telefone 3\n"
-        const blob = new Blob([headers + csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' })
-        const link = document.createElement("a")
-        const url = URL.createObjectURL(blob)
-        link.setAttribute("href", url)
-        link.setAttribute("download", `campanha_${campaign.nome.replace(/\s+/g, '_')}.csv`)
-        link.style.visibility = 'hidden'
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-      }
-    } catch (err: unknown) {
-      console.error("Erro detalhado ao exportar:", err)
-      let errorMessage = "Erro desconhecido";
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      } else if (typeof err === 'object' && err !== null) {
-        const errorObj = err as Record<string, unknown>;
-        errorMessage = (errorObj.message as string) || (errorObj.details as string) || (errorObj.hint as string) || JSON.stringify(err);
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      }
-      alert(`Erro ao exportar dados: ${errorMessage}`)
+    } catch (err: any) {
+      console.error("ERRO DETALHADO NA EXPORTAÇÃO:", {
+        message: err.message,
+        details: err.details,
+        hint: err.hint,
+        code: err.code,
+        fullError: err
+      })
+      alert(`Erro ao exportar campanha: ${err.message || "Verifique o console para detalhes ou tente novamente."}`)
     } finally {
-      setIsExporting(false)
-      setExportProgress(null)
+      setIsExporting(null)
     }
   }
 
@@ -341,42 +392,7 @@ export default function CampaignsPage() {
     <div className="flex-1 flex flex-col relative">
       <Header title="MINHAS CAMPANHAS" />
       
-      {exportProgress && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[100] flex items-center justify-center">
-          <Card className="w-full max-w-xs border-slate-200 shadow-2xl animate-in fade-in zoom-in duration-300 relative">
-            <button 
-              onClick={() => setExportProgress(null)}
-              className="absolute top-2 right-2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <CardContent className="p-6 flex flex-col items-center gap-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                <Loader2 className="w-6 h-6 text-primary animate-spin" />
-              </div>
-              <div className="text-center space-y-1">
-                <p className="text-[11px] font-bold text-slate-900 uppercase tracking-widest">Exportando Dados</p>
-                <p className="text-[10px] text-slate-500 font-medium">Por favor, aguarde enquanto processamos os registros.</p>
-              </div>
-              <div className="w-full space-y-2">
-                <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                  <span>Progresso</span>
-                  <span>{Math.round((exportProgress.current / exportProgress.total) * 100)}%</span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-primary transition-all duration-300 ease-out"
-                    style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
-                  />
-                </div>
-                <p className="text-center text-[9px] font-mono text-slate-400">
-                  {exportProgress.current.toLocaleString('pt-BR')} / {exportProgress.total.toLocaleString('pt-BR')}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Modal de exportação removido para nova implementação */}
       
       <div className="p-4 lg:p-8 space-y-8 max-w-[1400px] mx-auto w-full">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
@@ -487,17 +503,34 @@ export default function CampaignsPage() {
                               <div className="flex items-center justify-end gap-2">
                                 <Button 
                                   onClick={() => handleExport(campaign)}
-                                  disabled={isExporting}
                                   variant="ghost" 
                                   size="sm" 
-                                  className="h-8 px-3 text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-primary hover:bg-primary/5 disabled:opacity-30"
+                                  disabled={isExporting !== null}
+                                  className={`h-8 px-3 text-[9px] font-bold uppercase tracking-widest transition-colors ${
+                                    isExporting === campaign.id 
+                                      ? "text-primary bg-primary/5" 
+                                      : "text-slate-400 hover:text-primary hover:bg-primary/5"
+                                  }`}
                                 >
-                                  {isExporting ? (
-                                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                  {isExporting === campaign.id ? (
+                                    <div className="flex flex-col items-end gap-1 min-w-[100px]">
+                                      <div className="flex items-center gap-2">
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        <span className="text-[9px]">{exportProgress}%</span>
+                                      </div>
+                                      <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                                        <div 
+                                          className="h-full bg-primary transition-all duration-300" 
+                                          style={{ width: `${exportProgress}%` }}
+                                        />
+                                      </div>
+                                    </div>
                                   ) : (
-                                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                                    <>
+                                      <Download className="w-3 h-3 mr-2" />
+                                      Exportar
+                                    </>
                                   )}
-                                  Exportar
                                 </Button>
                                 <Button variant="ghost" size="icon" className="w-8 h-8 text-slate-300 hover:text-slate-600">
                                   <MoreVertical className="w-4 h-4" />

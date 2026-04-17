@@ -13,17 +13,15 @@ import {
   Landmark,
   CreditCard,
   Check,
-  Download,
   Loader2,
   Users,
   X
 } from "lucide-react"
-import { cn, normalizeText } from "@/lib/utils"
-import { useState, useEffect, useRef } from "react"
-import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { cn } from "@/lib/utils"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
-import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
+import { supabase } from "@/lib/supabase"
 
 const orgaoOptions = Array.from(new Set(Object.values(ORGAOS_MAPPING)))
   .filter(name => name && name.trim() !== "")
@@ -91,7 +89,7 @@ export default function NewCampaignPage() {
     margemMin: "",
     margemMax: "",
     saldoMin: "",
-    saldoMax: "",
+    saldoMax: "" as string,
     loanBanks: [] as string[],
     loanPrazoMin: "",
     loanPrazoMax: "",
@@ -103,8 +101,6 @@ export default function NewCampaignPage() {
     idadeMax: "",
   })
 
-  const abortControllerRef = useRef<AbortController | null>(null)
-
   useEffect(() => {
     if (!authLoading && !canAccessAdminAreas) {
       router.replace('/')
@@ -115,7 +111,6 @@ export default function NewCampaignPage() {
   const [estimatedAudience, setEstimatedAudience] = useState(0)
   const [campaignName, setCampaignName] = useState("")
   const [isCreating, setIsCreating] = useState(false)
-  const [exportProgress, setExportProgress] = useState<{current: number, total: number} | null>(null)
   const [loanBanksList, setLoanBanksList] = useState<string[]>([
     "BANCO BMG", "BANCO DO BRASIL", "BANCO PAN", "BANCO SANTANDER", 
     "BANCO SEGURO", "BANRISUL", "BRB FINANCEIRA", "BANCO BRB", 
@@ -126,28 +121,15 @@ export default function NewCampaignPage() {
   ])
 
   useEffect(() => {
-    const fetchBanks = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('itens_credito')
-          .select('banco')
-          .not('banco', 'is', null);
-        
-        if (error) throw error;
-        
-        if (data) {
-          const dbBanks = data.map(item => item.banco).filter(Boolean) as string[];
-          setLoanBanksList(prev => {
-            const combined = new Set([...prev, ...dbBanks]);
-            return Array.from(combined).sort();
-          });
-        }
-      } catch (err) {
-        console.error("Erro ao buscar bancos:", err);
-      }
-    };
-
-    fetchBanks();
+    // Busca de bancos removida para nova implementação
+    setLoanBanksList([
+      "BANCO BMG", "BANCO DO BRASIL", "BANCO PAN", "BANCO SANTANDER", 
+      "BANCO SEGURO", "BANRISUL", "BRB FINANCEIRA", "BANCO BRB", 
+      "CAIXA ECONOMICA FEDERAL", "CAPITAL CONSIG", "BANCO DAYCOVAL", 
+      "BANCO DIGIMAIS", "BANCO DIGIO", "EAGLE", "BANCO ITAU CONSIGNADO", 
+      "BANCO ITAU", "MEUCASH", "NEOCREDITO", "NUBANK", "PARANA BANCO", 
+      "SABEMI", "BANCO SAFRA", "XNBANK", "BANCO C6", "BANCO BRADESCO"
+    ])
   }, []);
 
   const hasActiveFilters = () => {
@@ -187,22 +169,47 @@ export default function NewCampaignPage() {
       const next = current.includes(value)
         ? current.filter(v => v !== value)
         : [...current, value]
+      
+      // Se for cardTypes, garantir o marcador de ativação da lógica binária
+      if (category === 'cardTypes' && !next.includes('__ACTIVE__')) {
+        next.push('__ACTIVE__');
+      }
+      
       return { ...prev, [category]: next }
     })
   }
 
   const selectAll = (category: keyof typeof filters, options: string[]) => {
-    setFilters(prev => ({
-      ...prev,
-      [category]: Array.from(new Set([...(prev[category] as string[]), ...options]))
-    }))
+    setFilters(prev => {
+      const next = Array.from(new Set([...(prev[category] as string[]), ...options]));
+      
+      // Se for cardTypes, garantir o marcador de ativação
+      if (category === 'cardTypes' && !next.includes('__ACTIVE__')) {
+        next.push('__ACTIVE__');
+      }
+      
+      return {
+        ...prev,
+        [category]: next
+      }
+    })
   }
 
   const clearAll = (category: keyof typeof filters, options: string[]) => {
-    setFilters(prev => ({
-      ...prev,
-      [category]: (prev[category] as string[]).filter(v => !options.includes(v))
-    }))
+    setFilters(prev => {
+      const current = prev[category] as string[]
+      let next = current.filter(v => !options.includes(v));
+      
+      // Se for cardTypes, também limpamos o marcador se estivermos limpando tudo
+      if (category === 'cardTypes') {
+        next = next.filter(v => v !== '__ACTIVE__');
+      }
+      
+      return {
+        ...prev,
+        [category]: next
+      }
+    })
   }
 
   const handleSearch = (id: string, query: string) => {
@@ -237,469 +244,259 @@ export default function NewCampaignPage() {
   }
 
   const parseSafeNumber = (val: string) => {
-    if (!val) return NaN;
-    // Remove R$, spaces and dots (thousands separator), then replace comma with dot
-    const clean = val.replace(/[R$\s.]/g, "").replace(",", ".");
-    return parseFloat(clean);
+    if (!val) return null;
+    let clean = val.replace(/[R$\s]/g, "");
+    
+    // Se houver vírgula e ponto, assumimos padrão BR (ponto milhar, vírgula decimal): 1.000,00 -> 1000.00
+    if (clean.includes(",") && clean.includes(".")) {
+      clean = clean.replace(/\./g, "").replace(",", ".");
+    } 
+    // Se houver apenas vírgula: 1000,00 -> 1000.00
+    else if (clean.includes(",")) {
+      clean = clean.replace(",", ".");
+    }
+    // Se houver apenas ponto e não for milhar (ex: 1.000), tratamos como decimal: 2183.35 -> 2183.35
+    // Se o ponto estiver na posição de milhar e não houver mais nada, parseFloat lida bem ou tratamos.
+    // Na prática, se o usuário copiar do banco (ex: 2183.35), o parseFloat(2183.35) funciona.
+    
+    const num = parseFloat(clean);
+    return isNaN(num) ? null : num;
   };
 
   const calculateAudience = async () => {
-    if (!isSupabaseConfigured) return
+    if (!hasActiveFilters()) return;
     
-    // Aborta cálculo anterior se houver
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
-
-    setIsCalculating(true)
-    setEstimatedAudience(0)
-    
-    const controller = new AbortController()
-    abortControllerRef.current = controller
-
+    setIsCalculating(true);
     try {
-      // Build query
-      let query;
-      
-      console.log("Calculando audiência com filtros:", filters);
+      const { 
+        orgaos, situacoes, regimes, ufs, 
+        margemMin, margemMax, saldoMin, saldoMax, 
+        cardMargemMin, cardBeneficioMin,
+        loanBanks, cardBanks, loanPrazoMin, loanPrazoMax, cardTypes,
+        idadeMin, idadeMax 
+      } = filters;
 
-      const orgaoCodes = (filters.orgaos || []).flatMap(name => {
-        if (name === "Todos") return [];
-        return Object.entries(ORGAOS_MAPPING)
-          .filter(([, val]) => val === name)
-          .map(([code]) => code);
-      });
+      const hasMatriculaFilters = orgaos.length > 0 || situacoes.length > 0 || regimes.length > 0 || ufs.length > 0;
+      const hasInstituidorFilters = margemMin !== "" || margemMax !== "" || saldoMin !== "" || saldoMax !== "" || cardMargemMin !== "" || cardBeneficioMin !== "" || cardTypes.length > 0;
+      const hasItemFilters = loanBanks.length > 0 || cardBanks.length > 0 || loanPrazoMin !== "" || loanPrazoMax !== "";
 
-      const hasOrgaoFilter = orgaoCodes.length > 0;
-      const hasSituacaoFilter = filters.situacoes?.length > 0 && !filters.situacoes.includes("Todos");
-      const hasRegimeFilter = filters.regimes?.length > 0 && !filters.regimes.includes("Todos");
-      const hasUfFilter = filters.ufs?.length > 0 && !filters.ufs.includes("Todos");
-      
-      const mMin = parseSafeNumber(filters.margemMin);
-      const mMax = parseSafeNumber(filters.margemMax);
-      const hasMargemFilter = !isNaN(mMin) || !isNaN(mMax);
-
-      const sMin = parseSafeNumber(filters.saldoMin);
-      const sMax = parseSafeNumber(filters.saldoMax);
-      const hasSaldoFilter = !isNaN(sMin) || !isNaN(sMax);
-
-      const cmMin = parseSafeNumber(filters.cardMargemMin);
-      const hasCardMargemFilter = !isNaN(cmMin);
-
-      const cbMin = parseSafeNumber(filters.cardBeneficioMin);
-      const hasCardBeneficioFilter = !isNaN(cbMin);
-
-      const hasLoanBankFilter = filters.loanBanks?.length > 0 && !filters.loanBanks.includes("Todos");
-      const lpMin = parseInt(filters.loanPrazoMin);
-      const lpMax = parseInt(filters.loanPrazoMax);
-      const hasLoanPrazoFilter = !isNaN(lpMin) || !isNaN(lpMax);
-
-      const hasCardTypeFilter = filters.cardTypes?.length > 0 && !filters.cardTypes.includes("Todos");
-      const hasCardBankFilter = filters.cardBanks?.length > 0 && !filters.cardBanks.includes("Todos");
-
-      const hasInstituidoresFilter = hasMargemFilter || hasSaldoFilter || hasCardMargemFilter || hasCardBeneficioFilter;
-      const hasItensCreditoFilter = hasLoanBankFilter || hasLoanPrazoFilter || hasCardTypeFilter || hasCardBankFilter;
-      const hasMatriculasFilter = hasOrgaoFilter || hasSituacaoFilter || hasRegimeFilter || hasUfFilter || hasInstituidoresFilter || hasItensCreditoFilter;
-
-      if (hasMatriculasFilter) {
-        // Para filtrar por uma tabela relacionada e obter o count da tabela principal,
-        // usamos !inner no select. O uso de () vazio evita o retorno de colunas desnecessárias,
-        // reduzindo o payload e o tempo de processamento.
-        let selectStr = 'cpf, matriculas!inner()';
-        if (hasItensCreditoFilter) {
-          selectStr = 'cpf, matriculas!inner(instituidores!inner(itens_credito!inner()))';
-        } else if (hasInstituidoresFilter) {
-          selectStr = 'cpf, matriculas!inner(instituidores!inner())';
+      // ESTRATÉGIA OTIMIZADA:
+      // Ponto de entrada: clientes
+      // Joins dinâmicos dependendo dos filtros ativos - Foco em CPFs filtrados
+      const selectParts = ["cpf"];
+      if (hasMatriculaFilters || hasInstituidorFilters || hasItemFilters) {
+        const matriculaContent = ["id"]; 
+        if (hasInstituidorFilters || hasItemFilters) {
+          const instContent = ["id"];
+          if (hasItemFilters) {
+            instContent.push("itens_credito!inner(id)");
+          }
+          matriculaContent.push(`instituidores!inner(${instContent.join(",")})`);
         }
+        selectParts.push(`matriculas!inner(${matriculaContent.join(",")})`);
+      }
 
-        query = supabase
-          .from('clientes')
-          .select(selectStr, { count: 'exact', head: true });
+      const selectStr = selectParts.join(",");
+      let query = supabase.from('clientes').select(selectStr, { count: 'exact', head: true });
+
+      // 1. Filtro de IDADE (Tabela Clientes)
+      if (idadeMin) {
+        const ageMin = parseInt(idadeMin);
+        if (!isNaN(ageMin)) {
+          const d = new Date();
+          d.setFullYear(d.getFullYear() - ageMin);
+          const dateStr = d.toISOString().split('T')[0];
+          query = query.lte('data_nascimento', dateStr);
+        }
+      }
+      if (idadeMax) {
+        const ageMax = parseInt(idadeMax);
+        if (!isNaN(ageMax)) {
+          const d = new Date();
+          d.setFullYear(d.getFullYear() - ageMax - 1);
+          d.setDate(d.getDate() + 1);
+          const dateStr = d.toISOString().split('T')[0];
+          query = query.gte('data_nascimento', dateStr);
+        }
+      }
+
+      // 2. Filtros de Matrícula
+      if (hasMatriculaFilters) {
+        if (orgaos.length > 0) {
+          const codeFilters = Object.entries(ORGAOS_MAPPING)
+            .filter(([, name]) => orgaos.includes(name))
+            .map(([code]) => code);
+          if (codeFilters.length > 0) query = query.in('matriculas.orgao', codeFilters);
+        }
+        // Filtro SITUAÇÃO FUNCIONAL: Relaciona matriculas.situacao_funcional -> matriculas.cliente_cpf
+        // Conforme solicitado: Não é necessária conversão, pois os nomes batem com os valores da coluna.
+        if (situacoes.length > 0) query = query.in('matriculas.situacao_funcional', situacoes);
         
-        if (hasOrgaoFilter) query = query.in('matriculas.orgao', orgaoCodes);
-        if (hasSituacaoFilter) query = query.in('matriculas.situacao_funcional', filters.situacoes);
-        if (hasRegimeFilter) query = query.in('matriculas.regime_juridico', filters.regimes);
-        if (hasUfFilter) query = query.in('matriculas.uf', filters.ufs);
-
-        if (hasInstituidoresFilter || hasItensCreditoFilter) {
-          if (hasMargemFilter) {
-            if (!isNaN(mMin)) {
-              console.log("Aplicando margem_35 >= ", mMin, typeof mMin);
-              query = query.gte('matriculas.instituidores.margem_35', mMin);
-            }
-            if (!isNaN(mMax)) {
-              console.log("Aplicando margem_35 <= ", mMax, typeof mMax);
-              query = query.lte('matriculas.instituidores.margem_35', mMax);
-            }
-          }
-          if (hasSaldoFilter) {
-            if (!isNaN(sMin)) query = query.gte('matriculas.instituidores.saldo_70', sMin);
-            if (!isNaN(sMax)) query = query.lte('matriculas.instituidores.saldo_70', sMax);
-          }
-          if (hasCardMargemFilter) {
-            query = query.gte('matriculas.instituidores.liquida_5', cmMin);
-          }
-          if (hasCardBeneficioFilter) {
-            query = query.gte('matriculas.instituidores.beneficio_liquida_5', cbMin);
-          }
-
-          if (hasItensCreditoFilter) {
-            if (hasLoanBankFilter) query = query.in('matriculas.instituidores.itens_credito.banco', filters.loanBanks);
-            if (hasLoanPrazoFilter) {
-              if (!isNaN(lpMin)) query = query.gte('matriculas.instituidores.itens_credito.prazo', lpMin);
-              if (!isNaN(lpMax)) query = query.lte('matriculas.instituidores.itens_credito.prazo', lpMax);
-            }
-            if (hasCardTypeFilter) {
-              const cardTypeCodes = filters.cardTypes.flatMap(type => {
-                const normalizedType = normalizeText(type);
-                const category = normalizedType === "CARTAO CONSIGNADO" ? "CARTAO_CONSIGNADO" : "CARTAO_BENEFICIO";
-                const codes = Object.entries(CONTRATOS_TIPO_MAPPING)
-                  .filter(([, info]) => info.category === category)
-                  .map(([code]) => code);
-                
-                console.log(`Mapeando tipo "${type}" (categoria ${category}) para códigos:`, codes);
-                // Incluímos também o nome normalizado para cobrir casos onde o código não foi usado na importação
-                return [...codes, normalizedType];
-              });
-              console.log("Filtro cardTypes aplicado com valores:", cardTypeCodes);
-              query = query.in('matriculas.instituidores.itens_credito.tipo', cardTypeCodes);
-            }
-            if (hasCardBankFilter) query = query.in('matriculas.instituidores.itens_credito.banco', filters.cardBanks);
-          }
-        }
-      } else {
-        query = supabase
-          .from('clientes')
-          .select('cpf', { count: 'exact', head: true });
+        // Filtro REGIME JURÍDICO: Relaciona matriculas.regime_juridico -> matriculas.cliente_cpf
+        // Conforme solicitado: Não é necessária conversão, pois os nomes batem com os valores da coluna.
+        if (regimes.length > 0) query = query.in('matriculas.regime_juridico', regimes);
+        
+        // Filtro UF (ESTADO): Relaciona matriculas.uf -> matriculas.cliente_cpf
+        // Conforme solicitado: Não é necessária conversão, pois os nomes batem com os valores da coluna.
+        if (ufs.length > 0) query = query.in('matriculas.uf', ufs);
       }
 
-      // Filtro de Idade
-      if (filters.idadeMin || filters.idadeMax) {
-        const today = new Date();
-        if (filters.idadeMin) {
-          const minAge = parseInt(filters.idadeMin);
-          if (!isNaN(minAge)) {
-            const minDate = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
-            query = query.lte('data_nascimento', minDate.toISOString().split('T')[0]);
+      // 3. Filtros Financeiros (Margem e Saldo via Tabela Instituidores)
+      if (hasInstituidorFilters || hasItemFilters) {
+        // --- Filtro MARGEM 35% ---
+        // Consulta na coluna 'margem_35' (decimal/numeric) da tabela 'instituidores'
+        // Garantimos a conversão de texto para valores decimais antes da consulta ao banco
+        const mMin = parseSafeNumber(margemMin);
+        const mMax = parseSafeNumber(margemMax);
+
+        if (mMin !== null || mMax !== null) {
+          // Na tabela temos o valor NULL que não deve entrar no cáulo:
+          query = query.not('matriculas.instituidores.margem_35', 'is', null);
+
+          // Lógica de intervalo sugerida para garantir precisão decimal no SQL:
+          if (mMin !== null && mMax !== null) {
+            // Intervalo: entre minimo e maximo inclusivo
+            query = query.gte('matriculas.instituidores.margem_35', mMin)
+                         .lte('matriculas.instituidores.margem_35', mMax);
+          } else if (mMin !== null) {
+            // Só mínimo
+            query = query.gte('matriculas.instituidores.margem_35', mMin);
+          } else if (mMax !== null) {
+            // Só máximo
+            query = query.lte('matriculas.instituidores.margem_35', mMax);
           }
         }
-        if (filters.idadeMax) {
-          const maxAge = parseInt(filters.idadeMax);
-          if (!isNaN(maxAge)) {
-            const maxDate = new Date(today.getFullYear() - (maxAge + 1), today.getMonth(), today.getDate() + 1);
-            query = query.gte('data_nascimento', maxDate.toISOString().split('T')[0]);
+        
+        // --- Filtro SALDO 70% ---
+        // Garantimos a conversão de texto para valor decimal antes da consulta ao banco
+        const sMin = parseSafeNumber(saldoMin);
+        const sMax = parseSafeNumber(saldoMax);
+
+        if (sMin !== null || sMax !== null) {
+          // Excluir NULLs
+          query = query.not('matriculas.instituidores.saldo_70', 'is', null);
+
+          if (sMin !== null && sMax !== null) {
+            query = query.gte('matriculas.instituidores.saldo_70', sMin)
+                         .lte('matriculas.instituidores.saldo_70', sMax);
+          } else if (sMin !== null) {
+            query = query.gte('matriculas.instituidores.saldo_70', sMin);
+          } else if (sMax !== null) {
+            query = query.lte('matriculas.instituidores.saldo_70', sMax);
+          }
+        }
+        
+        // --- Filtro CARTÕES (Líquida 5% e Benefício Líquida 5%) ---
+        // Consulta nas colunas 'liquida_5' e 'beneficio_liquida_5' da tabela 'instituidores'
+        const cMMin = parseSafeNumber(cardMargemMin);
+        if (cMMin !== null) {
+          // Excluir NULLs
+          query = query.not('matriculas.instituidores.liquida_5', 'is', null);
+          query = query.gte('matriculas.instituidores.liquida_5', cMMin);
+        }
+
+        const cBMin = parseSafeNumber(cardBeneficioMin);
+        if (cBMin !== null) {
+          // Excluir NULLs
+          query = query.not('matriculas.instituidores.beneficio_liquida_5', 'is', null);
+          query = query.gte('matriculas.instituidores.beneficio_liquida_5', cBMin);
+        }
+
+        // --- Lógica de Botões de Cartão (Consignado e Benefício) ---
+        // Ativado se o usuário interagiu com os botões de tipo de cartão (marcador __ACTIVE__)
+        const isCardBinaryActive = cardTypes.includes('__ACTIVE__');
+        
+        if (isCardBinaryActive) {
+          const isConsignadoSelected = cardTypes.includes("CARTÃO CONSIGNADO");
+          const isBeneficioSelected = cardTypes.includes("CARTÃO BENEFÍCIO");
+
+          // Lógica Cartão Consignado: coluna utilizada_5
+          if (isConsignadoSelected) {
+            // Diferente de zero ou vazio
+            query = query.not('matriculas.instituidores.utilizada_5', 'is', null)
+                         .neq('matriculas.instituidores.utilizada_5', 0);
+          } else {
+            // Não selecionado: igual a zero ou vazio
+            query = query.or('utilizada_5.eq.0,utilizada_5.is.null', { foreignTable: 'matriculas.instituidores' });
+          }
+
+          // Lógica Cartão Benefício: coluna beneficio_utilizada_5
+          if (isBeneficioSelected) {
+            // Diferente de zero ou vazio
+            query = query.not('matriculas.instituidores.beneficio_utilizada_5', 'is', null)
+                         .neq('matriculas.instituidores.beneficio_utilizada_5', 0);
+          } else {
+            // Não selecionado: igual a zero ou vazio
+            query = query.or('beneficio_utilizada_5.eq.0,beneficio_utilizada_5.is.null', { foreignTable: 'matriculas.instituidores' });
+          }
+        }
+
+        // 4. Itens de Crédito
+        if (hasItemFilters) {
+          if (loanBanks.length > 0) query = query.in('matriculas.instituidores.itens_credito.banco', loanBanks);
+          if (cardBanks.length > 0) query = query.in('matriculas.instituidores.itens_credito.banco', cardBanks);
+          if (loanPrazoMin) {
+            const pMin = parseInt(loanPrazoMin);
+            if (!isNaN(pMin)) query = query.gte('matriculas.instituidores.itens_credito.prazo', pMin);
+          }
+          if (loanPrazoMax) {
+            const pMax = parseInt(loanPrazoMax);
+            if (!isNaN(pMax)) query = query.lte('matriculas.instituidores.itens_credito.prazo', pMax);
           }
         }
       }
 
-      const { count, error, status, statusText } = await query.abortSignal(controller.signal)
-      
+      const { count, error } = await query;
+
       if (error) {
         console.error("Erro retornado pelo Supabase:", error);
-        console.error("Status HTTP:", status, statusText);
         throw error;
       }
-      
-      setEstimatedAudience(count || 0)
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      
-      console.error("Erro ao calcular audiência. Objeto completo:", err);
-      
-      let errorMsg = "Erro desconhecido";
-      if (err instanceof Error) {
-        errorMsg = `${err.name}: ${err.message}`;
-        console.error("Stack trace:", err.stack);
-      } else if (typeof err === 'object' && err !== null) {
-        const e = err as any;
-        // Tenta extrair o máximo de informação possível do objeto de erro
-        const message = e.message || e.error_description || e.error || "";
-        const code = e.code || "";
-        const details = e.details || "";
-        const hint = e.hint || "";
-        
-        if (message || code || details) {
-          errorMsg = `[${code}] ${message} ${details ? `(${details})` : ""} ${hint ? `Dica: ${hint}` : ""}`.trim();
-        } else {
-          errorMsg = JSON.stringify(err);
-        }
-        
-        console.error("Detalhes do erro extraídos:", { message, code, details, hint, status: e.status });
-      } else {
-        errorMsg = String(err);
+      setEstimatedAudience(count || 0);
+    } catch (err: any) {
+      console.error("ERRO CRÍTICO NO CÁLCULO DE AUDIÊNCIA:", err);
+      // Log extra para o objeto se ele parecer vazio
+      if (err && typeof err === 'object' && Object.keys(err).length === 0) {
+        console.warn("O objeto de erro parece vazio. Isso pode indicar um erro de rede, timeout ou estrutura de join muito profunda.");
       }
-
-      if (errorMsg === "{}" || errorMsg === "[]") {
-        errorMsg = "Erro de banco de dados ou timeout. Verifique os filtros e tente novamente.";
-      }
-
-      alert(`Erro ao calcular audiência: ${errorMsg}`);
+      
       setEstimatedAudience(0);
+      alert(`Houve um erro ao processar os filtros: ${err.message || "Erro de conexão ou sintaxe no banco de dados. Verifique os campos informados."}`);
     } finally {
-      setIsCalculating(false)
+      setIsCalculating(false);
     }
-  }
+  };
 
   const handleCreateCampaign = async () => {
-    if (!campaignName || estimatedAudience === 0) {
-      alert("Por favor, defina um nome para a campanha e realize a busca do público.")
-      return
-    }
-    setIsCreating(true)
+    if (estimatedAudience === 0 || !campaignName) return;
     
+    setIsCreating(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      const { error } = await supabase
-        .from('campanhas')
-        .insert({
-          nome: campaignName,
-          filtros: filters,
-          publico_estimado: estimatedAudience,
-          user_id: session?.user?.id
-        })
-
-      if (error) throw error
-      
-      router.push("/campanhas")
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error("Erro ao criar campanha:", error)
-      alert(`Erro ao criar campanha: ${error.message}`)
-    } finally {
-      setIsCreating(false)
-    }
-  }
-
-  const handleExport = async () => {
-    if (estimatedAudience === 0) return
-    setIsCalculating(true)
-    
-    try {
-      const orgaoCodes = (filters.orgaos || []).flatMap(name => {
-        if (name === "Todos") return [];
-        return Object.entries(ORGAOS_MAPPING)
-          .filter(([, val]) => val === name)
-          .map(([code]) => code);
+      // Salvar na tabela 'campanhas'
+      // Guardamos apenas os metadados e os filtros para que a exportação seja feita na lista de campanhas
+      const { error: saveError } = await supabase.from('campanhas').insert({
+        nome: campaignName,
+        publico_estimado: estimatedAudience,
+        filtros: filters,
+        created_at: new Date().toISOString()
       });
 
-      const hasOrgaoFilter = orgaoCodes.length > 0;
-      const hasSituacaoFilter = filters.situacoes?.length > 0 && !filters.situacoes.includes("Todos");
-      const hasRegimeFilter = filters.regimes?.length > 0 && !filters.regimes.includes("Todos");
-      const hasUfFilter = filters.ufs?.length > 0 && !filters.ufs.includes("Todos");
+      if (saveError) throw saveError;
 
-      const mMin = parseSafeNumber(filters.margemMin);
-      const mMax = parseSafeNumber(filters.margemMax);
-      const hasMargemFilter = !isNaN(mMin) || !isNaN(mMax);
+      alert("Campanha criada com sucesso! Agora você pode exportá-la na lista de 'Minhas Campanhas'.");
+      router.push('/campanhas');
 
-      const sMin = parseSafeNumber(filters.saldoMin);
-      const sMax = parseSafeNumber(filters.saldoMax);
-      const hasSaldoFilter = !isNaN(sMin) || !isNaN(sMax);
-
-      const cmMin = parseSafeNumber(filters.cardMargemMin);
-      const hasCardMargemFilter = !isNaN(cmMin);
-
-      const cbMin = parseSafeNumber(filters.cardBeneficioMin);
-      const hasCardBeneficioFilter = !isNaN(cbMin);
-
-      const hasLoanBankFilter = filters.loanBanks?.length > 0 && !filters.loanBanks.includes("Todos");
-      const lpMin = parseInt(filters.loanPrazoMin);
-      const lpMax = parseInt(filters.loanPrazoMax);
-      const hasLoanPrazoFilter = !isNaN(lpMin) || !isNaN(lpMax);
-
-      const hasCardTypeFilter = filters.cardTypes?.length > 0 && !filters.cardTypes.includes("Todos");
-      const hasCardBankFilter = filters.cardBanks?.length > 0 && !filters.cardBanks.includes("Todos");
-
-      const hasInstituidoresFilter = hasMargemFilter || hasSaldoFilter || hasCardMargemFilter || hasCardBeneficioFilter;
-      const hasItensCreditoFilter = hasLoanBankFilter || hasLoanPrazoFilter || hasCardTypeFilter || hasCardBankFilter;
-      const hasMatriculasFilter = hasOrgaoFilter || hasSituacaoFilter || hasRegimeFilter || hasUfFilter || hasInstituidoresFilter || hasItensCreditoFilter;
-
-      // Phase 1: Fetch matching CPFs first (much faster)
-      let matchingCpfs: string[] = [];
-      const MAX_TOTAL_RECORDS = 1000000; // Aumentado para 1 milhão
-      const FETCH_BATCH_SIZE = 500; // Reduzido para evitar timeouts
-      
-      setExportProgress({ current: 0, total: estimatedAudience || 0 });
-      
-      let selectStr = 'cpf';
-      if (hasMatriculasFilter) {
-        if (hasItensCreditoFilter) {
-          selectStr = 'cpf, matriculas!inner(instituidores!inner(itens_credito!inner()))';
-        } else if (hasInstituidoresFilter) {
-          selectStr = 'cpf, matriculas!inner(instituidores!inner())';
-        } else {
-          selectStr = 'cpf, matriculas!inner()';
-        }
-      }
-
-      let offset = 0;
-      let hasMore = true;
-      const uniqueCpfs = new Set<string>();
-
-      while (hasMore && uniqueCpfs.size < MAX_TOTAL_RECORDS) {
-        const fetchBatch = async (retryCount = 0): Promise<Record<string, unknown>[]> => {
-          let cpfQuery = supabase
-            .from('clientes')
-            .select(selectStr)
-            .range(offset, offset + FETCH_BATCH_SIZE - 1);
-
-          // Apply filters to cpfQuery
-          if (filters.idadeMin || filters.idadeMax) {
-            const today = new Date();
-            if (filters.idadeMin) {
-              const minAge = parseInt(filters.idadeMin);
-              if (!isNaN(minAge)) {
-                const minDate = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
-                cpfQuery = cpfQuery.lte('data_nascimento', minDate.toISOString().split('T')[0]);
-              }
-            }
-            if (filters.idadeMax) {
-              const maxAge = parseInt(filters.idadeMax);
-              if (!isNaN(maxAge)) {
-                const maxDate = new Date(today.getFullYear() - (maxAge + 1), today.getMonth(), today.getDate() + 1);
-                cpfQuery = cpfQuery.gte('data_nascimento', maxDate.toISOString().split('T')[0]);
-              }
-            }
-          }
-
-          if (hasOrgaoFilter) cpfQuery = cpfQuery.in('matriculas.orgao', orgaoCodes);
-          if (hasSituacaoFilter) cpfQuery = cpfQuery.in('matriculas.situacao_funcional', filters.situacoes);
-          if (hasRegimeFilter) cpfQuery = cpfQuery.in('matriculas.regime_juridico', filters.regimes);
-          if (hasUfFilter) cpfQuery = cpfQuery.in('matriculas.uf', filters.ufs);
-
-          if (hasInstituidoresFilter || hasItensCreditoFilter) {
-            if (hasMargemFilter) {
-              if (!isNaN(mMin)) cpfQuery = cpfQuery.gte('matriculas.instituidores.margem_35', mMin);
-              if (!isNaN(mMax)) cpfQuery = cpfQuery.lte('matriculas.instituidores.margem_35', mMax);
-            }
-            if (hasSaldoFilter) {
-              if (!isNaN(sMin)) cpfQuery = cpfQuery.gte('matriculas.instituidores.saldo_70', sMin);
-              if (!isNaN(sMax)) cpfQuery = cpfQuery.lte('matriculas.instituidores.saldo_70', sMax);
-            }
-            if (hasCardMargemFilter) cpfQuery = cpfQuery.gte('matriculas.instituidores.liquida_5', cmMin);
-            if (hasCardBeneficioFilter) cpfQuery = cpfQuery.gte('matriculas.instituidores.beneficio_liquida_5', cbMin);
-
-            if (hasItensCreditoFilter) {
-              if (hasLoanBankFilter) cpfQuery = cpfQuery.in('matriculas.instituidores.itens_credito.banco', filters.loanBanks);
-              if (hasLoanPrazoFilter) {
-                if (!isNaN(lpMin)) cpfQuery = cpfQuery.gte('matriculas.instituidores.itens_credito.prazo', lpMin);
-                if (!isNaN(lpMax)) cpfQuery = cpfQuery.lte('matriculas.instituidores.itens_credito.prazo', lpMax);
-              }
-              if (hasCardTypeFilter) {
-                const cardTypeCodes = filters.cardTypes.flatMap(type => {
-                  const normalizedType = normalizeText(type);
-                  const category = normalizedType === "CARTAO CONSIGNADO" ? "CARTAO_CONSIGNADO" : "CARTAO_BENEFICIO";
-                  const codes = Object.entries(CONTRATOS_TIPO_MAPPING)
-                    .filter(([, info]) => info.category === category)
-                    .map(([code]) => code);
-                  
-                  return [...codes, normalizedType];
-                });
-                cpfQuery = cpfQuery.in('matriculas.instituidores.itens_credito.tipo', cardTypeCodes);
-              }
-              if (hasCardBankFilter) cpfQuery = cpfQuery.in('matriculas.instituidores.itens_credito.banco', filters.cardBanks);
-            }
-          }
-
-          const { data, error } = await cpfQuery;
-          
-          if (error) {
-            if ((error.message?.includes("timeout") || error.code === "57014") && retryCount < 2) {
-              console.warn(`[RETRY] Timeout na busca de CPFs, tentativa ${retryCount + 1}...`);
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              return fetchBatch(retryCount + 1);
-            }
-            throw error;
-          }
-          return data;
-        };
-
-        const cpfData = await fetchBatch();
-
-        if (!cpfData || cpfData.length === 0) {
-          hasMore = false;
-        } else {
-          cpfData.forEach((item: Record<string, unknown>) => uniqueCpfs.add(String(item.cpf)));
-          offset += FETCH_BATCH_SIZE;
-          if (cpfData.length < FETCH_BATCH_SIZE) hasMore = false;
-          
-          setExportProgress({ current: uniqueCpfs.size, total: estimatedAudience || uniqueCpfs.size });
-        }
-      }
-
-      matchingCpfs = Array.from(uniqueCpfs);
-
-      if (matchingCpfs.length === 0) {
-        alert("Nenhum cliente encontrado com os filtros aplicados.");
-        return;
-      }
-
-      // Phase 2: Fetch full details for the matching CPFs in batches
-      const csvRows: string[] = [];
-      const BATCH_SIZE = 500;
-      
-      for (let i = 0; i < matchingCpfs.length; i += BATCH_SIZE) {
-        const batch = matchingCpfs.slice(i, i + BATCH_SIZE);
-        
-        setExportProgress({ current: i, total: matchingCpfs.length });
-
-        // Pequeno delay entre batches
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-
-        const { data: batchData, error: batchError } = await supabase
-          .from('clientes')
-          .select('cpf, nome, telefone_1, telefone_2, telefone_3')
-          .in('cpf', batch);
-
-        if (batchError) {
-          console.warn("Erro ao buscar batch de detalhes:", batchError);
-          continue;
-        }
-
-        if (batchData) {
-          const batchRows = (batchData as any[]).map(c => {
-            return [
-              c.cpf,
-              `"${c.nome || ''}"`,
-              c.telefone_1 || "",
-              c.telefone_2 || "",
-              c.telefone_3 || ""
-            ].join(",")
-          });
-          csvRows.push(...batchRows);
-        }
-      }
-
-      if (csvRows.length > 0) {
-        setExportProgress({ current: matchingCpfs.length, total: matchingCpfs.length });
-        const headers = "cpf,nome,telefone 1,telefone 2,telefone 3\n"
-        const blob = new Blob([headers + csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' })
-        const link = document.createElement("a")
-        const url = URL.createObjectURL(blob)
-        link.setAttribute("href", url)
-        link.setAttribute("download", `campanha_export_${new Date().getTime()}.csv`)
-        link.style.visibility = "hidden"
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-      }
-    } catch (err: unknown) {
-      console.error("Erro detalhado ao exportar:", err)
-      let errorMessage = "Erro desconhecido";
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      } else if (typeof err === 'object' && err !== null) {
-        const errorObj = err as Record<string, unknown>;
-        errorMessage = (errorObj.message as string) || (errorObj.details as string) || (errorObj.hint as string) || JSON.stringify(err);
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      }
-      alert(`Erro ao exportar: ${errorMessage}`)
+    } catch (err: any) {
+      console.error("Erro detalhado ao criar campanha:", {
+        message: err.message,
+        details: err.details,
+        hint: err.hint,
+        code: err.code,
+        fullError: err
+      });
+      alert(`Erro ao criar campanha: ${err.message || "Verifique o console."}`);
     } finally {
-      setIsCalculating(false)
-      setExportProgress(null)
+      setIsCreating(false);
     }
   }
 
@@ -720,14 +517,26 @@ export default function NewCampaignPage() {
           <p className="text-[13px] font-medium text-slate-400 px-1">Defina os filtros para segmentar seu público-alvo.</p>
           
           {/* 1. IDADE */}
-          <Card className="card-shadow">
+          <Card className={cn(
+            "card-shadow transition-all duration-300",
+            (filters.idadeMin || filters.idadeMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+          )}>
             <CardContent className="p-6 lg:p-8 space-y-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-                    <Users className="w-4 h-4 text-slate-400" />
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                    (filters.idadeMin || filters.idadeMax) ? "bg-blue-100" : "bg-slate-50"
+                  )}>
+                    <Users className={cn(
+                      "w-4 h-4 transition-colors",
+                      (filters.idadeMin || filters.idadeMax) ? "text-blue-600" : "text-slate-400"
+                    )} />
                   </div>
-                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">1. IDADE</h3>
+                  <h3 className={cn(
+                    "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                    (filters.idadeMin || filters.idadeMax) ? "text-blue-600" : "text-slate-400"
+                  )}>1. IDADE</h3>
                 </div>
                 <button 
                   onClick={() => setFilters(prev => ({ ...prev, idadeMin: "", idadeMax: "" }))}
@@ -765,16 +574,37 @@ export default function NewCampaignPage() {
             </CardContent>
           </Card>
 
-          {filterSections.map((section) => (
-            <Card key={section.id} className="card-shadow">
-              <CardContent className="p-6 lg:p-8 space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-                      <Filter className="w-4 h-4 text-slate-400" />
+          {filterSections.map((section) => {
+            const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+            const hasSelectedFilters = category && (filters[category] as string[]).length > 0;
+
+            return (
+              <Card 
+                key={section.id} 
+                className={cn(
+                  "card-shadow transition-all duration-300",
+                  hasSelectedFilters ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+                )}
+              >
+                <CardContent className="p-6 lg:p-8 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                        hasSelectedFilters ? "bg-blue-100" : "bg-slate-50"
+                      )}>
+                        <Filter className={cn(
+                          "w-4 h-4 transition-colors",
+                          hasSelectedFilters ? "text-blue-600" : "text-slate-400"
+                        )} />
+                      </div>
+                      <h3 className={cn(
+                        "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                        hasSelectedFilters ? "text-blue-600" : "text-slate-400"
+                      )}>
+                        {section.title}
+                      </h3>
                     </div>
-                    <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">{section.title}</h3>
-                  </div>
                   <div className="flex gap-4">
                     <button 
                       onClick={() => {
@@ -834,17 +664,30 @@ export default function NewCampaignPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+          );
+        })}
 
           {/* 6. MARGEM */}
-          <Card className="card-shadow">
+          <Card className={cn(
+            "card-shadow transition-all duration-300",
+            (filters.margemMin || filters.margemMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+          )}>
             <CardContent className="p-6 lg:p-8 space-y-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-                    <Wallet className="w-4 h-4 text-slate-400" />
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                    (filters.margemMin || filters.margemMax) ? "bg-blue-100" : "bg-slate-50"
+                  )}>
+                    <Wallet className={cn(
+                      "w-4 h-4 transition-colors",
+                      (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
+                    )} />
                   </div>
-                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">6. MARGEM 35%</h3>
+                  <h3 className={cn(
+                    "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                    (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
+                  )}>6. MARGEM 35%</h3>
                 </div>
                 <button 
                   onClick={() => setFilters(prev => ({ ...prev, margemMin: "", margemMax: "" }))}
@@ -861,6 +704,7 @@ export default function NewCampaignPage() {
                     <Input 
                       className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
                       placeholder="0,00" 
+                      inputMode="decimal"
                       value={filters.margemMin}
                       onChange={(e) => setFilters(prev => ({ ...prev, margemMin: e.target.value }))}
                     />
@@ -873,6 +717,7 @@ export default function NewCampaignPage() {
                     <Input 
                       className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
                       placeholder="0,00" 
+                      inputMode="decimal"
                       value={filters.margemMax}
                       onChange={(e) => setFilters(prev => ({ ...prev, margemMax: e.target.value }))}
                     />
@@ -883,14 +728,26 @@ export default function NewCampaignPage() {
           </Card>
 
           {/* 7. SALDO 70% */}
-          <Card className="card-shadow">
+          <Card className={cn(
+            "card-shadow transition-all duration-300",
+            (filters.saldoMin || filters.saldoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+          )}>
             <CardContent className="p-6 lg:p-8 space-y-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-                    <Landmark className="w-4 h-4 text-slate-400" />
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                    (filters.saldoMin || filters.saldoMax) ? "bg-blue-100" : "bg-slate-50"
+                  )}>
+                    <Landmark className={cn(
+                      "w-4 h-4 transition-colors",
+                      (filters.saldoMin || filters.saldoMax) ? "text-blue-600" : "text-slate-400"
+                    )} />
                   </div>
-                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">7. SALDO 70%</h3>
+                  <h3 className={cn(
+                    "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                    (filters.saldoMin || filters.saldoMax) ? "text-blue-600" : "text-slate-400"
+                  )}>7. SALDO 70%</h3>
                 </div>
                 <button 
                   onClick={() => setFilters(prev => ({ ...prev, saldoMin: "", saldoMax: "" }))}
@@ -907,6 +764,7 @@ export default function NewCampaignPage() {
                     <Input 
                       className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
                       placeholder="0,00" 
+                      inputMode="decimal"
                       value={filters.saldoMin}
                       onChange={(e) => setFilters(prev => ({ ...prev, saldoMin: e.target.value }))}
                     />
@@ -919,6 +777,7 @@ export default function NewCampaignPage() {
                     <Input 
                       className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
                       placeholder="0,00" 
+                      inputMode="decimal"
                       value={filters.saldoMax}
                       onChange={(e) => setFilters(prev => ({ ...prev, saldoMax: e.target.value }))}
                     />
@@ -930,13 +789,25 @@ export default function NewCampaignPage() {
 
 
           {/* 8. EMPRÉSTIMOS */}
-          <Card className="card-shadow">
+          <Card className={cn(
+            "card-shadow transition-all duration-300",
+            (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+          )}>
             <CardContent className="p-6 lg:p-8 space-y-8">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-                  <CreditCard className="w-4 h-4 text-slate-400" />
+                <div className={cn(
+                  "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                  (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "bg-blue-100" : "bg-slate-50"
+                )}>
+                  <CreditCard className={cn(
+                    "w-4 h-4 transition-colors",
+                    (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "text-blue-600" : "text-slate-400"
+                  )} />
                 </div>
-                <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">8. EMPRÉSTIMOS</h3>
+                <h3 className={cn(
+                  "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                  (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "text-blue-600" : "text-slate-400"
+                )}>8. EMPRÉSTIMOS</h3>
               </div>
 
               <div className="space-y-6 bg-slate-50/30 p-5 rounded-xl border border-slate-100/50">
@@ -1045,15 +916,27 @@ export default function NewCampaignPage() {
             </CardContent>
           </Card>
 
-          {/* 8. CARTÕES */}
-          <Card className="card-shadow">
+          {/* 9. CARTÕES */}
+          <Card className={cn(
+            "card-shadow transition-all duration-300",
+            (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+          )}>
             <CardContent className="p-6 lg:p-8 space-y-8">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-                    <CreditCard className="w-4 h-4 text-slate-400" />
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                    (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "bg-blue-100" : "bg-slate-50"
+                  )}>
+                    <CreditCard className={cn(
+                      "w-4 h-4 transition-colors",
+                      (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
+                    )} />
                   </div>
-                  <h3 className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">9. CARTÕES</h3>
+                  <h3 className={cn(
+                    "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                    (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
+                  )}>9. CARTÕES</h3>
                 </div>
                 <button 
                   onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "" }))}
@@ -1071,6 +954,7 @@ export default function NewCampaignPage() {
                     <Input 
                       className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
                       placeholder="Ex: 100,00" 
+                      inputMode="decimal"
                       value={filters.cardMargemMin}
                       onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
                     />
@@ -1083,6 +967,7 @@ export default function NewCampaignPage() {
                     <Input 
                       className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
                       placeholder="Ex: 100,00" 
+                      inputMode="decimal"
                       value={filters.cardBeneficioMin}
                       onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
                     />
@@ -1191,27 +1076,9 @@ export default function NewCampaignPage() {
               </div>
 
               <div className="space-y-1 bg-white/5 p-4 sm:p-5 rounded-xl border border-white/10 relative overflow-hidden">
-                {(isCalculating || exportProgress) && (
+                {isCalculating && (
                   <div className="absolute inset-0 bg-primary/40 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2">
-                    {exportProgress && (
-                      <button 
-                        onClick={() => setExportProgress(null)}
-                        className="absolute top-1 right-1 p-1 text-white/50 hover:text-white transition-colors"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
                     <Loader2 className="w-6 h-6 text-white animate-spin" />
-                    {exportProgress && (
-                      <div className="text-center">
-                        <p className="text-[10px] font-bold text-white uppercase tracking-widest">
-                          Exportando...
-                        </p>
-                        <p className="text-[9px] text-white/70 font-mono">
-                          {exportProgress.current.toLocaleString('pt-BR')} / {exportProgress.total.toLocaleString('pt-BR')}
-                        </p>
-                      </div>
-                    )}
                   </div>
                 )}
                 <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest">Público Estimado</p>
@@ -1223,7 +1090,7 @@ export default function NewCampaignPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <Button 
                   onClick={calculateAudience}
                   disabled={isCalculating || !hasActiveFilters()}
@@ -1236,15 +1103,6 @@ export default function NewCampaignPage() {
                     <Search className="w-3.5 h-3.5 mr-2" />
                   )}
                   Buscar
-                </Button>
-                <Button 
-                  onClick={handleExport}
-                  disabled={estimatedAudience === 0 || isCalculating}
-                  variant="secondary" 
-                  className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/20 text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 transition-all shadow-lg shadow-emerald-500/10"
-                >
-                  <Download className="w-3.5 h-3.5 mr-2" />
-                  Exportar
                 </Button>
               </div>
 
