@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,73 +14,157 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
-  FileEdit
+  FileEdit,
+  Loader2,
+  RefreshCw
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, withRetry } from "@/lib/utils"
 import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
+import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/context/auth-context"
+import { toast } from "sonner"
+import { format } from "date-fns"
 
-const statusCards = [
-  { label: "ABERTOS", count: 33, color: "border-t-amber-500", textColor: "text-amber-600" },
-  { label: "AGUARDANDO OPERACIONAL", count: 17, color: "border-t-orange-500", textColor: "text-orange-600" },
-  { label: "PROPOSTA CADASTRADA", count: 17, color: "border-t-blue-500", textColor: "text-blue-600" },
-  { label: "EM NEGOCIAÇÃO / PROPOSTA ENVIADA", count: 189, color: "border-t-cyan-500", textColor: "text-cyan-600" },
+const statusCardsList = [
+  { label: "ABERTO", count: 0, color: "border-t-amber-500", textColor: "text-amber-600" },
+  { label: "AGUARDANDO OPERACIONAL", count: 0, color: "border-t-orange-500", textColor: "text-orange-600" },
+  { label: "PROPOSTA CADASTRADA", count: 0, color: "border-t-blue-500", textColor: "text-blue-600" },
+  { label: "EM NEGOCIAÇÃO / PROPOSTA ENVIADA", count: 0, color: "border-t-cyan-500", textColor: "text-cyan-600" },
   { label: "APROVADOS", count: 0, color: "border-t-emerald-500", textColor: "text-emerald-600" },
-  { label: "NÃO APROVADOS", count: 323, color: "border-t-rose-500", textColor: "text-rose-600" },
+  { label: "NÃO APROVADOS", count: 0, color: "border-t-rose-500", textColor: "text-rose-600" },
 ]
+
+export interface Ticket {
+  id: string
+  status: string
+  origem: string
+  cliente_nome: string
+  cliente_cpf: string
+  cliente_telefone: string
+  margem: number
+  convenio: string
+  equipe: string
+  created_at: string
+  updated_at: string
+  descricaoDescription?: string // Using the name from the insert
+  user_id: string
+}
 
 const secondaryCards = [
-  { label: "GOV SP - NOVO APROVADO", count: 33, color: "text-slate-600" },
-  { label: "GOV SP - CARTÃO BENEFÍCIO APROVADO", count: 17, color: "text-slate-600" },
-  { label: "CLT - CARTÃO APROVADO", count: 17, color: "text-slate-600" },
-  { label: "CLT - CARTÃO BENEFÍCIO", count: 33, color: "text-slate-600" },
-  { label: "CARTÃO BENEFÍCIO APROVADO", count: 17, color: "text-slate-600" },
-  { label: "MARGEM 40% - APROVADO", count: 17, color: "text-slate-600" },
-  { label: "PREF SAO PAULO - CARTÃO BENEFÍCIO APROVADO", count: 189, color: "text-slate-600" },
-]
-
-const tickets = [
-  { id: "34558", status: "ABERTOS", statusColor: "bg-amber-500", origin: "DISCADOR", client: "VIVIANE FRANCISCA R SANTOS", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34557", status: "ABERTOS", statusColor: "bg-amber-500", origin: "DISCADOR", client: "DOUGLAINA RIBEIRO SANTIAGO", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34556", status: "AGUARDANDO OPERACIONAL", statusColor: "bg-orange-500", origin: "DISCADOR", client: "ANA PAULA FORNER", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34555", status: "AGUARDANDO OPERACIONAL", statusColor: "bg-orange-500", origin: "DISCADOR", client: "LUIZ ALBERTO MARINHO FARIAS", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34554", status: "PROPOSTA CADASTRADA", statusColor: "bg-blue-500", origin: "DISCADOR", client: "CASTER CESAR DA SILVA", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34553", status: "EM NEGOCIAÇÃO / PROPOSTA ENVIADA", statusColor: "bg-cyan-500", origin: "DISCADOR", client: "CHERLITON DE CASTRO GUEDES", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34552", status: "NÃO APROVADOS", statusColor: "bg-rose-500", origin: "DISCADOR", client: "FERNANDO LUIZ PALHANO XAVIER", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
+  { label: "GOV SP - NOVO APROVADO", count: 0, color: "text-slate-600" },
+  { label: "GOV SP - CARTÃO BENEFÍCIO APROVADO", count: 0, color: "text-slate-600" },
+  { label: "CLT - CARTÃO APROVADO", count: 0, color: "text-slate-600" },
+  { label: "CLT - CARTÃO BENEFÍCIO", count: 0, color: "text-slate-600" },
+  { label: "CARTÃO BENEFÍCIO APROVADO", count: 0, color: "text-slate-600" },
+  { label: "MARGEM 40% - APROVADO", count: 0, color: "text-slate-600" },
+  { label: "PREF SAO PAULO - CARTÃO BENEFÍCIO APROVADO", count: 0, color: "text-slate-600" },
 ]
 
 export default function TicketsPage() {
   const router = useRouter()
+  const { perfil, user } = useAuth()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
-  const [startDate, setStartDate] = useState("09/02/2026")
-  const [endDate, setEndDate] = useState("09/02/2026")
-  const [currentPage, setCurrentPage] = useState(1)
+  const [startDate, setStartDate] = useState(format(new Date(), "dd/MM/yyyy"))
+  const [endDate, setEndDate] = useState(format(new Date(), "dd/MM/yyyy"))
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null)
+  const [tickets, setTickets] = useState<Ticket[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const filteredTickets = tickets.filter(ticket => {
-    const matchesSearch = 
-      ticket.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ticket.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ticket.cpf.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    // Logic for linked parent-child status
-    let matchesStatus = true
-    if (selectedSecondaryStatus) {
-      // If a child is selected, match exactly that child (which implies the parent "APROVADOS")
-      matchesStatus = ticket.status === selectedSecondaryStatus
-    } else if (selectedStatus) {
-      if (selectedStatus === "APROVADOS") {
-        // If parent "APROVADOS" is selected, match any ticket that would fall under it or its children
-        // For this mock, we'll assume any ticket with "APROVADO" in status matches
-        matchesStatus = ticket.status.includes("APROVADO") || ticket.status === "APROVADOS"
-      } else {
-        matchesStatus = ticket.status === selectedStatus
+  const fetchTickets = useCallback(async () => {
+    if (!user || !perfil) return
+
+    setIsLoading(true)
+    try {
+      let query = supabase.from('chamados').select('*')
+
+      // Aplicar filtros de permissão baseados na Role
+      if (perfil.role === 'Corretor') {
+        // Corretor vê apenas os seus
+        query = query.eq('user_id', user.id)
+      } else if (perfil.role === 'Supervisor') {
+        // Supervisor vê os seus + os corretores sob sua supervisão
+        try {
+          const response = await fetch("/api/usuarios")
+          if (response.ok) {
+            const allUsers = await response.json()
+            const subordinates = allUsers
+              .filter((u: any) => u.supervisor_id === user.id)
+              .map((u: any) => u.id)
+            
+            query = query.in('user_id', [...subordinates, user.id])
+          }
+        } catch (err) {
+          console.error("Erro ao buscar subordinados:", err)
+          // Se falhar ao buscar subordinados, mostra apenas os seus para segurança
+          query = query.eq('user_id', user.id)
+        }
       }
-    }
+      // Operacional e Administrador veem tudo (não aplica filtro de user_id)
 
-    return matchesSearch && matchesStatus
-  })
+      const { data, error } = await withRetry(() => 
+        query.order('created_at', { ascending: false })
+      )
+
+      if (error) throw error
+      setTickets(data as Ticket[] || [])
+    } catch (error) {
+      console.error("Erro ao buscar chamados:", error)
+      toast.error("Erro ao carregar a lista de chamados")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [user, perfil])
+
+  useEffect(() => {
+    if (user && perfil) {
+      fetchTickets()
+    }
+  }, [fetchTickets, user, perfil])
+
+  const counts = useMemo(() => {
+    const res: Record<string, number> = {}
+    tickets.forEach(t => {
+      const s = t.status.toUpperCase()
+      res[s] = (res[s] || 0) + 1
+    })
+    return res
+  }, [tickets])
+
+  const filteredTickets = useMemo(() => {
+    return tickets.filter(ticket => {
+      const matchesSearch = 
+        ticket.id.toString().includes(searchTerm) ||
+        ticket.cliente_nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ticket.cliente_cpf.includes(searchTerm)
+      
+      let matchesStatus = true
+      if (selectedSecondaryStatus) {
+        matchesStatus = ticket.status.toUpperCase() === selectedSecondaryStatus.toUpperCase()
+      } else if (selectedStatus) {
+        if (selectedStatus === "APROVADOS") {
+          matchesStatus = ticket.status.toUpperCase().includes("APROVADO")
+        } else if (selectedStatus === "ABERTO") {
+          matchesStatus = ticket.status.toUpperCase() === "ABERTO" || ticket.status.toUpperCase() === "ABERTOS"
+        } else {
+          matchesStatus = ticket.status.toUpperCase() === selectedStatus.toUpperCase()
+        }
+      }
+
+      return matchesSearch && matchesStatus
+    })
+  }, [tickets, searchTerm, selectedStatus, selectedSecondaryStatus])
+
+  const statusCards = useMemo(() => statusCardsList.map(card => {
+    let count = counts[card.label] || 0
+    if (card.label === "ABERTO") {
+      count = (counts["ABERTO"] || 0) + (counts["ABERTOS"] || 0)
+    } else if (card.label === "APROVADOS") {
+      count = Object.entries(counts).reduce((acc, [k, v]) => k.includes("APROVADO") ? acc + v : acc, 0)
+    }
+    return { ...card, count }
+  }), [counts])
 
   const handleParentClick = (status: string) => {
     if (selectedStatus === status) {
@@ -88,12 +172,10 @@ export default function TicketsPage() {
       setSelectedSecondaryStatus(null)
     } else {
       setSelectedStatus(status)
-      // If clicking a parent that isn't APROVADOS, clear secondary selection
       if (status !== "APROVADOS") {
         setSelectedSecondaryStatus(null)
       }
     }
-    setCurrentPage(1)
   }
 
   const handleSecondaryClick = (status: string) => {
@@ -101,24 +183,34 @@ export default function TicketsPage() {
       setSelectedSecondaryStatus(null)
     } else {
       setSelectedSecondaryStatus(status)
-      setSelectedStatus("APROVADOS") // Ensure parent is also "selected" visually
+      setSelectedStatus("APROVADOS")
     }
-    setCurrentPage(1)
   }
 
   const toggleTicketExpansion = (ticketId: string) => {
     setExpandedTicketId(expandedTicketId === ticketId ? null : ticketId)
   }
 
-  const handleDigitarProposta = (ticket: typeof tickets[0]) => {
+  const handleDigitarProposta = (ticket: Ticket) => {
     const params = new URLSearchParams({
-      nome: ticket.client,
-      cpf: ticket.cpf,
-      nascimento: "31/01/1984", // Mock birth date
+      nome: ticket.cliente_nome,
+      cpf: ticket.cliente_cpf,
+      nascimento: "31/01/1984", 
       idLead: ticket.id,
-      origem: ticket.origin.toLowerCase()
+      origem: ticket.origem?.toLowerCase() || ""
     });
     router.push(`/propostas/nova?${params.toString()}`);
+  }
+
+  const getStatusColor = (status: string) => {
+    const s = status.toUpperCase()
+    if (s === 'ABERTO' || s === 'ABERTOS') return "bg-amber-500"
+    if (s === 'AGUARDANDO OPERACIONAL') return "bg-orange-500"
+    if (s === 'PROPOSTA CADASTRADA') return "bg-blue-500"
+    if (s === 'EM NEGOCIAÇÃO / PROPOSTA ENVIADA') return "bg-cyan-500"
+    if (s.includes('APROVADO') && !s.includes('NÃO')) return "bg-emerald-500"
+    if (s.includes('NÃO APROVADO')) return "bg-rose-500"
+    return "bg-slate-400"
   }
 
   return (
@@ -170,8 +262,8 @@ export default function TicketsPage() {
                     setSearchTerm("")
                     setSelectedStatus(null)
                     setSelectedSecondaryStatus(null)
-                    setStartDate("09/02/2026")
-                    setEndDate("09/02/2026")
+                    setStartDate(format(new Date(), "dd/MM/yyyy"))
+                    setEndDate(format(new Date(), "dd/MM/yyyy"))
                     setCurrentPage(1)
                   }}
                 >
@@ -183,205 +275,205 @@ export default function TicketsPage() {
           </CardContent>
         </Card>
 
-        {/* Status Section with Grouping */}
-        <div className="space-y-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 relative z-10">
-            {statusCards.map((card, index) => (
-              <div 
-                key={card.label} 
-                className="relative group cursor-pointer"
-                onClick={() => handleParentClick(card.label)}
-              >
-                {index === 4 && (
-                  <div className={cn(
-                    "absolute -inset-x-2 -top-2 -bottom-8 rounded-t-2xl z-0 hidden lg:block transition-colors",
-                    selectedStatus === "APROVADOS" ? "bg-slate-300" : "bg-slate-200"
-                  )} />
-                )}
-                <Card className={cn(
-                  "card-shadow border border-slate-200 border-t-4 bg-white h-full relative z-10 transition-all hover:scale-[1.02]", 
-                  card.color,
-                  selectedStatus === card.label && "ring-2 ring-primary ring-offset-2"
-                )}>
-                  <CardContent className="p-5">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-4 h-8 leading-tight tracking-widest">{card.label}</p>
-                    <div className="flex items-end gap-2">
-                      <span className={cn("text-2xl font-black tracking-tighter leading-none", card.textColor)}>{card.count}</span>
-                      <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest mb-0.5">Chamados</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            ))}
-          </div>
-
-          {/* Secondary Cards Container - Connected to "APROVADOS" with spacing */}
-          <div className={cn(
-            "rounded-2xl p-4 mt-6 relative z-0 border border-slate-300/50 shadow-inner transition-colors",
-            selectedStatus === "APROVADOS" ? "bg-slate-300" : "bg-slate-200"
-          )}>
-            <div className="flex overflow-x-auto gap-4 pb-2 custom-scrollbar lg:grid lg:grid-cols-7 lg:overflow-x-visible">
-              {secondaryCards.map((card) => (
-                <Card 
-                  key={card.label} 
-                  className={cn(
-                    "card-shadow border border-slate-200 bg-white min-w-[160px] lg:min-w-0 cursor-pointer transition-all hover:scale-[1.02]",
-                    selectedSecondaryStatus === card.label && "ring-2 ring-primary ring-offset-2"
-                  )}
-                  onClick={() => handleSecondaryClick(card.label)}
-                >
-                  <CardContent className="p-4">
-                    <p className="text-[8.5px] font-bold text-slate-400 uppercase mb-3 h-7 leading-tight tracking-wider">{card.label}</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-slate-700">{card.count}</span>
-                      <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Contratos</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
+        {/* Status Counts Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {statusCards.map((card) => (
+            <button 
+              key={card.label}
+              onClick={() => handleParentClick(card.label)}
+              className={cn(
+                "p-4 bg-white border-t-4 rounded-xl card-shadow transition-all text-left group hover:-translate-y-1",
+                card.color,
+                selectedStatus === card.label && "ring-2 ring-primary ring-offset-2 scale-105"
+              )}
+            >
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight mb-2 group-hover:text-slate-600">{card.label}</p>
+              <p className={cn("text-2xl font-black", card.textColor)}>{card.count}</p>
+            </button>
+          ))}
         </div>
 
-        {/* Table */}
-        <Card className="card-shadow border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Origem</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cliente</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">CPF</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Margem</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Convênio</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Equipe</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aberto</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredTickets.length > 0 ? (
-                  filteredTickets.map((ticket) => (
-                    <React.Fragment key={ticket.id}>
-                      <tr 
-                        className={cn(
-                          "hover:bg-slate-50/80 transition-colors group cursor-pointer",
-                          expandedTicketId === ticket.id && "bg-slate-50"
-                        )}
-                        onClick={() => toggleTicketExpansion(ticket.id)}
-                      >
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">#{ticket.id}</td>
-                        <td className="px-4 py-4">
-                          <span className={cn(
-                            "px-2.5 py-1 rounded-md text-[9px] font-black text-white uppercase inline-block shadow-sm",
-                            ticket.statusColor
-                          )}>
-                            {ticket.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{ticket.origin}</td>
-                        <td className="px-4 py-4">
-                          <div className="flex flex-col">
-                            <span className="text-[11.5px] font-bold text-slate-700 uppercase tracking-tight">{ticket.client}</span>
-                            <span className="text-[9px] font-medium text-slate-400">{ticket.agreement}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{ticket.cpf}</td>
-                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{ticket.phone}</td>
-                        <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">R$ {ticket.margin}</td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{ticket.agreement}</td>
-                        <td className="px-4 py-4 text-[10px] font-bold text-slate-400 leading-tight max-w-[120px] truncate" title={ticket.team}>
-                          {ticket.team}
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="flex flex-col">
-                            <span className="text-[11px] font-bold text-slate-600">{ticket.openedAt}</span>
-                            <span className="text-[9px] text-slate-400">{ticket.updatedAt.split(' ')[1]}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8 text-slate-300 hover:text-primary hover:bg-primary/5 rounded-full transition-all"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                toggleTicketExpansion(ticket.id)
-                              }}
-                            >
-                              {expandedTicketId === ticket.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-10 w-10 text-amber-600 hover:bg-amber-50 rounded-full transition-all"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDigitarProposta(ticket)
-                              }}
-                              title="Digitar Proposta"
-                            >
-                              <FileEdit className="w-5 h-5" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                      {expandedTicketId === ticket.id && (
-                        <tr>
-                          <td colSpan={11} className="p-0 border-b border-slate-200">
-                            <div className="animate-in slide-in-from-top-2 duration-300">
-                              <TicketAtendimento ticket={ticket} />
+        {/* Secondary Status Cards (Only visible if APROVADOS is selected) */}
+        <div className={cn(
+          "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 transition-all duration-300 overflow-hidden",
+          selectedStatus === "APROVADOS" ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+        )}>
+          {secondaryCards.map((card) => (
+            <button 
+              key={card.label}
+              onClick={() => handleSecondaryClick(card.label)}
+              className={cn(
+                "p-3 bg-white rounded-lg border border-slate-100 shadow-sm transition-all hover:border-primary/30 hover:shadow-md text-left",
+                selectedSecondaryStatus === card.label && "bg-primary/5 border-primary/30 ring-1 ring-primary/30"
+              )}
+            >
+              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{card.label}</p>
+              <p className={cn("text-lg font-black", card.color)}>{card.count}</p>
+            </button>
+          ))}
+        </div>
+
+        {/* Tickets Table Card */}
+        <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto min-h-[400px]">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50">
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[80px]">Número</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[150px]">Status</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[110px]">Origem</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[200px]">Cliente / Convênio</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[130px]">CPF</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[120px]">Telefone</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right w-[110px]">Margem</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[120px]">Convênio</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[150px]">Equipe</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aberto</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-12 text-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <Loader2 className="w-6 h-6 text-primary animate-spin" />
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando chamados...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredTickets.length > 0 ? (
+                    filteredTickets.map((ticket) => (
+                      <React.Fragment key={ticket.id}>
+                        <tr 
+                          className={cn(
+                            "hover:bg-slate-50/80 transition-colors group cursor-pointer",
+                            expandedTicketId === ticket.id.toString() && "bg-slate-50"
+                          )}
+                          onClick={() => toggleTicketExpansion(ticket.id.toString())}
+                        >
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">#{ticket.id}</td>
+                          <td className="px-4 py-4">
+                            <span className={cn(
+                              "px-2.5 py-1 rounded-md text-[9px] font-black text-white uppercase inline-block shadow-sm",
+                              getStatusColor(ticket.status)
+                            )}>
+                              {ticket.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{ticket.origem}</td>
+                          <td className="px-4 py-4">
+                            <div className="flex flex-col">
+                              <span className="text-[11.5px] font-bold text-slate-700 uppercase tracking-tight">{ticket.cliente_nome}</span>
+                              <span className="text-[9px] font-medium text-slate-400">{ticket.convenio}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{ticket.cliente_cpf}</td>
+                          <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{ticket.cliente_telefone}</td>
+                          <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">R$ {ticket.margem?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{ticket.convenio}</td>
+                          <td className="px-4 py-4 text-[10px] font-bold text-slate-400 leading-tight max-w-[120px] truncate" title={ticket.equipe}>
+                            {ticket.equipe}
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex flex-col">
+                              <span className="text-[11px] font-bold text-slate-600">{format(new Date(ticket.created_at), "dd-MM-yyyy")}</span>
+                              <span className="text-[9px] text-slate-400">{format(new Date(ticket.created_at), "HH:mm:ss")}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-slate-300 hover:text-primary hover:bg-primary/5 rounded-full transition-all"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  toggleTicketExpansion(ticket.id.toString())
+                                }}
+                              >
+                                {expandedTicketId === ticket.id.toString() ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-10 w-10 text-amber-600 hover:bg-amber-50 rounded-full transition-all"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDigitarProposta(ticket)
+                                }}
+                                title="Digitar Proposta"
+                              >
+                                <FileEdit className="w-5 h-5" />
+                              </Button>
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
-                      Nenhum chamado encontrado com os filtros selecionados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                        {expandedTicketId === ticket.id.toString() && (
+                          <tr>
+                            <td colSpan={11} className="p-0 border-b border-slate-200">
+                              <div className="animate-in slide-in-from-top-2 duration-300">
+                                <TicketAtendimento ticket={{
+                                  id: ticket.id.toString(),
+                                  client: ticket.cliente_nome,
+                                  cpf: ticket.cliente_cpf,
+                                  origin: ticket.origem
+                                }} />
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
+                        Nenhum chamado encontrado.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-        {/* Pagination */}
-        <div className="px-8 py-12 flex items-center justify-between border-t border-slate-50">
-          <button 
-            className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors disabled:opacity-50"
-            onClick={() => setCurrentPage(1)}
-            disabled={currentPage === 1}
-          >
-            Primeira
-          </button>
-          <div className="flex items-center gap-4">
-            <button 
-              className="p-1 text-slate-400 hover:text-primary disabled:opacity-50"
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">
-              {currentPage}-20 de 12987
-            </span>
-            <button 
-              className="p-1 text-slate-400 hover:text-primary"
-              onClick={() => setCurrentPage(prev => prev + 1)}
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-          <button className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors">Última</button>
-        </div>
+            {/* Pagination / List Footer */}
+            <div className="px-8 py-10 flex items-center justify-between border-t border-slate-50 bg-slate-50/30">
+              <button 
+                onClick={() => setCurrentPage(1)}
+                className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors disabled:opacity-50"
+              >
+                Primeira
+              </button>
+              
+              <div className="flex items-center gap-4">
+                <button className="p-1 text-slate-400 hover:text-primary disabled:opacity-50">
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-[11px] font-black text-white shadow-lg shadow-primary/20">1</span>
+                  <span className="text-[10px] font-bold text-slate-400 mx-2">DE 1</span>
+                </div>
+                <button className="p-1 text-slate-400 hover:text-primary">
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+
+              <button className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors">
+                Última
+              </button>
+            </div>
+          </CardContent>
         </Card>
+
+        {/* Floating Refresh Button */}
+        <Button 
+          onClick={fetchTickets}
+          disabled={isLoading}
+          className="fixed bottom-8 right-8 w-12 h-12 rounded-full bg-[#171717] hover:bg-[#171717]/90 text-white shadow-2xl z-50 flex items-center justify-center"
+        >
+          <RefreshCw className={cn("w-5 h-5", isLoading && "animate-spin")} />
+        </Button>
       </main>
     </div>
   )

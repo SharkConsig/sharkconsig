@@ -8,7 +8,7 @@ import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle }
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { translateOrgao } from "@/lib/orgaos-mapping"
+import { translateOrgao, ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { getContractTypeInfo } from "@/lib/contratos-mapping"
 import { supabase } from "@/lib/supabase"
 import { withRetry } from "@/lib/utils"
@@ -150,6 +150,18 @@ export default function SearchClientPage() {
       return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
     }
     return phone.replace(/\d{4}$/, "****")
+  }
+
+  const unmaskPhone = (phone: string) => {
+    if (!phone) return ""
+    const cleaned = phone.replace(/\D/g, "")
+    if (cleaned.length === 11) {
+      return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3")
+    }
+    if (cleaned.length === 10) {
+      return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
+    }
+    return cleaned
   }
 
   const calculateAge = (birthDate: string) => {
@@ -714,14 +726,24 @@ export default function SearchClientPage() {
                         <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
                           <Button 
                             onClick={() => {
+                              // Formatar CPF sem máscara para o chamado
+                              const rawCpf = client.cpf || "";
+                              const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+
+                              // Determinar Convênio baseado na origem (SIAPE = FEDERAL)
+                              const orgao = allRegs[activeRegIndex].orgao;
+                              const determinedConvenio = (orgao && ORGAOS_MAPPING[orgao]) ? "FEDERAL" : "OUTROS";
+
                               const params = new URLSearchParams({
                                 nome: client.nome || "NOME NÃO INFORMADO",
-                                cpf: maskCPF(client.cpf),
-                                tel1: maskPhone(client.telefone_1),
-                                tel2: maskPhone(client.telefone_2),
-                                tel3: maskPhone(client.telefone_3),
+                                cpf: formattedCpf,
+                                tel1: unmaskPhone(client.telefone_1),
+                                tel2: unmaskPhone(client.telefone_2),
+                                tel3: unmaskPhone(client.telefone_3),
                                 margem: formatCurrency(allRegs[activeRegIndex].margem_35),
-                                convenio: translateOrgao(allRegs[activeRegIndex].orgao)
+                                liquida5: formatCurrency(allRegs[activeRegIndex].liquida_5),
+                                beneficio5: formatCurrency(allRegs[activeRegIndex].beneficio_liquida_5),
+                                convenio: determinedConvenio
                               });
                               router.push(`/chamados/novo?${params.toString()}`);
                             }}

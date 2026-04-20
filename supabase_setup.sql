@@ -83,6 +83,23 @@ CREATE TABLE IF NOT EXISTS lotes (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 7. Tabela de Chamados (Tickets de Atendimento)
+CREATE TABLE IF NOT EXISTS chamados (
+    id SERIAL PRIMARY KEY,
+    status VARCHAR(50) DEFAULT 'ABERTO',
+    origem VARCHAR(255),
+    cliente_nome VARCHAR(255),
+    cliente_cpf VARCHAR(11),
+    cliente_telefone VARCHAR(20),
+    margem DECIMAL(15, 2),
+    convenio VARCHAR(255),
+    equipe VARCHAR(255),
+    descricao TEXT,
+    user_id UUID REFERENCES auth.users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Habilitar RLS (Row Level Security)
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matriculas ENABLE ROW LEVEL SECURITY;
@@ -90,6 +107,7 @@ ALTER TABLE instituidores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE itens_credito ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campanhas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lotes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chamados ENABLE ROW LEVEL SECURITY;
 
 -- Grant permissions explicitly
 GRANT ALL ON TABLE clientes TO authenticated, service_role;
@@ -98,6 +116,7 @@ GRANT ALL ON TABLE instituidores TO authenticated, service_role;
 GRANT ALL ON TABLE itens_credito TO authenticated, service_role;
 GRANT ALL ON TABLE campanhas TO authenticated, service_role;
 GRANT ALL ON TABLE lotes TO authenticated, service_role;
+GRANT ALL ON TABLE chamados TO authenticated, service_role;
 
 -- Remover políticas antigas se existirem
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON clientes;
@@ -106,6 +125,7 @@ DROP POLICY IF EXISTS "Permitir tudo para todos" ON instituidores;
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON itens_credito;
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON campanhas;
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON lotes;
+DROP POLICY IF EXISTS "Permitir tudo para todos" ON chamados;
 
 -- Criar políticas para usuários autenticados (CRUD completo)
 CREATE POLICY "Acesso total para autenticados" ON clientes FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -114,3 +134,4 @@ CREATE POLICY "Acesso total para autenticados" ON instituidores FOR ALL TO authe
 CREATE POLICY "Acesso total para autenticados" ON itens_credito FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total para autenticados" ON campanhas FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total para autenticados" ON lotes FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total para autenticados" ON chamados FOR ALL TO authenticated USING (true) WITH CHECK (true);

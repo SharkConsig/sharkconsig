@@ -27,27 +27,24 @@ import {
 
 const convenios = [
   "FEDERAL",
+  "FEDERAL CARTÃO BENEFÍCIO",
   "GOVERNO SP",
   "GOVERNO SP CARTÃO BENEFÍCIO"
 ]
 
 const bancos = [
-  "ALFA", "AMIGOZ", "BANCO BMG", "BANCO DAYCOVAL", "BANCO DIGIO SA.", 
-  "BANCO DO BRASIL", "BANCO MERCANTIL DO BRASIL", "BANCO NEO CRÉDITO", 
+  "AMIGOZ", "BANCO BMG", "BANCO DIGIO SA.", 
+  "BANCO DO BRASIL", "NEOCREDITO", 
   "BANCO PAULISTA", "BANCO SAFRA", "BARU FINANCEIRA", 
-  "BRB - CRÉDITO, FINANCIAMENTO E INVESTIMENTO", "BTW BANK", 
-  "CAPITAL CONSIG SCD S.A.", "FUTURO PREVIDÊNCIA", "INTERMEDIUM", "MEU CASHCARD", 
-  "PEGCARD", "PHTECH", "PRESENÇA BANK", "XN BANK"
+  "BRB - CRÉDITO, FINANCIAMENTO E INVESTIMENTO",
+  "CAPITAL", "FUTURO PREVIDÊNCIA", "MEU CASHCARD", 
+  "XNBANK"
 ]
 
 const operacoes = [
-  "ABERTURA DE CONTA", "CARTÃO C/ SAQUE", "CARTÃO C/ SAQUE COMPLEMENTAR À VISTA",
-  "CARTÃO C/ SAQUE COMPLEMENTAR PARCELADO", "CARTÃO C/ SAQUE PARCELADO", "CARTÃO S/ SAQUE",
-  "COMPRA DE DÍVIDA", "COMPRA DE DÍVIDA + MARGEM LIVRE", "COMPRA DE DÍVIDA + REFINANCIAMENTO",
-  "COMPRA DE DÍVIDA + REFINANCIAMENTO + MARGEM LIVRE", "EMPRÉSTIMO COMPLEMENTAR", "MARGEM LIVRE (NOVO)",
-  "MARGEM LIVRE + REFINANCIAMENTO", "PORTABILIDADE", "PORTABILIDADE + MARGEM LIVRE",
-  "PORTABILIDADE + MARGEM LIVRE + REFIN", "PORTABILIDADE + REFIN", "REFINANCIAMENTO",
-  "REFINANCIAMENTO DA PORTABILIDADE", "REFINANCIAMENTO DA PORTABILIDADE + MARGEM LIVRE", "REFINANCIAMENTO REC"
+  "CARTÃO C/ SAQUE", 
+  "MARGEM LIVRE (NOVO)", 
+  "CARTÃO COM SAQUE COMPLEMENTAR À VISTA"
 ]
 
 function NewProposalForm() {
@@ -85,12 +82,12 @@ function NewProposalForm() {
       <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
         ESCOLHA O <span className="text-slate-900 font-extrabold">CONVÊNIO</span> QUE SERÁ UTILIZADO NO CONTRATO
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl mx-auto">
         {convenios.map(c => (
           <button
             key={c}
             onClick={() => handleSelect("convenio", c)}
-            className="h-11 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[11px] font-black text-[#1A2B49] transition-all uppercase tracking-wider shadow-sm"
+            className="h-10 px-4 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[10px] font-black text-[#1A2B49] transition-all uppercase tracking-wider shadow-sm leading-tight"
           >
             {c}
           </button>
@@ -195,7 +192,7 @@ function NewProposalForm() {
               <Input 
                 value={formData.idLead}
                 onChange={(e) => handleFormChange("idLead", e.target.value)}
-                className="h-9 border-slate-100 focus:border-primary transition-colors" 
+                className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
               />
             </div>
             <div className="space-y-2">
@@ -203,7 +200,7 @@ function NewProposalForm() {
               <select 
                 value={formData.origem}
                 onChange={(e) => handleFormChange("origem", e.target.value)}
-                className="w-full h-9 px-4 rounded-md border border-slate-100 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                className="w-full h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
               >
                 <option value="">Selecione</option>
                 <option value="discador">DISCADOR</option>
@@ -212,11 +209,7 @@ function NewProposalForm() {
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula <span className="text-red-500">*</span></label>
-              <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Senha <span className="text-red-500">*</span></label>
-              <Input className="h-9 border-slate-100 focus:border-primary transition-colors" type="password" />
+              <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
             </div>
           </div>
 
@@ -229,7 +222,7 @@ function NewProposalForm() {
                 <Input 
                   value={formData.cpf}
                   onChange={(e) => handleFormChange("cpf", e.target.value)}
-                  className="h-9 border-slate-100 focus:border-primary transition-colors" 
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
               <div className="md:col-span-2 space-y-2">
@@ -237,7 +230,7 @@ function NewProposalForm() {
                 <Input 
                   value={formData.nome}
                   onChange={(e) => handleFormChange("nome", e.target.value)}
-                  className="h-9 border-slate-100 focus:border-primary transition-colors" 
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
               <div className="space-y-2">
@@ -246,52 +239,34 @@ function NewProposalForm() {
                   <Input 
                     value={formData.nascimento}
                     onChange={(e) => handleFormChange("nascimento", e.target.value)}
-                    className="h-9 border-slate-100 focus:border-primary transition-colors pr-10" 
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors pr-10" 
                   />
                   <Calendar className="absolute right-3 top-2 w-5 h-5 text-slate-400" />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sexo</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Selecione</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nacionalidade</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Brasileira</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">País de Origem</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Brasil</option>
-                </select>
-              </div>
-              <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Naturalidade</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF Naturalidade</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
+                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
                   <option>Selecione</option>
                 </select>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identidade</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão Emissor</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF Emissão</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
+                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
                   <option>Selecione</option>
                 </select>
               </div>
@@ -299,62 +274,62 @@ function NewProposalForm() {
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data de Emissão</label>
                 <div className="relative">
-                  <Input className="h-9 border-slate-100 focus:border-primary transition-colors pr-10" />
+                  <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors pr-10" />
                   <Calendar className="absolute right-3 top-2 w-5 h-5 text-slate-400" />
                 </div>
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome do Pai</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome da Mãe</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Residencial</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Residencial</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Comercial</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CEP</label>
                 <div className="flex gap-2">
-                  <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                  <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
                   <button className="text-[10px] font-bold text-primary italic whitespace-nowrap hover:underline">Buscar CEP</button>
                 </div>
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Endereço</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Número</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Complemento</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bairro</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cidade</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
+                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
                   <option>Selecione</option>
                 </select>
               </div>
@@ -364,51 +339,40 @@ function NewProposalForm() {
           {/* Dados Bancários */}
           <div className="space-y-10">
             <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">DADOS BANCÁRIOS</h3>
+            
+            {/* Primeira linha */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Banco</label>
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CHAVE PIX</label>
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+              </div>
+            </div>
+
+            {/* Segunda linha */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Pagamento</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Selecione</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Recebe Benefício Cartão?</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Selecione</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Incluir Seguro?</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Selecione</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Conta</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Selecione</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Banco</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Conta</label>
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Agência</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">DV Agência</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
-              </div>
-              <div className="md:col-span-1 space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Conta</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">DV</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Conta</label>
+                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
+                  <option value="">Selecione</option>
+                  <option value="corrente">CORRENTE</option>
+                  <option value="poupanca">POUPANÇA</option>
+                </select>
               </div>
             </div>
           </div>
@@ -425,15 +389,15 @@ function NewProposalForm() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Parcela</label>
-                  <Input className="h-9 border-slate-100 bg-white focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                  <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Operação</label>
-                  <Input className="h-9 border-slate-100 bg-white focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                  <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Cliente</label>
-                  <Input className="h-9 border-slate-100 bg-white focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                  <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
                 </div>
                 <Button className="h-9 bg-[#1A2B49] hover:bg-[#1A2B49]/90 text-white w-12 p-0 shadow-lg shadow-slate-200">
                   <Save className="w-5 h-5" />
@@ -444,41 +408,24 @@ function NewProposalForm() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Margem Utilizada</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente e Prazo</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
+                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
                   <option>Selecione</option>
                 </select>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Parcela</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" placeholder="R$ 0,00" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Prazo</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" placeholder="R$ 0,00" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Cliente</label>
-                <Input className="h-9 border-slate-100 focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
               </div>
             </div>
           </div>
@@ -509,7 +456,7 @@ function NewProposalForm() {
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><Paperclip className="w-4 h-4" /></Button>
                 </div>
                 <textarea 
-                  className="w-full p-6 text-[14px] font-medium focus:outline-none min-h-[200px] bg-white" 
+                  className="w-full p-6 text-[14px] font-medium focus:outline-none min-h-[200px] bg-[#E8E8E8]" 
                   placeholder="Digite suas observações aqui..."
                 />
               </div>

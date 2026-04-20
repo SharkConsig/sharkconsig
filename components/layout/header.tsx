@@ -130,7 +130,7 @@ export function Header({ title }: HeaderProps) {
             </div>
             <div className="relative w-10 h-10 rounded-full overflow-hidden bg-slate-200 border-2 border-slate-50">
               <Image
-                src={perfil?.avatar_url || "https://picsum.photos/seed/admin/100/100"}
+                src={perfil?.avatar_url || `https://picsum.photos/seed/${perfil?.nome || 'user'}/100/100`}
                 alt="User"
                 fill
                 className="object-cover"

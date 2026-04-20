@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { nome_completo, username, senha, funcao, avatar_url } = body;
+    const { nome_completo, username, senha, funcao, avatar_url, supervisor_id } = body;
 
     if (!nome_completo || !username || !senha || !funcao) {
       return NextResponse.json(
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     // Previne salvar Base64 no metadata (isso trava o JWT do usuário)
     const safeAvatarUrl = avatar_url?.startsWith('data:image') 
       ? `https://picsum.photos/seed/${username}/200/200` 
-      : (avatar_url || null);
+      : (avatar_url || `https://picsum.photos/seed/${username}/200/200`);
 
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
@@ -33,6 +33,7 @@ export async function POST(request: Request) {
         username,
         funcao,
         avatar_url: safeAvatarUrl,
+        supervisor_id: supervisor_id || null
       },
     });
 

@@ -19,10 +19,9 @@ export async function GET() {
         nome: metadata.nome_completo || metadata.full_name || 'Sem Nome',
         username: metadata.username,
         funcao: metadata.funcao || 'Corretor',
-        avatar_url: metadata.avatar_url?.startsWith('data:image') 
-          ? `https://picsum.photos/seed/${metadata.username || user.id}/200/200` 
-          : metadata.avatar_url,
-        status: 'ATIVO',
+        supervisor_id: metadata.supervisor_id,
+        avatar_url: metadata.avatar_url || `https://picsum.photos/seed/${metadata.username || user.id}/200/200`,
+        status: (metadata.status || 'ATIVO').toUpperCase(),
         created_at: user.created_at,
         last_sign_in_at: user.last_sign_in_at
       }
@@ -40,7 +39,7 @@ export async function POST(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
     const body = await request.json()
-    const { email, password, nome_completo, username, funcao, avatar_url } = body
+    const { email, password, nome_completo, username, funcao, avatar_url, supervisor_id } = body
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email e senha são obrigatórios' }, { status: 400 })
@@ -55,7 +54,8 @@ export async function POST(request: Request) {
         nome_completo, 
         username,
         funcao,
-        avatar_url
+        avatar_url,
+        supervisor_id
       }
     })
 
@@ -73,7 +73,7 @@ export async function PUT(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
     const body = await request.json()
-    const { id, email, password, nome_completo, username, funcao, avatar_url } = body
+    const { id, email, password, nome_completo, username, funcao, avatar_url, supervisor_id, status } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 })
@@ -93,6 +93,8 @@ export async function PUT(request: Request) {
     if (nome_completo) metadata.nome_completo = nome_completo
     if (username) metadata.username = username
     if (funcao) metadata.funcao = funcao
+    if (status) metadata.status = status.toUpperCase()
+    if (supervisor_id !== undefined) metadata.supervisor_id = supervisor_id
     if (avatar_url !== undefined) {
       metadata.avatar_url = avatar_url?.startsWith('data:image') 
         ? `https://picsum.photos/seed/${username || id}/200/200` 
@@ -126,7 +128,16 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 })
     }
 
-    // Deletar do Auth
+    // 1. Limpar referências em tabelas que podem ter foreign keys sem CASCADE
+    // Isso evita o erro "AuthApiError: Database error deleting user"
+    await Promise.all([
+      supabaseAdmin.from('campanhas').delete().eq('user_id', id),
+      supabaseAdmin.from('lotes').delete().eq('user_id', id),
+      // Nos chamados, podemos querer manter o registro mas desvincular o usuário
+      supabaseAdmin.from('chamados').update({ user_id: null }).eq('user_id', id)
+    ])
+
+    // 2. Deletar do Auth
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id)
     if (authError) throw authError
 

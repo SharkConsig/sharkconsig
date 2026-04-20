@@ -8,7 +8,7 @@ export interface ContractTypeInfo {
 
 export const CONTRATOS_TIPO_MAPPING: Record<string, ContractTypeInfo> = {
   "35020": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "AGIBANK" },
-  "34921": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "BANCO MASTER" },
+  "34921": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "MASTER" },
   "35014": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "MASTER" },
   "34998": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "CAPITAL" },
   "35007": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "CAPITAL" },
@@ -21,15 +21,15 @@ export const CONTRATOS_TIPO_MAPPING: Record<string, ContractTypeInfo> = {
   "35026": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "PINE" },
   "35076": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "BARU" },
   "35077": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "BARU" },
-  "35066": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "ATLANTA" },
-  "35064": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "ATLANTA" },
+  "35066": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "NEOCREDITO" },
+  "35064": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "NEOCREDITO" },
   "35002": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "FUTURO" },
   "35009": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "FUTURO" },
   "35016": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "MEUCASH" },
   "35087": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "DIGIMAIS" },
   "35089": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "DIGIMAIS" },
-  "35053": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "PEAK" },
-  "35055": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "PEAK" },
+  "35053": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "XNBANK" },
+  "35055": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "XNBANK" },
   "34805": { category: "CARTAO_CONSIGNADO", label: "CARTÃO CONSIGNADO", bank: "BMG" },
   "35013": { category: "CARTAO_BENEFICIO", label: "CARTÃO BENEFÍCIO", bank: "BMG" },
 };
