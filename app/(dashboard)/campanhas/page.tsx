@@ -21,7 +21,8 @@ import {
   MoreVertical,
   Loader2,
   Info,
-  Download
+  Download,
+  RefreshCw
 } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
@@ -65,6 +66,21 @@ export default function CampaignsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  const handleSyncBase = async () => {
+    setIsSyncing(true)
+    try {
+      const { error: syncError } = await supabase.rpc('refresh_base_consulta_rapida')
+      if (syncError) throw syncError
+      alert("Base de consulta rápida sincronizada com sucesso!")
+    } catch (err: any) {
+      console.error("Erro ao sincronizar base:", err)
+      alert(`Erro ao sincronizar base: ${err.message || "Certifique-se de que a função 'refresh_base_consulta_rapida' foi criada no SQL Editor do Supabase."}`)
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   const fetchCampaigns = useCallback(async () => {
     setIsLoading(true)
@@ -290,12 +306,23 @@ export default function CampaignsPage() {
       <div className="p-4 lg:p-8 space-y-8 max-w-[1400px] mx-auto w-full">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest text-center md:text-left">Gerencie seus públicos e estratégias de vendas.</p>
-          <Link href="/campanhas/nova" className="w-full md:w-auto">
-            <Button className="w-full md:w-auto h-10 px-6 text-[12px] font-bold uppercase tracking-widest">
-              <Plus className="w-3.5 h-3.5 mr-2" />
-              Nova Campanha
+          <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
+            <Button 
+               variant="outline"
+               onClick={handleSyncBase}
+               disabled={isSyncing}
+               className="w-full md:w-auto h-10 px-6 text-[11px] font-bold uppercase tracking-widest border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
+            >
+              {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <RefreshCw className="w-3.5 h-3.5 mr-2" />}
+              {isSyncing ? "Sincronizando..." : "Sincronizar Base"}
             </Button>
-          </Link>
+            <Link href="/campanhas/nova" className="w-full md:w-auto">
+              <Button className="w-full md:w-auto h-10 px-6 text-[12px] font-bold uppercase tracking-widest">
+                <Plus className="w-3.5 h-3.5 mr-2" />
+                Nova Campanha
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <Card className="card-shadow">
