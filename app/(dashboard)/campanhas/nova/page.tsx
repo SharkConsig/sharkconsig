@@ -22,6 +22,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { supabase } from "@/lib/supabase"
+import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
 const orgaoOptions = Array.from(new Set(Object.values(ORGAOS_MAPPING)))
   .filter(name => name && name.trim() !== "")
@@ -270,43 +271,34 @@ export default function NewCampaignPage() {
     try {
       const { 
         orgaos, situacoes, regimes, ufs, 
-        margemMin, margemMax, saldoMin, saldoMax, 
+        margemMin, margemMax, saldoMin, 
         cardMargemMin, cardBeneficioMin,
-        loanBanks, cardBanks, loanPrazoMin, loanPrazoMax, cardTypes,
+        loanBanks, cardBanks, cardTypes, loanPrazoMin, loanPrazoMax,
         idadeMin, idadeMax 
       } = filters;
 
-      const hasMatriculaFilters = orgaos.length > 0 || situacoes.length > 0 || regimes.length > 0 || ufs.length > 0;
-      const hasInstituidorFilters = margemMin !== "" || margemMax !== "" || saldoMin !== "" || saldoMax !== "" || cardMargemMin !== "" || cardBeneficioMin !== "" || cardTypes.length > 0;
-      const hasItemFilters = loanBanks.length > 0 || cardBanks.length > 0 || loanPrazoMin !== "" || loanPrazoMax !== "";
+      // CONSULTA DIRETA NA TABELA DE SNAPSHOT (SEM JOINS)
+      let query = supabase.from('base_consulta_rapida').select('*', { count: 'exact', head: true });
 
-      // ESTRATÉGIA OTIMIZADA:
-      // Ponto de entrada: clientes
-      // Joins dinâmicos dependendo dos filtros ativos - Foco em CPFs filtrados
-      const selectParts = ["cpf"];
-      if (hasMatriculaFilters || hasInstituidorFilters || hasItemFilters) {
-        const matriculaContent = ["id"]; 
-        if (hasInstituidorFilters || hasItemFilters) {
-          const instContent = ["id"];
-          if (hasItemFilters) {
-            instContent.push("itens_credito!inner(id)");
-          }
-          matriculaContent.push(`instituidores!inner(${instContent.join(",")})`);
-        }
-        selectParts.push(`matriculas!inner(${matriculaContent.join(",")})`);
+      // 1. Filtros de Matrícula
+      if (orgaos.length > 0) {
+        const codeFilters = Object.entries(ORGAOS_MAPPING)
+          .filter(([, name]) => orgaos.includes(name))
+          .map(([code]) => code);
+        const combinedOrgaos = Array.from(new Set([...orgaos, ...codeFilters]));
+        if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
       }
+      if (situacoes.length > 0) query = query.in('situacao_funcional', situacoes);
+      if (regimes.length > 0) query = query.in('regime_juridico', regimes);
+      if (ufs.length > 0) query = query.in('uf', ufs);
 
-      const selectStr = selectParts.join(",");
-      let query = supabase.from('clientes').select(selectStr, { count: 'exact', head: true });
-
-      // 1. Filtro de IDADE (Tabela Clientes)
+      // 2. Filtro de IDADE
       if (idadeMin) {
         const ageMin = parseInt(idadeMin);
         if (!isNaN(ageMin)) {
           const d = new Date();
           d.setFullYear(d.getFullYear() - ageMin);
-          const dateStr = d.toISOString().split('T')[0];
-          query = query.lte('data_nascimento', dateStr);
+          query = query.lte('data_nascimento', d.toISOString().split('T')[0]);
         }
       }
       if (idadeMax) {
@@ -315,153 +307,98 @@ export default function NewCampaignPage() {
           const d = new Date();
           d.setFullYear(d.getFullYear() - ageMax - 1);
           d.setDate(d.getDate() + 1);
-          const dateStr = d.toISOString().split('T')[0];
-          query = query.gte('data_nascimento', dateStr);
+          query = query.gte('data_nascimento', d.toISOString().split('T')[0]);
         }
       }
 
-      // 2. Filtros de Matrícula
-      if (hasMatriculaFilters) {
-        if (orgaos.length > 0) {
-          const codeFilters = Object.entries(ORGAOS_MAPPING)
-            .filter(([, name]) => orgaos.includes(name))
-            .map(([code]) => code);
-          if (codeFilters.length > 0) query = query.in('matriculas.orgao', codeFilters);
-        }
-        // Filtro SITUAÇÃO FUNCIONAL: Relaciona matriculas.situacao_funcional -> matriculas.cliente_cpf
-        // Conforme solicitado: Não é necessária conversão, pois os nomes batem com os valores da coluna.
-        if (situacoes.length > 0) query = query.in('matriculas.situacao_funcional', situacoes);
-        
-        // Filtro REGIME JURÍDICO: Relaciona matriculas.regime_juridico -> matriculas.cliente_cpf
-        // Conforme solicitado: Não é necessária conversão, pois os nomes batem com os valores da coluna.
-        if (regimes.length > 0) query = query.in('matriculas.regime_juridico', regimes);
-        
-        // Filtro UF (ESTADO): Relaciona matriculas.uf -> matriculas.cliente_cpf
-        // Conforme solicitado: Não é necessária conversão, pois os nomes batem com os valores da coluna.
-        if (ufs.length > 0) query = query.in('matriculas.uf', ufs);
+      // 3. Filtros Financeiros
+      const mMin = parseSafeNumber(margemMin);
+      const mMax = parseSafeNumber(margemMax);
+      if (mMin !== null || mMax !== null) {
+        query = query.not('margem_35', 'is', null);
+        if (mMin !== null) query = query.gte('margem_35', mMin);
+        if (mMax !== null) query = query.lte('margem_35', mMax);
+      }
+      
+      const sMin = parseSafeNumber(saldoMin);
+      if (sMin !== null) {
+        query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
+      }
+      
+      const cMMin = parseSafeNumber(cardMargemMin);
+      if (cMMin !== null) {
+        query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+      }
+      const cBMin = parseSafeNumber(cardBeneficioMin);
+      if (cBMin !== null) {
+        query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
       }
 
-      // 3. Filtros Financeiros (Margem e Saldo via Tabela Instituidores)
-      if (hasInstituidorFilters || hasItemFilters) {
-        // --- Filtro MARGEM 35% ---
-        // Consulta na coluna 'margem_35' (decimal/numeric) da tabela 'instituidores'
-        // Garantimos a conversão de texto para valores decimais antes da consulta ao banco
-        const mMin = parseSafeNumber(margemMin);
-        const mMax = parseSafeNumber(margemMax);
-
-        if (mMin !== null || mMax !== null) {
-          // Na tabela temos o valor NULL que não deve entrar no cáulo:
-          query = query.not('matriculas.instituidores.margem_35', 'is', null);
-
-          // Lógica de intervalo sugerida para garantir precisão decimal no SQL:
-          if (mMin !== null && mMax !== null) {
-            // Intervalo: entre minimo e maximo inclusivo
-            query = query.gte('matriculas.instituidores.margem_35', mMin)
-                         .lte('matriculas.instituidores.margem_35', mMax);
-          } else if (mMin !== null) {
-            // Só mínimo
-            query = query.gte('matriculas.instituidores.margem_35', mMin);
-          } else if (mMax !== null) {
-            // Só máximo
-            query = query.lte('matriculas.instituidores.margem_35', mMax);
-          }
-        }
+      // 4. ITENS DE CRÉDITO
+      if (loanBanks.length > 0) query = query.in('banco', loanBanks);
+      
+      // Lógica de Banco do Cartão baseada no prefixo da coluna 'tipo'
+      if (cardBanks.length > 0) {
+        const selectedCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+          .filter(([, info]) => info.bank && cardBanks.includes(info.bank))
+          .map(([code]) => code);
         
-        // --- Filtro SALDO 70% ---
-        // Garantimos a conversão de texto para valor decimal antes da consulta ao banco
-        const sMin = parseSafeNumber(saldoMin);
-        const sMax = parseSafeNumber(saldoMax);
-
-        if (sMin !== null || sMax !== null) {
-          // Excluir NULLs
-          query = query.not('matriculas.instituidores.saldo_70', 'is', null);
-
-          if (sMin !== null && sMax !== null) {
-            query = query.gte('matriculas.instituidores.saldo_70', sMin)
-                         .lte('matriculas.instituidores.saldo_70', sMax);
-          } else if (sMin !== null) {
-            query = query.gte('matriculas.instituidores.saldo_70', sMin);
-          } else if (sMax !== null) {
-            query = query.lte('matriculas.instituidores.saldo_70', sMax);
-          }
-        }
-        
-        // --- Filtro CARTÕES (Líquida 5% e Benefício Líquida 5%) ---
-        // Consulta nas colunas 'liquida_5' e 'beneficio_liquida_5' da tabela 'instituidores'
-        const cMMin = parseSafeNumber(cardMargemMin);
-        if (cMMin !== null) {
-          // Excluir NULLs
-          query = query.not('matriculas.instituidores.liquida_5', 'is', null);
-          query = query.gte('matriculas.instituidores.liquida_5', cMMin);
-        }
-
-        const cBMin = parseSafeNumber(cardBeneficioMin);
-        if (cBMin !== null) {
-          // Excluir NULLs
-          query = query.not('matriculas.instituidores.beneficio_liquida_5', 'is', null);
-          query = query.gte('matriculas.instituidores.beneficio_liquida_5', cBMin);
-        }
-
-        // --- Lógica de Botões de Cartão (Consignado e Benefício) ---
-        // Ativado se o usuário interagiu com os botões de tipo de cartão (marcador __ACTIVE__)
-        const isCardBinaryActive = cardTypes.includes('__ACTIVE__');
-        
-        if (isCardBinaryActive) {
-          const isConsignadoSelected = cardTypes.includes("CARTÃO CONSIGNADO");
-          const isBeneficioSelected = cardTypes.includes("CARTÃO BENEFÍCIO");
-
-          // Lógica Cartão Consignado: coluna utilizada_5
-          if (isConsignadoSelected) {
-            // Diferente de zero ou vazio
-            query = query.not('matriculas.instituidores.utilizada_5', 'is', null)
-                         .neq('matriculas.instituidores.utilizada_5', 0);
-          } else {
-            // Não selecionado: igual a zero ou vazio
-            query = query.or('utilizada_5.eq.0,utilizada_5.is.null', { foreignTable: 'matriculas.instituidores' });
-          }
-
-          // Lógica Cartão Benefício: coluna beneficio_utilizada_5
-          if (isBeneficioSelected) {
-            // Diferente de zero ou vazio
-            query = query.not('matriculas.instituidores.beneficio_utilizada_5', 'is', null)
-                         .neq('matriculas.instituidores.beneficio_utilizada_5', 0);
-          } else {
-            // Não selecionado: igual a zero ou vazio
-            query = query.or('beneficio_utilizada_5.eq.0,beneficio_utilizada_5.is.null', { foreignTable: 'matriculas.instituidores' });
-          }
-        }
-
-        // 4. Itens de Crédito
-        if (hasItemFilters) {
-          if (loanBanks.length > 0) query = query.in('matriculas.instituidores.itens_credito.banco', loanBanks);
-          if (cardBanks.length > 0) query = query.in('matriculas.instituidores.itens_credito.banco', cardBanks);
-          if (loanPrazoMin) {
-            const pMin = parseInt(loanPrazoMin);
-            if (!isNaN(pMin)) query = query.gte('matriculas.instituidores.itens_credito.prazo', pMin);
-          }
-          if (loanPrazoMax) {
-            const pMax = parseInt(loanPrazoMax);
-            if (!isNaN(pMax)) query = query.lte('matriculas.instituidores.itens_credito.prazo', pMax);
-          }
+        if (selectedCodes.length > 0) {
+          const orFilter = selectedCodes.map(code => `tipo.ilike.${code}%`).join(',');
+          query = query.or(orFilter);
         }
       }
+
+      if (cardTypes.length > 0) {
+        // Mapeia as categorias selecionadas (CARTÃO CONSIGNADO / CARTÃO BENEFÍCIO) para os códigos reais (35020, 34921, etc)
+        const selectedCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+          .filter(([, info]) => cardTypes.includes(info.label))
+          .map(([code]) => code);
+        
+        if (selectedCodes.length > 0) {
+          // Usa OR com ILIKE para buscar pelos 5 primeiros dígitos (prefixo)
+          const orFilter = selectedCodes.map(code => `tipo.ilike.${code}%`).join(',');
+          query = query.or(orFilter);
+        }
+      }
+      const pMin = parseInt(loanPrazoMin);
+      const pMax = parseInt(loanPrazoMax);
+      if (!isNaN(pMin)) query = query.gte('prazo', pMin);
+      if (!isNaN(pMax)) query = query.lte('prazo', pMax);
 
       const { count, error } = await query;
 
       if (error) {
-        console.error("Erro retornado pelo Supabase:", error);
+        // Se for timeout (57014) ou erro sem código/vazio, tratamos como silêncio
+        const isSilent = error.code === '57014' || !error.code || !error.message;
+        
+        if (isSilent) {
+          console.warn("Timeout ou Resposta Vazia no Supabase: Tratando como zero resultados.");
+          setEstimatedAudience(0);
+          return;
+        }
+
+        console.error("Erro retornado pelo Supabase (detalhado):", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          full: error
+        });
         throw error;
       }
       setEstimatedAudience(count || 0);
     } catch (err: any) {
-      console.error("ERRO CRÍTICO NO CÁLCULO DE AUDIÊNCIA:", err);
-      // Log extra para o objeto se ele parecer vazio
-      if (err && typeof err === 'object' && Object.keys(err).length === 0) {
-        console.warn("O objeto de erro parece vazio. Isso pode indicar um erro de rede, timeout ou estrutura de join muito profunda.");
-      }
+      // Se for timeout ou resposta vazia, não mostramos o Alerta
+      const isSilent = err?.code === '57014' || !err?.code || !err?.message;
+      
+      console.error("ERRO NO CÁLCULO DE AUDIÊNCIA:", err);
       
       setEstimatedAudience(0);
-      alert(`Houve um erro ao processar os filtros: ${err.message || "Erro de conexão ou sintaxe no banco de dados. Verifique os campos informados."}`);
+      
+      if (!isSilent) {
+        alert(`Houve um erro ao processar os filtros: ${err.message || "Erro de conexão ou sintaxe no banco de dados. Verifique os campos informados."}`);
+      }
     } finally {
       setIsCalculating(false);
     }
@@ -691,8 +628,9 @@ export default function NewCampaignPage() {
                 </div>
                 <button 
                   onClick={() => setFilters(prev => ({ ...prev, margemMin: "", margemMax: "" }))}
-                  className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                  className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors flex items-center gap-1.5"
                 >
+                  <X className="w-2.5 h-2.5" />
                   Limpar
                 </button>
               </div>
@@ -767,19 +705,6 @@ export default function NewCampaignPage() {
                       inputMode="decimal"
                       value={filters.saldoMin}
                       onChange={(e) => setFilters(prev => ({ ...prev, saldoMin: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Máximo</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                    <Input 
-                      className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                      placeholder="0,00" 
-                      inputMode="decimal"
-                      value={filters.saldoMax}
-                      onChange={(e) => setFilters(prev => ({ ...prev, saldoMax: e.target.value }))}
                     />
                   </div>
                 </div>
@@ -1001,7 +926,7 @@ export default function NewCampaignPage() {
                       key={type}
                       onClick={() => toggleFilter("cardTypes", type)}
                       className={cn(
-                        "flex items-center justify-between px-4 py-3.5 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
+                         "flex items-center justify-between px-4 py-3.5 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
                         filters.cardTypes.includes(type) 
                           ? "bg-primary border-primary text-white shadow-lg shadow-primary/20 ring-2 ring-primary/10" 
                           : "bg-white border-slate-100 text-slate-500 hover:border-primary/30 hover:bg-slate-50/50"

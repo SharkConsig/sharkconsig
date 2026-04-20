@@ -5,6 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
 import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { 
   Search, 
   Plus, 
   Filter,
@@ -21,6 +27,7 @@ import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { supabase } from "@/lib/supabase"
+import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
 import { useAuth } from "@/context/auth-context"
 
@@ -104,259 +111,151 @@ export default function CampaignsPage() {
     return isNaN(num) ? null : num;
   };
 
-  const handleExport = async (campaign: Campaign) => {
+  const PART_SIZE = 50000;
+
+  const handleExport = async (campaign: Campaign, partIndex: number = 0) => {
     if (isExporting) return
-    setIsExporting(campaign.id)
+    setIsExporting(`${campaign.id}_${partIndex}`)
     setExportProgress(0)
     
     try {
       const filters = campaign.filtros
-      const hasItemFilters = (filters.loanBanks?.length || 0) > 0 || 
-                          (filters.cardBanks?.length || 0) > 0 || 
-                          filters.loanPrazoMin !== "" || 
-                          filters.loanPrazoMax !== "";
-
       const allCsvRows: string[] = []
       const uniqueRowsKeys = new Set()
       
-      let page = 0
-      const pageSize = 1000 
-      let hasMore = true
-
-      // ESTRATÉGIA OTIMIZADA: Escolhemos o ponto de entrada mais seletivo
-      const hasMatriculaFilters = (filters.orgaos?.length || 0) > 0 || 
-                                 (filters.situacoes?.length || 0) > 0 || 
-                                 (filters.regimes?.length || 0) > 0 || 
-                                 (filters.ufs?.length || 0) > 0;
+      const pageSize = 500 
+      let totalProcessed = 0
       
-      const hasFinanceFilters = filters.margemMin || filters.margemMax || 
-                               filters.saldoMin || filters.saldoMax || 
-                               filters.cardMargemMin || filters.cardBeneficioMin ||
-                               (filters.cardTypes?.length || 0) > 0;
+      const startRange = partIndex * PART_SIZE;
+      const endRange = Math.min((partIndex + 1) * PART_SIZE - 1, (campaign.publico_estimado || 0) - 1);
+      const totalToExport = Math.max(0, endRange - startRange + 1);
 
-      const hasAgeFilters = !!(filters.idadeMin || filters.idadeMax);
+      if (totalToExport <= 0) {
+        alert("Intervalo de exportação inválido.");
+        return;
+      }
 
-      // Se SÓ houver filtro de idade, começamos pela tabela 'clientes' (menor volume)
-      // Se houver qualquer filtro de vínculo ou financeiro, começamos por 'matriculas'
-      const baseTable = (hasMatriculaFilters || hasFinanceFilters || hasItemFilters) ? 'matriculas' : 'clientes';
-      const cpfColumn = baseTable === 'matriculas' ? 'cliente_cpf' : 'cpf';
+      while (totalProcessed < totalToExport) {
+        const from = startRange + totalProcessed;
+        const to = Math.min(from + pageSize - 1, endRange);
 
-      while (hasMore) {
-        const from = page * pageSize
-        const to = from + pageSize - 1
+        // CONSULTA DIRETA NA TABELA DE SNAPSHOT (SEM JOINS)
+        let query = supabase.from('base_consulta_rapida').select('*')
 
-        let selectStr = cpfColumn;
-        if (baseTable === 'matriculas') {
-          if (hasAgeFilters) selectStr += ', clientes!inner(cpf)'
-          if (hasFinanceFilters || hasItemFilters) {
-            selectStr += `, instituidores!inner(id${hasItemFilters ? ', itens_credito!inner(id)' : ''})`
-          }
-        } else {
-          // Se base for clientes e houver outros filtros
-          if (hasMatriculaFilters || hasFinanceFilters || hasItemFilters) {
-             selectStr += `, matriculas!inner(id${hasFinanceFilters || hasItemFilters ? `, instituidores!inner(id${hasItemFilters ? ', itens_credito!inner(id)' : ''})` : ''})`
-          }
-        }
-
-        let cpfQuery = supabase
-          .from(baseTable)
-          .select(selectStr)
-          .range(from, to)
-
-        // Aplicação Dinâmica de Filtros
-        // 1. Filtros de Matrícula
-        const matriculaPrefix = baseTable === 'matriculas' ? '' : 'matriculas.'
+        // ... (Filtros permanecem idênticos)
         if (filters.orgaos?.length > 0) {
           const codeFilters = Object.entries(ORGAOS_MAPPING)
             .filter(([, name]) => filters.orgaos.includes(name))
             .map(([code]) => code);
-          if (codeFilters.length > 0) cpfQuery = cpfQuery.in(`${matriculaPrefix}orgao`, codeFilters);
+          const combinedOrgaos = Array.from(new Set([...filters.orgaos, ...codeFilters]));
+          if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
         }
-        if (filters.situacoes?.length > 0) cpfQuery = cpfQuery.in(`${matriculaPrefix}situacao_funcional`, filters.situacoes)
-        if (filters.regimes?.length > 0) cpfQuery = cpfQuery.in(`${matriculaPrefix}regime_juridico`, filters.regimes)
-        if (filters.ufs?.length > 0) cpfQuery = cpfQuery.in(`${matriculaPrefix}uf`, filters.ufs)
+        if (filters.situacoes?.length > 0) query = query.in('situacao_funcional', filters.situacoes)
+        if (filters.regimes?.length > 0) query = query.in('regime_juridico', filters.regimes)
+        if (filters.ufs?.length > 0) query = query.in('uf', filters.ufs)
 
-        // 2. Filtros de Cliente (Idade)
-        const clientePrefix = baseTable === 'clientes' ? '' : 'clientes.'
         if (filters.idadeMin) {
           const d = new Date()
           d.setFullYear(d.getFullYear() - parseInt(filters.idadeMin))
-          cpfQuery = cpfQuery.lte(`${clientePrefix}data_nascimento`, d.toISOString().split('T')[0])
+          query = query.lte('data_nascimento', d.toISOString().split('T')[0])
         }
         if (filters.idadeMax) {
           const d = new Date()
           d.setFullYear(d.getFullYear() - parseInt(filters.idadeMax) - 1)
           d.setDate(d.getDate() + 1)
-          cpfQuery = cpfQuery.gte(`${clientePrefix}data_nascimento`, d.toISOString().split('T')[0])
+          query = query.gte('data_nascimento', d.toISOString().split('T')[0])
         }
         
-        // 3. Filtros Financeiros (Margem e Saldo via Tabela Instituidores)
-        const instPrefix = baseTable === 'matriculas' ? 'instituidores.' : 'matriculas.instituidores.'
-        
-        // --- Filtro MARGEM 35% ---
         const mMin = parseSafeNumber(filters.margemMin)
         const mMax = parseSafeNumber(filters.margemMax)
         if (mMin !== null || mMax !== null) {
-          // Excluir NULLs conforme solicitado
-          cpfQuery = cpfQuery.not(`${instPrefix}margem_35`, 'is', null);
-          
-          if (mMin !== null && mMax !== null) {
-            cpfQuery = cpfQuery.gte(`${instPrefix}margem_35`, mMin)
-                               .lte(`${instPrefix}margem_35`, mMax);
-          } else if (mMin !== null) {
-            cpfQuery = cpfQuery.gte(`${instPrefix}margem_35`, mMin);
-          } else if (mMax !== null) {
-            cpfQuery = cpfQuery.lte(`${instPrefix}margem_35`, mMax);
-          }
+          query = query.not('margem_35', 'is', null);
+          if (mMin !== null && mMax !== null) query = query.gte('margem_35', mMin).lte('margem_35', mMax);
+          else if (mMin !== null) query = query.gte('margem_35', mMin);
+          else if (mMax !== null) query = query.lte('margem_35', mMax);
         }
 
-        // --- Filtro SALDO 70% ---
         const sMin = parseSafeNumber(filters.saldoMin)
-        const sMax = parseSafeNumber(filters.saldoMax)
-        if (sMin !== null || sMax !== null) {
-          // Excluir NULLs conforme solicitado
-          cpfQuery = cpfQuery.not(`${instPrefix}saldo_70`, 'is', null);
-          
-          if (sMin !== null && sMax !== null) {
-            cpfQuery = cpfQuery.gte(`${instPrefix}saldo_70`, sMin)
-                               .lte(`${instPrefix}saldo_70`, sMax);
-          } else if (sMin !== null) {
-            cpfQuery = cpfQuery.gte(`${instPrefix}saldo_70`, sMin);
-          } else if (sMax !== null) {
-            cpfQuery = cpfQuery.lte(`${instPrefix}saldo_70`, sMax);
-          }
-        }
+        if (sMin !== null) query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
         
-        // --- Filtro CARTÕES (Líquida 5% e Benefício Líquida 5%) ---
         const cMMin = parseSafeNumber(filters.cardMargemMin)
-        if (cMMin !== null) {
-          cpfQuery = cpfQuery.not(`${instPrefix}liquida_5`, 'is', null)
-                             .gte(`${instPrefix}liquida_5`, cMMin)
-        }
-        const cBMin = parseSafeNumber(filters.cardBeneficioMin)
-        if (cBMin !== null) {
-          cpfQuery = cpfQuery.not(`${instPrefix}beneficio_liquida_5`, 'is', null)
-                             .gte(`${instPrefix}beneficio_liquida_5`, cBMin)
-        }
-
-        // --- Lógica de Botões de Cartão (Consignado e Benefício) ---
-        const cardTypes = filters.cardTypes || [];
-        const isCardBinaryActive = cardTypes.includes('__ACTIVE__');
+        if (cMMin !== null) query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin)
         
-        if (isCardBinaryActive) {
-          const isConsignadoSelected = cardTypes.includes("CARTÃO CONSIGNADO");
-          const isBeneficioSelected = cardTypes.includes("CARTÃO BENEFÍCIO");
-          const fTable = instPrefix.endsWith('.') ? instPrefix.slice(0, -1) : instPrefix;
+        const cBMin = parseSafeNumber(filters.cardBeneficioMin)
+        if (cBMin !== null) query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin)
 
-          if (isConsignadoSelected) {
-            cpfQuery = cpfQuery.not(`${instPrefix}utilizada_5`, 'is', null)
-                               .neq(`${instPrefix}utilizada_5`, 0);
-          } else {
-            cpfQuery = cpfQuery.or(`utilizada_5.eq.0,utilizada_5.is.null`, { foreignTable: fTable });
-          }
-
-          if (isBeneficioSelected) {
-            cpfQuery = cpfQuery.not(`${instPrefix}beneficio_utilizada_5`, 'is', null)
-                               .neq(`${instPrefix}beneficio_utilizada_5`, 0);
-          } else {
-            cpfQuery = cpfQuery.or(`beneficio_utilizada_5.eq.0,beneficio_utilizada_5.is.null`, { foreignTable: fTable });
+        if (filters.loanBanks?.length > 0) query = query.in('banco', filters.loanBanks)
+        
+        // Lógica de Banco do Cartão baseada no prefixo da coluna 'tipo'
+        if (filters.cardBanks?.length > 0) {
+          const selectedCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+            .filter(([, info]) => info.bank && filters.cardBanks.includes(info.bank))
+            .map(([code]) => code);
+          
+          if (selectedCodes.length > 0) {
+            const orFilter = selectedCodes.map(code => `tipo.ilike.${code}%`).join(',');
+            query = query.or(orFilter);
           }
         }
 
-        if (hasItemFilters) {
-          const itemPrefix = `${instPrefix}itens_credito.`
-          if (filters.loanBanks?.length > 0) cpfQuery = cpfQuery.in(`${itemPrefix}banco`, filters.loanBanks)
-          if (filters.cardBanks?.length > 0) cpfQuery = cpfQuery.in(`${itemPrefix}banco`, filters.cardBanks)
-          if (filters.loanPrazoMin) cpfQuery = cpfQuery.gte(`${itemPrefix}prazo`, parseInt(filters.loanPrazoMin))
-          if (filters.loanPrazoMax) cpfQuery = cpfQuery.lte(`${itemPrefix}prazo`, parseInt(filters.loanPrazoMax))
+        if (filters.cardTypes?.length > 0) {
+          // Mapeia as categorias selecionadas (CARTÃO CONSIGNADO / CARTÃO BENEFÍCIO) para os códigos reais
+          const selectedCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+            .filter(([, info]) => filters.cardTypes.includes(info.label))
+            .map(([code]) => code);
+          
+          if (selectedCodes.length > 0) {
+            // Usa OR com ILIKE para buscar pelos 5 primeiros dígitos (prefixo)
+            const orFilter = selectedCodes.map(code => `tipo.ilike.${code}%`).join(',');
+            query = query.or(orFilter);
+          }
         }
+        const pMin = parseInt(filters.loanPrazoMin)
+        const pMax = parseInt(filters.loanPrazoMax)
+        if (!isNaN(pMin)) query = query.gte('prazo', pMin)
+        if (!isNaN(pMax)) query = query.lte('prazo', pMax)
 
-        const { data: cpfData, error: cpfError } = await cpfQuery
-        if (cpfError) throw cpfError
+        const { data: bcrData, error: bcrError } = await query.range(from, to)
+        if (bcrError) throw bcrError
 
-        if (!cpfData || cpfData.length === 0) {
-          hasMore = false
+        if (!bcrData || bcrData.length === 0) {
+          break;
         } else {
-          // Passo 2: Buscar Dados Detalhados por CPF
-          // Atuamos SEMPRE somente nos CPFs filtrados na etapa anterior
-          const cpfsInBatch = Array.from(new Set(cpfData.map((item: any) => item[cpfColumn])))
+          bcrData.forEach((row: any) => {
+            // UNICIDADE GARANTIDA POR CPF
+            const key = row.cpf
+            if (uniqueRowsKeys.has(key)) return
+            uniqueRowsKeys.add(key)
+
+            const csvRow = [
+              row.cpf, row.nome, row.data_nascimento || "",
+              row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "", 
+              row.numero_matricula || "", row.orgao || "", row.situacao_funcional || "",
+              row.salario || 0, row.instituidor_nome || "", row.regime_juridico || "", row.uf || "",
+              row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
+              row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0,
+              row.banco || "", row.prazo || "", row.tipo || ""
+            ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")
             
-            const { data: fullData, error: fullError } = await supabase
-              .from('clientes')
-              .select(`
-                cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3,
-                matriculas (
-                  numero_matricula, orgao, situacao_funcional, salario, regime_juridico, uf,
-                  instituidores (
-                    nome, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5
-                  )
-                )
-              `)
-              .in('cpf', cpfsInBatch)
+            allCsvRows.push(csvRow)
+          })
 
-            if (fullError) throw fullError
-
-            // Passo 3: Montar linhas do CSV
-            fullData?.forEach((client: any) => {
-              client.matriculas?.forEach((matricula: any) => {
-                matricula.instituidores?.forEach((inst: any) => {
-                  const key = `${client.cpf}_${matricula.numero_matricula}_${inst.nome}`
-                  if (uniqueRowsKeys.has(key)) return
-                  uniqueRowsKeys.add(key)
-
-                  const row = [
-                    client.cpf,
-                    client.nome,
-                    client.data_nascimento || "",
-                    client.telefone_1 || "",
-                    client.telefone_2 || "",
-                    client.telefone_3 || "",
-                    matricula.numero_matricula || "",
-                    matricula.orgao || "",
-                    matricula.situacao_funcional || "",
-                    matricula.salario || 0,
-                    inst.nome || "",
-                    matricula.regime_juridico || "",
-                    matricula.uf || "",
-                    inst.saldo_70 || 0,
-                    inst.margem_35 || 0,
-                    inst.bruta_5 || 0,
-                    inst.utilizada_5 || 0,
-                    inst.liquida_5 || 0,
-                    inst.beneficio_bruta_5 || 0,
-                    inst.beneficio_utilizada_5 || 0,
-                    inst.beneficio_liquida_5 || 0
-                  ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")
-                  
-                  allCsvRows.push(row)
-                })
-              })
-            })
-
-            if (cpfData.length < pageSize) {
-              hasMore = false
-            } else {
-              page++
-            }
-            
-            const countForProgress = campaign.publico_estimado || 1
-            const progress = Math.min(Math.round((allCsvRows.length / countForProgress) * 100), 99)
-            setExportProgress(progress)
-          }
-
-          if (allCsvRows.length >= 1000000) hasMore = false
+          totalProcessed += bcrData.length;
+          const progress = Math.min(Math.round((totalProcessed / totalToExport) * 100), 100)
+          setExportProgress(progress)
         }
+      }
 
       if (allCsvRows.length === 0) {
-        alert("Nenhum dado encontrado para esta campanha.")
+        alert("Nenhum dado encontrado para este intervalo.")
         return
       }
 
-      setExportProgress(100)
       const headers = [
         "cpf", "nome", "data_de_nascimento", "telefone_1", "telefone_2", "telefone_3",
         "matricula", "orgao", "situacao_funcional", "salario", "instituidor", "regime_juridico", "uf",
-        "saldo_70%", "margem_35%", "bruta_5", "utilizada_5", "liquida_5", "beneficio_bruta_5", "beneficio_utilizada_5", "beneficio_liquida_5"
+        "saldo_70%", "margem_35%", "bruta_5", "utilizada_5", "liquida_5", "beneficio_bruta_5", "beneficio_utilizada_5", "beneficio_liquida_5",
+        "banco", "prazo", "tipo"
       ]
       
       const csvContent = [headers.join(","), ...allCsvRows].join("\n")
@@ -364,20 +263,14 @@ export default function CampaignsPage() {
       const link = document.createElement("a")
       const url = URL.createObjectURL(blob)
       link.setAttribute("href", url)
-      link.setAttribute("download", `campanha_${campaign.nome.toLowerCase().replace(/\s+/g, '_')}_${new Date().getTime()}.csv`)
+      link.setAttribute("download", `campanha_${campaign.nome.toLowerCase().replace(/\s+/g, '_')}_p${partIndex + 1}_${new Date().getTime()}.csv`)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
 
     } catch (err: any) {
-      console.error("ERRO DETALHADO NA EXPORTAÇÃO:", {
-        message: err.message,
-        details: err.details,
-        hint: err.hint,
-        code: err.code,
-        fullError: err
-      })
-      alert(`Erro ao exportar campanha: ${err.message || "Verifique o console para detalhes ou tente novamente."}`)
+      console.error("ERRO DETALHADO NA EXPORTAÇÃO:", err)
+      alert(`Erro ao exportar campanha: ${err.message || "Verifique o console."}`)
     } finally {
       setIsExporting(null)
     }
@@ -501,37 +394,80 @@ export default function CampaignsPage() {
                             </td>
                             <td className="px-8 py-5 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <Button 
-                                  onClick={() => handleExport(campaign)}
-                                  variant="ghost" 
-                                  size="sm" 
-                                  disabled={isExporting !== null}
-                                  className={`h-8 px-3 text-[9px] font-bold uppercase tracking-widest transition-colors ${
-                                    isExporting === campaign.id 
-                                      ? "text-primary bg-primary/5" 
-                                      : "text-slate-400 hover:text-primary hover:bg-primary/5"
-                                  }`}
-                                >
-                                  {isExporting === campaign.id ? (
-                                    <div className="flex flex-col items-end gap-1 min-w-[100px]">
-                                      <div className="flex items-center gap-2">
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                        <span className="text-[9px]">{exportProgress}%</span>
-                                      </div>
-                                      <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
-                                        <div 
-                                          className="h-full bg-primary transition-all duration-300" 
-                                          style={{ width: `${exportProgress}%` }}
+                                {campaign.publico_estimado > PART_SIZE ? (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger 
+                                      render={
+                                        <Button 
+                                          variant="ghost" 
+                                          size="sm" 
+                                          disabled={isExporting !== null}
+                                          className={`h-8 px-3 text-[9px] font-bold uppercase tracking-widest transition-colors ${
+                                            isExporting?.startsWith(campaign.id) 
+                                              ? "text-primary bg-primary/5" 
+                                              : "text-slate-400 hover:text-primary hover:bg-primary/5"
+                                          }`}
                                         />
+                                      }
+                                    >
+                                      {isExporting?.startsWith(campaign.id) ? (
+                                        <div className="flex items-center gap-2">
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                          <span>{exportProgress}%</span>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <Download className="w-3 h-3 mr-2" />
+                                          Exportar Partes
+                                        </>
+                                      )}
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-[240px]">
+                                      {Array.from({ length: Math.ceil(campaign.publico_estimado / PART_SIZE) }).map((_, i) => (
+                                        <DropdownMenuItem 
+                                          key={i} 
+                                          onClick={() => handleExport(campaign, i)}
+                                          className="text-[10px] font-bold uppercase tracking-tight py-2 px-3 cursor-pointer"
+                                        >
+                                          <Download className="w-3 h-3 mr-2 text-slate-400" />
+                                          Parte {i + 1} ({ (i * PART_SIZE).toLocaleString() } ao { Math.min((i + 1) * PART_SIZE - 1, campaign.publico_estimado - 1).toLocaleString() })
+                                        </DropdownMenuItem>
+                                      ))}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                ) : (
+                                  <Button 
+                                    onClick={() => handleExport(campaign)}
+                                    variant="ghost" 
+                                    size="sm" 
+                                    disabled={isExporting !== null}
+                                    className={`h-8 px-3 text-[9px] font-bold uppercase tracking-widest transition-colors ${
+                                      isExporting?.startsWith(campaign.id) 
+                                        ? "text-primary bg-primary/5" 
+                                        : "text-slate-400 hover:text-primary hover:bg-primary/5"
+                                    }`}
+                                  >
+                                    {isExporting?.startsWith(campaign.id) ? (
+                                      <div className="flex flex-col items-end gap-1 min-w-[100px]">
+                                        <div className="flex items-center gap-2">
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                          <span className="text-[9px]">{exportProgress}%</span>
+                                        </div>
+                                        <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                                          <div 
+                                            className="h-full bg-primary transition-all duration-300" 
+                                            style={{ width: `${exportProgress}%` }}
+                                          />
+                                        </div>
                                       </div>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <Download className="w-3 h-3 mr-2" />
-                                      Exportar
-                                    </>
-                                  )}
-                                </Button>
+                                    ) : (
+                                      <>
+                                        <Download className="w-3 h-3 mr-2" />
+                                        Exportar
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
                                 <Button variant="ghost" size="icon" className="w-8 h-8 text-slate-300 hover:text-slate-600">
                                   <MoreVertical className="w-4 h-4" />
                                 </Button>
