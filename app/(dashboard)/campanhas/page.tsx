@@ -347,7 +347,8 @@ export default function CampaignsPage() {
                     <thead>
                       <tr className="bg-slate-50/50 border-b border-slate-50">
                         <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Identificação</th>
-                        <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Nome da Campanha</th>
+                        <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Nome</th>
+                        <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Filtros</th>
                         <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Data Criação</th>
                         <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Público</th>
                         <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Status</th>
@@ -357,7 +358,7 @@ export default function CampaignsPage() {
                     <tbody>
                       {isLoading ? (
                         <tr>
-                          <td colSpan={6} className="px-8 py-20 text-center">
+                          <td colSpan={7} className="px-8 py-20 text-center">
                             <div className="flex flex-col items-center gap-4">
                               <Loader2 className="w-8 h-8 text-primary animate-spin" />
                               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Carregando campanhas...</p>
@@ -366,7 +367,7 @@ export default function CampaignsPage() {
                         </tr>
                       ) : error ? (
                         <tr>
-                          <td colSpan={6} className="px-8 py-20 text-center">
+                          <td colSpan={7} className="px-8 py-20 text-center">
                             <div className="flex flex-col items-center gap-4">
                               <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center">
                                 <Info className="w-6 h-6 text-red-500" />
@@ -388,7 +389,7 @@ export default function CampaignsPage() {
                         </tr>
                       ) : filteredCampaigns.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-8 py-20 text-center">
+                          <td colSpan={7} className="px-8 py-20 text-center">
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhuma campanha encontrada.</p>
                           </td>
                         </tr>
@@ -399,6 +400,41 @@ export default function CampaignsPage() {
                             <td className="px-8 py-5">
                               <div className="flex flex-col">
                                 <span className="text-[12.5px] font-bold text-slate-900 uppercase tracking-tight">{campaign.nome}</span>
+                              </div>
+                            </td>
+                            <td className="px-8 py-5">
+                              <div className="flex items-center gap-1.5 overflow-x-auto max-w-[300px] pb-1 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                                {campaign.filtros?.orgaos?.map((o) => (
+                                  <span key={o} className="whitespace-nowrap text-[9px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold uppercase border border-blue-100/50">{o}</span>
+                                ))}
+                                {campaign.filtros?.ufs?.map((uf) => (
+                                  <span key={uf} className="whitespace-nowrap text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold uppercase border border-slate-200/50">{uf}</span>
+                                ))}
+                                {campaign.filtros?.loanBanks?.map((bank) => (
+                                  <span key={bank} className="whitespace-nowrap text-[9px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded font-bold uppercase border border-amber-100/50">{bank}</span>
+                                ))}
+                                {campaign.filtros?.cardBanks?.map((bank) => (
+                                  <span key={bank} className="whitespace-nowrap text-[9px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded font-bold uppercase border border-rose-100/50 text-[8px] leading-tight">{bank}</span>
+                                ))}
+                                {campaign.filtros?.situacoes?.map((s) => (
+                                  <span key={s} className="whitespace-nowrap text-[9px] bg-violet-50 text-violet-600 px-2 py-0.5 rounded font-bold uppercase border border-violet-100/50">{s}</span>
+                                ))}
+                                {campaign.filtros?.regimes?.map((r) => (
+                                  <span key={r} className="whitespace-nowrap text-[9px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded font-bold uppercase border border-indigo-100/50">{r}</span>
+                                ))}
+                                {(campaign.filtros?.margemMin || campaign.filtros?.margemMax) && (
+                                  <span className="whitespace-nowrap text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold uppercase border border-emerald-100/50">
+                                    Margem: {campaign.filtros.margemMin || "0"} - {campaign.filtros.margemMax || "∞"}
+                                  </span>
+                                )}
+                                {(campaign.filtros?.idadeMin || campaign.filtros?.idadeMax) && (
+                                  <span className="whitespace-nowrap text-[9px] bg-orange-50 text-orange-600 px-2 py-0.5 rounded font-bold uppercase border border-orange-100/50">
+                                    Idade: {campaign.filtros.idadeMin || "0"} - {campaign.filtros.idadeMax || "∞"}
+                                  </span>
+                                )}
+                                {(!campaign.filtros || Object.keys(campaign.filtros).length === 0) && (
+                                  <span className="text-[9.5px] text-slate-400">Sem Filtros</span>
+                                )}
                               </div>
                             </td>
                             <td className="px-8 py-5">
