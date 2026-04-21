@@ -227,7 +227,7 @@ export default function TicketDetailsPage({ params }: { params: Promise<{ id: st
                 
                 <Button 
                   onClick={handleDigitarProposta}
-                  className="bg-slate-800 hover:bg-slate-700 text-white px-8 h-[34px] text-[10.5px] font-bold rounded-lg shadow-lg shadow-slate-200 w-full sm:w-auto"
+                  className="bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 px-8 h-[34px] text-[10.5px] font-bold rounded-lg transition-all w-full sm:w-auto flex items-center gap-2"
                 >
                   <FileEdit className="w-4 h-4 mr-2" />
                   DIGITAR PROPOSTA

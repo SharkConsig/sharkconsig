@@ -46,8 +46,9 @@ export interface Ticket {
   equipe: string
   created_at: string
   updated_at: string
-  descricaoDescription?: string // Using the name from the insert
+  descricao?: string
   user_id: string
+  user_nome?: string
 }
 
 const secondaryCards = [
@@ -62,7 +63,7 @@ const secondaryCards = [
 
 export default function TicketsPage() {
   const router = useRouter()
-  const { perfil, user } = useAuth()
+  const { perfil, user, isOperational, isAdmin } = useAuth()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
@@ -321,6 +322,9 @@ export default function TicketsPage() {
                 <thead>
                   <tr className="bg-slate-50/50">
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[80px]">Número</th>
+                    {(isOperational || isAdmin) && (
+                      <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[120px]">Corretor</th>
+                    )}
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[150px]">Status</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[110px]">Origem</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[200px]">Cliente / Convênio</th>
@@ -336,7 +340,7 @@ export default function TicketsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-12 text-center">
+                      <td colSpan={isOperational || isAdmin ? 12 : 11} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <Loader2 className="w-6 h-6 text-primary animate-spin" />
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando chamados...</span>
@@ -354,6 +358,16 @@ export default function TicketsPage() {
                           onClick={() => toggleTicketExpansion(ticket.id.toString())}
                         >
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">#{ticket.id}</td>
+                          {(isOperational || isAdmin) && (
+                            <td className="px-4 py-4">
+                              <div className="flex flex-col">
+                                <span className="text-[11px] font-bold text-primary uppercase tracking-tight truncate max-w-[150px]" title={ticket.user_nome}>
+                                  {ticket.user_nome || "---"}
+                                </span>
+                                <span className="text-[8px] text-slate-400 font-medium">Equipe: {ticket.equipe}</span>
+                              </div>
+                            </td>
+                          )}
                           <td className="px-4 py-4">
                             <span className={cn(
                               "px-2.5 py-1 rounded-md text-[9px] font-black text-white uppercase inline-block shadow-sm",
@@ -412,14 +426,25 @@ export default function TicketsPage() {
                         </tr>
                         {expandedTicketId === ticket.id.toString() && (
                           <tr>
-                            <td colSpan={11} className="p-0 border-b border-slate-200">
+                            <td colSpan={isOperational || isAdmin ? 12 : 11} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
-                                <TicketAtendimento ticket={{
-                                  id: ticket.id.toString(),
-                                  client: ticket.cliente_nome,
-                                  cpf: ticket.cliente_cpf,
-                                  origin: ticket.origem
-                                }} />
+                                <TicketAtendimento 
+                                  ticket={{
+                                    id: ticket.id.toString(),
+                                    client: ticket.cliente_nome,
+                                    cpf: ticket.cliente_cpf,
+                                    origin: ticket.origem,
+                                    description: ticket.descricao,
+                                    createdAt: ticket.created_at,
+                                    user_nome: ticket.user_nome,
+                                    arquivo_rg_frente: ticket.arquivo_rg_frente,
+                                    arquivo_rg_verso: ticket.arquivo_rg_verso,
+                                    arquivo_contracheque: ticket.arquivo_contracheque,
+                                    arquivo_extrato: ticket.arquivo_extrato,
+                                    arquivo_outros: ticket.arquivo_outros
+                                  }} 
+                                  onMessageSent={fetchTickets}
+                                />
                               </div>
                             </td>
                           </tr>
@@ -428,7 +453,7 @@ export default function TicketsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
+                      <td colSpan={isOperational || isAdmin ? 12 : 11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
                         Nenhum chamado encontrado.
                       </td>
                     </tr>

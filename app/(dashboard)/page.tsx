@@ -747,8 +747,7 @@ export default function SearchClientPage() {
                               });
                               router.push(`/chamados/novo?${params.toString()}`);
                             }}
-                            variant="outline" 
-                            className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest border-slate-200 text-slate-600 hover:bg-slate-50 transition-all"
+                            className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
                           >
                             <MessageSquare className="w-4 h-4 mr-2" />
                             Abrir Chamado
@@ -764,7 +763,7 @@ export default function SearchClientPage() {
                               });
                               router.push(`/propostas/nova?${params.toString()}`);
                             }}
-                            className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
+                            className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
                           >
                             <FileEdit className="w-4 h-4 mr-2" />
                             Digitar Proposta

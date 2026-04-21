@@ -14,7 +14,8 @@ import {
   ClipboardList,
   FileEdit,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Settings
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
@@ -71,6 +72,12 @@ const menuItems = [
         href: "/propostas", 
         icon: ClipboardList, 
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+      },
+      { 
+        name: "CONFIGURAÇÕES", 
+        href: "/configuracoes", 
+        icon: Settings, 
+        roles: ["Administrador", "Desenvolvedor"] 
       },
       { 
         name: "GESTÃO DE USUÁRIOS", 

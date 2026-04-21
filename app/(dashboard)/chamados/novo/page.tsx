@@ -26,7 +26,7 @@ import { withRetry, cn } from "@/lib/utils"
 function NewTicketForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user } = useAuth()
+  const { user, perfil } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [description, setDescription] = useState("")
 
@@ -240,53 +240,95 @@ function NewTicketForm() {
   };
 
   const handleSubmit = async () => {
+    console.log("Iniciando submissão do chamado...");
+    
     if (!user) {
-      toast.error("Você precisa estar logado para abrir um chamado")
-      return
+      console.error("Usuário não autenticado.");
+      toast.error("Você precisa estar logado para abrir um chamado.");
+      return;
     }
 
-    if (!formData.nome || !formData.cpf || !formData.tel1 || !formData.origem || !formData.convenio || !description) {
-      toast.error("Por favor, preencha todos os campos obrigatórios (*)")
-      return
+    // Campos obrigatórios básicos com mensagens específicas
+    if (!formData.origem) {
+      toast.error("Por favor, selecione a Origem do Cliente.");
+      return;
+    }
+    if (!formData.convenio) {
+      toast.error("Por favor, selecione o Convênio.");
+      return;
+    }
+    if (!formData.nome) {
+      toast.error("Por favor, informe o Nome do Cliente.");
+      return;
+    }
+    if (!formData.cpf) {
+      toast.error("Por favor, informe o CPF do Cliente.");
+      return;
+    }
+    if (!formData.tel1) {
+      toast.error("Por favor, informe o Telefone do Cliente.");
+      return;
+    }
+    if (!description) {
+      toast.error("Por favor, preencha a Descrição do chamado.");
+      return;
     }
 
-    setIsSubmitting(true)
+    // Validação de margem obrigatória (como indicado no formulário com *)
+    if (!formData.margem && !formData.liquida5 && !formData.beneficio5) {
+      console.warn("Nenhuma margem selecionada.");
+      toast.error("Por favor, selecione ou informe ao menos uma margem.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const loadingToast = toast.loading("Enviando chamado e anexos...");
+
     try {
-      const cleanMoney = (val: string) => {
-        const cleaned = val.replace(/[R$\s.]/g, "").replace(",", ".")
-        return parseFloat(cleaned) || 0
-      }
-
-      // Upload files first
+      console.log("Iniciando upload de arquivos...");
       const fileUrls: { [key: string]: string | null } = {
         frente: null,
         verso: null,
         contracheque: null,
         extrato: null,
         outros: null
+      };
+
+      // Sequencial para melhor controle de erro no log
+      for (const [key, file] of Object.entries(selectedFiles)) {
+        if (file) {
+          try {
+            console.log(`Enviando arquivo: ${key}...`);
+            const url = await uploadFile(file, `${user.id}/${Date.now()}`);
+            fileUrls[key] = url;
+            console.log(`Arquivo ${key} enviado com sucesso:`, url);
+          } catch (uploadErr: any) {
+            console.error(`Erro ao enviar arquivo ${key}:`, uploadErr);
+            throw new Error(`Falha no upload do arquivo ${key}: ${uploadErr.message || 'Erro desconhecido'}`);
+          }
+        }
       }
 
-      const uploadPromises = Object.entries(selectedFiles).map(async ([key, file]) => {
-        if (file) {
-          const url = await uploadFile(file, `${user.id}/${Date.now()}`)
-          fileUrls[key] = url
-        }
-      })
+      console.log("Convertendo valores monetários...");
+      const cleanMoney = (val: string) => {
+        if (!val) return 0;
+        const cleaned = val.replace(/[R$\s.]/g, "").replace(",", ".");
+        return parseFloat(cleaned) || 0;
+      };
 
-      await Promise.all(uploadPromises)
+      const cleanCPF = (val: string) => val.replace(/\D/g, "");
 
       // Adiciona informações de margens adicionais na descrição se selecionadas
-      let finalDescription = description
-      const extraMargins = []
-      if (formData.liquida5) extraMargins.push(`Líquida 5%: ${formData.liquida5}`)
-      if (formData.beneficio5) extraMargins.push(`Benefício Líquida 5%: ${formData.beneficio5}`)
+      let finalDescription = description;
+      const extraMargins = [];
+      if (formData.liquida5) extraMargins.push(`Líquida 5%: ${formData.liquida5}`);
+      if (formData.beneficio5) extraMargins.push(`Benefício Líquida 5%: ${formData.beneficio5}`);
       
       if (extraMargins.length > 0) {
-        finalDescription += `\n\n--- MARGENS SELECIONADAS ---\n${extraMargins.join("\n")}`
+        finalDescription += `\n\n--- MARGENS SELECIONADAS ---\n${extraMargins.join("\n")}`;
       }
 
-      const cleanCPF = (val: string) => val.replace(/\D/g, "")
-
+      console.log("Enviando dados para o banco de dados...");
       const { error } = await withRetry(() => 
         supabase.from('chamados').insert({
           status: 'ABERTO',
@@ -294,30 +336,39 @@ function NewTicketForm() {
           cliente_nome: formData.nome,
           cliente_cpf: cleanCPF(formData.cpf),
           cliente_telefone: formData.tel1,
+          cliente_telefone_2: formData.tel2 || null,
+          cliente_telefone_3: formData.tel3 || null,
           margem: cleanMoney(formData.margem),
           convenio: formData.convenio,
           equipe: formData.equipe,
           descricao: finalDescription,
           user_id: user.id,
+          user_nome: perfil?.nome || user.email || "Usuário",
           arquivo_rg_frente: fileUrls.frente,
           arquivo_rg_verso: fileUrls.verso,
           arquivo_contracheque: fileUrls.contracheque,
           arquivo_extrato: fileUrls.extrato,
           arquivo_outros: fileUrls.outros
         })
-      )
+      );
 
-      if (error) throw error
+      if (error) {
+        console.error("Erro retornado pelo Supabase (RPC/Insert):", error);
+        throw error;
+      }
 
-      toast.success("Chamado aberto com sucesso!")
-      router.push("/chamados")
-    } catch (error) {
-      console.error("Erro ao salvar chamado:", error)
-      toast.error("Erro ao abrir chamado. Tente novamente.")
+      console.log("Chamado aberto com sucesso!");
+      toast.dismiss(loadingToast);
+      toast.success("Chamado aberto com sucesso!");
+      router.push("/chamados");
+    } catch (error: any) {
+      console.error("Erro crítico no handleSubmit:", error);
+      toast.dismiss(loadingToast);
+      toast.error(`Erro ao abrir chamado: ${error.message || "Tente novamente."}`);
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   return (
     <div className="flex-1 flex flex-col">
@@ -618,11 +669,11 @@ function NewTicketForm() {
             <div className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
-                  { label: "RG ou CNH (FRENTE)", id: "frente", ref: fileRefs.frente, required: true },
-                  { label: "RG (VERSO)", id: "verso", ref: fileRefs.verso, required: false },
-                  { label: "CONTRA CHEQUE", id: "contracheque", ref: fileRefs.contracheque, required: true },
-                  { label: "EXTRATO DE CONSIGNAÇÃO", id: "extrato", ref: fileRefs.extrato, required: true },
-                  { label: "OUTROS", id: "outros", ref: fileRefs.outros, required: false }
+                   { label: "RG ou CNH (FRENTE)", id: "frente", ref: fileRefs.frente, required: false },
+                   { label: "RG (VERSO)", id: "verso", ref: fileRefs.verso, required: false },
+                   { label: "CONTRA CHEQUE", id: "contracheque", ref: fileRefs.contracheque, required: false },
+                   { label: "EXTRATO DE CONSIGNAÇÃO", id: "extrato", ref: fileRefs.extrato, required: false },
+                   { label: "OUTROS", id: "outros", ref: fileRefs.outros, required: false }
                 ].map((field) => (
                   <div key={field.id} className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
