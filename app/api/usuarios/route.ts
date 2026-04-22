@@ -3,12 +3,32 @@ import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
     const supabaseAdmin = createAdminClient();
-    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers()
-    
-    if (error) throw error
+
+    if (id) {
+      const { data: { user }, error } = await supabaseAdmin.auth.admin.getUserById(id)
+      if (error) throw error
+      if (!user) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
+
+      const metadata = user.user_metadata || {};
+      return NextResponse.json({
+        id: user.id,
+        email: user.email,
+        nome: metadata.nome_completo || metadata.full_name || 'Sem Nome',
+        username: metadata.username,
+        funcao: metadata.funcao || 'Corretor',
+        supervisor_id: metadata.supervisor_id,
+        avatar_url: metadata.avatar_url || `https://picsum.photos/seed/${metadata.username || user.id}/200/200`,
+        status: (metadata.status || 'ATIVO').toUpperCase()
+      })
+    }
+
+    const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+    if (listError) throw listError
 
     // Mesclar dados
     const combinedUsers = users.map((user) => {
@@ -73,7 +93,7 @@ export async function PUT(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
     const body = await request.json()
-    const { id, email, password, nome_completo, username, funcao, avatar_url, supervisor_id, status } = body
+    const { id, email, password, nome_completo, username, funcao, avatar_url, supervisor_id, supervisor_nome, status } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 })
@@ -95,6 +115,7 @@ export async function PUT(request: Request) {
     if (funcao) metadata.funcao = funcao
     if (status) metadata.status = status.toUpperCase()
     if (supervisor_id !== undefined) metadata.supervisor_id = supervisor_id
+    if (supervisor_nome !== undefined) metadata.supervisor_nome = supervisor_nome
     if (avatar_url !== undefined) {
       metadata.avatar_url = avatar_url?.startsWith('data:image') 
         ? `https://picsum.photos/seed/${username || id}/200/200` 

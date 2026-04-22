@@ -168,9 +168,18 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       const endpoint = isEdit ? "/api/usuarios" : "/api/create-user"
       const method = isEdit ? "PUT" : "POST"
 
+      // Busca o nome do supervisor se houver um selecionado
+      const supervisorNome = supervisores.find(s => s.id === formData.supervisor_id)?.nome
+
       const payload = isEdit 
-        ? { ...formData, id: usuario.id, avatar_url: finalAvatarUrl, password: formData.senha || undefined }
-        : { ...formData, avatar_url: finalAvatarUrl }
+        ? { 
+            ...formData, 
+            id: usuario.id, 
+            avatar_url: finalAvatarUrl, 
+            password: formData.senha || undefined,
+            supervisor_nome: supervisorNome
+          }
+        : { ...formData, avatar_url: finalAvatarUrl, supervisor_nome: supervisorNome }
 
       const response = await fetch(endpoint, {
         method,

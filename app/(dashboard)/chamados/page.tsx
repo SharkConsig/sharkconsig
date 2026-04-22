@@ -56,6 +56,7 @@ export interface Ticket {
   descricao?: string
   user_id: string
   user_nome?: string
+  user_avatar?: string
 }
 
 const secondaryCards = [
@@ -80,6 +81,7 @@ export default function TicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
 
   const fetchTickets = useCallback(async () => {
     if (!user || !perfil) return
@@ -216,6 +218,7 @@ export default function TicketsPage() {
   }), [counts])
 
   const handleParentClick = (status: string) => {
+    setCurrentPage(1)
     if (selectedStatus === status) {
       setSelectedStatus(null)
       setSelectedSecondaryStatus(null)
@@ -228,11 +231,26 @@ export default function TicketsPage() {
   }
 
   const handleSecondaryClick = (status: string) => {
+    setCurrentPage(1)
     if (selectedSecondaryStatus === status) {
       setSelectedSecondaryStatus(null)
     } else {
       setSelectedSecondaryStatus(status)
       setSelectedStatus("APROVADOS")
+    }
+  }
+
+  // Reset page on search or date filter
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, startDate, endDate])
+
+  const totalPages = Math.ceil(filteredTickets.length / itemsPerPage)
+  const paginatedTickets = filteredTickets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
     }
   }
 
@@ -300,7 +318,7 @@ export default function TicketsPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="CHAMADOS ABERTOS" />
+      <Header title="CHAMADOS" />
       
       <main className="flex-1 p-4 lg:p-8 bg-slate-50/50 space-y-8 max-w-[1600px] mx-auto w-full">
         {/* Filters Card */}
@@ -419,8 +437,8 @@ export default function TicketsPage() {
                         </div>
                       </td>
                     </tr>
-                  ) : filteredTickets.length > 0 ? (
-                    filteredTickets.map((ticket) => (
+                  ) : paginatedTickets.length > 0 ? (
+                    paginatedTickets.map((ticket) => (
                       <React.Fragment key={ticket.id}>
                         <tr 
                           className={cn(
@@ -510,6 +528,7 @@ export default function TicketsPage() {
                                     description: ticket.descricao,
                                     createdAt: ticket.created_at,
                                     user_nome: ticket.user_nome,
+                                    user_avatar: ticket.user_avatar,
                                     arquivo_rg_frente: ticket.arquivo_rg_frente,
                                     arquivo_rg_verso: ticket.arquivo_rg_verso,
                                     arquivo_contracheque: ticket.arquivo_contracheque,
@@ -539,31 +558,54 @@ export default function TicketsPage() {
             </div>
 
             {/* Pagination / List Footer */}
-            <div className="px-8 py-10 flex items-center justify-between border-t border-slate-50 bg-slate-50/30">
-              <button 
-                onClick={() => setCurrentPage(1)}
-                className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors disabled:opacity-50"
-              >
-                Primeira
-              </button>
-              
-              <div className="flex items-center gap-4">
-                <button className="p-1 text-slate-400 hover:text-primary disabled:opacity-50">
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-[11px] font-black text-white shadow-lg shadow-primary/20">1</span>
-                  <span className="text-[10px] font-bold text-slate-400 mx-2">DE 1</span>
-                </div>
-                <button className="p-1 text-slate-400 hover:text-primary">
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
+            {totalPages > 1 && (
+              <div className="px-8 py-10 flex flex-col sm:flex-row items-center justify-between border-t border-slate-50 bg-slate-50/30 gap-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredTickets.length)} de {filteredTickets.length} chamados
+                </p>
+                
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="icon"
+                        className={cn(
+                          "h-8 w-8 rounded-lg transition-all text-[10px] font-black tracking-widest",
+                          currentPage === page 
+                            ? "bg-primary text-white shadow-lg shadow-primary/20 border-primary" 
+                            : "border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20"
+                        )}
+                        onClick={() => handlePageChange(page)}
+                      >
+                        {page}
+                      </Button>
+                    ))}
+                  </div>
 
-              <button className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors">
-                Última
-              </button>
-            </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

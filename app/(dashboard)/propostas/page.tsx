@@ -125,8 +125,11 @@ export default function ProposalsPage() {
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
   const [startDate, setStartDate] = useState("09/02/2026")
   const [endDate, setEndDate] = useState("09/02/2026")
-  const [currentPage, setCurrentPage] = useState(1)
   const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null)
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
 
   const filteredProposals = proposals.filter(proposal => {
     const matchesSearch = 
@@ -136,6 +139,16 @@ export default function ProposalsPage() {
     
     return matchesSearch
   })
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredProposals.length / itemsPerPage)
+  const paginatedProposals = filteredProposals.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
+    }
+  }
 
   const handleParentClick = (status: string) => {
     if (selectedStatus === status) {
@@ -311,8 +324,8 @@ export default function ProposalsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredProposals.length > 0 ? (
-                  filteredProposals.map((proposal) => (
+                {paginatedProposals.length > 0 ? (
+                  paginatedProposals.map((proposal) => (
                     <React.Fragment key={proposal.id}>
                       <tr 
                         onClick={() => toggleProposalExpansion(proposal.id)}
@@ -370,34 +383,54 @@ export default function ProposalsPage() {
           </div>
 
           {/* Pagination */}
-          <div className="px-8 py-12 flex items-center justify-between border-t border-slate-50">
-            <button 
-              className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors disabled:opacity-50"
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1}
-            >
-              Primeira
-            </button>
-            <div className="flex items-center gap-4">
-              <button 
-                className="p-1 text-slate-400 hover:text-primary disabled:opacity-50"
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">
-                {currentPage}-20 de 12987
-              </span>
-              <button 
-                className="p-1 text-slate-400 hover:text-primary"
-                onClick={() => setCurrentPage(prev => prev + 1)}
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
+          {totalPages > 1 && (
+            <div className="px-8 py-10 flex flex-col sm:flex-row items-center justify-between border-t border-slate-50 bg-slate-50/30 gap-4">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredProposals.length)} de {filteredProposals.length} propostas
+              </p>
+              
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="icon"
+                      className={cn(
+                        "h-8 w-8 rounded-lg transition-all text-[10px] font-black tracking-widest",
+                        currentPage === page 
+                          ? "bg-primary text-white shadow-lg shadow-primary/20 border-primary" 
+                          : "border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20"
+                      )}
+                      onClick={() => handlePageChange(page)}
+                    >
+                      {page}
+                    </Button>
+                  ))}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
-            <button className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors">Última</button>
-          </div>
+          )}
         </Card>
       </main>
     </div>

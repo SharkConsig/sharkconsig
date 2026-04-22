@@ -41,7 +41,7 @@ function NewTicketForm() {
 
   const [formData, setFormData] = useState({
     origem: searchParams.get("origem") || "",
-    equipe: "ROBSON DE ALMEIDA FERNANDEZ RAMOS",
+    equipe: perfil?.supervisor_nome || "",
     nome: searchParams.get("nome") || "",
     cpf: searchParams.get("cpf") || "",
     tel1: searchParams.get("tel1") || "",
@@ -81,6 +81,34 @@ function NewTicketForm() {
     }
     fetchLastTicket()
   }, [])
+
+  // Auto-fill supervisor info for Corretores
+  useEffect(() => {
+    const fillSupervisor = async () => {
+      // Se já temos o nome no perfil e o campo está vazio, preenchemos
+      if (perfil?.supervisor_nome && !formData.equipe) {
+        setFormData(prev => ({ ...prev, equipe: perfil.supervisor_nome }));
+        return;
+      }
+
+      // Se temos o ID mas não o nome no perfil, buscamos via API otimizada
+      if (perfil?.supervisor_id && !formData.equipe) {
+        try {
+          const res = await fetch(`/api/usuarios?id=${perfil.supervisor_id}`);
+          if (res.ok) {
+            const supervisorData = await res.json();
+            if (supervisorData.nome) {
+              setFormData(prev => ({ ...prev, equipe: supervisorData.nome }));
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao buscar supervisor:", err);
+        }
+      }
+    };
+
+    fillSupervisor();
+  }, [perfil, formData.equipe])
   
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   
@@ -360,6 +388,7 @@ function NewTicketForm() {
           descricao: finalDescription,
           user_id: user.id,
           user_nome: perfil?.nome || user.email || "Usuário",
+          user_avatar: perfil?.avatar_url || null,
           arquivo_rg_frente: fileUrls.frente,
           arquivo_rg_verso: fileUrls.verso,
           arquivo_contracheque: fileUrls.contracheque,
@@ -444,7 +473,7 @@ function NewTicketForm() {
                     <Input 
                       value={formData.equipe}
                       onChange={(e) => handleInputChange("equipe", e.target.value)}
-                      placeholder="ROBSON DE ALMEIDA FERNANDEZ RAMOS" 
+                      placeholder="" 
                       className="h-[34px] border-slate-100 bg-[#E8E8E8] text-[12px]"
                     />
                   </div>

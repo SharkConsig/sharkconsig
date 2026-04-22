@@ -15,6 +15,8 @@ interface Perfil {
   status: 'Ativo' | 'Inativo'
   permissoes: any
   avatar_url?: string
+  supervisor_id?: string
+  supervisor_nome?: string
 }
 
 interface AuthContextType {
@@ -52,7 +54,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role: metadata.funcao || "Corretor",
             status: "Ativo",
             permissoes: {},
-            avatar_url: metadata.avatar_url
+            avatar_url: metadata.avatar_url,
+            supervisor_id: metadata.supervisor_id,
+            supervisor_nome: metadata.supervisor_nome
           })
         } else {
           setPerfil(null)

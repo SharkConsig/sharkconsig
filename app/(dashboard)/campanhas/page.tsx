@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
+import { cn } from "@/lib/utils"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { supabase } from "@/lib/supabase"
 import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
@@ -67,6 +68,10 @@ export default function CampaignsPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [isSyncing, setIsSyncing] = useState(false)
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const handleSyncBase = async () => {
     setIsSyncing(true)
@@ -297,6 +302,16 @@ export default function CampaignsPage() {
     c.id.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredCampaigns.length / itemsPerPage);
+  const paginatedCampaigns = filteredCampaigns.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col relative">
       <Header title="MINHAS CAMPANHAS" />
@@ -394,7 +409,7 @@ export default function CampaignsPage() {
                           </td>
                         </tr>
                       ) : (
-                        filteredCampaigns.map((campaign) => (
+                        paginatedCampaigns.map((campaign) => (
                           <tr key={campaign.id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors group">
                             <td className="px-8 py-5 text-[11px] font-bold text-slate-400 truncate max-w-[100px]">{campaign.id}</td>
                             <td className="px-8 py-5">
@@ -543,15 +558,68 @@ export default function CampaignsPage() {
                   </table>
                 </div>
 
-            <div className="px-8 py-12 flex items-center justify-between border-t border-slate-50">
-              <button className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors">Primeira</button>
-              <div className="flex items-center gap-4">
-                <button className="p-1 text-slate-400 hover:text-primary"><ChevronLeft className="w-5 h-5" /></button>
-                <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">1 de 1</span>
-                <button className="p-1 text-slate-400 hover:text-primary"><ChevronRight className="w-5 h-5" /></button>
+            {totalPages > 1 && (
+              <div className="px-8 py-10 flex flex-col sm:flex-row items-center justify-between border-t border-slate-50 bg-slate-50/20 gap-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredCampaigns.length)} de {filteredCampaigns.length} campanhas
+                </p>
+                
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  
+                  <div className="flex items-center gap-1">
+                    {(() => {
+                      const pages = [];
+                      const maxVisiblePages = 5;
+                      let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                      
+                      if (endPage - startPage + 1 < maxVisiblePages) {
+                        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                      }
+
+                      for (let i = startPage; i <= endPage; i++) {
+                        pages.push(
+                          <Button
+                            key={i}
+                            variant={currentPage === i ? "default" : "outline"}
+                            size="icon"
+                            className={cn(
+                              "h-8 w-8 rounded-lg transition-all text-[10px] font-black tracking-widest",
+                              currentPage === i 
+                                ? "bg-primary text-white shadow-lg shadow-primary/20 border-primary" 
+                                : "border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20"
+                            )}
+                            onClick={() => handlePageChange(i)}
+                          >
+                            {i}
+                          </Button>
+                        );
+                      }
+                      return pages;
+                    })()}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
-              <button className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors">Última</button>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>

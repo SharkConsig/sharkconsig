@@ -34,6 +34,7 @@ import {
   RefreshCw
 } from "lucide-react"
 import { useState, useEffect, useCallback } from "react"
+import { cn } from "@/lib/utils"
 import { NovoUsuarioModal } from "@/components/usuarios/novo-usuario-modal"
 import { toast } from "sonner"
 
@@ -61,6 +62,10 @@ export default function UsuariosPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [filtroFuncao, setFiltroFuncao] = useState("todas")
   const [filtroStatus, setFiltroStatus] = useState("todos")
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Estado para Confirmação customizada (substitui window.confirm que é bloqueado no iframe)
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -179,6 +184,21 @@ export default function UsuariosPage() {
     const matchStatus = filtroStatus === "todos" || user.status.toLowerCase() === filtroStatus.toLowerCase()
     return matchFuncao && matchStatus
   })
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filtroFuncao, filtroStatus]);
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50/50 min-h-screen">
@@ -314,7 +334,7 @@ export default function UsuariosPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredUsers.map((usuario) => {
+                    {paginatedUsers.map((usuario) => {
                       const supervisor = usuarios.find(u => u.id === usuario.supervisor_id)
                       return (
                         <tr 
@@ -397,28 +417,55 @@ export default function UsuariosPage() {
               )}
             </div>
 
-            {/* Pagination Footer */}
-            <div className="px-8 py-10 flex items-center justify-between border-t border-slate-50 bg-slate-50/30">
-              <button className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors disabled:opacity-50">
-                Primeira
-              </button>
-              
-              <div className="flex items-center gap-4">
-                <button className="p-1 text-slate-400 hover:text-primary disabled:opacity-50">
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">
-                  {filteredUsers.length} usuários
-                </span>
-                <button className="p-1 text-slate-400 hover:text-primary">
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
+            {/* Pagination / List Footer */}
+            {totalPages > 1 && (
+              <div className="px-8 py-10 flex flex-col sm:flex-row items-center justify-between border-t border-slate-50 bg-slate-50/30 gap-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredUsers.length)} de {filteredUsers.length} usuários
+                </p>
+                
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="icon"
+                        className={cn(
+                          "h-8 w-8 rounded-lg transition-all text-[10px] font-black tracking-widest",
+                          currentPage === page 
+                            ? "bg-primary text-white shadow-lg shadow-primary/20 border-primary" 
+                            : "border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20"
+                        )}
+                        onClick={() => handlePageChange(page)}
+                      >
+                        {page}
+                      </Button>
+                    ))}
+                  </div>
 
-              <button className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors">
-                Última
-              </button>
-            </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

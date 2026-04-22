@@ -56,7 +56,7 @@ const menuItems = [
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
       },
       { 
-        name: "CHAMADOS ABERTOS", 
+        name: "CHAMADOS", 
         href: "/chamados", 
         icon: MessageSquareText, 
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 

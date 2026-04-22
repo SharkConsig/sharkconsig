@@ -27,9 +27,14 @@ import {
   Trash2, 
   Loader2, 
   Settings2,
-  Tag
+  Tag,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
+import { motion, AnimatePresence } from "motion/react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
@@ -64,6 +69,11 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isStatusExpanded, setIsStatusExpanded] = useState(false)
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
   
   // Form State
   const [currentStatusId, setCurrentStatusId] = useState<string | null>(null)
@@ -117,6 +127,16 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchStatuses()
   }, [fetchStatuses])
+
+  // Pagination Logic
+  const totalPages = Math.ceil(statuses.length / itemsPerPage)
+  const paginatedStatuses = statuses.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
+    }
+  }
 
   const resetForm = () => {
     setCurrentStatusId(null)
@@ -258,106 +278,180 @@ export default function SettingsPage() {
       
       <main className="flex-1 p-4 lg:p-8 space-y-8">
         <section className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div 
+            className="flex items-center justify-between cursor-pointer group select-none"
+            onClick={() => setIsStatusExpanded(!isStatusExpanded)}
+          >
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <div className="w-1 h-4 bg-primary rounded-full" />
-                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest">STATUS DE CHAMADOS</h2>
+                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
+                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                  STATUS DE CHAMADOS
+                  {isStatusExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />
+                  )}
+                </h2>
               </div>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Gerenciamento de fluxos e estados dos atendimentos</p>
             </div>
             
             <Button 
-              onClick={() => handleOpenModal()} 
-              className="bg-[#171717] hover:bg-[#171717]/90 text-white gap-2 shadow-lg shadow-slate-200 h-10 px-6 rounded-lg"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleOpenModal()
+              }} 
+              className="bg-[#171717] hover:bg-[#171717]/90 text-white gap-2 shadow-lg shadow-slate-200 h-10 px-6 rounded-lg relative z-10"
             >
               <Plus className="w-4 h-4" />
               <span className="text-[11px] font-bold uppercase tracking-widest">Novo Status</span>
             </Button>
           </div>
 
-          <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader className="bg-slate-50/50">
-                  <TableRow className="hover:bg-transparent border-slate-100">
-                    <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Status</TableHead>
-                    <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Cor de Identificação</TableHead>
-                    <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
-                    <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="h-40 text-center">
-                        <div className="flex flex-col items-center justify-center gap-3">
-                          <Loader2 className="w-8 h-8 text-slate-300 animate-spin" />
-                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Carregando dados...</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : statuses.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="h-40 text-center">
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <Tag className="w-8 h-8 text-slate-200" />
-                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum status cadastrado</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    statuses.map((status) => (
-                      <TableRow key={status.id} className="hover:bg-slate-50/50 transition-colors border-slate-100 group">
-                        <TableCell className="py-4 pl-8">
-                          <span 
-                            className="px-3 py-1 rounded-md text-[10px] font-normal uppercase tracking-tight shadow-sm border border-slate-100"
-                            style={{ backgroundColor: status.cor, color: status.cor_texto || '#ffffff' }}
+          <AnimatePresence initial={false}>
+            {isStatusExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className="overflow-hidden space-y-6"
+              >
+                <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader className="bg-slate-50/50">
+                        <TableRow className="hover:bg-transparent border-slate-100">
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Status</TableHead>
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Cor de Identificação</TableHead>
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {isLoading ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="h-40 text-center">
+                              <div className="flex flex-col items-center justify-center gap-3">
+                                <Loader2 className="w-8 h-8 text-slate-300 animate-spin" />
+                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Carregando dados...</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : paginatedStatuses.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="h-40 text-center">
+                              <div className="flex flex-col items-center justify-center gap-2">
+                                <Tag className="w-8 h-8 text-slate-200" />
+                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum status cadastrado</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          paginatedStatuses.map((status) => (
+                            <TableRow key={status.id} className="hover:bg-slate-50/50 transition-colors border-slate-100 group">
+                              <TableCell className="py-4 pl-8">
+                                <span 
+                                  className="px-3 py-1 rounded-md text-[10px] font-normal uppercase tracking-tight shadow-sm border border-slate-100"
+                                  style={{ backgroundColor: status.cor, color: status.cor_texto || '#ffffff' }}
+                                >
+                                  {status.nome}
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4">
+                                <div className="flex items-center gap-3">
+                                  <div 
+                                    className="w-4 h-4 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200" 
+                                    style={{ backgroundColor: status.cor }}
+                                  />
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">
+                                    {translateColor(status.cor)}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
+                                {format(new Date(status.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                              </TableCell>
+                              <TableCell className="py-4 text-right pr-8">
+                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg"
+                                    onClick={() => handleOpenModal(status)}
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg"
+                                    onClick={() => handleDelete(status.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between px-2 pt-2">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, statuses.length)} de {statuses.length} registros
+                    </p>
+                    
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </Button>
+                      
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? "default" : "outline"}
+                            size="icon"
+                            className={cn(
+                              "h-8 w-8 rounded-lg transition-all text-[10px] font-black tracking-widest",
+                              currentPage === page 
+                                ? "bg-primary text-white shadow-lg shadow-primary/20 border-primary" 
+                                : "border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20"
+                            )}
+                            onClick={() => handlePageChange(page)}
                           >
-                            {status.nome}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-3">
-                            <div 
-                              className="w-4 h-4 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200" 
-                              style={{ backgroundColor: status.cor }}
-                            />
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-                              {translateColor(status.cor)}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
-                          {format(new Date(status.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                        </TableCell>
-                        <TableCell className="py-4 text-right pr-8">
-                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg"
-                              onClick={() => handleOpenModal(status)}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg"
-                              onClick={() => handleDelete(status.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                            {page}
+                          </Button>
+                        ))}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </section>
       </main>
 

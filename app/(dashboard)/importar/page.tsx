@@ -64,6 +64,11 @@ export default function ImportBatchPage() {
   const [batchList, setBatchList] = useState<Batch[]>([]);
   const [totalBase, setTotalBase] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  
   const [description, setDescription] = useState("");
   const [type, setType] = useState("SIAPE");
   const [isDragging, setIsDragging] = useState(false);
@@ -92,8 +97,7 @@ export default function ImportBatchPage() {
         return await supabase
           .from('lotes')
           .select('*')
-          .order('created_at', { ascending: false })
-          .limit(20);
+          .order('created_at', { ascending: false });
       });
       
       if (error) {
@@ -160,6 +164,16 @@ export default function ImportBatchPage() {
       fetchBatches();
     }
   }, [fetchTotalBase, fetchBatches, authLoading, canAccessAdminAreas]);
+
+  // Pagination Logic
+  const totalPages = Math.ceil(batchList.length / itemsPerPage);
+  const paginatedBatchList = batchList.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
 
   const normalizeCPF = (cpf: string) => {
     if (!cpf) return "";
@@ -1135,7 +1149,7 @@ export default function ImportBatchPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {batchList.map((batch) => (
+                  {paginatedBatchList.map((batch) => (
                     <tr key={batch.id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors group">
                       <td className="px-8 py-5 text-[12px] font-semibold text-slate-900">#{batch.id.slice(0, 6)}</td>
                       <td className="px-8 py-5">
@@ -1218,15 +1232,68 @@ export default function ImportBatchPage() {
               </table>
             </div>
 
-            <div className="px-8 py-12 flex items-center justify-between border-t border-slate-50">
-              <button className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors">Primeira</button>
-              <div className="flex items-center gap-4">
-                <button className="p-1 text-slate-400 hover:text-primary"><ChevronLeft className="w-5 h-5" /></button>
-                <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">1 de 5</span>
-                <button className="p-1 text-slate-400 hover:text-primary"><ChevronRight className="w-5 h-5" /></button>
+            {totalPages > 1 && (
+              <div className="px-8 py-10 flex flex-col sm:flex-row items-center justify-between border-t border-slate-50 bg-slate-50/20 gap-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, batchList.length)} de {batchList.length} lotes
+                </p>
+                
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  
+                  <div className="flex items-center gap-1">
+                    {(() => {
+                      const pages = [];
+                      const maxVisiblePages = 5;
+                      let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                      
+                      if (endPage - startPage + 1 < maxVisiblePages) {
+                        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                      }
+
+                      for (let i = startPage; i <= endPage; i++) {
+                        pages.push(
+                          <Button
+                            key={i}
+                            variant={currentPage === i ? "default" : "outline"}
+                            size="icon"
+                            className={cn(
+                              "h-8 w-8 rounded-lg transition-all text-[10px] font-black tracking-widest",
+                              currentPage === i 
+                                ? "bg-primary text-white shadow-lg shadow-primary/20 border-primary" 
+                                : "border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20"
+                            )}
+                            onClick={() => handlePageChange(i)}
+                          >
+                            {i}
+                          </Button>
+                        );
+                      }
+                      return pages;
+                    })()}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
-              <button className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors">Última</button>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
