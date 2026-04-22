@@ -388,7 +388,6 @@ function NewTicketForm() {
           descricao: finalDescription,
           user_id: user.id,
           user_nome: perfil?.nome || user.email || "Usuário",
-          user_avatar: perfil?.avatar_url || null,
           arquivo_rg_frente: fileUrls.frente,
           arquivo_rg_verso: fileUrls.verso,
           arquivo_contracheque: fileUrls.contracheque,

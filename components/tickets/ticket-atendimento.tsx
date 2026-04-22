@@ -70,13 +70,11 @@ interface TicketAtendimentoProps {
     description?: string;
     createdAt?: string;
     user_nome?: string;
-    user_avatar?: string | null;
     arquivo_rg_frente?: string | null;
     arquivo_rg_verso?: string | null;
     arquivo_contracheque?: string | null;
     arquivo_extrato?: string | null;
     arquivo_outros?: string | null;
-    user_id?: string;
   }
   onMessageSent?: () => void
 }
@@ -86,7 +84,6 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   const { perfil, user } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [ownerAvatar, setOwnerAvatar] = useState<string | null>(ticket.user_avatar || null)
   const [reply, setReply] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
@@ -133,7 +130,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     const initialMessage: Message | null = ticket.description ? {
       id: "initial",
       user_nome: ticket.user_nome || ticket.client,
-      user_avatar: ownerAvatar,
+      user_avatar: null,
       action: "solicitou",
       content: ticket.description,
       attachments: ticketAttachments,
@@ -162,23 +159,6 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
       setIsLoading(false)
     }
   }, [ticket.id])
-
-  useEffect(() => {
-    const fetchOwnerAvatar = async () => {
-      if (!ownerAvatar && ticket.user_id) {
-        try {
-          const res = await fetch(`/api/usuarios?id=${ticket.user_id}`)
-          if (res.ok) {
-            const data = await res.json()
-            if (data.avatar_url) setOwnerAvatar(data.avatar_url)
-          }
-        } catch (err) {
-          console.error("Erro ao buscar avatar do dono:", err)
-        }
-      }
-    }
-    fetchOwnerAvatar()
-  }, [ticket.user_id, ownerAvatar])
 
   useEffect(() => {
     fetchMessages()

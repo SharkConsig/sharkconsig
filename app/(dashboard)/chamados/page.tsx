@@ -56,7 +56,6 @@ export interface Ticket {
   descricao?: string
   user_id: string
   user_nome?: string
-  user_avatar?: string
 }
 
 const secondaryCards = [
@@ -528,7 +527,6 @@ export default function TicketsPage() {
                                     description: ticket.descricao,
                                     createdAt: ticket.created_at,
                                     user_nome: ticket.user_nome,
-                                    user_avatar: ticket.user_avatar,
                                     arquivo_rg_frente: ticket.arquivo_rg_frente,
                                     arquivo_rg_verso: ticket.arquivo_rg_verso,
                                     arquivo_contracheque: ticket.arquivo_contracheque,
