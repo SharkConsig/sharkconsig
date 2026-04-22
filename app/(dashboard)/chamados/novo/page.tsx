@@ -29,6 +29,7 @@ function NewTicketForm() {
   const { user, perfil } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [description, setDescription] = useState("")
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   const [originalMargins] = useState({
     margem: searchParams.get("margem") || "",
@@ -93,6 +94,7 @@ function NewTicketForm() {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+    if (validationError) setValidationError(null)
   }
 
   const updateDescription = (margins: { margem: string, liquida5: string, beneficio5: string }) => {
@@ -159,6 +161,8 @@ function NewTicketForm() {
       });
       return nextData;
     });
+
+    if (validationError) setValidationError(null)
   }
 
   const clearMargins = () => {
@@ -216,6 +220,8 @@ function NewTicketForm() {
       });
       return nextData;
     });
+
+    if (validationError) setValidationError(null)
   }
 
   const applyFormat = (prefix: string, suffix: string = prefix) => {
@@ -241,6 +247,7 @@ function NewTicketForm() {
 
   const handleSubmit = async () => {
     console.log("Iniciando submissão do chamado...");
+    setValidationError(null);
     
     if (!user) {
       console.error("Usuário não autenticado.");
@@ -250,34 +257,34 @@ function NewTicketForm() {
 
     // Campos obrigatórios básicos com mensagens específicas
     if (!formData.origem) {
-      toast.error("Por favor, selecione a Origem do Cliente.");
+      setValidationError("POR FAVOR, SELECIONE A ORIGEM DO CLIENTE");
       return;
     }
     if (!formData.convenio) {
-      toast.error("Por favor, selecione o Convênio.");
+      setValidationError("POR FAVOR, SELECIONE O CONVÊNIO");
       return;
     }
     if (!formData.nome) {
-      toast.error("Por favor, informe o Nome do Cliente.");
+      setValidationError("POR FAVOR, INFORME O NOME DO CLIENTE");
       return;
     }
     if (!formData.cpf) {
-      toast.error("Por favor, informe o CPF do Cliente.");
+      setValidationError("POR FAVOR, INFORME O CPF DO CLIENTE");
       return;
     }
     if (!formData.tel1) {
-      toast.error("Por favor, informe o Telefone do Cliente.");
+      setValidationError("POR FAVOR, INFORME O TELEFONE DO CLIENTE");
       return;
     }
     if (!description) {
-      toast.error("Por favor, preencha a Descrição do chamado.");
+      setValidationError("POR FAVOR, PREENCHA A DESCRIÇÃO DO CHAMADO");
       return;
     }
 
     // Validação de margem obrigatória (como indicado no formulário com *)
     if (!formData.margem && !formData.liquida5 && !formData.beneficio5) {
       console.warn("Nenhuma margem selecionada.");
-      toast.error("Por favor, selecione ou informe ao menos uma margem.");
+      setValidationError("POR FAVOR, SELECIONE OU INFORME AO MENOS UMA MARGEM");
       return;
     }
 
@@ -329,9 +336,18 @@ function NewTicketForm() {
       }
 
       console.log("Enviando dados para o banco de dados...");
+      
+      // Buscar o ID do status 'ABERTO' dinamicamente
+      const { data: statusData } = await supabase
+        .from('status_chamados')
+        .select('id')
+        .eq('nome', 'ABERTO')
+        .maybeSingle();
+
       const { error } = await withRetry(() => 
         supabase.from('chamados').insert({
           status: 'ABERTO',
+          status_id: statusData?.id || null, // Relacionamento dinâmico
           origem: formData.origem,
           cliente_nome: formData.nome,
           cliente_cpf: cleanCPF(formData.cpf),
@@ -656,7 +672,10 @@ function NewTicketForm() {
                   className="w-full min-h-[200px] p-4 text-[12px] focus:outline-none resize-none bg-[#E8E8E8]"
                   placeholder="Descreva aqui a solicitação..."
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => {
+                    setDescription(e.target.value)
+                    if (validationError) setValidationError(null)
+                  }}
                 />
               </div>
             </div>
@@ -704,14 +723,21 @@ function NewTicketForm() {
                 ))}
               </div>
               
-              <Button 
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="bg-primary hover:bg-primary/90 text-white px-8 h-10 text-xs font-bold rounded-lg shadow-lg shadow-primary/20 flex items-center gap-2"
-              >
-                {isSubmitting && <Loader2 className="w-3 h-3 animate-spin" />}
-                {isSubmitting ? "ENVIANDO..." : "ENVIAR"}
-              </Button>
+              <div className="flex items-center gap-4">
+                <Button 
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="bg-primary hover:bg-primary/90 text-white px-8 h-10 text-xs font-bold rounded-lg shadow-lg shadow-primary/20 flex items-center gap-2"
+                >
+                  {isSubmitting && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {isSubmitting ? "ENVIANDO..." : "ENVIAR"}
+                </Button>
+                {validationError && (
+                  <span className="text-red-500 text-[10px] font-bold uppercase tracking-widest animate-in fade-in slide-in-from-left-2 duration-300">
+                    {validationError}
+                  </span>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

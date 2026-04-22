@@ -53,12 +53,20 @@ interface Message {
   created_at: string
 }
 
+interface Status {
+  id: string
+  nome: string
+  cor: string
+}
+
 interface TicketAtendimentoProps {
   ticket: {
     id: string;
     client: string;
     cpf: string;
     origin: string;
+    status_id?: string | null;
+    status_nome?: string;
     description?: string;
     createdAt?: string;
     user_nome?: string;
@@ -79,8 +87,36 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   const [reply, setReply] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [availableStatuses, setAvailableStatuses] = useState<Status[]>([])
+  const [selectedStatusId, setSelectedStatusId] = useState<string | null>(ticket.status_id || null)
+  const [currentStatusName, setCurrentStatusName] = useState<string>(ticket.status_nome || "ABERTO")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  const fetchStatuses = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('status_chamados')
+        .select('*')
+        .order('nome', { ascending: true })
+      
+      if (!error && data) {
+        setAvailableStatuses(data)
+        
+        // Se não tivermos o status_id inicial, vamos tentar encontrar pelo nome
+        if (!selectedStatusId && ticket.status_nome) {
+          const matched = data.find(s => s.nome.toUpperCase() === ticket.status_nome?.toUpperCase())
+          if (matched) setSelectedStatusId(matched.id)
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao buscar status:", err)
+    }
+  }, [ticket.status_nome, selectedStatusId])
+
+  useEffect(() => {
+    fetchStatuses()
+  }, [fetchStatuses])
 
   // Use useMemo to include the initial ticket description as the first message
   const allMessages = useMemo(() => {
@@ -156,7 +192,6 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   }, [messages])
 
   const handleSendMessage = async () => {
-    if (!reply.trim() && selectedFiles.length === 0) return
     if (!user || !perfil) return
 
     setIsSending(true)
@@ -194,6 +229,32 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
         toast.dismiss("chat-upload")
       }
 
+      // Se o status mudou, registrar a mudança
+      let statusChangeData = null
+      if (selectedStatusId && selectedStatusId !== ticket.status_id) {
+        const newStatus = availableStatuses.find(s => s.id === selectedStatusId)
+        if (newStatus) {
+          // Atualizar o chamado no banco
+          const { error: updateError } = await supabase
+            .from('chamados')
+            .update({ 
+              status_id: selectedStatusId,
+              status: newStatus.nome // Manter compatibilidade com a coluna de texto
+            })
+            .eq('id', ticket.id)
+          
+          if (!updateError) {
+            statusChangeData = {
+              from: currentStatusName,
+              to: newStatus.nome,
+              fromColor: "slate", // Simplificado
+              toColor: newStatus.cor
+            }
+            setCurrentStatusName(newStatus.nome)
+          }
+        }
+      }
+
       const { error } = await supabase
         .from('mensagens_chamado')
         .insert({
@@ -203,8 +264,9 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
           user_role: perfil.role,
           user_avatar: perfil.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil.nome)}&background=random`,
           content: reply,
-          action: 'respondeu',
-          attachments: chatAttachments
+          action: statusChangeData ? 'alterou o status' : 'respondeu',
+          attachments: chatAttachments,
+          status_change: statusChangeData
         })
 
       if (error) throw error
@@ -392,10 +454,24 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 ))}
               </div>
             )}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-end gap-3">
+              {/* Status Selector */}
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] font-bold text-slate-500/80 uppercase tracking-widest pl-1">ALTERAR STATUS</label>
+                <select
+                  value={selectedStatusId || ""}
+                  onChange={(e) => setSelectedStatusId(e.target.value)}
+                  className="h-[38px] px-3 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none cursor-pointer min-w-[150px]"
+                >
+                  {availableStatuses.map(s => (
+                    <option key={s.id} value={s.id}>{s.nome}</option>
+                  ))}
+                </select>
+              </div>
+
               <Button 
                 onClick={handleSendMessage}
-                disabled={isSending || (!reply.trim() && selectedFiles.length === 0)}
+                disabled={isSending}
                 className="bg-primary hover:bg-primary/90 text-white px-8 h-[38px] text-[11px] font-bold rounded-lg shadow-lg shadow-primary/20 transition-all flex items-center gap-2 group"
               >
                 {isSending ? (
@@ -412,21 +488,13 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
               </Button>
               <h3 
                 onClick={handleFileClick}
-                className="text-[10px] font-bold text-primary uppercase tracking-wider cursor-pointer hover:underline bg-primary/5 px-3 py-2 rounded-lg"
+                className="text-[10px] font-bold text-primary uppercase tracking-wider cursor-pointer hover:underline py-2"
               >
                 Anexar Arquivos
               </h3>
             </div>
             <p className="text-[9px] text-slate-400 max-w-sm leading-relaxed">Pressione <kbd className="bg-slate-100 px-1 rounded font-bold">Ctrl + Enter</kbd> para enviar rapidamente. Tamanho máximo 20mb (jpg, png, pdf, docx, xlsx).</p>
           </div>
-          
-          <Button 
-            onClick={handleDigitarProposta}
-            className="bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 px-8 h-[40px] text-[11px] font-bold rounded-lg transition-all w-full sm:w-auto flex items-center gap-2"
-          >
-            <FileEdit className="w-4 h-4" />
-            DIGITAR PROPOSTA
-          </Button>
         </div>
       </div>
     </div>

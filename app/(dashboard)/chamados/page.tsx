@@ -37,6 +37,12 @@ const statusCardsList = [
 export interface Ticket {
   id: string
   status: string
+  status_id?: string
+  status_chamados?: {
+    id: string
+    nome: string
+    cor: string
+  }
   origem: string
   cliente_nome: string
   cliente_cpf: string
@@ -72,13 +78,23 @@ export default function TicketsPage() {
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const fetchTickets = useCallback(async () => {
     if (!user || !perfil) return
 
     setIsLoading(true)
     try {
-      let query = supabase.from('chamados').select('*')
+      let query = supabase
+        .from('chamados')
+        .select(`
+          *,
+          status_chamados:status_id (
+            id,
+            nome,
+            cor
+          )
+        `)
 
       // Aplicar filtros de permissão baseados na Role
       if (perfil.role === 'Corretor') {
@@ -127,7 +143,7 @@ export default function TicketsPage() {
   const counts = useMemo(() => {
     const res: Record<string, number> = {}
     tickets.forEach(t => {
-      const s = t.status.toUpperCase()
+      const s = t.status_chamados?.nome.toUpperCase() || t.status.toUpperCase()
       res[s] = (res[s] || 0) + 1
     })
     return res
@@ -135,27 +151,58 @@ export default function TicketsPage() {
 
   const filteredTickets = useMemo(() => {
     return tickets.filter(ticket => {
+      // Basic text search
+      const searchLower = searchTerm.toLowerCase()
+      const ticketStatusName = (ticket.status_chamados?.nome || ticket.status).toLowerCase()
+      
       const matchesSearch = 
         ticket.id.toString().includes(searchTerm) ||
-        ticket.cliente_nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ticket.cliente_cpf.includes(searchTerm)
-      
+        ticket.cliente_nome.toLowerCase().includes(searchLower) ||
+        ticket.cliente_cpf.includes(searchTerm) ||
+        ticket.cliente_telefone.toLowerCase().includes(searchLower) ||
+        ticket.origem.toLowerCase().includes(searchLower) ||
+        ticket.convenio.toLowerCase().includes(searchLower) ||
+        ticket.equipe.toLowerCase().includes(searchLower) ||
+        ticketStatusName.includes(searchLower) ||
+        ticket.margem?.toString().includes(searchTerm) ||
+        ticket.margem?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }).includes(searchTerm)
+
+      // Status category filter
       let matchesStatus = true
+      const ticketStatusUpper = ticketStatusName.toUpperCase()
+      
       if (selectedSecondaryStatus) {
-        matchesStatus = ticket.status.toUpperCase() === selectedSecondaryStatus.toUpperCase()
+        matchesStatus = ticketStatusUpper === selectedSecondaryStatus.toUpperCase()
       } else if (selectedStatus) {
         if (selectedStatus === "APROVADOS") {
-          matchesStatus = ticket.status.toUpperCase().includes("APROVADO")
+          matchesStatus = ticketStatusUpper.includes("APROVADO")
         } else if (selectedStatus === "ABERTO") {
-          matchesStatus = ticket.status.toUpperCase() === "ABERTO" || ticket.status.toUpperCase() === "ABERTOS"
+          matchesStatus = ticketStatusUpper === "ABERTO" || ticketStatusUpper === "ABERTOS"
         } else {
-          matchesStatus = ticket.status.toUpperCase() === selectedStatus.toUpperCase()
+          matchesStatus = ticketStatusUpper === selectedStatus.toUpperCase()
         }
       }
 
-      return matchesSearch && matchesStatus
+      // Date range filter
+      let matchesDate = true
+      if (startDate && endDate) {
+        try {
+          const [startDay, startMonth, startYear] = startDate.split("/").map(Number)
+          const [endDay, endMonth, endYear] = endDate.split("/").map(Number)
+          
+          const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0)
+          const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59)
+          const ticketDate = new Date(ticket.created_at)
+          
+          matchesDate = ticketDate >= start && ticketDate <= end
+        } catch (e) {
+          console.error("Erro ao validar datas:", e)
+        }
+      }
+      
+      return matchesSearch && matchesStatus && matchesDate
     })
-  }, [tickets, searchTerm, selectedStatus, selectedSecondaryStatus])
+  }, [tickets, searchTerm, selectedStatus, selectedSecondaryStatus, startDate, endDate])
 
   const statusCards = useMemo(() => statusCardsList.map(card => {
     let count = counts[card.label] || 0
@@ -203,8 +250,24 @@ export default function TicketsPage() {
     router.push(`/propostas/nova?${params.toString()}`);
   }
 
-  const getStatusColor = (status: string) => {
-    const s = status.toUpperCase()
+  const getStatusColor = (ticket: Ticket) => {
+    // Se tiver status dinâmico com cor
+    if (ticket.status_chamados) {
+      const cor = ticket.status_chamados.cor
+      if (cor === 'blue') return "bg-blue-500"
+      if (cor === 'orange') return "bg-orange-500"
+      if (cor === 'purple') return "bg-purple-500"
+      if (cor === 'slate') return "bg-slate-500"
+      if (cor === 'green') return "bg-green-500"
+      if (cor === 'red') return "bg-red-500"
+      if (cor === 'amber') return "bg-amber-500"
+      if (cor === 'emerald') return "bg-emerald-500"
+      if (cor === 'rose') return "bg-rose-500"
+      if (cor === 'cyan') return "bg-cyan-500"
+      return `bg-${cor}-500`
+    }
+
+    const s = ticket.status.toUpperCase()
     if (s === 'ABERTO' || s === 'ABERTOS') return "bg-amber-500"
     if (s === 'AGUARDANDO OPERACIONAL') return "bg-orange-500"
     if (s === 'PROPOSTA CADASTRADA') return "bg-blue-500"
@@ -253,23 +316,12 @@ export default function TicketsPage() {
                     />
                   </div>
                 </div>
-                <Button className="bg-primary hover:bg-primary/90 text-white px-8 h-[38px] text-[11px] font-bold rounded-lg shadow-lg shadow-primary/20">
-                  BUSCAR
-                </Button>
                 <Button 
-                  variant="outline" 
-                  className="h-[38px] border-slate-200 text-[11px] font-bold px-6 bg-white hover:bg-slate-50"
-                  onClick={() => {
-                    setSearchTerm("")
-                    setSelectedStatus(null)
-                    setSelectedSecondaryStatus(null)
-                    setStartDate(format(new Date(), "dd/MM/yyyy"))
-                    setEndDate(format(new Date(), "dd/MM/yyyy"))
-                    setCurrentPage(1)
-                  }}
+                  onClick={fetchTickets}
+                  disabled={isLoading}
+                  className="bg-primary hover:bg-primary/90 text-white px-8 h-[38px] text-[11px] font-bold rounded-lg shadow-lg shadow-primary/20 cursor-pointer"
                 >
-                  <Filter className="w-3.5 h-3.5 mr-2" />
-                  LIMPAR FILTROS
+                  {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "BUSCAR"}
                 </Button>
               </div>
             </div>
@@ -331,7 +383,6 @@ export default function TicketsPage() {
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[130px]">CPF</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[120px]">Telefone</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right w-[110px]">Margem</th>
-                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[120px]">Convênio</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[150px]">Equipe</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aberto</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</th>
@@ -340,7 +391,7 @@ export default function TicketsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={isOperational || isAdmin ? 12 : 11} className="px-4 py-12 text-center">
+                      <td colSpan={isOperational || isAdmin ? 11 : 10} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <Loader2 className="w-6 h-6 text-primary animate-spin" />
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando chamados...</span>
@@ -371,9 +422,9 @@ export default function TicketsPage() {
                           <td className="px-4 py-4">
                             <span className={cn(
                               "px-2.5 py-1 rounded-md text-[9px] font-black text-white uppercase inline-block shadow-sm",
-                              getStatusColor(ticket.status)
+                              getStatusColor(ticket)
                             )}>
-                              {ticket.status}
+                              {ticket.status_chamados?.nome || ticket.status}
                             </span>
                           </td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{ticket.origem}</td>
@@ -386,7 +437,6 @@ export default function TicketsPage() {
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{ticket.cliente_cpf}</td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{ticket.cliente_telefone}</td>
                           <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">R$ {ticket.margem?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                          <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{ticket.convenio}</td>
                           <td className="px-4 py-4 text-[10px] font-bold text-slate-400 leading-tight max-w-[120px] truncate" title={ticket.equipe}>
                             {ticket.equipe}
                           </td>
@@ -401,7 +451,7 @@ export default function TicketsPage() {
                               <Button 
                                 variant="ghost" 
                                 size="icon" 
-                                className="h-8 w-8 text-slate-300 hover:text-primary hover:bg-primary/5 rounded-full transition-all"
+                                className="h-8 w-8 text-slate-300 hover:text-primary hover:bg-primary/5 rounded-full transition-all cursor-pointer"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   toggleTicketExpansion(ticket.id.toString())
@@ -412,7 +462,7 @@ export default function TicketsPage() {
                               <Button 
                                 variant="ghost" 
                                 size="icon" 
-                                className="h-10 w-10 text-amber-600 hover:bg-amber-50 rounded-full transition-all"
+                                className="h-10 w-10 text-amber-600 hover:bg-amber-50 rounded-full transition-all cursor-pointer"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   handleDigitarProposta(ticket)
@@ -426,7 +476,7 @@ export default function TicketsPage() {
                         </tr>
                         {expandedTicketId === ticket.id.toString() && (
                           <tr>
-                            <td colSpan={isOperational || isAdmin ? 12 : 11} className="p-0 border-b border-slate-200">
+                            <td colSpan={isOperational || isAdmin ? 11 : 10} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
                                 <TicketAtendimento 
                                   ticket={{
@@ -434,6 +484,8 @@ export default function TicketsPage() {
                                     client: ticket.cliente_nome,
                                     cpf: ticket.cliente_cpf,
                                     origin: ticket.origem,
+                                    status_id: ticket.status_id,
+                                    status_nome: ticket.status_chamados?.nome || ticket.status,
                                     description: ticket.descricao,
                                     createdAt: ticket.created_at,
                                     user_nome: ticket.user_nome,
@@ -453,7 +505,7 @@ export default function TicketsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={isOperational || isAdmin ? 12 : 11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
+                      <td colSpan={isOperational || isAdmin ? 11 : 10} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
                         Nenhum chamado encontrado.
                       </td>
                     </tr>
@@ -495,7 +547,7 @@ export default function TicketsPage() {
         <Button 
           onClick={fetchTickets}
           disabled={isLoading}
-          className="fixed bottom-8 right-8 w-12 h-12 rounded-full bg-[#171717] hover:bg-[#171717]/90 text-white shadow-2xl z-50 flex items-center justify-center"
+          className="fixed bottom-8 right-8 w-12 h-12 rounded-full bg-[#171717] hover:bg-[#171717]/90 text-white shadow-2xl z-50 flex items-center justify-center cursor-pointer"
         >
           <RefreshCw className={cn("w-5 h-5", isLoading && "animate-spin")} />
         </Button>

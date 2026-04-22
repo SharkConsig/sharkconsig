@@ -25,6 +25,10 @@
   button {
     @apply cursor-pointer;
   }
+  input::placeholder, 
+  textarea::placeholder {
+    font-size: 12px !important;
+  }
   html {
     @apply font-sans;
   }
