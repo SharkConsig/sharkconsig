@@ -233,7 +233,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                     value={formData.nome_completo}
                     onChange={(e) => setFormData({ ...formData, nome_completo: e.target.value })}
                     placeholder="Ex: Lucas Henrique Oliveira" 
-                    className="h-[38px] bg-slate-50/50 border-slate-100 rounded-lg px-3 text-[11px] font-bold text-slate-700 placeholder:text-[11px] placeholder:font-medium placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-slate-200 transition-all"
+                    className="h-[38px] bg-slate-50/50 border-slate-100 rounded-lg px-3 text-[11px] font-bold text-slate-700 focus-visible:ring-1 focus-visible:ring-slate-200 transition-all"
                     required
                   />
                 </div>
@@ -245,7 +245,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     placeholder="Ex: lucas.henrique" 
-                    className="h-[38px] bg-slate-50/50 border-slate-100 rounded-lg px-3 text-[11px] font-bold text-slate-700 placeholder:text-[11px] placeholder:font-medium placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-slate-200 transition-all"
+                    className="h-[38px] bg-slate-50/50 border-slate-100 rounded-lg px-3 text-[11px] font-bold text-slate-700 focus-visible:ring-1 focus-visible:ring-slate-200 transition-all"
                     required
                   />
                 </div>
@@ -304,7 +304,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                       value={formData.senha}
                       onChange={(e) => setFormData({ ...formData, senha: e.target.value })}
                       placeholder="••••••••" 
-                      className="h-[38px] bg-slate-50/50 border-slate-100 rounded-lg px-3 pr-10 text-[11px] font-bold text-slate-700 placeholder:text-[11px] placeholder:font-medium placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-slate-200 transition-all"
+                      className="h-[38px] bg-slate-50/50 border-slate-100 rounded-lg px-3 pr-10 text-[11px] font-bold text-slate-700 focus-visible:ring-1 focus-visible:ring-slate-200 transition-all"
                       required
                     />
                     <button

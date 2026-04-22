@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useRef } from "react"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,6 +29,7 @@ import {
   Settings2,
   Tag
 } from "lucide-react"
+import { HexColorPicker } from "react-colorful"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
@@ -40,6 +41,7 @@ interface TicketStatus {
   id: string
   nome: string
   cor: string
+  cor_texto: string
   created_at: string
 }
 
@@ -66,7 +68,27 @@ export default function SettingsPage() {
   // Form State
   const [currentStatusId, setCurrentStatusId] = useState<string | null>(null)
   const [nome, setNome] = useState("")
-  const [cor, setCor] = useState("slate")
+  const [cor, setCor] = useState("#171717")
+  const [corTexto, setCorTexto] = useState("#ffffff")
+  const [showPickerFundo, setShowPickerFundo] = useState(false)
+  const [showPickerTexto, setShowPickerTexto] = useState(false)
+
+  const pickerTextoRef = useRef<HTMLDivElement>(null)
+  const pickerFundoRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (pickerTextoRef.current && !pickerTextoRef.current.contains(event.target as Node)) {
+        setShowPickerTexto(false)
+      }
+      if (pickerFundoRef.current && !pickerFundoRef.current.contains(event.target as Node)) {
+        setShowPickerFundo(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   const fetchStatuses = useCallback(async () => {
     setIsLoading(true)
@@ -79,8 +101,13 @@ export default function SettingsPage() {
       if (error) throw error
       setStatuses(data || [])
     } catch (error: any) {
-      console.error("Erro ao carregar status:", error)
-      const errorMessage = error.message || "Erro ao carregar lista de status"
+      console.error("Erro ao carregar status (detalhado):", JSON.stringify(error, null, 2))
+      let errorMessage = error.message || error.details || "Erro ao carregar lista de status"
+      
+      if (error.code === '42P01') {
+        errorMessage = "A tabela 'status_chamados' não existe. Por favor, execute o script SQL de criação (status_chamados.sql) no console do Supabase."
+      }
+      
       toast.error(errorMessage)
     } finally {
       setIsLoading(false)
@@ -94,14 +121,18 @@ export default function SettingsPage() {
   const resetForm = () => {
     setCurrentStatusId(null)
     setNome("")
-    setCor("slate")
+    setCor("#171717")
+    setCorTexto("#ffffff")
+    setShowPickerFundo(false)
+    setShowPickerTexto(false)
   }
 
   const handleOpenModal = (status?: TicketStatus) => {
     if (status) {
       setCurrentStatusId(status.id)
       setNome(status.nome)
-      setCor(status.cor)
+      setCor(status.cor || "#171717")
+      setCorTexto(status.cor_texto || "#ffffff")
     } else {
       resetForm()
     }
@@ -123,7 +154,8 @@ export default function SettingsPage() {
           .from('status_chamados')
           .update({ 
             nome: nome.toUpperCase(), 
-            cor 
+            cor,
+            cor_texto: corTexto
           })
           .eq('id', currentStatusId)
         
@@ -135,7 +167,8 @@ export default function SettingsPage() {
           .from('status_chamados')
           .insert({ 
             nome: nome.toUpperCase(), 
-            cor 
+            cor,
+            cor_texto: corTexto
           })
         
         if (error) throw error
@@ -145,13 +178,21 @@ export default function SettingsPage() {
       setIsModalOpen(false)
       fetchStatuses()
     } catch (error: any) {
-      console.error("Erro ao salvar status:", error)
-      const errorMessage = error.message || "Erro ao salvar status. Tente novamente."
-      if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') {
-        toast.error("Já existe um status com este nome")
-      } else {
-        toast.error(errorMessage)
+      console.error("Erro ao salvar status (detalhado):", JSON.stringify(error, null, 2))
+      console.error("Objeto de erro bruto:", error)
+      
+      let errorMessage = error.message || error.details || "Erro ao salvar status. Tente novamente."
+      if (typeof error === 'object' && error !== null) {
+        const code = error.code || (error.status === 403 ? '42501' : null)
+        if (code === '23505') {
+          errorMessage = "Já existe um status com este nome"
+        } else if (code === '42703') {
+          errorMessage = "A coluna 'cor_texto' não existe no banco de dados. Por favor, execute o script SQL de atualização (migrate_chamados_status.sql)."
+        } else if (code === '42501') {
+          errorMessage = "Você não tem permissão para realizar esta operação (RLS). Verifique se seu cargo é Administrador ou Desenvolvedor."
+        }
       }
+      toast.error(errorMessage)
     } finally {
       setIsSubmitting(false)
     }
@@ -178,6 +219,23 @@ export default function SettingsPage() {
 
   // Verificação de permissão (Admin ou Dev)
   const canAccess = isAdmin || (perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor')
+
+  const translateColor = (color: string) => {
+    if (!color || color.startsWith('#')) return color.toUpperCase();
+    const map: Record<string, string> = {
+      'blue': 'AZUL',
+      'green': 'VERDE',
+      'orange': 'LARANJA',
+      'red': 'VERMELHO',
+      'purple': 'ROXO',
+      'slate': 'CINZA',
+      'amber': 'AMARELO',
+      'cyan': 'CIANO',
+      'emerald': 'ESMERALDA',
+      'rose': 'ROSA',
+    };
+    return map[color.toLowerCase()] || color.toUpperCase();
+  };
 
   if (!canAccess && !isLoading) {
     return (
@@ -252,25 +310,21 @@ export default function SettingsPage() {
                     statuses.map((status) => (
                       <TableRow key={status.id} className="hover:bg-slate-50/50 transition-colors border-slate-100 group">
                         <TableCell className="py-4 pl-8">
-                          <span className="text-[10.5px] font-bold text-slate-700 uppercase tracking-tight group-hover:text-primary transition-colors">{status.nome}</span>
+                          <span 
+                            className="px-3 py-1 rounded-md text-[10px] font-normal uppercase tracking-tight shadow-sm border border-slate-100"
+                            style={{ backgroundColor: status.cor, color: status.cor_texto || '#ffffff' }}
+                          >
+                            {status.nome}
+                          </span>
                         </TableCell>
                         <TableCell className="py-4">
                           <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "w-3 h-3 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200",
-                              status.cor === 'blue' && "bg-blue-500",
-                              status.cor === 'green' && "bg-green-500",
-                              status.cor === 'orange' && "bg-orange-500",
-                              status.cor === 'red' && "bg-red-500",
-                              status.cor === 'slate' && "bg-slate-500",
-                              status.cor === 'purple' && "bg-purple-500",
-                              status.cor === 'amber' && "bg-amber-500",
-                              status.cor === 'cyan' && "bg-cyan-500",
-                              status.cor === 'emerald' && "bg-emerald-500",
-                              status.cor === 'rose' && "bg-rose-500",
-                            )} />
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                              {colorOptions.find(c => c.value === status.cor)?.label || status.cor}
+                            <div 
+                              className="w-4 h-4 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200" 
+                              style={{ backgroundColor: status.cor }}
+                            />
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">
+                              {translateColor(status.cor)}
                             </span>
                           </div>
                         </TableCell>
@@ -327,31 +381,116 @@ export default function SettingsPage() {
                 placeholder="EX. EM ATENDIMENTO" 
                 value={nome}
                 onChange={(e) => setNome(e.target.value)}
-                className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[11px] text-slate-700 focus-visible:ring-primary/20 transition-all uppercase placeholder:text-[8.8px] placeholder:text-slate-400/60"
+                className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 focus-visible:ring-primary/20 transition-all uppercase placeholder:text-slate-400/60"
               />
             </div>
             
-            <div className="space-y-4">
-              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Cor de Identificação</Label>
-              <div className="grid grid-cols-5 gap-3">
-                {colorOptions.map((option) => (
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              <div className="space-y-2 relative" ref={pickerTextoRef}>
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 leading-none">Cor da Fonte</Label>
+                <div className="flex gap-2">
                   <button
-                    key={option.value}
                     type="button"
-                    onClick={() => setCor(option.value)}
-                    className={cn(
-                      "group relative flex flex-col items-center gap-2 p-2 rounded-xl transition-all",
-                      cor === option.value ? "bg-slate-100 ring-2 ring-primary/20 ring-offset-2" : "hover:bg-slate-50"
-                    )}
-                  >
-                    <div className={cn(
-                      "w-5 h-5 rounded-full border-2 border-white shadow-sm transition-transform group-hover:scale-110",
-                      option.class
-                    )} />
-                    <span className="text-[8px] font-black text-slate-400 uppercase">{option.label}</span>
-                  </button>
-                ))}
+                    onClick={() => {
+                      setShowPickerTexto(!showPickerTexto)
+                      setShowPickerFundo(false)
+                    }}
+                    className="w-10 h-10 rounded-lg border border-slate-200 shadow-sm flex-shrink-0 transition-transform active:scale-95"
+                    style={{ backgroundColor: corTexto }}
+                  />
+                  <div className="flex-1 flex gap-2">
+                    <Input 
+                      value={corTexto.toUpperCase()}
+                      onChange={(e) => setCorTexto(e.target.value)}
+                      className="h-10 bg-slate-50 border-slate-100 rounded-lg font-mono font-bold text-[12px] text-slate-700 uppercase"
+                      maxLength={7}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCorTexto("#FFFFFF")}
+                      className="h-10 px-3 text-[10px] font-bold uppercase border-slate-200 text-slate-500"
+                    >
+                      Limpar
+                    </Button>
+                  </div>
+                </div>
+                {showPickerTexto && (
+                  <div className="absolute z-50 mt-2 p-3 bg-white rounded-2xl shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+                    <HexColorPicker color={corTexto} onChange={setCorTexto} />
+                    <div className="grid grid-cols-6 gap-2 mt-3">
+                      {['#FFFFFF', '#000000', '#F8FAFC', '#64748B', '#EF4444', '#22C55E'].map((c) => (
+                        <button 
+                          key={c}
+                          type="button"
+                          className="w-6 h-6 rounded-md border border-slate-100"
+                          style={{ backgroundColor: c }}
+                          onClick={() => setCorTexto(c)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
+
+              <div className="space-y-2 relative" ref={pickerFundoRef}>
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 leading-none">Cor de Fundo</Label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPickerFundo(!showPickerFundo)
+                      setShowPickerTexto(false)
+                    }}
+                    className="w-10 h-10 rounded-lg border border-slate-200 shadow-sm flex-shrink-0 transition-transform active:scale-95"
+                    style={{ backgroundColor: cor }}
+                  />
+                   <div className="flex-1 flex gap-2">
+                    <Input 
+                      value={cor.toUpperCase()}
+                      onChange={(e) => setCor(e.target.value)}
+                      className="h-10 bg-slate-50 border-slate-100 rounded-lg font-mono font-bold text-[12px] text-slate-700 uppercase"
+                      maxLength={7}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCor("#171717")}
+                      className="h-10 px-3 text-[10px] font-bold uppercase border-slate-200 text-slate-500"
+                    >
+                      Limpar
+                    </Button>
+                  </div>
+                </div>
+                {showPickerFundo && (
+                  <div className="absolute z-50 mt-2 p-3 bg-white rounded-2xl shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200 right-0">
+                    <HexColorPicker color={cor} onChange={setCor} />
+                    <div className="grid grid-cols-6 gap-2 mt-3">
+                      {['#171717', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'].map((c) => (
+                        <button 
+                          key={c}
+                          type="button"
+                          className="w-6 h-6 rounded-md border border-slate-100"
+                          style={{ backgroundColor: c }}
+                          onClick={() => setCor(c)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50 flex flex-col items-center justify-center gap-3">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Pré-visualização</span>
+              <span 
+                className="px-4 py-1.5 rounded-lg text-[11px] font-normal uppercase tracking-widest shadow-md transition-all scale-110"
+                style={{ backgroundColor: cor, color: corTexto }}
+              >
+                {nome || "EXEMPLO STATUS"}
+              </span>
             </div>
 
             <DialogFooter className="pt-4 gap-3">

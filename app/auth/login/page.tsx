@@ -111,7 +111,7 @@ export default function LoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Seu usuário" 
-                  className="h-[42px] pl-11 text-[14px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] placeholder:text-[13.3px] placeholder:font-semibold focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
+                  className="h-[42px] pl-11 text-[14px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
                   required
                 />
               </div>
@@ -128,7 +128,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="........" 
-                  className="h-[42px] pl-11 pr-11 text-[17px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] placeholder:text-[19px] placeholder:font-semibold focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
+                  className="h-[42px] pl-11 pr-11 text-[17px] font-medium bg-[#EBF3FF] border-none rounded-2xl text-slate-700 placeholder:text-[#7E97B8] focus-visible:ring-2 focus-visible:ring-blue-100 transition-all shadow-sm"
                   required
                 />
                 <button 

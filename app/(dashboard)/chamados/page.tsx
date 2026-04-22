@@ -42,6 +42,7 @@ export interface Ticket {
     id: string
     nome: string
     cor: string
+    cor_texto?: string
   }
   origem: string
   cliente_nome: string
@@ -89,11 +90,7 @@ export default function TicketsPage() {
         .from('chamados')
         .select(`
           *,
-          status_chamados:status_id (
-            id,
-            nome,
-            cor
-          )
+          status_chamados:status_id (*)
         `)
 
       // Aplicar filtros de permissão baseados na Role
@@ -126,8 +123,12 @@ export default function TicketsPage() {
 
       if (error) throw error
       setTickets(data as Ticket[] || [])
-    } catch (error) {
-      console.error("Erro ao buscar chamados:", error)
+    } catch (error: any) {
+      console.error("Erro completo ao buscar chamados (detalhado):", JSON.stringify(error, null, 2))
+      console.error("Objeto de erro bruto:", error)
+      if (error.message) console.error("Mensagem do erro:", error.message)
+      if (error.details) console.error("Detalhes do erro:", error.details)
+      if (error.hint) console.error("Dica do erro:", error.hint)
       toast.error("Erro ao carregar a lista de chamados")
     } finally {
       setIsLoading(false)
@@ -250,31 +251,51 @@ export default function TicketsPage() {
     router.push(`/propostas/nova?${params.toString()}`);
   }
 
-  const getStatusColor = (ticket: Ticket) => {
-    // Se tiver status dinâmico com cor
-    if (ticket.status_chamados) {
-      const cor = ticket.status_chamados.cor
-      if (cor === 'blue') return "bg-blue-500"
-      if (cor === 'orange') return "bg-orange-500"
-      if (cor === 'purple') return "bg-purple-500"
-      if (cor === 'slate') return "bg-slate-500"
-      if (cor === 'green') return "bg-green-500"
-      if (cor === 'red') return "bg-red-500"
-      if (cor === 'amber') return "bg-amber-500"
-      if (cor === 'emerald') return "bg-emerald-500"
-      if (cor === 'rose') return "bg-rose-500"
-      if (cor === 'cyan') return "bg-cyan-500"
-      return `bg-${cor}-500`
+  const getStatusStyle = (ticket: Ticket) => {
+    // Se tiver status dinâmico com cor customizada
+    if (ticket.status_chamados && (ticket.status_chamados.cor?.startsWith('#'))) {
+      return {
+        style: { 
+          backgroundColor: ticket.status_chamados.cor,
+          color: ticket.status_chamados.cor_texto || '#ffffff'
+        },
+        className: "px-2.5 py-1 rounded-md text-[9px] font-normal uppercase inline-block shadow-sm border border-black/5"
+      }
     }
 
+    // Fallback para status dinâmico com cores legadas (nomes de cores)
+    if (ticket.status_chamados) {
+      const cor = ticket.status_chamados.cor
+      let bgColor = "bg-slate-500"
+      if (cor === 'blue') bgColor = "bg-blue-500"
+      else if (cor === 'orange') bgColor = "bg-orange-500"
+      else if (cor === 'purple') bgColor = "bg-purple-500"
+      else if (cor === 'slate') bgColor = "bg-slate-500"
+      else if (cor === 'green') bgColor = "bg-green-500"
+      else if (cor === 'red') bgColor = "bg-red-500"
+      else if (cor === 'amber') bgColor = "bg-amber-500"
+      else if (cor === 'emerald') bgColor = "bg-emerald-500"
+      else if (cor === 'rose') bgColor = "bg-rose-500"
+      else if (cor === 'cyan') bgColor = "bg-cyan-500"
+      
+      return {
+        className: cn("px-2.5 py-1 rounded-md text-[9px] font-normal text-white uppercase inline-block shadow-sm", bgColor)
+      }
+    }
+
+    // Lógica para status fixos/legados
     const s = ticket.status.toUpperCase()
-    if (s === 'ABERTO' || s === 'ABERTOS') return "bg-amber-500"
-    if (s === 'AGUARDANDO OPERACIONAL') return "bg-orange-500"
-    if (s === 'PROPOSTA CADASTRADA') return "bg-blue-500"
-    if (s === 'EM NEGOCIAÇÃO / PROPOSTA ENVIADA') return "bg-cyan-500"
-    if (s.includes('APROVADO') && !s.includes('NÃO')) return "bg-emerald-500"
-    if (s.includes('NÃO APROVADO')) return "bg-rose-500"
-    return "bg-slate-400"
+    let legacyBg = "bg-slate-400"
+    if (s === 'ABERTO' || s === 'ABERTOS') legacyBg = "bg-amber-500"
+    else if (s === 'AGUARDANDO OPERACIONAL') legacyBg = "bg-orange-500"
+    else if (s === 'PROPOSTA CADASTRADA') legacyBg = "bg-blue-500"
+    else if (s === 'EM NEGOCIAÇÃO / PROPOSTA ENVIADA') legacyBg = "bg-cyan-500"
+    else if (s.includes('APROVADO') && !s.includes('NÃO')) legacyBg = "bg-emerald-500"
+    else if (s.includes('NÃO APROVADO')) legacyBg = "bg-rose-500"
+    
+    return {
+      className: cn("px-2.5 py-1 rounded-md text-[9px] font-normal text-white uppercase inline-block shadow-sm", legacyBg)
+    }
   }
 
   return (
@@ -290,7 +311,7 @@ export default function TicketsPage() {
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Buscar Chamado</label>
                 <Input 
                   placeholder="ID, Nome do Cliente ou CPF..." 
-                  className="h-[38px] bg-slate-50/50 border-slate-100 text-[11px]"
+                  className="h-[38px] bg-slate-50/50 border-slate-100 text-[12px]"
                   icon={<Search className="w-4 h-4 text-slate-400" />}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -319,7 +340,7 @@ export default function TicketsPage() {
                 <Button 
                   onClick={fetchTickets}
                   disabled={isLoading}
-                  className="bg-primary hover:bg-primary/90 text-white px-8 h-[38px] text-[11px] font-bold rounded-lg shadow-lg shadow-primary/20 cursor-pointer"
+                  className="bg-primary hover:bg-primary/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-primary/20 cursor-pointer"
                 >
                   {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "BUSCAR"}
                 </Button>
@@ -408,7 +429,7 @@ export default function TicketsPage() {
                           )}
                           onClick={() => toggleTicketExpansion(ticket.id.toString())}
                         >
-                          <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">#{ticket.id}</td>
+                          <td className="px-4 py-4 text-[12px] font-bold text-slate-400 group-hover:text-primary">#{ticket.id}</td>
                           {(isOperational || isAdmin) && (
                             <td className="px-4 py-4">
                               <div className="flex flex-col">
@@ -420,22 +441,22 @@ export default function TicketsPage() {
                             </td>
                           )}
                           <td className="px-4 py-4">
-                            <span className={cn(
-                              "px-2.5 py-1 rounded-md text-[9px] font-black text-white uppercase inline-block shadow-sm",
-                              getStatusColor(ticket)
-                            )}>
+                            <span 
+                              className={getStatusStyle(ticket).className}
+                              style={getStatusStyle(ticket).style}
+                            >
                               {ticket.status_chamados?.nome || ticket.status}
                             </span>
                           </td>
-                          <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{ticket.origem}</td>
+                          <td className="px-4 py-4 text-[12px] font-bold text-slate-500">{ticket.origem}</td>
                           <td className="px-4 py-4">
                             <div className="flex flex-col">
                               <span className="text-[11.5px] font-bold text-slate-700 uppercase tracking-tight">{ticket.cliente_nome}</span>
                               <span className="text-[9px] font-medium text-slate-400">{ticket.convenio}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{ticket.cliente_cpf}</td>
-                          <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{ticket.cliente_telefone}</td>
+                          <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{ticket.cliente_cpf}</td>
+                          <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{ticket.cliente_telefone}</td>
                           <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">R$ {ticket.margem?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                           <td className="px-4 py-4 text-[10px] font-bold text-slate-400 leading-tight max-w-[120px] truncate" title={ticket.equipe}>
                             {ticket.equipe}
@@ -495,7 +516,10 @@ export default function TicketsPage() {
                                     arquivo_extrato: ticket.arquivo_extrato,
                                     arquivo_outros: ticket.arquivo_outros
                                   }} 
-                                  onMessageSent={fetchTickets}
+                                  onMessageSent={() => {
+                                    fetchTickets();
+                                    setExpandedTicketId(null);
+                                  }}
                                 />
                               </div>
                             </td>

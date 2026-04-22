@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS public.status_chamados (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     nome TEXT UNIQUE NOT NULL,
     cor TEXT DEFAULT 'slate',
+    cor_texto TEXT DEFAULT '#ffffff',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -21,10 +22,8 @@ CREATE POLICY "Apenas Admin e Dev podem gerenciar status"
 ON public.status_chamados FOR ALL 
 TO authenticated 
 USING (
-    EXISTS (
-        SELECT 1 FROM public.perfis 
-        WHERE id = auth.uid() AND role IN ('Administrador', 'Desenvolvedor')
-    )
+    (auth.jwt() -> 'user_metadata' ->> 'funcao') IN ('Administrador', 'Desenvolvedor')
+    OR auth.jwt() ->> 'email' IN ('souendrionovo@gmail.com', 'acertofacilpromotoradecredito@gmail.com')
 );
 
 -- Inserir status iniciais se não existirem

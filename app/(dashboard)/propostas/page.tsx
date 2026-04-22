@@ -172,7 +172,7 @@ export default function ProposalsPage() {
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Buscar Proposta</label>
                 <Input 
                   placeholder="ID, Nome do Cliente ou CPF..." 
-                  className="h-[38px] bg-slate-50/50 border-slate-100 text-[11px]"
+                  className="h-[38px] bg-slate-50/50 border-slate-100 text-[12px]"
                   icon={<Search className="w-4 h-4 text-slate-400" />}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -198,7 +198,7 @@ export default function ProposalsPage() {
                     />
                   </div>
                 </div>
-                <Button className="bg-[#1A2B49] hover:bg-[#1A2B49]/90 text-white px-8 h-[38px] text-[11px] font-bold rounded-lg shadow-lg shadow-slate-200">
+                <Button className="bg-[#1A2B49] hover:bg-[#1A2B49]/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-slate-200">
                   BUSCAR
                 </Button>
                 <Button 
@@ -250,7 +250,7 @@ export default function ProposalsPage() {
                   <CardContent className="p-5">
                     <p className="text-[9px] font-bold text-slate-400 uppercase mb-4 h-8 leading-tight tracking-widest">{card.label}</p>
                     <div className="flex items-end gap-2">
-                      <div className={cn("px-2 py-0.5 rounded text-[10px] font-black text-white", card.textColor.replace('text-', 'bg-'))}>
+                      <div className={cn("px-2 py-0.5 rounded text-[10px] font-normal text-white", card.textColor.replace('text-', 'bg-'))}>
                         {card.count}
                       </div>
                       <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest mb-0.5">Contrato(s)</span>
@@ -279,7 +279,7 @@ export default function ProposalsPage() {
                   <CardContent className="p-4">
                     <p className="text-[8.5px] font-bold text-slate-400 uppercase mb-3 h-7 leading-tight tracking-wider">{card.label}</p>
                     <div className="flex items-center gap-2">
-                      <div className="bg-slate-700 px-2 py-0.5 rounded text-[10px] font-black text-white">
+                      <div className="bg-slate-700 px-2 py-0.5 rounded text-[10px] font-normal text-white">
                         {card.count}
                       </div>
                       <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Contrato(s)</span>
@@ -321,10 +321,10 @@ export default function ProposalsPage() {
                           expandedProposalId === proposal.id && "bg-slate-50"
                         )}
                       >
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">{proposal.id}</td>
-                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.cpf}</td>
+                        <td className="px-4 py-4 text-[12px] font-bold text-slate-400 group-hover:text-primary">{proposal.id}</td>
+                        <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{proposal.cpf}</td>
                         <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 uppercase tracking-tight">{proposal.client}</td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.operation}</td>
+                        <td className="px-4 py-4 text-[12px] font-bold text-slate-500">{proposal.operation}</td>
                         <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.bankAgreement}</td>
                         <td className="px-4 py-4 text-[10px] font-bold text-slate-400 leading-tight max-w-[150px] truncate" title={proposal.commercial}>
                           {proposal.commercial}

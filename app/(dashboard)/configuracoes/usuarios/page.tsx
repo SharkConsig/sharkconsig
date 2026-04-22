@@ -277,10 +277,6 @@ export default function UsuariosPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <Button variant="outline" className="h-[38px] w-[140px] border-slate-200 text-slate-600 font-bold text-[9.5px] rounded-lg gap-2 bg-white hover:bg-slate-50 uppercase tracking-widest p-0">
-                  <Download className="w-3.5 h-3.5" />
-                  Exportar CSV
-                </Button>
                 <Button 
                   onClick={() => {
                     setEditingUser(null)
@@ -357,7 +353,7 @@ export default function UsuariosPage() {
                             )}
                           </td>
                           <td className="px-8 py-4">
-                            <Badge className={`rounded-full px-3 py-0.5 text-[9px] tracking-widest font-extrabold ${getStatusColor(usuario.status)}`}>
+                            <Badge className={`rounded-full px-3 py-0.5 text-[9px] tracking-widest font-normal ${getStatusColor(usuario.status)}`}>
                               {usuario.status}
                             </Badge>
                           </td>
