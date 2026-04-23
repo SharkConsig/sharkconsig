@@ -16,8 +16,10 @@ import {
   Link2, 
   UploadCloud,
   Loader2,
-  Check
+  Check,
+  X
 } from "lucide-react"
+import Image from "next/image"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
@@ -61,6 +63,9 @@ function NewTicketForm() {
     extrato: null,
     outros: null
   })
+
+  // Pasted images from clipboard
+  const [pastedImages, setPastedImages] = useState<File[]>([])
 
   // Ticket number state (using a timestamp-based ID or fetching last)
   const [ticketNumber, setTicketNumber] = useState<string>("...")
@@ -120,10 +125,48 @@ function NewTicketForm() {
     outros: useRef<HTMLInputElement>(null)
   }
 
+  const getMarginClasses = (value: string, isSelected: boolean) => {
+    if (!value) return isSelected 
+      ? "bg-[#171717] text-white border-[#171717] shadow-sm" 
+      : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200";
+
+    const cleaned = value.replace(/[R$\s.]/g, "").replace(",", ".");
+    const num = parseFloat(cleaned) || 0;
+    
+    if (isSelected) {
+      if (num < 0) return "bg-red-50 text-red-700 border-red-500 shadow-md ring-1 ring-red-500";
+      if (num > 0) return "bg-emerald-50 text-emerald-700 border-emerald-500 shadow-md ring-1 ring-emerald-500";
+      return "bg-[#171717] text-white border-[#171717] shadow-sm";
+    }
+
+    if (num < 0) return "bg-red-50 text-red-600 border-red-200 hover:bg-red-100";
+    if (num > 0) return "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100";
+    
+    return "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200";
+  };
+
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     if (validationError) setValidationError(null)
   }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const file = new File([blob], `screenshot_${Date.now()}.png`, { type: blob.type });
+          files.push(file);
+        }
+      }
+    }
+    if (files.length > 0) {
+      setPastedImages(prev => [...prev, ...files]);
+      toast.success(`${files.length} imagem(ns) colada(s) do clipboard`);
+    }
+  };
 
   const updateDescription = (margins: { margem: string, liquida5: string, beneficio5: string }) => {
     // Build the introductory text
@@ -353,8 +396,25 @@ function NewTicketForm() {
 
       const cleanCPF = (val: string) => val.replace(/\D/g, "");
 
+      // Upload de imagens coladas (screenshots)
+      const pastedUrls = [];
+      if (pastedImages.length > 0) {
+        console.log("Enviando imagens coladas...");
+        for (const file of pastedImages) {
+          try {
+            const url = await uploadFile(file, `pasted/${user.id}/${Date.now()}`);
+            pastedUrls.push(url);
+          } catch (err) {
+            console.error("Erro ao subir imagem colada:", err);
+          }
+        }
+      }
+
       // Adiciona informações de margens adicionais na descrição se selecionadas
       let finalDescription = description;
+      if (pastedUrls.length > 0) {
+        finalDescription += "\n\n--- IMAGENS EM ANEXO ---\n" + pastedUrls.map((url, i) => `![Print ${i+1}](${url})`).join("\n");
+      }
       const extraMargins = [];
       if (formData.liquida5) extraMargins.push(`Líquida 5%: ${formData.liquida5}`);
       if (formData.beneficio5) extraMargins.push(`Benefício Líquida 5%: ${formData.beneficio5}`);
@@ -383,11 +443,14 @@ function NewTicketForm() {
           cliente_telefone_2: formData.tel2 || null,
           cliente_telefone_3: formData.tel3 || null,
           margem: cleanMoney(formData.margem),
+          margem_liquida_5: cleanMoney(formData.liquida5),
+          margem_beneficio_5: cleanMoney(formData.beneficio5),
           convenio: formData.convenio,
           equipe: formData.equipe,
           descricao: finalDescription,
           user_id: user.id,
           user_nome: perfil?.nome || user.email || "Usuário",
+          user_avatar: perfil?.avatar_url || null,
           arquivo_rg_frente: fileUrls.frente,
           arquivo_rg_verso: fileUrls.verso,
           arquivo_contracheque: fileUrls.contracheque,
@@ -542,9 +605,11 @@ function NewTicketForm() {
                 </div>
 
                 {/* Row 4: Margens */}
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 items-end">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold text-primary mb-1 uppercase tracking-wider">Selecione ou digite a margem para qual você deseja abrir esse chamado.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 items-end">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                       Margem 35% <span className="text-red-500">*</span>
                     </label>
                     {isFromClient && originalMargins.margem ? (
@@ -553,9 +618,7 @@ function NewTicketForm() {
                         onClick={() => toggleMargin("margem", originalMargins.margem)}
                         className={cn(
                           "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
-                          formData.margem 
-                            ? "bg-[#171717] text-white border-[#171717] shadow-sm" 
-                            : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200"
+                          getMarginClasses(originalMargins.margem, !!formData.margem)
                         )}
                       >
                         {formData.margem && <Check className="w-3.5 h-3.5 shrink-0" />}
@@ -567,10 +630,8 @@ function NewTicketForm() {
                         onChange={(e) => handleMarginInputChange("margem", e.target.value)}
                         placeholder="R$ 0,00" 
                         className={cn(
-                          "h-[34px] border-slate-100 text-[12px] transition-all",
-                          formData.margem 
-                            ? "bg-[#171717] text-white border-[#171717]" 
-                            : "bg-[#E8E8E8] text-slate-900"
+                          "h-[34px] text-[12px] transition-all",
+                          getMarginClasses(formData.margem, !!formData.margem)
                         )}
                       />
                     )}
@@ -586,9 +647,7 @@ function NewTicketForm() {
                         onClick={() => toggleMargin("liquida5", originalMargins.liquida5)}
                         className={cn(
                           "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
-                          formData.liquida5 
-                            ? "bg-[#171717] text-white border-[#171717] shadow-sm" 
-                            : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200"
+                          getMarginClasses(originalMargins.liquida5, !!formData.liquida5)
                         )}
                       >
                         {formData.liquida5 && <Check className="w-3.5 h-3.5 shrink-0" />}
@@ -600,10 +659,8 @@ function NewTicketForm() {
                         onChange={(e) => handleMarginInputChange("liquida5", e.target.value)}
                         placeholder="R$ 0,00" 
                         className={cn(
-                          "h-[34px] border-slate-100 text-[12px] transition-all",
-                          formData.liquida5 
-                            ? "bg-[#171717] text-white border-[#171717]" 
-                            : "bg-[#E8E8E8] text-slate-900"
+                          "h-[34px] text-[12px] transition-all",
+                          getMarginClasses(formData.liquida5, !!formData.liquida5)
                         )}
                       />
                     )}
@@ -619,9 +676,7 @@ function NewTicketForm() {
                         onClick={() => toggleMargin("beneficio5", originalMargins.beneficio5)}
                         className={cn(
                           "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
-                          formData.beneficio5 
-                            ? "bg-[#171717] text-white border-[#171717] shadow-sm" 
-                            : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200"
+                          getMarginClasses(originalMargins.beneficio5, !!formData.beneficio5)
                         )}
                       >
                         {formData.beneficio5 && <Check className="w-3.5 h-3.5 shrink-0" />}
@@ -633,10 +688,8 @@ function NewTicketForm() {
                         onChange={(e) => handleMarginInputChange("beneficio5", e.target.value)}
                         placeholder="R$ 0,00" 
                         className={cn(
-                          "h-[34px] border-slate-100 text-[12px] transition-all",
-                          formData.beneficio5 
-                            ? "bg-[#171717] text-white border-[#171717]" 
-                            : "bg-[#E8E8E8] text-slate-900"
+                          "h-[34px] text-[12px] transition-all",
+                          getMarginClasses(formData.beneficio5, !!formData.beneficio5)
                         )}
                       />
                     )}
@@ -654,8 +707,9 @@ function NewTicketForm() {
                 </div>
               </div>
             </div>
+          </div>
 
-            <div className="space-y-2 mb-6">
+          <div className="space-y-2 mb-6">
               <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                 Descrição <span className="text-red-500">*</span>
               </label>
@@ -700,11 +754,35 @@ function NewTicketForm() {
                   className="w-full min-h-[200px] p-4 text-[12px] focus:outline-none resize-none bg-[#E8E8E8]"
                   placeholder="Descreva aqui a solicitação..."
                   value={description}
+                  onPaste={handlePaste}
                   onChange={(e) => {
                     setDescription(e.target.value)
                     if (validationError) setValidationError(null)
                   }}
                 />
+                {pastedImages.length > 0 && (
+                  <div className="p-3 border-t border-slate-200 bg-slate-50/50 flex flex-wrap gap-3">
+                    {pastedImages.map((file, idx) => (
+                      <div key={idx} className="relative group w-24 h-24 rounded-lg overflow-hidden border border-slate-300 shadow-sm animate-in zoom-in-95 duration-200">
+                        <Image 
+                          src={URL.createObjectURL(file)} 
+                          alt="Preview" 
+                          fill 
+                          className="object-cover" 
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <button 
+                             type="button"
+                             onClick={() => setPastedImages(prev => prev.filter((_, i) => i !== idx))}
+                             className="bg-white rounded-full p-1 border border-slate-100 hover:bg-red-50 hover:text-red-500 transition-all shadow-lg"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

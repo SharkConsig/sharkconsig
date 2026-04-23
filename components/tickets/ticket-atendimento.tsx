@@ -19,10 +19,11 @@ import {
   Type as FontIcon,
   ArrowRight,
   FileText,
-  FileEdit,
   Loader2,
   Send,
-  X
+  X,
+  ChevronDown,
+  Search
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
@@ -31,6 +32,7 @@ import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
+import ReactMarkdown from "react-markdown"
 
 interface Attachment {
   name: string
@@ -70,6 +72,8 @@ interface TicketAtendimentoProps {
     description?: string;
     createdAt?: string;
     user_nome?: string;
+    user_id?: string;
+    user_avatar?: string | null;
     arquivo_rg_frente?: string | null;
     arquivo_rg_verso?: string | null;
     arquivo_contracheque?: string | null;
@@ -89,9 +93,23 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [availableStatuses, setAvailableStatuses] = useState<Status[]>([])
   const [selectedStatusId, setSelectedStatusId] = useState<string | null>(ticket.status_id || null)
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
+  const [statusSearchTerm, setStatusSearchTerm] = useState("")
   const [currentStatusName, setCurrentStatusName] = useState<string>(ticket.status_nome || "ABERTO")
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const statusDropdownRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setIsStatusDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   const fetchStatuses = useCallback(async () => {
     try {
@@ -130,7 +148,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     const initialMessage: Message | null = ticket.description ? {
       id: "initial",
       user_nome: ticket.user_nome || ticket.client,
-      user_avatar: null,
+      user_avatar: ticket.user_avatar || (user?.id === ticket.user_id && perfil?.avatar_url ? perfil.avatar_url : null),
       action: "solicitou",
       content: ticket.description,
       attachments: ticketAttachments,
@@ -255,6 +273,17 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
         }
       }
 
+      let finalReply = reply
+      // Adiciona as imagens no corpo do texto para que fiquem visíveis imediatamente
+      const imageFiles = selectedFiles.filter(f => f.type.startsWith('image/'))
+      if (imageFiles.length > 0) {
+        // Encontrar os URLs correspondentes nos anexos já enviados
+        const imageAttachments = chatAttachments.filter(a => a.name.match(/\.(jpg|jpeg|png|gif|webp|png)$/i))
+        if (imageAttachments.length > 0) {
+          finalReply += "\n\n" + imageAttachments.map(a => `![${a.name}](${a.url})`).join("\n")
+        }
+      }
+
       const { error } = await supabase
         .from('mensagens_chamado')
         .insert({
@@ -263,7 +292,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
           user_nome: perfil.nome,
           user_role: perfil.role,
           user_avatar: perfil.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil.nome)}&background=random`,
-          content: reply,
+          content: finalReply,
           action: statusChangeData ? 'alterou o status' : 'respondeu',
           attachments: chatAttachments,
           status_change: statusChangeData
@@ -302,20 +331,33 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     setSelectedFiles(prev => prev.filter((_, i) => i !== index))
   }
 
-  const handleDigitarProposta = () => {
-    const params = new URLSearchParams({
-      nome: ticket.client,
-      cpf: ticket.cpf,
-      nascimento: "31/01/1984", 
-      idLead: ticket.id,
-      origem: ticket.origin.toLowerCase()
-    });
-    router.push(`/propostas/nova?${params.toString()}`);
-  }
-
   const handleFileClick = () => {
     fileInputRef.current?.click()
   }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const file = new File([blob], `screenshot_${Date.now()}.png`, { type: blob.type });
+          files.push(file);
+        }
+      }
+    }
+    if (files.length > 0) {
+      setSelectedFiles(prev => [...prev, ...files]);
+      toast.success(`${files.length} imagem(ns) colada(s) do clipboard`);
+    }
+  };
+
+  const filteredStatuses = availableStatuses.filter(s => 
+    s.nome.toLowerCase().includes(statusSearchTerm.toLowerCase())
+  );
+
+  const selectedStatus = availableStatuses.find(s => s.id === selectedStatusId);
 
   return (
     <div className="p-4 sm:p-8 space-y-8 bg-white border-t border-slate-100 max-h-[800px] flex flex-col">
@@ -334,8 +376,8 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
             <div key={msg.id} className="flex flex-col sm:flex-row gap-4 text-left animate-in fade-in slide-in-from-bottom-2 duration-500">
               <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 border-white shadow-sm ring-1 ring-slate-100">
                 <Image 
-                  src={msg.user_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(msg.user_nome)}&background=random`} 
-                  alt={msg.user_nome} 
+                  src={msg.user_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(msg.user_nome || 'Usuário')}&background=random`} 
+                  alt={msg.user_nome || "Avatar do usuário"} 
                   fill 
                   className="object-cover" 
                   referrerPolicy="no-referrer" 
@@ -352,7 +394,23 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 
                 {msg.content && (
                   <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100 group hover:border-primary/20 transition-colors">
-                    <p className="text-sm text-slate-600 italic break-words leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                    <div className="markdown-body text-sm text-slate-600 break-words leading-relaxed">
+                      <ReactMarkdown 
+                        components={{
+                          img: ({ ...props }) => (
+                            <img 
+                              {...props} 
+                              alt={props.alt || "Anexo do chamado"}
+                              className="max-w-full rounded-lg shadow-sm border border-slate-200 mt-2 mb-2 hover:scale-[1.02] transition-transform cursor-pointer" 
+                              onClick={() => props.src && window.open(props.src, '_blank')}
+                            />
+                          ),
+                          p: ({ children }) => <p className="mb-2 last:mb-0 italic">{children}</p>
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 )}
 
@@ -420,6 +478,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
             placeholder="Digite sua resposta aqui e pressione Enviar..."
             value={reply}
             onChange={(e) => setReply(e.target.value)}
+            onPaste={handlePaste}
             disabled={isSending}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -427,6 +486,28 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
               }
             }}
           />
+          {selectedFiles.some(f => f.type.startsWith('image/')) && (
+            <div className="p-3 border-t border-slate-100 bg-slate-50/50 flex flex-wrap gap-3">
+              {selectedFiles.filter(f => f.type.startsWith('image/')).map((file, idx) => (
+                <div key={idx} className="relative group w-24 h-24 rounded-lg overflow-hidden border border-slate-200 shadow-sm animate-in zoom-in-95 duration-200">
+                  <Image 
+                    src={URL.createObjectURL(file)} 
+                    alt="Preview" 
+                    fill 
+                    className="object-cover" 
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button 
+                       onClick={() => removeFile(selectedFiles.indexOf(file))}
+                       className="bg-white rounded-full p-1 border border-slate-100 hover:bg-red-50 hover:text-red-500 transition-all shadow-lg"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
@@ -455,18 +536,67 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
               </div>
             )}
             <div className="flex flex-wrap items-end gap-3">
-              {/* Status Selector */}
-              <div className="flex flex-col gap-1">
+              {/* Status Selector UI */}
+              <div className="flex flex-col gap-1 relative" ref={statusDropdownRef}>
                 <label className="text-[9px] font-bold text-slate-500/80 uppercase tracking-widest pl-1">ALTERAR STATUS</label>
-                <select
-                  value={selectedStatusId || ""}
-                  onChange={(e) => setSelectedStatusId(e.target.value)}
-                  className="h-[38px] px-3 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none cursor-pointer min-w-[150px]"
+                
+                <div 
+                  onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                  className="h-[38px] px-3 rounded-lg border border-slate-200 bg-white flex items-center justify-between cursor-pointer min-w-[200px] hover:border-primary/30 transition-all shadow-sm"
                 >
-                  {availableStatuses.map(s => (
-                    <option key={s.id} value={s.id}>{s.nome}</option>
-                  ))}
-                </select>
+                  <span className="text-[11px] font-bold text-slate-600 uppercase">
+                    {selectedStatus?.nome || "SELECIONE UM STATUS"}
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform", isStatusDropdownOpen && "rotate-180")} />
+                </div>
+
+                {isStatusDropdownOpen && (
+                  <div className="absolute top-[18px] left-0 w-full bg-white border border-slate-100 rounded-xl shadow-2xl z-[100] animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden flex flex-col max-h-[300px]">
+                    {/* Search Input */}
+                    <div className="p-2 border-b border-slate-50 bg-slate-50/50 sticky top-0 z-10">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <input 
+                          autoFocus
+                          type="text"
+                          placeholder="Buscar status..."
+                          className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                          value={statusSearchTerm}
+                          onChange={(e) => setStatusSearchTerm(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Options List */}
+                    <div className="overflow-y-auto custom-scrollbar p-1">
+                      {filteredStatuses.length > 0 ? (
+                        filteredStatuses.map((s) => (
+                          <div
+                            key={s.id}
+                            onClick={() => {
+                              setSelectedStatusId(s.id)
+                              setIsStatusDropdownOpen(false)
+                              setStatusSearchTerm("")
+                            }}
+                            className={cn(
+                              "px-3 py-2.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer flex items-center justify-between group",
+                              selectedStatusId === s.id 
+                                ? "bg-primary text-white" 
+                                : "text-slate-600 hover:bg-slate-50"
+                            )}
+                          >
+                            <span>{s.nome}</span>
+                            {selectedStatusId === s.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic">
+                          Nenhum status encontrado
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Button 
@@ -486,12 +616,14 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                   </>
                 )}
               </Button>
-              <h3 
+              <Button 
+                variant="outline"
                 onClick={handleFileClick}
-                className="text-[10px] font-bold text-primary uppercase tracking-wider cursor-pointer hover:underline py-2"
+                className="h-[38px] px-6 text-[10px] font-bold text-primary uppercase tracking-wider border-primary/20 hover:bg-primary/5 hover:border-primary/40 transition-all flex items-center gap-2"
               >
+                <ImageIcon className="w-3.5 h-3.5" />
                 Anexar Arquivos
-              </h3>
+              </Button>
             </div>
             <p className="text-[9px] text-slate-400 max-w-sm leading-relaxed">Pressione <kbd className="bg-slate-100 px-1 rounded font-bold">Ctrl + Enter</kbd> para enviar rapidamente. Tamanho máximo 20mb (jpg, png, pdf, docx, xlsx).</p>
           </div>

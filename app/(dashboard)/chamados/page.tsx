@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
 import { 
   Search, 
-  Filter, 
   Calendar,
   ChevronLeft,
   ChevronRight,
@@ -49,6 +48,8 @@ export interface Ticket {
   cliente_cpf: string
   cliente_telefone: string
   margem: number
+  margem_liquida_5?: number
+  margem_beneficio_5?: number
   convenio: string
   equipe: string
   created_at: string
@@ -56,6 +57,7 @@ export interface Ticket {
   descricao?: string
   user_id: string
   user_nome?: string
+  user_avatar?: string
 }
 
 const secondaryCards = [
@@ -105,8 +107,8 @@ export default function TicketsPage() {
           if (response.ok) {
             const allUsers = await response.json()
             const subordinates = allUsers
-              .filter((u: any) => u.supervisor_id === user.id)
-              .map((u: any) => u.id)
+              .filter((u: { supervisor_id: string }) => u.supervisor_id === user.id)
+              .map((u: { id: string }) => u.id)
             
             query = query.in('user_id', [...subordinates, user.id])
           }
@@ -124,12 +126,13 @@ export default function TicketsPage() {
 
       if (error) throw error
       setTickets(data as Ticket[] || [])
-    } catch (error: any) {
-      console.error("Erro completo ao buscar chamados (detalhado):", JSON.stringify(error, null, 2))
-      console.error("Objeto de erro bruto:", error)
-      if (error.message) console.error("Mensagem do erro:", error.message)
-      if (error.details) console.error("Detalhes do erro:", error.details)
-      if (error.hint) console.error("Dica do erro:", error.hint)
+    } catch (error: unknown) {
+      const err = error as { message?: string; details?: string; hint?: string };
+      console.error("Erro completo ao buscar chamados (detalhado):", JSON.stringify(err, null, 2))
+      console.error("Objeto de erro bruto:", err)
+      if (err.message) console.error("Mensagem do erro:", err.message)
+      if (err.details) console.error("Detalhes do erro:", err.details)
+      if (err.hint) console.error("Dica do erro:", err.hint)
       toast.error("Erro ao carregar a lista de chamados")
     } finally {
       setIsLoading(false)
@@ -167,7 +170,11 @@ export default function TicketsPage() {
         ticket.equipe.toLowerCase().includes(searchLower) ||
         ticketStatusName.includes(searchLower) ||
         ticket.margem?.toString().includes(searchTerm) ||
-        ticket.margem?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }).includes(searchTerm)
+        ticket.margem_liquida_5?.toString().includes(searchTerm) ||
+        ticket.margem_beneficio_5?.toString().includes(searchTerm) ||
+        ticket.margem?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })?.includes(searchTerm) ||
+        ticket.margem_liquida_5?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })?.includes(searchTerm) ||
+        ticket.margem_beneficio_5?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })?.includes(searchTerm)
 
       // Status category filter
       let matchesStatus = true
@@ -437,16 +444,16 @@ export default function TicketsPage() {
                       </td>
                     </tr>
                   ) : paginatedTickets.length > 0 ? (
-                    paginatedTickets.map((ticket) => (
+                    paginatedTickets.map((ticket, index) => (
                       <React.Fragment key={ticket.id}>
                         <tr 
                           className={cn(
-                            "hover:bg-slate-50/80 transition-colors group cursor-pointer",
-                            expandedTicketId === ticket.id.toString() && "bg-slate-50"
+                            "group cursor-pointer",
+                            index % 2 === 0 ? "bg-slate-100" : "bg-white"
                           )}
                           onClick={() => toggleTicketExpansion(ticket.id.toString())}
                         >
-                          <td className="px-4 py-4 text-[12px] font-bold text-slate-400 group-hover:text-primary">#{ticket.id}</td>
+                          <td className="px-4 py-4 text-[12px] font-bold text-slate-400">#{ticket.id}</td>
                           {(isOperational || isAdmin) && (
                             <td className="px-4 py-4">
                               <div className="flex flex-col">
@@ -474,7 +481,46 @@ export default function TicketsPage() {
                           </td>
                           <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{ticket.cliente_cpf}</td>
                           <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{ticket.cliente_telefone}</td>
-                          <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">R$ {ticket.margem?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">
+                            <div className="flex flex-col items-end">
+                              {(typeof ticket.margem === 'number' && ticket.margem !== 0) && (
+                                <span className="flex flex-col items-end">
+                                  <span className={cn(
+                                    "text-[11px] leading-tight",
+                                    ticket.margem < 0 ? "text-red-600" : "text-slate-900"
+                                  )}>
+                                    R$ {ticket.margem.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </span>
+                                  <span className="text-[8px] text-amber-600 uppercase font-black tracking-tighter">Margem 35%</span>
+                                </span>
+                              )}
+                              {(typeof ticket.margem_liquida_5 === 'number' && ticket.margem_liquida_5 !== 0) && (
+                                <span className="flex flex-col items-end mt-1">
+                                  <span className={cn(
+                                    "text-[11px] leading-tight",
+                                    ticket.margem_liquida_5 < 0 ? "text-red-600" : "text-slate-900"
+                                  )}>
+                                    R$ {ticket.margem_liquida_5.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </span>
+                                  <span className="text-[8px] text-emerald-600 uppercase font-black tracking-tighter">Líquida 5%</span>
+                                </span>
+                              )}
+                              {(typeof ticket.margem_beneficio_5 === 'number' && ticket.margem_beneficio_5 !== 0) && (
+                                <span className="flex flex-col items-end mt-1">
+                                  <span className={cn(
+                                    "text-[11px] leading-tight",
+                                    ticket.margem_beneficio_5 < 0 ? "text-red-600" : "text-slate-900"
+                                  )}>
+                                    R$ {ticket.margem_beneficio_5.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </span>
+                                  <span className="text-[8px] text-blue-600 uppercase font-black tracking-tighter">Benefício 5%</span>
+                                </span>
+                              )}
+                              {(!ticket.margem && !ticket.margem_liquida_5 && !ticket.margem_beneficio_5) && (
+                                <span className="text-slate-400">R$ 0,00</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-4 py-4 text-[10px] font-bold text-slate-400 leading-tight max-w-[120px] truncate" title={ticket.equipe}>
                             {ticket.equipe}
                           </td>
@@ -513,7 +559,7 @@ export default function TicketsPage() {
                           </td>
                         </tr>
                         {expandedTicketId === ticket.id.toString() && (
-                          <tr>
+                          <tr className={cn(index % 2 === 0 ? "bg-slate-100" : "bg-white")}>
                             <td colSpan={isOperational || isAdmin ? 11 : 10} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
                                 <TicketAtendimento 
@@ -527,6 +573,8 @@ export default function TicketsPage() {
                                     description: ticket.descricao,
                                     createdAt: ticket.created_at,
                                     user_nome: ticket.user_nome,
+                                    user_id: ticket.user_id,
+                                    user_avatar: ticket.user_avatar,
                                     arquivo_rg_frente: ticket.arquivo_rg_frente,
                                     arquivo_rg_verso: ticket.arquivo_rg_verso,
                                     arquivo_contracheque: ticket.arquivo_contracheque,

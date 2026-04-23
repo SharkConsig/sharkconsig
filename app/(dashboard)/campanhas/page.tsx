@@ -31,7 +31,10 @@ import {
   Download,
   Eye,
   Trash2,
-  ChevronDown
+  ChevronDown,
+  Edit2,
+  Check,
+  X
 } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
@@ -121,6 +124,9 @@ export default function CampaignsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCampaignForFilters, setSelectedCampaignForFilters] = useState<Campaign | null>(null)
   const [showFiltersModal, setShowFiltersModal] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState("")
+  const [isUpdating, setIsUpdating] = useState(false)
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -336,6 +342,28 @@ export default function CampaignsPage() {
     }
   }
 
+  const handleRename = async (id: string) => {
+    if (!editingName.trim()) return
+    setIsUpdating(true)
+    try {
+      const { error: updateError } = await supabase
+        .from('campanhas')
+        .update({ nome: editingName.trim() })
+        .eq('id', id)
+
+      if (updateError) throw updateError
+      
+      setCampaigns(prev => prev.map(c => c.id === id ? { ...c, nome: editingName.trim() } : c))
+      setEditingId(null)
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Tente novamente.";
+      console.error("Erro ao renomear campanha:", err)
+      alert("Erro ao renomear: " + errorMsg)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
   const filteredCampaigns = campaigns.filter(c => 
     c.nome.toLowerCase().includes(searchQuery.toLowerCase()) || 
     c.id.toLowerCase().includes(searchQuery.toLowerCase())
@@ -442,9 +470,41 @@ export default function CampaignsPage() {
                           <tr key={campaign.id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors group">
                             <td className="px-8 py-5 text-[11px] font-bold text-slate-400 truncate max-w-[100px]">{campaign.id}</td>
                             <td className="px-8 py-5">
-                              <div className="flex flex-col">
-                                <span className="text-[12.5px] font-bold text-slate-900 uppercase tracking-tight">{campaign.nome}</span>
-                              </div>
+                              {editingId === campaign.id ? (
+                                <div className="flex items-center gap-2 max-w-[250px]">
+                                  <Input
+                                    value={editingName}
+                                    onChange={(e) => setEditingName(e.target.value)}
+                                    className="h-8 text-[12px] font-bold"
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleRename(campaign.id);
+                                      if (e.key === 'Escape') setEditingId(null);
+                                    }}
+                                  />
+                                  <Button 
+                                    size="icon" 
+                                    className="w-8 h-8 shrink-0 bg-emerald-500 hover:bg-emerald-600"
+                                    onClick={() => handleRename(campaign.id)}
+                                    disabled={isUpdating}
+                                  >
+                                    {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                  </Button>
+                                  <Button 
+                                    size="icon" 
+                                    variant="ghost"
+                                    className="w-8 h-8 shrink-0 text-slate-400"
+                                    onClick={() => setEditingId(null)}
+                                    disabled={isUpdating}
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col">
+                                  <span className="text-[12.5px] font-bold text-slate-900 uppercase tracking-tight">{campaign.nome}</span>
+                                </div>
+                              )}
                             </td>
                             <td className="px-8 py-5">
                               <div className="flex items-center gap-2 text-slate-500">
@@ -559,6 +619,16 @@ export default function CampaignsPage() {
                                     >
                                       <Eye className="w-3.5 h-3.5 mr-2 text-slate-400" />
                                       Ver Filtros
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => {
+                                        setEditingId(campaign.id);
+                                        setEditingName(campaign.nome);
+                                      }}
+                                      className="text-[11px] font-bold uppercase tracking-tight py-2 px-3 cursor-pointer"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5 mr-2 text-slate-400" />
+                                      Renomear
                                     </DropdownMenuItem>
                                     <DropdownMenuItem 
                                       className="text-[11px] font-bold uppercase tracking-tight py-2 px-3 cursor-pointer text-red-500 hover:text-red-600 hover:bg-red-50"
