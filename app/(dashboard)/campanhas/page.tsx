@@ -11,6 +11,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { 
   Search, 
   Plus, 
   Filter,
@@ -22,10 +29,13 @@ import {
   Loader2,
   Info,
   Download,
-  RefreshCw
+  Eye,
+  Trash2,
+  ChevronDown
 } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
+import { motion, AnimatePresence } from "motion/react"
 import { cn } from "@/lib/utils"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { supabase } from "@/lib/supabase"
@@ -61,31 +71,60 @@ interface Campaign {
   filtros: CampaignFilters;
 }
 
+function FilterAccordion({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-sm transition-all duration-200 hover:border-slate-200">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-4 text-left transition-colors hover:bg-slate-50"
+      >
+        <div className="flex items-center gap-3">
+          <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">{title}</h4>
+          {count !== undefined && (
+            <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-bold">
+              {count}
+            </span>
+          )}
+        </div>
+        <ChevronDown 
+          className={cn(
+            "w-4 h-4 text-slate-400 transition-transform duration-300",
+            isOpen ? "rotate-180 text-primary" : ""
+          )} 
+        />
+      </button>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+          >
+            <div className="px-4 pb-4 border-t border-slate-50/50">
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function CampaignsPage() {
   const { canAccessAdminAreas, isLoading: authLoading } = useAuth()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [isSyncing, setIsSyncing] = useState(false)
+  const [selectedCampaignForFilters, setSelectedCampaignForFilters] = useState<Campaign | null>(null)
+  const [showFiltersModal, setShowFiltersModal] = useState(false)
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-
-  const handleSyncBase = async () => {
-    setIsSyncing(true)
-    try {
-      const { error: syncError } = await supabase.rpc('refresh_base_consulta_rapida')
-      if (syncError) throw syncError
-      alert("Base de consulta rápida sincronizada com sucesso!")
-    } catch (err: any) {
-      console.error("Erro ao sincronizar base:", err)
-      alert(`Erro ao sincronizar base: ${err.message || "Certifique-se de que a função 'refresh_base_consulta_rapida' foi criada no SQL Editor do Supabase."}`)
-    } finally {
-      setIsSyncing(false)
-    }
-  }
 
   const fetchCampaigns = useCallback(async () => {
     setIsLoading(true)
@@ -98,9 +137,10 @@ export default function CampaignsPage() {
 
       if (fetchError) throw fetchError
       setCampaigns(data || [])
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Ocorreu um erro ao carregar as campanhas.";
       console.error("Erro ao buscar campanhas:", err)
-      setError(err.message || "Ocorreu um erro ao carregar as campanhas.")
+      setError(errorMsg)
     } finally {
       setIsLoading(false)
     }
@@ -205,32 +245,30 @@ export default function CampaignsPage() {
         const cBMin = parseSafeNumber(filters.cardBeneficioMin)
         if (cBMin !== null) query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin)
 
+        // 4. ITENS DE CRÉDITO (UNIFICADO PARA CARTÕES COM INTERSEÇÃO)
         if (filters.loanBanks?.length > 0) query = query.in('banco', filters.loanBanks)
         
-        // Lógica de Banco do Cartão baseada no prefixo da coluna 'tipo'
-        if (filters.cardBanks?.length > 0) {
-          const selectedCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
-            .filter(([, info]) => info.bank && filters.cardBanks.includes(info.bank))
+        const hasCardTypeFilter = filters.cardTypes?.length > 0;
+        const hasCardBankFilter = filters.cardBanks?.length > 0;
+
+        if (hasCardTypeFilter || hasCardBankFilter) {
+          const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+            .filter(([, info]) => {
+              const matchesType = !hasCardTypeFilter || filters.cardTypes.includes(info.label);
+              const matchesBank = !hasCardBankFilter || (info.bank && filters.cardBanks.includes(info.bank));
+              return matchesType && matchesBank;
+            })
             .map(([code]) => code);
           
-          if (selectedCodes.length > 0) {
-            const orFilter = selectedCodes.map(code => `tipo.ilike.${code}%`).join(',');
-            query = query.or(orFilter);
+          if (cardQueryCodes.length > 0) {
+            // Filtro de alta performance usando coluna de prefixo indexada
+            query = query.in('tipo_prefix', cardQueryCodes);
+          } else if (hasCardTypeFilter && hasCardBankFilter) {
+            // Sem interseção, força resultado vazio para o lote
+            query = query.eq('tipo', '999999999_FORCE_EMPTY');
           }
         }
 
-        if (filters.cardTypes?.length > 0) {
-          // Mapeia as categorias selecionadas (CARTÃO CONSIGNADO / CARTÃO BENEFÍCIO) para os códigos reais
-          const selectedCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
-            .filter(([, info]) => filters.cardTypes.includes(info.label))
-            .map(([code]) => code);
-          
-          if (selectedCodes.length > 0) {
-            // Usa OR com ILIKE para buscar pelos 5 primeiros dígitos (prefixo)
-            const orFilter = selectedCodes.map(code => `tipo.ilike.${code}%`).join(',');
-            query = query.or(orFilter);
-          }
-        }
         const pMin = parseInt(filters.loanPrazoMin)
         const pMax = parseInt(filters.loanPrazoMax)
         if (!isNaN(pMin)) query = query.gte('prazo', pMin)
@@ -242,9 +280,9 @@ export default function CampaignsPage() {
         if (!bcrData || bcrData.length === 0) {
           break;
         } else {
-          bcrData.forEach((row: any) => {
+          bcrData.forEach((row) => {
             // UNICIDADE GARANTIDA POR CPF
-            const key = row.cpf
+            const key = row.cpf as string;
             if (uniqueRowsKeys.has(key)) return
             uniqueRowsKeys.add(key)
 
@@ -289,9 +327,10 @@ export default function CampaignsPage() {
       link.click()
       document.body.removeChild(link)
 
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Verifique o console.";
       console.error("ERRO DETALHADO NA EXPORTAÇÃO:", err)
-      alert(`Erro ao exportar campanha: ${err.message || "Verifique o console."}`)
+      alert(`Erro ao exportar campanha: ${errorMsg}`)
     } finally {
       setIsExporting(null)
     }
@@ -322,15 +361,6 @@ export default function CampaignsPage() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest text-center md:text-left">Gerencie seus públicos e estratégias de vendas.</p>
           <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
-            <Button 
-               variant="outline"
-               onClick={handleSyncBase}
-               disabled={isSyncing}
-               className="w-full md:w-auto h-10 px-6 text-[11px] font-bold uppercase tracking-widest border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
-            >
-              {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <RefreshCw className="w-3.5 h-3.5 mr-2" />}
-              {isSyncing ? "Sincronizando..." : "Sincronizar Base"}
-            </Button>
             <Link href="/campanhas/nova" className="w-full md:w-auto">
               <Button className="w-full md:w-auto h-10 px-6 text-[12px] font-bold uppercase tracking-widest">
                 <Plus className="w-3.5 h-3.5 mr-2" />
@@ -363,7 +393,6 @@ export default function CampaignsPage() {
                       <tr className="bg-slate-50/50 border-b border-slate-50">
                         <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Identificação</th>
                         <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Nome</th>
-                        <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Filtros</th>
                         <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Data Criação</th>
                         <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Público</th>
                         <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Status</th>
@@ -373,7 +402,7 @@ export default function CampaignsPage() {
                     <tbody>
                       {isLoading ? (
                         <tr>
-                          <td colSpan={7} className="px-8 py-20 text-center">
+                          <td colSpan={6} className="px-8 py-20 text-center">
                             <div className="flex flex-col items-center gap-4">
                               <Loader2 className="w-8 h-8 text-primary animate-spin" />
                               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Carregando campanhas...</p>
@@ -382,7 +411,7 @@ export default function CampaignsPage() {
                         </tr>
                       ) : error ? (
                         <tr>
-                          <td colSpan={7} className="px-8 py-20 text-center">
+                          <td colSpan={6} className="px-8 py-20 text-center">
                             <div className="flex flex-col items-center gap-4">
                               <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center">
                                 <Info className="w-6 h-6 text-red-500" />
@@ -404,7 +433,7 @@ export default function CampaignsPage() {
                         </tr>
                       ) : filteredCampaigns.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="px-8 py-20 text-center">
+                          <td colSpan={6} className="px-8 py-20 text-center">
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhuma campanha encontrada.</p>
                           </td>
                         </tr>
@@ -415,41 +444,6 @@ export default function CampaignsPage() {
                             <td className="px-8 py-5">
                               <div className="flex flex-col">
                                 <span className="text-[12.5px] font-bold text-slate-900 uppercase tracking-tight">{campaign.nome}</span>
-                              </div>
-                            </td>
-                            <td className="px-8 py-5">
-                              <div className="flex items-center gap-1.5 overflow-x-auto max-w-[300px] pb-1 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                                {campaign.filtros?.orgaos?.map((o) => (
-                                  <span key={o} className="whitespace-nowrap text-[9px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold uppercase border border-blue-100/50">{o}</span>
-                                ))}
-                                {campaign.filtros?.ufs?.map((uf) => (
-                                  <span key={uf} className="whitespace-nowrap text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold uppercase border border-slate-200/50">{uf}</span>
-                                ))}
-                                {campaign.filtros?.loanBanks?.map((bank) => (
-                                  <span key={bank} className="whitespace-nowrap text-[9px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded font-bold uppercase border border-amber-100/50">{bank}</span>
-                                ))}
-                                {campaign.filtros?.cardBanks?.map((bank) => (
-                                  <span key={bank} className="whitespace-nowrap text-[9px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded font-bold uppercase border border-rose-100/50 text-[8px] leading-tight">{bank}</span>
-                                ))}
-                                {campaign.filtros?.situacoes?.map((s) => (
-                                  <span key={s} className="whitespace-nowrap text-[9px] bg-violet-50 text-violet-600 px-2 py-0.5 rounded font-bold uppercase border border-violet-100/50">{s}</span>
-                                ))}
-                                {campaign.filtros?.regimes?.map((r) => (
-                                  <span key={r} className="whitespace-nowrap text-[9px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded font-bold uppercase border border-indigo-100/50">{r}</span>
-                                ))}
-                                {(campaign.filtros?.margemMin || campaign.filtros?.margemMax) && (
-                                  <span className="whitespace-nowrap text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold uppercase border border-emerald-100/50">
-                                    Margem: {campaign.filtros.margemMin || "0"} - {campaign.filtros.margemMax || "∞"}
-                                  </span>
-                                )}
-                                {(campaign.filtros?.idadeMin || campaign.filtros?.idadeMax) && (
-                                  <span className="whitespace-nowrap text-[9px] bg-orange-50 text-orange-600 px-2 py-0.5 rounded font-bold uppercase border border-orange-100/50">
-                                    Idade: {campaign.filtros.idadeMin || "0"} - {campaign.filtros.idadeMax || "∞"}
-                                  </span>
-                                )}
-                                {(!campaign.filtros || Object.keys(campaign.filtros).length === 0) && (
-                                  <span className="text-[9.5px] text-slate-400">Sem Filtros</span>
-                                )}
                               </div>
                             </td>
                             <td className="px-8 py-5">
@@ -485,21 +479,21 @@ export default function CampaignsPage() {
                                               ? "text-primary bg-primary/5" 
                                               : "text-slate-400 hover:text-primary hover:bg-primary/5"
                                           }`}
-                                        />
+                                        >
+                                          {isExporting?.startsWith(campaign.id) ? (
+                                            <div className="flex items-center gap-2">
+                                              <Loader2 className="w-3 h-3 animate-spin" />
+                                              <span>{exportProgress}%</span>
+                                            </div>
+                                          ) : (
+                                            <>
+                                              <Download className="w-3 h-3 mr-2" />
+                                              Exportar Partes
+                                            </>
+                                          )}
+                                        </Button>
                                       }
-                                    >
-                                      {isExporting?.startsWith(campaign.id) ? (
-                                        <div className="flex items-center gap-2">
-                                          <Loader2 className="w-3 h-3 animate-spin" />
-                                          <span>{exportProgress}%</span>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <Download className="w-3 h-3 mr-2" />
-                                          Exportar Partes
-                                        </>
-                                      )}
-                                    </DropdownMenuTrigger>
+                                    />
                                     <DropdownMenuContent align="end" className="w-[240px]">
                                       {Array.from({ length: Math.ceil(campaign.publico_estimado / PART_SIZE) }).map((_, i) => (
                                         <DropdownMenuItem 
@@ -546,9 +540,39 @@ export default function CampaignsPage() {
                                     )}
                                   </Button>
                                 )}
-                                <Button variant="ghost" size="icon" className="w-8 h-8 text-slate-300 hover:text-slate-600">
-                                  <MoreVertical className="w-4 h-4" />
-                                </Button>
+                                
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger 
+                                    render={
+                                      <Button variant="ghost" size="icon" className="w-8 h-8 text-slate-300 hover:text-slate-600">
+                                        <MoreVertical className="w-4 h-4" />
+                                      </Button>
+                                    }
+                                  />
+                                  <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuItem 
+                                      onClick={() => {
+                                        setSelectedCampaignForFilters(campaign);
+                                        setShowFiltersModal(true);
+                                      }}
+                                      className="text-[11px] font-bold uppercase tracking-tight py-2 px-3 cursor-pointer"
+                                    >
+                                      <Eye className="w-3.5 h-3.5 mr-2 text-slate-400" />
+                                      Ver Filtros
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      className="text-[11px] font-bold uppercase tracking-tight py-2 px-3 cursor-pointer text-red-500 hover:text-red-600 hover:bg-red-50"
+                                      onClick={() => {
+                                        if (confirm("Deseja realmente excluir esta campanha?")) {
+                                          supabase.from('campanhas').delete().eq('id', campaign.id).then(() => fetchCampaigns());
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                      Excluir
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               </div>
                             </td>
                           </tr>
@@ -580,7 +604,7 @@ export default function CampaignsPage() {
                       const pages = [];
                       const maxVisiblePages = 5;
                       let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-                      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                      const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
                       
                       if (endPage - startPage + 1 < maxVisiblePages) {
                         startPage = Math.max(1, endPage - maxVisiblePages + 1);
@@ -623,6 +647,152 @@ export default function CampaignsPage() {
           </CardContent>
         </Card>
       </div>
+      {/* Modal de Filtros */}
+      <Dialog open={showFiltersModal} onOpenChange={setShowFiltersModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-[16px] font-bold uppercase tracking-tight text-slate-900">
+              Filtros da Campanha: {selectedCampaignForFilters?.nome}
+            </DialogTitle>
+            <DialogDescription className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">
+              Confira todos os parâmetros utilizados para gerar este público.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-6">
+            {selectedCampaignForFilters?.filtros && Object.keys(selectedCampaignForFilters.filtros).length > 0 ? (
+              <div className="space-y-3">
+                {/* Orgãos */}
+                {selectedCampaignForFilters.filtros.orgaos?.length > 0 && (
+                  <FilterAccordion title="Órgãos" count={selectedCampaignForFilters.filtros.orgaos.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.orgaos.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-blue-50 text-blue-600 px-2.5 py-1 rounded font-bold uppercase border border-blue-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* UFs */}
+                {selectedCampaignForFilters.filtros.ufs?.length > 0 && (
+                  <FilterAccordion title="Estados (UF)" count={selectedCampaignForFilters.filtros.ufs.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.ufs.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-slate-100 text-slate-600 px-2.5 py-1 rounded font-bold uppercase border border-slate-200">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Idade */}
+                {(selectedCampaignForFilters.filtros.idadeMin || selectedCampaignForFilters.filtros.idadeMax) && (
+                  <FilterAccordion title="Faixa Etária">
+                    <div className="pt-2">
+                      <div className="text-[12px] font-bold text-slate-700 bg-orange-50/50 p-3 rounded-lg border border-orange-100 flex items-center justify-between">
+                        <span className="text-[10px] text-orange-400 uppercase tracking-widest font-black">Intervalo</span>
+                        <span>{selectedCampaignForFilters.filtros.idadeMin || "0"} a {selectedCampaignForFilters.filtros.idadeMax || "∞"} anos</span>
+                      </div>
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Margem */}
+                {(selectedCampaignForFilters.filtros.margemMin || selectedCampaignForFilters.filtros.margemMax) && (
+                  <FilterAccordion title="Margem 35%">
+                    <div className="pt-2">
+                      <div className="text-[12px] font-bold text-slate-700 bg-emerald-50/50 p-3 rounded-lg border border-emerald-100 flex items-center justify-between">
+                        <span className="text-[10px] text-emerald-400 uppercase tracking-widest font-black">Valor</span>
+                        <span>R$ {selectedCampaignForFilters.filtros.margemMin || "0"} a R$ {selectedCampaignForFilters.filtros.margemMax || "∞"}</span>
+                      </div>
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Bancos de Empréstimo */}
+                {selectedCampaignForFilters.filtros.loanBanks?.length > 0 && (
+                  <FilterAccordion title="Bancos (Empréstimo)" count={selectedCampaignForFilters.filtros.loanBanks.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.loanBanks.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-amber-50 text-amber-600 px-2.5 py-1 rounded font-bold uppercase border border-amber-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Prazo */}
+                {(selectedCampaignForFilters.filtros.loanPrazoMin || selectedCampaignForFilters.filtros.loanPrazoMax) && (
+                  <FilterAccordion title="Prazo de Empréstimo">
+                    <div className="pt-2">
+                      <div className="text-[12px] font-bold text-slate-700 bg-amber-50/30 p-3 rounded-lg border border-amber-100/50 flex items-center justify-between">
+                        <span className="text-[10px] text-amber-400 uppercase tracking-widest font-black">Meses</span>
+                        <span>{selectedCampaignForFilters.filtros.loanPrazoMin || "0"} a {selectedCampaignForFilters.filtros.loanPrazoMax || "∞"} meses</span>
+                      </div>
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Bancos de Cartão */}
+                {selectedCampaignForFilters.filtros.cardBanks?.length > 0 && (
+                  <FilterAccordion title="Bancos (Cartão)" count={selectedCampaignForFilters.filtros.cardBanks.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.cardBanks.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-rose-50 text-rose-600 px-2.5 py-1 rounded font-bold uppercase border border-rose-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Tipos de Cartão */}
+                {selectedCampaignForFilters.filtros.cardTypes?.length > 0 && (
+                  <FilterAccordion title="Tipos de Cartão" count={selectedCampaignForFilters.filtros.cardTypes.filter((t: string) => t !== '__ACTIVE__').length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.cardTypes.filter((t: string) => t !== '__ACTIVE__').map((item: string) => (
+                        <span key={item} className="text-[9px] bg-rose-50 text-rose-600 px-2.5 py-1 rounded font-bold uppercase border border-rose-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Situações Funcionais */}
+                {selectedCampaignForFilters.filtros.situacoes?.length > 0 && (
+                  <FilterAccordion title="Situações Funcionais" count={selectedCampaignForFilters.filtros.situacoes.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.situacoes.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-violet-50 text-violet-600 px-2.5 py-1 rounded font-bold uppercase border border-violet-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Regimes Jurídicos */}
+                {selectedCampaignForFilters.filtros.regimes?.length > 0 && (
+                  <FilterAccordion title="Regimes Jurídicos" count={selectedCampaignForFilters.filtros.regimes.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.regimes.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded font-bold uppercase border border-indigo-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+              </div>
+            ) : (
+              <div className="py-12 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-xl">
+                <Info className="w-8 h-8 text-slate-200 mb-2" />
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum filtro aplicado.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-8 pt-6 border-t border-slate-50 flex justify-end">
+            <Button 
+              onClick={() => setShowFiltersModal(false)}
+              className="h-10 px-8 text-[11px] font-bold uppercase tracking-widest"
+            >
+              Fechar Visualização
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

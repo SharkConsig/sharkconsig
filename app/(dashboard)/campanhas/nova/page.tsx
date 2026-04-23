@@ -334,33 +334,34 @@ export default function NewCampaignPage() {
         query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
       }
 
-      // 4. ITENS DE CRÉDITO
+      // 4. ITENS DE CRÉDITO (UNIFICADO PARA CARTÕES)
       if (loanBanks.length > 0) query = query.in('banco', loanBanks);
       
-      // Lógica de Banco do Cartão baseada no prefixo da coluna 'tipo'
-      if (cardBanks.length > 0) {
-        const selectedCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
-          .filter(([, info]) => info.bank && cardBanks.includes(info.bank))
+      // Lógica de Interseção para Filtros de Cartão (Tipo e Banco)
+      const hasCardTypeFilter = cardTypes.length > 0 && !cardTypes.includes('__ACTIVE__') || (cardTypes.length > 1);
+      const hasCardBankFilter = cardBanks.length > 0;
+
+      if (hasCardTypeFilter || hasCardBankFilter) {
+        // Remove o marcador técnico da lista se estiver presente para não sujar a lógica
+        const cleanCardTypes = cardTypes.filter(t => t !== '__ACTIVE__');
+        
+        const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+          .filter(([, info]) => {
+            const matchesType = cleanCardTypes.length === 0 || cleanCardTypes.includes(info.label);
+            const matchesBank = !hasCardBankFilter || (info.bank && cardBanks.includes(info.bank));
+            return matchesType && matchesBank;
+          })
           .map(([code]) => code);
         
-        if (selectedCodes.length > 0) {
-          const orFilter = selectedCodes.map(code => `tipo.ilike.${code}%`).join(',');
-          query = query.or(orFilter);
+        if (cardQueryCodes.length > 0) {
+          // Filtro de alta performance usando coluna de prefixo indexada
+          query = query.in('tipo_prefix', cardQueryCodes);
+        } else if (hasCardTypeFilter && hasCardBankFilter) {
+          // Se selecionou filtros sem interseção (ex: Banco X que não tem tipo Y), forçamos resultado vazio
+          query = query.eq('tipo', '999999999_FORCE_EMPTY');
         }
       }
 
-      if (cardTypes.length > 0) {
-        // Mapeia as categorias selecionadas (CARTÃO CONSIGNADO / CARTÃO BENEFÍCIO) para os códigos reais (35020, 34921, etc)
-        const selectedCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
-          .filter(([, info]) => cardTypes.includes(info.label))
-          .map(([code]) => code);
-        
-        if (selectedCodes.length > 0) {
-          // Usa OR com ILIKE para buscar pelos 5 primeiros dígitos (prefixo)
-          const orFilter = selectedCodes.map(code => `tipo.ilike.${code}%`).join(',');
-          query = query.or(orFilter);
-        }
-      }
       const pMin = parseInt(loanPrazoMin);
       const pMax = parseInt(loanPrazoMax);
       if (!isNaN(pMin)) query = query.gte('prazo', pMin);
@@ -437,12 +438,10 @@ export default function NewCampaignPage() {
     }
   }
 
-  const CARD_TYPES = ["CARTÃO CONSIGNADO", "CARTÃO BENEFÍCIO"]
-  const CARD_BANKS = [
-    "AGIBANK", "BARU", "BMG", "DAYCOVAL", "DIGIMAIS", 
-    "PAN", "PINE", "SANTANDER", "CAPITAL", "EAGLE", 
-    "MASTER", "MEUCASH", "NEOCREDITO", "XNBANK"
-  ]
+  // Deriva opções únicas do mapeamento para garantir sincronia
+  const CARD_TYPES = Array.from(new Set(Object.values(CONTRATOS_TIPO_MAPPING).map(info => info.label))).sort();
+  const CARD_BANKS = Array.from(new Set(Object.values(CONTRATOS_TIPO_MAPPING).map(info => info.bank).filter(Boolean))) as string[];
+  CARD_BANKS.sort();
 
   return (
     <div className="flex-1 flex flex-col">
@@ -900,7 +899,7 @@ export default function NewCampaignPage() {
                 </div>
               </div>
 
-              <div className="space-y-4 pt-6 border-t border-slate-50">
+              <div id="tipo-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-blue-50/10 p-4 rounded-xl shadow-sm border border-blue-100/30">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Tipo de Cartão</h4>
@@ -939,7 +938,7 @@ export default function NewCampaignPage() {
                 </div>
               </div>
 
-              <div className="space-y-4 pt-6 border-t border-slate-50 bg-slate-50/30 p-5 rounded-2xl mt-6">
+              <div id="banco-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-indigo-50/10 p-5 rounded-2xl mt-6 border border-indigo-100/30 shadow-sm transition-all hover:shadow-md">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Banco do Cartão</h4>
