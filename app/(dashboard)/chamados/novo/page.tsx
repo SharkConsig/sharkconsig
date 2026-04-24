@@ -66,6 +66,7 @@ function NewTicketForm() {
 
   // Pasted images from clipboard
   const [pastedImages, setPastedImages] = useState<File[]>([])
+  const [dbConvenios, setDbConvenios] = useState<string[]>([])
 
   // Ticket number state (using a timestamp-based ID or fetching last)
   const [ticketNumber, setTicketNumber] = useState<string>("...")
@@ -85,6 +86,21 @@ function NewTicketForm() {
       }
     }
     fetchLastTicket()
+  }, [])
+
+  useEffect(() => {
+    const fetchConvenios = async () => {
+      const { data, error } = await supabase
+        .from('convenios')
+        .select('nome')
+        .eq('ativo', true)
+        .order('nome')
+      
+      if (!error && data) {
+        setDbConvenios(data.map(c => c.nome))
+      }
+    }
+    fetchConvenios()
   }, [])
 
   // Auto-fill supervisor info for Corretores
@@ -506,9 +522,9 @@ function NewTicketForm() {
                   className="w-full h-[34px] px-3 rounded-lg border border-slate-100 bg-[#E8E8E8] text-[12px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none"
                 >
                   <option value="">Selecione</option>
-                  <option value="FEDERAL">FEDERAL</option>
-                  <option value="GOVERNO SÃO PAULO">GOVERNO SÃO PAULO</option>
-                  <option value="OUTROS">OUTROS</option>
+                  {dbConvenios.map((conv) => (
+                    <option key={conv} value={conv}>{conv}</option>
+                  ))}
                 </select>
               </div>
             </div>

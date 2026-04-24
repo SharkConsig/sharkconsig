@@ -119,13 +119,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Mobile Overlay */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[140] lg:hidden"
           onClick={onClose}
         />
       )}
 
       <aside className={cn(
-        "bg-sidebar border-r border-slate-200 flex flex-col h-screen transition-all duration-300 z-50 sidebar-shadow",
+        "bg-sidebar border-r border-slate-200 flex flex-col h-screen transition-all duration-300 z-[150] sidebar-shadow",
         "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
         isCollapsed ? "w-20" : "w-64",
         isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"

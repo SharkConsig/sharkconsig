@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, Suspense, useEffect } from "react"
+import { useState, Suspense, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,8 +9,11 @@ import { Header } from "@/components/layout/header"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { format } from "date-fns"
+import { cn } from "@/lib/utils"
 import { 
   ChevronLeft, 
+  ChevronDown,
+  Search,
   Calendar, 
   Save, 
   Bold,
@@ -35,15 +38,34 @@ function NewProposalForm() {
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   
-  const [dbConvenios, setDbConvenios] = useState<string[]>([])
-  const [dbBancos, setDbBancos] = useState<string[]>([])
-  const [dbOperacoes, setDbOperacoes] = useState<string[]>([])
+  const [dbConvenios, setDbConvenios] = useState<{id: string, nome: string}[]>([])
+  const [dbBancos, setDbBancos] = useState<{id: string, nome: string}[]>([])
+  const [dbOperacoes, setDbOperacoes] = useState<{id: string, nome: string}[]>([])
+  const [dbProdutosConfigs, setDbProdutosConfigs] = useState<any[]>([])
 
   const [selection, setSelection] = useState({
     convenio: "",
+    convenioId: "",
     banco: "",
-    operacao: ""
+    bancoId: "",
+    operacao: "",
+    operacaoId: ""
   })
+
+  const [isCoefDropdownOpen, setIsCoefDropdownOpen] = useState(false)
+  const [coefSearchTerm, setCoefSearchTerm] = useState("")
+  const coefDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (coefDropdownRef.current && !coefDropdownRef.current.contains(event.target as Node)) {
+        setIsCoefDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   useEffect(() => {
     async function fetchData() {
@@ -54,18 +76,18 @@ function NewProposalForm() {
           { data: bancoData, error: bancoErr },
           { data: operData, error: operErr }
         ] = await Promise.all([
-          supabase.from('convenios').select('nome').order('nome'),
-          supabase.from('bancos').select('nome').order('nome'),
-          supabase.from('tipos_operacao').select('nome').order('nome')
+          supabase.from('convenios').select('id, nome').eq('ativo', true).order('nome'),
+          supabase.from('bancos').select('id, nome').eq('ativo', true).order('nome'),
+          supabase.from('tipos_operacao').select('id, nome').eq('ativo', true).order('nome')
         ])
 
         if (convErr) throw convErr
         if (bancoErr) throw bancoErr
         if (operErr) throw operErr
 
-        setDbConvenios(convData?.map(c => c.nome) || [])
-        setDbBancos(bancoData?.map(b => b.nome) || [])
-        setDbOperacoes(operData?.map(o => o.nome) || [])
+        setDbConvenios(convData || [])
+        setDbBancos(bancoData || [])
+        setDbOperacoes(operData || [])
       } catch (error: unknown) {
         console.error("Erro ao buscar dados de configuração:", error)
         toast.error("Erro ao carregar opções de proposta")
@@ -75,6 +97,52 @@ function NewProposalForm() {
     }
     fetchData()
   }, [])
+
+  // Fetch product configurations when selections change
+  useEffect(() => {
+    async function fetchConfigs() {
+      if (!selection.bancoId) {
+        setDbProdutosConfigs([])
+        return
+      }
+      
+      try {
+        const { data, error } = await supabase
+          .from('produtos_config')
+          .select(`
+            id,
+            nome_tabela,
+            prazo,
+            coeficiente,
+            convenio_id,
+            operacoes,
+            convenios (nome)
+          `)
+          .eq('banco_id', selection.bancoId)
+          .eq('ativo', true)
+
+        if (error) throw error
+
+        // Filter by selected operation ID if it exists in the array
+        let filtered = data || []
+        if (selection.operacaoId) {
+          filtered = filtered.filter(config => 
+            config.operacoes && config.operacoes.includes(selection.operacaoId)
+          )
+        }
+        
+        // Also filter by selected convenio if necessary
+        if (selection.convenioId) {
+          filtered = filtered.filter(config => config.convenio_id === selection.convenioId)
+        }
+
+        setDbProdutosConfigs(filtered)
+      } catch (err) {
+        console.error("Erro ao buscar regras de coeficiente:", err)
+      }
+    }
+    fetchConfigs()
+  }, [selection.bancoId, selection.convenioId, selection.operacaoId])
   
   const [formData, setFormData] = useState({
     nome: searchParams.get("nome") || "",
@@ -259,9 +327,11 @@ function NewProposalForm() {
       toast.success("Proposta cadastrada com sucesso!")
       router.push("/propostas")
     } catch (err: unknown) {
-      console.error("Erro ao salvar proposta:", err)
+      console.error("Erro ao salvar proposta:", JSON.stringify(err, null, 2))
+      console.log("Detalhes do erro:", err)
       toast.dismiss(loadingToast)
-      toast.error((err as Error).message || "Erro ao salvar proposta.")
+      const message = (err as any)?.message || (err as any)?.error_description || "Erro ao salvar proposta."
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -302,8 +372,12 @@ function NewProposalForm() {
   const nextStep = () => setStep(prev => prev + 1)
   const prevStep = () => setStep(prev => prev - 1)
 
-  const handleSelect = (key: string, value: string) => {
-    setSelection(prev => ({ ...prev, [key]: value }))
+  const handleSelect = (key: string, id: string, name: string) => {
+    setSelection(prev => ({ 
+      ...prev, 
+      [key]: name,
+      [`${key}Id`]: id
+    }))
     nextStep()
   }
 
@@ -320,11 +394,11 @@ function NewProposalForm() {
         ) : (
           dbConvenios.map(c => (
             <button
-              key={c}
-              onClick={() => handleSelect("convenio", c)}
+              key={c.id}
+              onClick={() => handleSelect("convenio", c.id, c.nome)}
               className="w-full h-8 px-4 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[9px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider shadow-sm leading-tight"
             >
-              {c}
+              {c.nome}
             </button>
           ))
         )}
@@ -355,11 +429,11 @@ function NewProposalForm() {
         ) : (
           dbBancos.map(b => (
             <button
-              key={b}
-              onClick={() => handleSelect("banco", b)}
+              key={b.id}
+              onClick={() => handleSelect("banco", b.id, b.nome)}
               className="w-full h-9 px-6 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[10px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider leading-tight shadow-sm"
             >
-              {b}
+              {b.nome}
             </button>
           ))
         )}
@@ -390,11 +464,11 @@ function NewProposalForm() {
         ) : (
           dbOperacoes.map(o => (
             <button
-              key={o}
-              onClick={() => handleSelect("operacao", o)}
+              key={o.id}
+              onClick={() => handleSelect("operacao", o.id, o.nome)}
               className="w-full h-9 px-6 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[10px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider leading-tight shadow-sm"
             >
-              {o}
+              {o.nome}
             </button>
           ))
         )}
@@ -793,13 +867,84 @@ function NewProposalForm() {
                   placeholder="R$ 0,00" 
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 relative" ref={coefDropdownRef}>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente e Prazo</label>
-                <Input 
-                  value={formData.coeficiente_prazo}
-                  onChange={(e) => handleFormChange("coeficiente_prazo", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
-                />
+                <div 
+                  className="h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all"
+                  onClick={() => setIsCoefDropdownOpen(!isCoefDropdownOpen)}
+                >
+                  <span className="text-[13px] font-medium text-slate-700 truncate">
+                    {formData.coeficiente_prazo || "Selecione uma regra"}
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform", isCoefDropdownOpen && "rotate-180")} />
+                </div>
+
+                {isCoefDropdownOpen && (
+                  <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-100 rounded-xl shadow-2xl z-[50] animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden flex flex-col max-h-[300px]">
+                    {/* Search Input */}
+                    <div className="p-2 border-b border-slate-50 bg-slate-50/50 sticky top-0 z-10">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <input 
+                          autoFocus
+                          type="text"
+                          placeholder="Buscar regra..."
+                          className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                          value={coefSearchTerm}
+                          onChange={(e) => setCoefSearchTerm(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Options List */}
+                    <div className="overflow-y-auto custom-scrollbar p-1">
+                      {dbProdutosConfigs.filter(config => {
+                        const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''}`.toLowerCase()
+                        return searchStr.includes(coefSearchTerm.toLowerCase())
+                      }).length > 0 ? (
+                        dbProdutosConfigs
+                          .filter(config => {
+                            const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''}`.toLowerCase()
+                            return searchStr.includes(coefSearchTerm.toLowerCase())
+                          })
+                          .map((config) => {
+                            const label = config.nome_tabela || `${config.convenios?.nome || 'Regra'} - ${config.prazo}x ${config.coeficiente}`
+                            return (
+                              <div
+                                key={config.id}
+                                onClick={() => {
+                                  handleFormChange("coeficiente_prazo", label)
+                                  setIsCoefDropdownOpen(false)
+                                  setCoefSearchTerm("")
+                                }}
+                                className={cn(
+                                  "px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase transition-all cursor-pointer flex flex-col gap-0.5",
+                                  formData.coeficiente_prazo === label 
+                                    ? "bg-primary text-white" 
+                                    : "text-slate-600 hover:bg-slate-50"
+                                )}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{label}</span>
+                                  {formData.coeficiente_prazo === label && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                                <span className={cn(
+                                  "text-[9px] font-medium lowercase tracking-normal",
+                                  formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
+                                )}>
+                                  Prazo: {config.prazo}x | Coef: {config.coeficiente}
+                                </span>
+                              </div>
+                            )
+                          })
+                      ) : (
+                        <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic">
+                          Nenhuma regra encontrada para este banco e operação
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

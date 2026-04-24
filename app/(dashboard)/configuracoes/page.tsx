@@ -31,7 +31,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Check
 } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
 import { motion, AnimatePresence } from "motion/react"
@@ -45,6 +46,7 @@ import { cn } from "@/lib/utils"
 interface GenericConfig {
   id: string
   nome: string
+  ativo: boolean
   created_at: string
 }
 
@@ -53,6 +55,20 @@ interface TicketStatus {
   nome: string
   cor: string
   cor_texto: string
+  ativo: boolean
+  created_at: string
+}
+
+interface ProdutoConfig {
+  id: string
+  banco_id: string
+  convenio_id: string
+  operacoes: string[]
+  nome_tabela?: string
+  prazo?: number
+  coeficiente?: number
+  percentual_producao?: number
+  ativo: boolean
   created_at: string
 }
 
@@ -62,6 +78,7 @@ export default function SettingsPage() {
   const [convenios, setConvenios] = useState<GenericConfig[]>([])
   const [bancos, setBancos] = useState<GenericConfig[]>([])
   const [tiposOperacao, setTiposOperacao] = useState<GenericConfig[]>([])
+  const [produtosConfig, setProdutosConfig] = useState<ProdutoConfig[]>([])
   
   const [isLoading, setIsLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -72,18 +89,33 @@ export default function SettingsPage() {
   const [isConvenioExpanded, setIsConvenioExpanded] = useState(false)
   const [isBancoExpanded, setIsBancoExpanded] = useState(false)
   const [isOperacaoExpanded, setIsOperacaoExpanded] = useState(false)
+  const [isProdutosExpanded, setIsProdutosExpanded] = useState(false)
+
+  // Products Management State
+  const [expandedBankId, setExpandedBankId] = useState<string | null>(null)
+  const [isAddConvenioModalOpen, setIsAddConvenioModalOpen] = useState(false)
+  const [isAddOperacaoModalOpen, setIsAddOperacaoModalOpen] = useState(false)
+  const [selectedProductConfig, setSelectedProductConfig] = useState<ProdutoConfig | null>(null)
+  const [selectedBancoForProd, setSelectedBancoForProd] = useState<GenericConfig | null>(null)
+  const [selectedConvenioForProd, setSelectedConvenioForProd] = useState<GenericConfig | null>(null)
+  const [tempNomeTabela, setTempNomeTabela] = useState<string>("")
+  const [tempOperacoes, setTempOperacoes] = useState<string[]>([])
+  const [tempPrazo, setTempPrazo] = useState<string>("")
+  const [tempCoeficiente, setTempCoeficiente] = useState<string>("")
+  const [tempPercentualProducao, setTempPercentualProducao] = useState<string>("")
   
   // Generic Modal States
   const [genericType, setGenericType] = useState<'convenio' | 'banco' | 'operacao' | null>(null)
   const [genericId, setGenericId] = useState<string | null>(null)
   const [genericNome, setGenericNome] = useState("")
+  const [genericAtivo, setGenericAtivo] = useState(true)
 
   // Delete Confirmation States
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteData, setDeleteData] = useState<{
     id: string,
-    type: 'status' | 'convenio' | 'banco' | 'operacao',
+    type: 'status' | 'convenio' | 'banco' | 'operacao' | 'produto',
     label: string
   } | null>(null)
   
@@ -119,17 +151,25 @@ export default function SettingsPage() {
   const fetchStatuses = useCallback(async () => {
     setIsLoading(true)
     try {
-      const [{ data: statusData }, { data: convData }, { data: bancoData }, { data: operData }] = await Promise.all([
+      const [
+        { data: statusData }, 
+        { data: convData }, 
+        { data: bancoData }, 
+        { data: operData },
+        { data: prodData }
+      ] = await Promise.all([
         supabase.from('status_chamados').select('*').order('created_at', { ascending: true }),
         supabase.from('convenios').select('*').order('nome', { ascending: true }),
         supabase.from('bancos').select('*').order('nome', { ascending: true }),
-        supabase.from('tipos_operacao').select('*').order('nome', { ascending: true })
+        supabase.from('tipos_operacao').select('*').order('nome', { ascending: true }),
+        supabase.from('produtos_config').select('*')
       ])
 
       setStatuses(statusData || [])
       setConvenios(convData || [])
       setBancos(bancoData || [])
       setTiposOperacao(operData || [])
+      setProdutosConfig(prodData || [])
     } catch (error: unknown) {
       console.error("Erro ao carregar configurações:", error)
       toast.error("Erro ao carregar lista de configurações")
@@ -178,9 +218,11 @@ export default function SettingsPage() {
     if (item) {
       setGenericId(item.id)
       setGenericNome(item.nome)
+      setGenericAtivo(item.ativo !== false)
     } else {
       setGenericId(null)
       setGenericNome("")
+      setGenericAtivo(true)
     }
     setIsGenericModalOpen(true)
   }
@@ -202,14 +244,20 @@ export default function SettingsPage() {
       if (genericId) {
         const { error } = await supabase
           .from(table)
-          .update({ nome: genericNome.toUpperCase() })
+          .update({ 
+            nome: genericNome.toUpperCase(), 
+            ativo: genericAtivo 
+          })
           .eq('id', genericId)
         if (error) throw error
         toast.success(`${typeLabel} atualizado com sucesso`)
       } else {
         const { error } = await supabase
           .from(table)
-          .insert({ nome: genericNome.toUpperCase() })
+          .insert({ 
+            nome: genericNome.toUpperCase(), 
+            ativo: genericAtivo 
+          })
         if (error) throw error
         toast.success(`${typeLabel} criado com sucesso`)
       }
@@ -219,6 +267,86 @@ export default function SettingsPage() {
       const err = error as { message?: string }
       console.error(`Erro ao salvar ${genericType}:`, err)
       toast.error(err.message || `Erro ao salvar ${genericType}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const toggleAtivo = async (table: string, id: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from(table)
+        .update({ ativo: !currentStatus })
+        .eq('id', id)
+      
+      if (error) throw error
+      toast.success("Status atualizado")
+      fetchStatuses()
+    } catch (error) {
+      console.error("Erro ao alternar status:", error)
+      toast.error("Erro ao alternar status")
+    }
+  }
+
+  const toggleProdutoAtivo = async (id: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('produtos_config')
+        .update({ ativo: !currentStatus })
+        .eq('id', id)
+      
+      if (error) throw error
+      toast.success("Status atualizado")
+      fetchStatuses()
+    } catch (error) {
+      console.error("Erro ao alternar status do produto:", error)
+      toast.error("Erro ao alternar status")
+    }
+  }
+
+  const handleRemoveProduto = (id: string) => {
+    setDeleteData({ id, type: 'produto', label: 'Configuração de Produto' })
+    setIsDeleteDialogOpen(true)
+  }
+
+  const handleSaveProdutoConfig = async () => {
+    if (!selectedBancoForProd || !selectedConvenioForProd) return
+
+    setIsSubmitting(true)
+    try {
+      const payload = {
+        nome_tabela: tempNomeTabela || null,
+        operacoes: tempOperacoes,
+        prazo: tempPrazo ? parseInt(tempPrazo) : null,
+        coeficiente: tempCoeficiente ? parseFloat(tempCoeficiente.replace(',', '.')) : null,
+        percentual_producao: tempPercentualProducao ? parseFloat(tempPercentualProducao.replace(',', '.')) : null
+      }
+
+      if (selectedProductConfig) {
+        // Update
+        const { error } = await supabase
+          .from('produtos_config')
+          .update(payload)
+          .eq('id', selectedProductConfig.id)
+        if (error) throw error
+      } else {
+        // Insert
+        const { error } = await supabase
+          .from('produtos_config')
+          .insert({
+            banco_id: selectedBancoForProd.id,
+            convenio_id: selectedConvenioForProd.id,
+            ...payload
+          })
+        if (error) throw error
+      }
+      toast.success("Configuração salva com sucesso")
+      setIsAddConvenioModalOpen(false)
+      setIsAddOperacaoModalOpen(false)
+      fetchStatuses()
+    } catch (error) {
+      console.error("Erro ao salvar configuração de produto:", error)
+      toast.error("Erro ao salvar configuração")
     } finally {
       setIsSubmitting(false)
     }
@@ -234,7 +362,13 @@ export default function SettingsPage() {
     if (!deleteData) return
 
     const { id, type, label } = deleteData
-    const table = type === 'status' ? 'status_chamados' : type === 'convenio' ? 'convenios' : type === 'banco' ? 'bancos' : 'tipos_operacao'
+    let table = ""
+    
+    if (type === 'status') table = 'status_chamados'
+    else if (type === 'convenio') table = 'convenios'
+    else if (type === 'banco') table = 'bancos'
+    else if (type === 'operacao') table = 'tipos_operacao'
+    else if (type === 'produto') table = 'produtos_config'
 
     setIsDeleting(true)
     try {
@@ -405,6 +539,7 @@ export default function SettingsPage() {
                         <TableRow className="hover:bg-transparent border-slate-100">
                           <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Status</TableHead>
                           <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Cor de Identificação</TableHead>
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                           <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
                           <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
                         </TableRow>
@@ -412,7 +547,7 @@ export default function SettingsPage() {
                       <TableBody>
                         {isLoading ? (
                           <TableRow>
-                            <TableCell colSpan={4} className="h-40 text-center">
+                            <TableCell colSpan={5} className="h-40 text-center">
                               <div className="flex flex-col items-center justify-center gap-3">
                                 <Loader2 className="w-8 h-8 text-slate-300 animate-spin" />
                                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Carregando dados...</span>
@@ -421,7 +556,7 @@ export default function SettingsPage() {
                           </TableRow>
                         ) : paginatedStatuses.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={4} className="h-40 text-center">
+                            <TableCell colSpan={5} className="h-40 text-center">
                               <div className="flex flex-col items-center justify-center gap-2">
                                 <Tag className="w-8 h-8 text-slate-200" />
                                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum status cadastrado</span>
@@ -449,6 +584,17 @@ export default function SettingsPage() {
                                     {translateColor(status.cor)}
                                   </span>
                                 </div>
+                              </TableCell>
+                              <TableCell className="py-4 text-center">
+                                <button 
+                                  onClick={() => toggleAtivo('status_chamados', status.id, status.ativo !== false)}
+                                  className={cn(
+                                    "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
+                                    status.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-50 text-slate-400 border border-slate-100"
+                                  )}
+                                >
+                                  {status.ativo !== false ? "ATIVO" : "INATIVO"}
+                                </button>
                               </TableCell>
                               <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
                                 {format(new Date(status.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
@@ -571,17 +717,29 @@ export default function SettingsPage() {
                     <TableHeader className="bg-slate-50/50">
                       <TableRow className="border-slate-100">
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Convênio</TableHead>
+                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {convenios.length === 0 ? (
-                        <TableRow><TableCell colSpan={3} className="h-24 text-center text-slate-400 text-[11px] uppercase font-bold tracking-widest">Nenhum convênio cadastrado</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={4} className="h-24 text-center text-slate-400 text-[11px] uppercase font-bold tracking-widest">Nenhum convênio cadastrado</TableCell></TableRow>
                       ) : (
                         convenios.map((item) => (
                           <TableRow key={item.id} className="group border-slate-100">
                             <TableCell className="py-4 pl-8 font-bold text-[12px] text-slate-700">{item.nome}</TableCell>
+                            <TableCell className="py-4 text-center">
+                                <button 
+                                  onClick={() => toggleAtivo('convenios', item.id, item.ativo !== false)}
+                                  className={cn(
+                                    "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
+                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-50 text-slate-400 border border-slate-100"
+                                  )}
+                                >
+                                  {item.ativo !== false ? "ATIVO" : "INATIVO"}
+                                </button>
+                              </TableCell>
                             <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
                               {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                             </TableCell>
@@ -639,17 +797,29 @@ export default function SettingsPage() {
                     <TableHeader className="bg-slate-50/50">
                       <TableRow className="border-slate-100">
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Banco</TableHead>
+                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {bancos.length === 0 ? (
-                        <TableRow><TableCell colSpan={3} className="h-24 text-center text-slate-400 text-[11px] uppercase font-bold tracking-widest">Nenhum banco cadastrado</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={4} className="h-24 text-center text-slate-400 text-[11px] uppercase font-bold tracking-widest">Nenhum banco cadastrado</TableCell></TableRow>
                       ) : (
                         bancos.map((item) => (
                           <TableRow key={item.id} className="group border-slate-100">
                             <TableCell className="py-4 pl-8 font-bold text-[12px] text-slate-700">{item.nome}</TableCell>
+                            <TableCell className="py-4 text-center">
+                                <button 
+                                  onClick={() => toggleAtivo('bancos', item.id, item.ativo !== false)}
+                                  className={cn(
+                                    "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
+                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-50 text-slate-400 border border-slate-100"
+                                  )}
+                                >
+                                  {item.ativo !== false ? "ATIVO" : "INATIVO"}
+                                </button>
+                              </TableCell>
                             <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
                               {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                             </TableCell>
@@ -707,17 +877,29 @@ export default function SettingsPage() {
                     <TableHeader className="bg-slate-50/50">
                       <TableRow className="border-slate-100">
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Tipo</TableHead>
+                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {tiposOperacao.length === 0 ? (
-                        <TableRow><TableCell colSpan={3} className="h-24 text-center text-slate-400 text-[11px] uppercase font-bold tracking-widest">Nenhum tipo cadastrado</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={4} className="h-24 text-center text-slate-400 text-[11px] uppercase font-bold tracking-widest">Nenhum tipo cadastrado</TableCell></TableRow>
                       ) : (
                         tiposOperacao.map((item) => (
                           <TableRow key={item.id} className="group border-slate-100">
                             <TableCell className="py-4 pl-8 font-bold text-[12px] text-slate-700">{item.nome}</TableCell>
+                            <TableCell className="py-4 text-center">
+                                <button 
+                                  onClick={() => toggleAtivo('tipos_operacao', item.id, item.ativo !== false)}
+                                  className={cn(
+                                    "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
+                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-50 text-slate-400 border border-slate-100"
+                                  )}
+                                >
+                                  {item.ativo !== false ? "ATIVO" : "INATIVO"}
+                                </button>
+                              </TableCell>
                             <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
                               {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                             </TableCell>
@@ -733,6 +915,198 @@ export default function SettingsPage() {
                     </TableBody>
                   </Table>
                 </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+
+        {/* GERENCIAR PRODUTOS E COMISSÕES */}
+        <section className="space-y-6 pb-20">
+          <div 
+            className="flex items-center justify-between cursor-pointer group select-none"
+            onClick={() => setIsProdutosExpanded(!isProdutosExpanded)}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
+                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                  GERENCIAR PRODUTOS E COMISSÕES
+                  {isProdutosExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
+                </h2>
+              </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Configuração de convênios e operações por banco</p>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {isProdutosExpanded && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden space-y-4">
+                {bancos.filter(b => b.ativo !== false).map((banco) => (
+                  <Card key={banco.id} className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm overflow-visible">
+                    <div 
+                      className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => setExpandedBankId(expandedBankId === banco.id ? null : banco.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-[10px]">
+                          {banco.nome.substring(0, 2)}
+                        </div>
+                        <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">{banco.nome}</h3>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                          {produtosConfig.filter(p => p.banco_id === banco.id).length} Convênios
+                        </span>
+                        {expandedBankId === banco.id ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
+                      </div>
+                    </div>
+
+                    <AnimatePresence>
+                      {expandedBankId === banco.id && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-slate-100">
+                          <div className="p-6 bg-slate-50/30 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Convênios Vinculados</h4>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="h-7 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200"
+                                onClick={() => {
+                                  setSelectedBancoForProd(banco)
+                                  setIsAddConvenioModalOpen(true)
+                                }}
+                              >
+                                <Plus className="w-3 h-3 text-primary" />
+                                Adicionar Convênio
+                              </Button>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4">
+                              {produtosConfig.filter(p => p.banco_id === banco.id).map((prod) => {
+                                const convenio = convenios.find(c => c.id === prod.convenio_id)
+                                if (!convenio) return null
+                                return (
+                                  <div 
+                                    key={prod.id} 
+                                    className="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group"
+                                  >
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                      <div className="space-y-3">
+                                        <div className="flex items-center gap-3">
+                                          <span className="font-bold text-[13px] text-slate-800 uppercase tracking-widest">{prod.nome_tabela || convenio.nome}</span>
+                                          <span className={cn(
+                                            "px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest",
+                                            prod.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
+                                          )}>
+                                            {prod.ativo !== false ? "ATIVO" : "INATIVO"}
+                                          </span>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Convênio</span>
+                                          <div className="flex flex-wrap gap-1.5">
+                                            <span className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-tight border border-slate-100">
+                                              {convenio.nome}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Operações Permitidas</span>
+                                          <div className="flex flex-wrap gap-1.5">
+                                          {(prod.operacoes || []).map(opId => {
+                                            const op = tiposOperacao.find(o => o.id === opId)
+                                            return op ? (
+                                              <span key={opId} className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-tight border border-slate-100">
+                                                {op.nome}
+                                              </span>
+                                            ) : null
+                                          })}
+                                          </div>
+                                          {(prod.operacoes || []).length === 0 && (
+                                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest italic">Nenhuma operação selecionada</span>
+                                          )}
+                                        </div>
+
+                                        <div className="flex gap-6 pt-1">
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Prazo</span>
+                                            <span className="text-[10px] font-extrabold text-slate-600">{prod.prazo ? `${prod.prazo}x` : '--'}</span>
+                                          </div>
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente</span>
+                                            <span className="text-[10px] font-extrabold text-slate-600">{prod.coeficiente || '--'}</span>
+                                          </div>
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Produção</span>
+                                            <span className="text-[10px] font-extrabold text-emerald-600">{prod.percentual_producao ? `${prod.percentual_producao}%` : '--'}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center justify-end gap-2 border-t md:border-t-0 pt-4 md:pt-0 border-slate-100">
+                                        {/* Botão Ativar/Inativar */}
+                                        <button 
+                                          onClick={() => toggleProdutoAtivo(prod.id, prod.ativo !== false)}
+                                          className={cn(
+                                            "h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border",
+                                            prod.ativo !== false 
+                                              ? "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100" 
+                                              : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"
+                                          )}
+                                        >
+                                          {prod.ativo !== false ? "INATIVAR" : "ATIVAR"}
+                                        </button>
+
+                                        {/* Botão Editar */}
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm"
+                                          className="h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                          onClick={() => {
+                                            setSelectedProductConfig(prod)
+                                            setSelectedBancoForProd(banco)
+                                            setSelectedConvenioForProd(convenio)
+                                            setTempOperacoes(prod.operacoes || [])
+                                            setTempNomeTabela(prod.nome_tabela || "")
+                                            setTempPrazo(prod.prazo?.toString() || "")
+                                            setTempCoeficiente(prod.coeficiente?.toString() || "")
+                                            setTempPercentualProducao(prod.percentual_producao?.toString() || "")
+                                            setIsAddOperacaoModalOpen(true)
+                                          }}
+                                        >
+                                          <Pencil className="w-3 h-3" />
+                                          Editar
+                                        </Button>
+
+                                        {/* Botão Excluir */}
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm"
+                                          className="h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-rose-100 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                                          onClick={() => handleRemoveProduto(prod.id)}
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                          Excluir
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                              {produtosConfig.filter(p => p.banco_id === banco.id).length === 0 && (
+                                <div className="col-span-full py-8 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-2">
+                                  <Tag className="w-6 h-6 text-slate-200" />
+                                  <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Nenhum convênio vinculado</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Card>
+                ))}
               </motion.div>
             )}
           </AnimatePresence>
@@ -911,6 +1285,28 @@ export default function SettingsPage() {
                 className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 focus-visible:ring-primary/20 transition-all uppercase"
               />
             </div>
+
+            <div className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100">
+              <div className="space-y-0.5">
+                <Label className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">Status do Registro</Label>
+                <p className="text-[9px] text-slate-400 font-medium uppercase">Ativar ou inativar para uso no sistema</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGenericAtivo(!genericAtivo)}
+                className={cn(
+                  "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                  genericAtivo ? "bg-primary" : "bg-slate-200"
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                    genericAtivo ? "translate-x-4" : "translate-x-0"
+                  )}
+                />
+              </button>
+            </div>
             
             <DialogFooter className="pt-4 gap-3">
               <Button type="button" variant="outline" onClick={() => setIsGenericModalOpen(false)} className="px-6 h-[34px] border-slate-200 bg-white text-slate-600 font-bold text-[9px] rounded-lg uppercase tracking-widest">Cancelar</Button>
@@ -958,6 +1354,201 @@ export default function SettingsPage() {
               {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Excluir'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Modal para Adicionar Convênio ao Banco */}
+      <Dialog open={isAddConvenioModalOpen} onOpenChange={setIsAddConvenioModalOpen}>
+        <DialogContent className="sm:max-w-[425px] border-none rounded-3xl shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase">
+              Adicionar Convênio
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6 pt-4">
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Banco</Label>
+              <Input 
+                value={selectedBancoForProd?.nome || ""} 
+                readOnly
+                className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[12px] text-slate-400 uppercase cursor-not-allowed"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Informe o Convênio</Label>
+              <select
+                className="w-full h-10 bg-slate-50 border border-slate-100 rounded-lg px-3 font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 appearance-none uppercase"
+                value={selectedConvenioForProd?.id || ""}
+                onChange={(e) => {
+                  const conv = convenios.find(c => c.id === e.target.value)
+                  setSelectedConvenioForProd(conv || null)
+                }}
+              >
+                <option value="">Selecione um convênio...</option>
+                {convenios.filter(c => c.ativo !== false).map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            </div>
+            
+            <DialogFooter className="pt-4 gap-3">
+              <Button type="button" variant="outline" onClick={() => setIsAddConvenioModalOpen(false)} className="px-6 h-[34px] border-slate-200 bg-white text-slate-600 font-bold text-[9px] rounded-lg uppercase tracking-widest">Cancelar</Button>
+              <Button 
+                onClick={() => {
+                  if (!selectedConvenioForProd) {
+                    toast.error("Selecione um convênio")
+                    return
+                  }
+                  // Check if already exists
+                  const exists = produtosConfig.find(p => p.banco_id === selectedBancoForProd?.id && p.convenio_id === selectedConvenioForProd.id)
+                  if (exists) {
+                    toast.error("Este convênio já está vinculado a este banco")
+                    return
+                  }
+                  setSelectedProductConfig(null)
+                  setTempNomeTabela("")
+                  setTempOperacoes([])
+                  setTempPrazo("")
+                  setTempCoeficiente("")
+                  setTempPercentualProducao("")
+                  setIsAddConvenioModalOpen(false)
+                  setIsAddOperacaoModalOpen(true)
+                }}
+                className="px-6 h-[34px] bg-[#171717] hover:bg-[#171717]/90 text-white font-bold text-[9px] rounded-lg gap-2 min-w-[120px] uppercase tracking-widest shadow-lg shadow-slate-200"
+              >
+                Próximo
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para Selecionar Operações */}
+      <Dialog open={isAddOperacaoModalOpen} onOpenChange={setIsAddOperacaoModalOpen}>
+        <DialogContent className="sm:max-w-[600px] border-none rounded-3xl shadow-2xl overflow-y-auto max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase">
+              OPERAÇÕES PERMITIDAS E REGRA/COEFICIENTE
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6 pt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Banco</Label>
+                <div className="h-10 bg-slate-50 border border-slate-100 rounded-lg px-3 flex items-center font-bold text-[12px] text-slate-400 uppercase">
+                  {selectedBancoForProd?.nome}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Convênio</Label>
+                <div className="h-10 bg-slate-50 border border-slate-100 rounded-lg px-3 flex items-center font-bold text-[12px] text-slate-400 uppercase">
+                  {selectedConvenioForProd?.nome}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-[11px] font-bold text-sky-500 uppercase tracking-widest pl-1">Identificação da Tabela</Label>
+              <div className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+                <div className="space-y-2">
+                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Nome da Tabela</Label>
+                  <Input 
+                    type="text"
+                    value={tempNomeTabela}
+                    onChange={(e) => setTempNomeTabela(e.target.value)}
+                    placeholder="Ex: TABELA PLUS GOV SP"
+                    className="h-10 bg-white border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 appearance-none uppercase"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <Label className="text-[11px] font-bold text-sky-500 uppercase tracking-widest pl-1">Operações Permitidas</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4 bg-slate-50/50 rounded-2xl border border-slate-100 max-h-[200px] overflow-y-auto">
+                {tiposOperacao.filter(o => o.ativo !== false).map((operacao) => (
+                  <label 
+                    key={operacao.id}
+                    className="flex items-center gap-3 p-2 hover:bg-white rounded-lg transition-colors cursor-pointer group"
+                  >
+                    <div 
+                      className={cn(
+                        "w-4 h-4 rounded border transition-all flex items-center justify-center flex-shrink-0",
+                        tempOperacoes.includes(operacao.id) ? "bg-primary border-primary shadow-sm" : "border-slate-300 bg-white"
+                      )}
+                    >
+                      {tempOperacoes.includes(operacao.id) && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      className="hidden"
+                      checked={tempOperacoes.includes(operacao.id)}
+                      onChange={() => {
+                        if (tempOperacoes.includes(operacao.id)) {
+                          setTempOperacoes(tempOperacoes.filter(id => id !== operacao.id))
+                        } else {
+                          setTempOperacoes([...tempOperacoes, operacao.id])
+                        }
+                      }}
+                    />
+                    <span className="text-[11px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors uppercase tracking-tight">
+                      {operacao.nome}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <Label className="text-[11px] font-bold text-sky-500 uppercase tracking-widest pl-1">REGRA/COEFICIENTE</Label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+                <div className="space-y-2">
+                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Prazo</Label>
+                  <Input 
+                    type="number"
+                    value={tempPrazo}
+                    onChange={(e) => setTempPrazo(e.target.value)}
+                    placeholder="Ex: 84"
+                    className="h-10 bg-white border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 appearance-none uppercase"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Coeficiente</Label>
+                  <Input 
+                    type="text"
+                    value={tempCoeficiente}
+                    onChange={(e) => setTempCoeficiente(e.target.value)}
+                    placeholder="Ex: 0,0225"
+                    className="h-10 bg-white border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 appearance-none uppercase"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Percentual Produção</Label>
+                  <Input 
+                    type="text"
+                    value={tempPercentualProducao}
+                    onChange={(e) => setTempPercentualProducao(e.target.value)}
+                    placeholder="Ex: 15,00"
+                    className="h-10 bg-white border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 appearance-none uppercase"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <DialogFooter className="pt-4 gap-3">
+              <Button type="button" variant="outline" onClick={() => setIsAddOperacaoModalOpen(false)} className="px-6 h-[34px] border-slate-200 bg-white text-slate-600 font-bold text-[9px] rounded-lg uppercase tracking-widest">Cancelar</Button>
+              <Button 
+                onClick={handleSaveProdutoConfig}
+                disabled={isSubmitting}
+                className="px-6 h-[34px] bg-[#171717] hover:bg-[#171717]/90 text-white font-bold text-[9px] rounded-lg gap-2 min-w-[120px] uppercase tracking-widest shadow-lg shadow-slate-200"
+              >
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Salvar Dados'}
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

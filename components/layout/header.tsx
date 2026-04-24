@@ -70,7 +70,7 @@ export function Header({ title }: HeaderProps) {
   }
 
   return (
-    <header className="h-16 lg:h-20 border-b border-slate-200 bg-white px-4 lg:px-8 flex items-center justify-between sticky top-0 z-10 header-shadow">
+    <header className="h-16 lg:h-20 border-b border-slate-200 bg-white px-4 lg:px-8 flex items-center justify-between sticky top-0 z-[100] header-shadow">
       <div className="flex items-center gap-4">
         <button 
           onClick={toggleSidebar}
