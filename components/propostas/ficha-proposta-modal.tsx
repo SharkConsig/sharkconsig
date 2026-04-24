@@ -109,10 +109,10 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
                 <h3 className="text-[11px] font-black text-slate-700 uppercase tracking-widest text-center">Tipo de contrato</h3>
               </div>
               <div className="grid grid-cols-4 border-x border-b border-slate-300 divide-x divide-slate-300">
-                <Field label="Operação" value={proposal.operation || "Margem Livre (Novo)"} id="operacao" onCopy={copyToClipboard} isCopied={copiedField === "operacao"} />
-                <Field label="Tabela" value="NOVO 1,85" id="tabela" onCopy={copyToClipboard} isCopied={copiedField === "tabela"} />
-                <Field label="Convênio" value={proposal.bankAgreement || "INSS"} id="convenio" onCopy={copyToClipboard} isCopied={copiedField === "convenio"} />
-                <Field label="Matrícula" value="227.572.801-0" id="matricula" onCopy={copyToClipboard} isCopied={copiedField === "matricula"} />
+                <Field label="Operação" value={proposal.tipo_operacao || "-"} id="operacao" onCopy={copyToClipboard} isCopied={copiedField === "operacao"} />
+                <Field label="Tabela" value="-" id="tabela" onCopy={copyToClipboard} isCopied={copiedField === "tabela"} />
+                <Field label="Convênio" value={proposal.convenio || "INSS"} id="convenio" onCopy={copyToClipboard} isCopied={copiedField === "convenio"} />
+                <Field label="Matrícula" value={proposal.matricula || "-"} id="matricula" onCopy={copyToClipboard} isCopied={copiedField === "matricula"} />
               </div>
             </div>
 
@@ -123,12 +123,12 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
               </div>
               <div className="border-x border-b border-slate-300 divide-y divide-slate-300">
                 <div className="grid grid-cols-3 divide-x divide-slate-300">
-                  <Field label="Nome" value={proposal.client} id="nome" className="col-span-2" onCopy={copyToClipboard} isCopied={copiedField === "nome"} />
-                  <Field label="CPF" value={proposal.cpf} id="cpf" onCopy={copyToClipboard} isCopied={copiedField === "cpf"} />
+                  <Field label="Nome" value={proposal.nome_cliente} id="nome" className="col-span-2" onCopy={copyToClipboard} isCopied={copiedField === "nome"} />
+                  <Field label="CPF" value={proposal.cliente_cpf} id="cpf" onCopy={copyToClipboard} isCopied={copiedField === "cpf"} />
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
-                  <Field label="Email" value="joelrodrigues4547@gmail.com" id="email" onCopy={copyToClipboard} isCopied={copiedField === "email"} />
-                  <Field label="Data Nascimento" value="15/08/1958" id="data_nascimento" onCopy={copyToClipboard} isCopied={copiedField === "data_nascimento"} />
+                  <Field label="Email" value="-" id="email" onCopy={copyToClipboard} isCopied={copiedField === "email"} />
+                  <Field label="Data Nascimento" value={proposal.data_nascimento ? format(new Date(proposal.data_nascimento), "dd/MM/yyyy") : "-"} id="data_nascimento" onCopy={copyToClipboard} isCopied={copiedField === "data_nascimento"} />
                 </div>
                 <div className="grid grid-cols-4 divide-x divide-slate-300">
                   <Field label="Identidade" value="4062638" id="identidade" onCopy={copyToClipboard} isCopied={copiedField === "identidade"} />
@@ -185,14 +185,14 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
               </div>
               <div className="border-x border-b border-slate-300 divide-y divide-slate-300">
                 <div className="grid grid-cols-5 divide-x divide-slate-300">
-                  <Field label="Valor Parcela" value={`R$ ${proposal.installment}`} id="v_parcela" onCopy={copyToClipboard} isCopied={copiedField === "v_parcela"} />
-                  <Field label="Prazo" value="96" id="prazo" onCopy={copyToClipboard} isCopied={copiedField === "prazo"} />
-                  <Field label="Coeficiente" value="0,02350" id="coeficiente" onCopy={copyToClipboard} isCopied={copiedField === "coeficiente"} />
-                  <Field label="Valor Operação" value="R$ 24.185,05" id="v_operacao" onCopy={copyToClipboard} isCopied={copiedField === "v_operacao"} />
-                  <Field label="Valor Liberado" value="R$ 24.185,05" id="v_liberado" onCopy={copyToClipboard} isCopied={copiedField === "v_liberado"} />
+                  <Field label="Valor Parcela" value={`R$ ${proposal.valor_parcela?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || "0,00"}`} id="v_parcela" onCopy={copyToClipboard} isCopied={copiedField === "v_parcela"} />
+                  <Field label="Prazo" value="-" id="prazo" onCopy={copyToClipboard} isCopied={copiedField === "prazo"} />
+                  <Field label="Coeficiente" value="-" id="coeficiente" onCopy={copyToClipboard} isCopied={copiedField === "coeficiente"} />
+                  <Field label="Valor Operação" value="-" id="v_operacao" onCopy={copyToClipboard} isCopied={copiedField === "v_operacao"} />
+                  <Field label="Valor Liberado" value="-" id="v_liberado" onCopy={copyToClipboard} isCopied={copiedField === "v_liberado"} />
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
-                  <Field label="Banco Empréstimo" value="335 - BANCO DIGIO S.A." id="banco_emp" onCopy={copyToClipboard} isCopied={copiedField === "banco_emp"} />
+                  <Field label="Banco Empréstimo" value={proposal.banco || "-"} id="banco_emp" onCopy={copyToClipboard} isCopied={copiedField === "banco_emp"} />
                   <Field label="Valor Negociado" value="R$ -" id="v_negociado" onCopy={copyToClipboard} isCopied={copiedField === "v_negociado"} />
                 </div>
                 <Field label="Observações" value={proposal.observations || "Nenhuma observação registrada."} id="obs" onCopy={copyToClipboard} isCopied={copiedField === "obs"} />

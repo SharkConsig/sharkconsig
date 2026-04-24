@@ -68,7 +68,7 @@ const menuItems = [
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
       },
       { 
-        name: "LISTA DE PROPOSTAS", 
+        name: "PROPOSTAS", 
         href: "/propostas", 
         icon: ClipboardList, 
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 

@@ -1,11 +1,14 @@
 "use client"
 
-import { useState, Suspense } from "react"
+import { useState, Suspense, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
+import { format } from "date-fns"
 import { 
   ChevronLeft, 
   Calendar, 
@@ -22,48 +25,275 @@ import {
   Type,
   Link2,
   Image as ImageIcon,
-  Paperclip
+  Paperclip,
+  Loader2
 } from "lucide-react"
-
-const convenios = [
-  "FEDERAL",
-  "FEDERAL CARTÃO BENEFÍCIO",
-  "GOVERNO SP",
-  "GOVERNO SP CARTÃO BENEFÍCIO"
-]
-
-const bancos = [
-  "AMIGOZ", "BANCO BMG", "BANCO DIGIO SA.", 
-  "BANCO DO BRASIL", "NEOCREDITO", 
-  "BANCO PAULISTA", "BANCO SAFRA", "BARU FINANCEIRA", 
-  "BRB - CRÉDITO, FINANCIAMENTO E INVESTIMENTO",
-  "CAPITAL", "FUTURO PREVIDÊNCIA", "MEU CASHCARD", 
-  "XNBANK"
-]
-
-const operacoes = [
-  "CARTÃO C/ SAQUE", 
-  "MARGEM LIVRE (NOVO)", 
-  "CARTÃO COM SAQUE COMPLEMENTAR À VISTA"
-]
 
 function NewProposalForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
+  const [isLoading, setIsLoading] = useState(true)
+  
+  const [dbConvenios, setDbConvenios] = useState<string[]>([])
+  const [dbBancos, setDbBancos] = useState<string[]>([])
+  const [dbOperacoes, setDbOperacoes] = useState<string[]>([])
+
   const [selection, setSelection] = useState({
     convenio: "",
     banco: "",
     operacao: ""
   })
+
+  useEffect(() => {
+    async function fetchData() {
+      setIsLoading(true)
+      try {
+        const [
+          { data: convData, error: convErr },
+          { data: bancoData, error: bancoErr },
+          { data: operData, error: operErr }
+        ] = await Promise.all([
+          supabase.from('convenios').select('nome').order('nome'),
+          supabase.from('bancos').select('nome').order('nome'),
+          supabase.from('tipos_operacao').select('nome').order('nome')
+        ])
+
+        if (convErr) throw convErr
+        if (bancoErr) throw bancoErr
+        if (operErr) throw operErr
+
+        setDbConvenios(convData?.map(c => c.nome) || [])
+        setDbBancos(bancoData?.map(b => b.nome) || [])
+        setDbOperacoes(operData?.map(o => o.nome) || [])
+      } catch (error: unknown) {
+        console.error("Erro ao buscar dados de configuração:", error)
+        toast.error("Erro ao carregar opções de proposta")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
   
   const [formData, setFormData] = useState({
     nome: searchParams.get("nome") || "",
     cpf: searchParams.get("cpf") || "",
     nascimento: searchParams.get("nascimento") || "",
     idLead: searchParams.get("idLead") || "",
-    origem: searchParams.get("origem") || ""
+    origem: searchParams.get("origem") || "",
+    matricula: "",
+    naturalidade: "",
+    uf_naturalidade: "",
+    identidade: "",
+    orgao_emissor: "",
+    uf_emissao: "",
+    data_emissao: "",
+    nome_pai: "",
+    nome_mae: "",
+    tel_residencial_1: "",
+    tel_residencial_2: "",
+    tel_comercial: "",
+    cep: "",
+    endereco: "",
+    numero: "",
+    complemento: "",
+    bairro: "",
+    cidade: "",
+    uf: "",
+    banco_cliente: "",
+    chave_pix: "",
+    conta: "",
+    agencia: "",
+    dv: "",
+    tipo_conta: "",
+    valor_parcela: "",
+    valor_operacao_operacional: "",
+    valor_cliente_operacional: "",
+    margem_utilizada: "",
+    coeficiente_prazo: "",
+    observacoes: ""
   })
+
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    async function fetchClientData() {
+      if (!formData.cpf) return
+      
+      const cleanCPF = formData.cpf.replace(/\D/g, "")
+      if (cleanCPF.length !== 11) return
+
+      try {
+        const { data } = await supabase
+          .from('base_consulta_rapida')
+          .select('numero_matricula')
+          .eq('cpf', cleanCPF)
+          .maybeSingle()
+
+        if (data?.numero_matricula) {
+          setFormData(prev => ({ ...prev, matricula: data.numero_matricula }))
+        }
+      } catch (err) {
+        console.error("Erro ao buscar matrícula:", err)
+      }
+    }
+    fetchClientData()
+  }, [formData.cpf])
+
+  useEffect(() => {
+    async function generateLeadId() {
+      // Only generate if we don't have one from searchParams
+      if (searchParams.get("idLead")) return
+
+      try {
+        // Query both tables to find the maximum ID
+        const [chamadosRes, propostasRes] = await Promise.all([
+          supabase.from('chamados').select('id').order('id', { ascending: false }).limit(1),
+          supabase.from('propostas').select('id_lead').order('id_lead', { ascending: false }).limit(1)
+        ])
+
+        let maxId = 0
+
+        if (!chamadosRes.error && chamadosRes.data && chamadosRes.data.length > 0) {
+          maxId = Math.max(maxId, parseInt(chamadosRes.data[0].id))
+        }
+
+        if (!propostasRes.error && propostasRes.data && propostasRes.data.length > 0) {
+          maxId = Math.max(maxId, parseInt(propostasRes.data[0].id_lead))
+        }
+
+        // If no records found, start from 1
+        const nextId = maxId > 0 ? maxId + 1 : 1
+        setFormData(prev => ({ ...prev, idLead: nextId.toString() }))
+      } catch (err) {
+        console.error("Erro ao gerar ID de Lead:", err)
+      }
+    }
+    generateLeadId()
+  }, [searchParams])
+
+  const handleSubmit = async () => {
+    if (!selection.convenio || !selection.banco || !selection.operacao) {
+      toast.error("Por favor, selecione o convênio, banco e tipo de operação.")
+      return
+    }
+
+    if (!formData.nome || !formData.cpf || !formData.matricula) {
+      toast.error("Preencha os campos obrigatórios (Matrícula, CPF e Nome).")
+      return
+    }
+
+    setIsSubmitting(true)
+    const loadingToast = toast.loading("Salvando proposta...")
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      const cleanMoney = (val: string) => {
+        if (!val) return null
+        const cleaned = val.replace(/[R$\s.]/g, "").replace(",", ".")
+        return parseFloat(cleaned) || null
+      }
+
+      const formatDate = (val: string) => {
+        if (!val) return null
+        try {
+          const parts = val.split('/')
+          if (parts.length === 3) {
+            return `${parts[2]}-${parts[1]}-${parts[0]}`
+          }
+          return val
+        } catch {
+          return null
+        }
+      }
+
+      const { error } = await supabase.from('propostas').insert({
+        id_lead: formData.idLead,
+        cliente_cpf: formData.cpf.replace(/\D/g, ""),
+        nome_cliente: formData.nome,
+        data_nascimento: formatDate(formData.nascimento),
+        origem: formData.origem,
+        matricula: formData.matricula,
+        convenio: selection.convenio,
+        banco: selection.banco,
+        tipo_operacao: selection.operacao,
+        corretor_id: user?.id,
+        status: 'AGUARDANDO DIGITAÇÃO',
+        naturalidade: formData.naturalidade,
+        uf_naturalidade: formData.uf_naturalidade,
+        identidade: formData.identidade,
+        orgao_emissor: formData.orgao_emissor,
+        uf_emissao: formData.uf_emissao,
+        data_emissao: formatDate(formData.data_emissao),
+        nome_pai: formData.nome_pai,
+        nome_mae: formData.nome_mae,
+        tel_residencial_1: formData.tel_residencial_1,
+        tel_residencial_2: formData.tel_residencial_2,
+        tel_comercial: formData.tel_comercial,
+        cep: formData.cep,
+        endereco: formData.endereco,
+        numero: formData.numero,
+        complemento: formData.complemento,
+        bairro: formData.bairro,
+        cidade: formData.cidade,
+        uf: formData.uf,
+        banco_cliente: formData.banco_cliente,
+        chave_pix: formData.chave_pix,
+        conta: formData.conta,
+        agencia: formData.agencia,
+        dv: formData.dv,
+        tipo_conta: formData.tipo_conta,
+        valor_parcela: cleanMoney(formData.valor_parcela),
+        valor_operacao_operacional: cleanMoney(formData.valor_operacao_operacional),
+        valor_cliente_operacional: cleanMoney(formData.valor_cliente_operacional),
+        margem_utilizada: cleanMoney(formData.margem_utilizada),
+        coeficiente_prazo: formData.coeficiente_prazo,
+        observacoes: formData.observacoes
+      })
+
+      if (error) throw error
+
+      toast.dismiss(loadingToast)
+      toast.success("Proposta cadastrada com sucesso!")
+      router.push("/propostas")
+    } catch (err: unknown) {
+      console.error("Erro ao salvar proposta:", err)
+      toast.dismiss(loadingToast)
+      toast.error((err as Error).message || "Erro ao salvar proposta.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  useEffect(() => {
+    async function fetchClientDetails() {
+      if (!formData.cpf) return
+      
+      try {
+        const { data, error } = await supabase
+          .from('base_consulta_rapida')
+          .select('numero_matricula, data_nascimento, nome, telefone_1')
+          .eq('cpf', formData.cpf.replace(/\D/g, ""))
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (!error && data) {
+          setFormData(prev => ({ 
+            ...prev, 
+            matricula: prev.matricula || data.numero_matricula || "",
+            nascimento: prev.nascimento || (data.data_nascimento ? format(new Date(data.data_nascimento), "dd/MM/yyyy") : ""),
+            nome: prev.nome || data.nome || ""
+          }))
+        }
+      } catch (error) {
+        console.error("Erro ao buscar detalhes do cliente:", error)
+      }
+    }
+    fetchClientDetails()
+  }, [formData.cpf])
 
   const handleFormChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -83,15 +313,21 @@ function NewProposalForm() {
         ESCOLHA O <span className="text-slate-900 font-extrabold">CONVÊNIO</span> QUE SERÁ UTILIZADO NO CONTRATO
       </h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl mx-auto">
-        {convenios.map(c => (
-          <button
-            key={c}
-            onClick={() => handleSelect("convenio", c)}
-            className="h-10 px-4 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[10px] font-black text-[#1A2B49] transition-all uppercase tracking-wider shadow-sm leading-tight"
-          >
-            {c}
-          </button>
-        ))}
+        {isLoading ? (
+          <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
+        ) : dbConvenios.length === 0 ? (
+          <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum convênio cadastrado</div>
+        ) : (
+          dbConvenios.map(c => (
+            <button
+              key={c}
+              onClick={() => handleSelect("convenio", c)}
+              className="w-full h-8 px-4 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[9px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider shadow-sm leading-tight"
+            >
+              {c}
+            </button>
+          ))
+        )}
       </div>
     </div>
   )
@@ -112,15 +348,21 @@ function NewProposalForm() {
         </h2>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
-        {bancos.map(b => (
-          <button
-            key={b}
-            onClick={() => handleSelect("banco", b)}
-            className="h-11 px-6 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[11px] font-black text-[#1A2B49] transition-all uppercase tracking-wider leading-tight shadow-sm"
-          >
-            {b}
-          </button>
-        ))}
+        {isLoading ? (
+          <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
+        ) : dbBancos.length === 0 ? (
+          <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum banco cadastrado</div>
+        ) : (
+          dbBancos.map(b => (
+            <button
+              key={b}
+              onClick={() => handleSelect("banco", b)}
+              className="w-full h-9 px-6 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[10px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider leading-tight shadow-sm"
+            >
+              {b}
+            </button>
+          ))
+        )}
       </div>
     </div>
   )
@@ -141,15 +383,21 @@ function NewProposalForm() {
         </h2>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
-        {operacoes.map(o => (
-          <button
-            key={o}
-            onClick={() => handleSelect("operacao", o)}
-            className="h-11 px-6 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[11px] font-black text-[#1A2B49] transition-all uppercase tracking-wider leading-tight shadow-sm"
-          >
-            {o}
-          </button>
-        ))}
+        {isLoading ? (
+          <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
+        ) : dbOperacoes.length === 0 ? (
+          <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum tipo de operação cadastrado</div>
+        ) : (
+          dbOperacoes.map(o => (
+            <button
+              key={o}
+              onClick={() => handleSelect("operacao", o)}
+              className="w-full h-9 px-6 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[10px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider leading-tight shadow-sm"
+            >
+              {o}
+            </button>
+          ))
+        )}
       </div>
     </div>
   )
@@ -191,8 +439,8 @@ function NewProposalForm() {
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID Lead</label>
               <Input 
                 value={formData.idLead}
-                onChange={(e) => handleFormChange("idLead", e.target.value)}
-                className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                readOnly
+                className="h-9 border-none bg-transparent p-0 text-lg font-bold text-black/80 shadow-none focus-visible:ring-0 cursor-default" 
               />
             </div>
             <div className="space-y-2">
@@ -203,13 +451,19 @@ function NewProposalForm() {
                 className="w-full h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
               >
                 <option value="">Selecione</option>
-                <option value="discador">DISCADOR</option>
-                <option value="indicacao">INDICAÇÃO</option>
+                <option value="disparo">DISPARO</option>
+                <option value="tráfego">TRÁFEGO</option>
+                <option value="indicação">INDICAÇÃO</option>
+                <option value="cliente da casa">CLIENTE DA CASA</option>
               </select>
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula <span className="text-red-500">*</span></label>
-              <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+              <Input 
+                value={formData.matricula}
+                onChange={(e) => handleFormChange("matricula", e.target.value)}
+                className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+              />
             </div>
           </div>
 
@@ -247,90 +501,172 @@ function NewProposalForm() {
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Naturalidade</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.naturalidade}
+                  onChange={(e) => handleFormChange("naturalidade", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF Naturalidade</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Selecione</option>
+                <select 
+                  value={formData.uf_naturalidade}
+                  onChange={(e) => handleFormChange("uf_naturalidade", e.target.value)}
+                  className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                >
+                  <option value="">Selecione</option>
+                  {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
                 </select>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identidade</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.identidade}
+                  onChange={(e) => handleFormChange("identidade", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão Emissor</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.orgao_emissor}
+                  onChange={(e) => handleFormChange("orgao_emissor", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF Emissão</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Selecione</option>
+                <select 
+                  value={formData.uf_emissao}
+                  onChange={(e) => handleFormChange("uf_emissao", e.target.value)}
+                  className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                >
+                  <option value="">Selecione</option>
+                  {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
                 </select>
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data de Emissão</label>
                 <div className="relative">
-                  <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors pr-10" />
+                  <Input 
+                    value={formData.data_emissao}
+                    onChange={(e) => handleFormChange("data_emissao", e.target.value)}
+                    placeholder="DD/MM/AAAA"
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors pr-10" 
+                  />
                   <Calendar className="absolute right-3 top-2 w-5 h-5 text-slate-400" />
                 </div>
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome do Pai</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.nome_pai}
+                  onChange={(e) => handleFormChange("nome_pai", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome da Mãe</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.nome_mae}
+                  onChange={(e) => handleFormChange("nome_mae", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Residencial</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Residencial 1</label>
+                <Input 
+                  value={formData.tel_residencial_1}
+                  onChange={(e) => handleFormChange("tel_residencial_1", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Residencial</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Residencial 2</label>
+                <Input 
+                  value={formData.tel_residencial_2}
+                  onChange={(e) => handleFormChange("tel_residencial_2", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Comercial</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.tel_comercial}
+                  onChange={(e) => handleFormChange("tel_comercial", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CEP</label>
                 <div className="flex gap-2">
-                  <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
-                  <button className="text-[10px] font-bold text-primary italic whitespace-nowrap hover:underline">Buscar CEP</button>
+                  <Input 
+                    value={formData.cep}
+                    onChange={(e) => handleFormChange("cep", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                  <button type="button" className="text-[10px] font-bold text-primary italic whitespace-nowrap hover:underline">Buscar CEP</button>
                 </div>
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Endereço</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.endereco}
+                  onChange={(e) => handleFormChange("endereco", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Número</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.numero}
+                  onChange={(e) => handleFormChange("numero", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Complemento</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.complemento}
+                  onChange={(e) => handleFormChange("complemento", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bairro</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.bairro}
+                  onChange={(e) => handleFormChange("bairro", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cidade</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.cidade}
+                  onChange={(e) => handleFormChange("cidade", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Selecione</option>
+                <select 
+                  value={formData.uf}
+                  onChange={(e) => handleFormChange("uf", e.target.value)}
+                  className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                >
+                  <option value="">Selecione</option>
+                  {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -344,11 +680,19 @@ function NewProposalForm() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Banco</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.banco_cliente}
+                  onChange={(e) => handleFormChange("banco_cliente", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CHAVE PIX</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.chave_pix}
+                  onChange={(e) => handleFormChange("chave_pix", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
             </div>
 
@@ -356,19 +700,35 @@ function NewProposalForm() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Conta</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.conta}
+                  onChange={(e) => handleFormChange("conta", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Agência</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.agencia}
+                  onChange={(e) => handleFormChange("agencia", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">DV</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" />
+                <Input 
+                  value={formData.dv}
+                  onChange={(e) => handleFormChange("dv", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Conta</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
+                <select 
+                  value={formData.tipo_conta}
+                  onChange={(e) => handleFormChange("tipo_conta", e.target.value)}
+                  className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                >
                   <option value="">Selecione</option>
                   <option value="corrente">CORRENTE</option>
                   <option value="poupanca">POUPANÇA</option>
@@ -389,17 +749,35 @@ function NewProposalForm() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Parcela</label>
-                  <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                  <Input 
+                    value={formData.valor_parcela}
+                    onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    placeholder="R$ 0,00" 
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Operação</label>
-                  <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                  <Input 
+                    value={formData.valor_operacao_operacional}
+                    onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    placeholder="R$ 0,00" 
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Cliente</label>
-                  <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                  <Input 
+                    value={formData.valor_cliente_operacional}
+                    onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    placeholder="R$ 0,00" 
+                  />
                 </div>
-                <Button className="h-9 bg-[#1A2B49] hover:bg-[#1A2B49]/90 text-white w-12 p-0 shadow-lg shadow-slate-200">
+                <Button 
+                  onClick={handleSubmit} 
+                  className="h-9 bg-[#1A2B49] hover:bg-[#1A2B49]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
+                >
                   <Save className="w-5 h-5" />
                 </Button>
               </div>
@@ -408,24 +786,41 @@ function NewProposalForm() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Margem Utilizada</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                <Input 
+                  value={formData.margem_utilizada}
+                  onChange={(e) => handleFormChange("margem_utilizada", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  placeholder="R$ 0,00" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente e Prazo</label>
-                <select className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors">
-                  <option>Selecione</option>
-                </select>
+                <Input 
+                  value={formData.coeficiente_prazo}
+                  onChange={(e) => handleFormChange("coeficiente_prazo", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Parcela</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                <Input 
+                  value={formData.valor_parcela}
+                  onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  placeholder="R$ 0,00" 
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Cliente</label>
-                <Input className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" placeholder="R$ 0,00" />
+                <Input 
+                  value={formData.valor_cliente_operacional}
+                  onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  placeholder="R$ 0,00" 
+                />
               </div>
             </div>
           </div>
@@ -456,6 +851,8 @@ function NewProposalForm() {
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><Paperclip className="w-4 h-4" /></Button>
                 </div>
                 <textarea 
+                  value={formData.observacoes}
+                  onChange={(e) => handleFormChange("observacoes", e.target.value)}
                   className="w-full p-6 text-[14px] font-medium focus:outline-none min-h-[200px] bg-[#E8E8E8]" 
                   placeholder="Digite suas observações aqui..."
                 />
@@ -465,10 +862,18 @@ function NewProposalForm() {
 
           <div className="flex justify-center pt-12">
             <Button 
-              onClick={() => router.push("/propostas")}
+              onClick={handleSubmit}
+              disabled={isSubmitting}
               className="w-full max-w-md h-12 bg-primary text-white text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
-              CADASTRAR PROPOSTA
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  SALVANDO...
+                </>
+              ) : (
+                "CADASTRAR PROPOSTA"
+              )}
             </Button>
           </div>
         </CardContent>

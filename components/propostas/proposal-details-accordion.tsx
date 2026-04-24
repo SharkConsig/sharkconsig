@@ -8,20 +8,22 @@ import { FichaPropostaModal } from "./ficha-proposta-modal"
 
 interface ProposalDetailsAccordionProps {
   proposal: {
-    id: string;
-    cpf: string;
-    client: string;
-    operation: string;
-    bankAgreement: string;
-    commercial: string;
+    id_lead: string;
+    cliente_cpf: string;
+    nome_cliente: string;
+    tipo_operacao: string;
+    banco: string;
+    convenio: string;
     status: string;
-    brokerResponse: string;
-    installment: string;
-    lastCheck: string;
+    valor_parcela: number;
+    created_at: string;
+    origem?: string;
+    matricula?: string;
+    responsible?: string;
   }
 }
 
-const DataField = ({ label, value, className, labelColor = "text-white", valueColor = "text-slate-300", hoverColor = "group-hover/copy:text-white" }: { label: string, value: string, className?: string, labelColor?: string, valueColor?: string, hoverColor?: string }) => {
+const DataField = ({ label, value, className, labelColor = "text-white", valueColor = "text-slate-300", hoverColor = "group-hover/copy:text-white" }: { label: string, value: string | undefined, className?: string, labelColor?: string, valueColor?: string, hoverColor?: string }) => {
   const [isCopied, setIsCopied] = useState(false)
   
   const handleCopy = () => {
@@ -40,7 +42,7 @@ const DataField = ({ label, value, className, labelColor = "text-white", valueCo
       title="Clique para copiar"
     >
       <span className={cn("text-[10px] font-bold uppercase shrink-0", labelColor)}>{label}:</span>
-      <span className={cn("text-[10px] font-medium transition-colors", valueColor, hoverColor)}>{value}</span>
+      <span className={cn("text-[10px] font-medium transition-colors", valueColor, hoverColor)}>{value || "-"}</span>
       {isCopied && (
         <span className={cn(
           "absolute left-full ml-2 text-[8px] font-black px-1 rounded animate-in fade-in zoom-in duration-200 whitespace-nowrap z-20",
@@ -53,7 +55,7 @@ const DataField = ({ label, value, className, labelColor = "text-white", valueCo
   )
 }
 
-const ClickToCopy = ({ children, text, className }: { children: React.ReactNode, text: string, className?: string }) => {
+const ClickToCopy = ({ children, text, className }: { children: React.ReactNode, text: string | undefined, className?: string }) => {
   const [isCopied, setIsCopied] = useState(false)
   
   const handleCopy = (e: React.MouseEvent) => {
@@ -84,26 +86,26 @@ export function ProposalDetailsAccordion({ proposal: prop }: ProposalDetailsAcco
   const [activeTab, setActiveTab] = useState<"visualizar" | "historico">("visualizar")
   const [isFichaModalOpen, setIsFichaModalOpen] = useState(false)
 
-  // Mock extended data
+  // Use real data keys
   const proposal = {
     ...prop,
-    registrationDate: "07/02/2026",
-    responsible: "TALIA ALVES",
-    ade: "5471",
-    bank: "XN BANK",
-    opType: "CARTÃO C/ SAQUE",
-    origin: "PROMOTORES EXTERNOS",
+    registrationDate: prop.created_at ? new Date(prop.created_at).toLocaleDateString('pt-BR') : "-",
+    responsible: prop.responsible || "NÃO ATRIBUÍDO",
+    ade: "-",
+    bank: prop.banco,
+    opType: prop.tipo_operacao,
+    origin: prop.origem || "-",
     insurance: "-",
-    agreement: "GOVERNO SP",
-    usedMargin: "205,63",
+    agreement: prop.convenio,
+    usedMargin: prop.valor_parcela?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || "0,00",
     production: {
-      type: "Cartão c/ saque",
-      percent: "20%",
-      base: "6.097,03",
-      gross: "6.097,03",
-      net: "6.097,03"
+      type: prop.tipo_operacao,
+      percent: "-",
+      base: prop.valor_parcela?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+      gross: "-",
+      net: "-"
     },
-    observations: "Chave PIX: 12953087893\nSenha Portal: 16R27v2$"
+    observations: "Sem observações no momento."
   }
 
   return (

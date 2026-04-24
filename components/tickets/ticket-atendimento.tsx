@@ -84,7 +84,6 @@ interface TicketAtendimentoProps {
 }
 
 export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoProps) {
-  const router = useRouter()
   const { perfil, user } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(true)

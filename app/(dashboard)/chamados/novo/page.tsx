@@ -81,7 +81,7 @@ function NewTicketForm() {
       if (!error && data && data.length > 0) {
         setTicketNumber((parseInt(data[0].id) + 1).toString())
       } else {
-        setTicketNumber("34560") // Fallback
+        setTicketNumber("1") // Fallback
       }
     }
     fetchLastTicket()
@@ -204,15 +204,19 @@ function NewTicketForm() {
   }
 
   const handleMarginInputChange = (field: string, value: string) => {
-    // Currency mask logic
-    const cleanValue = value.replace(/\D/g, "");
-    let formattedValue = "";
+    // Verificamos se o valor contém o sinal de menos para aceitar números negativos
+    const isNegative = value.includes("-");
+    const digits = value.replace(/\D/g, "");
     
-    if (cleanValue) {
-      const numberValue = (parseFloat(cleanValue) / 100).toFixed(2);
+    let formattedValue = "";
+    if (digits) {
+      const numberValue = (parseFloat(digits) / 100).toFixed(2);
       const parts = numberValue.split(".");
       parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-      formattedValue = `R$ ${parts.join(",")}`;
+      formattedValue = `R$ ${isNegative ? "-" : ""}${parts.join(",")}`;
+    } else if (isNegative) {
+      // Caso o usuário tenha digitado apenas o sinal de menos
+      formattedValue = "R$ -";
     }
 
     setFormData(prev => {
@@ -380,9 +384,10 @@ function NewTicketForm() {
             const url = await uploadFile(file, `${user.id}/${Date.now()}`);
             fileUrls[key] = url;
             console.log(`Arquivo ${key} enviado com sucesso:`, url);
-          } catch (uploadErr: any) {
-            console.error(`Erro ao enviar arquivo ${key}:`, uploadErr);
-            throw new Error(`Falha no upload do arquivo ${key}: ${uploadErr.message || 'Erro desconhecido'}`);
+          } catch (uploadErr: unknown) {
+            const err = uploadErr as { message?: string };
+            console.error(`Erro ao enviar arquivo ${key}:`, err);
+            throw new Error(`Falha no upload do arquivo ${key}: ${err.message || 'Erro desconhecido'}`);
           }
         }
       }
@@ -468,10 +473,11 @@ function NewTicketForm() {
       toast.dismiss(loadingToast);
       toast.success("Chamado aberto com sucesso!");
       router.push("/chamados");
-    } catch (error: any) {
-      console.error("Erro crítico no handleSubmit:", error);
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      console.error("Erro crítico no handleSubmit:", err);
       toast.dismiss(loadingToast);
-      toast.error(`Erro ao abrir chamado: ${error.message || "Tente novamente."}`);
+      toast.error(`Erro ao abrir chamado: ${err.message || "Tente novamente."}`);
     } finally {
       setIsSubmitting(false);
     }

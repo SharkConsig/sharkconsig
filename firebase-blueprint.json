@@ -24,6 +24,36 @@
         "updated_at": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "username", "email", "role"]
+    },
+    "Convenio": {
+      "title": "Convênio",
+      "description": "Lista de convênios disponíveis para propostas",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Banco": {
+      "title": "Banco de Empréstimo",
+      "description": "Lista de bancos disponíveis para propostas",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "TipoOperacao": {
+      "title": "Tipo de Operação",
+      "description": "Lista de tipos de operação disponíveis para propostas",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
     }
   }
 }

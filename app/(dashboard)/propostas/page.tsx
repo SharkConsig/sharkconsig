@@ -1,10 +1,12 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
+import { supabase } from "@/lib/supabase"
+import { format } from "date-fns"
 import { 
   Search, 
   Filter, 
@@ -17,127 +19,93 @@ import {
 import { cn } from "@/lib/utils"
 import { ProposalDetailsAccordion } from "@/components/propostas/proposal-details-accordion"
 
-const statusCards = [
-  { label: "AGUARDANDO DIGITAÇÃO", count: 33, color: "border-t-amber-500", textColor: "text-amber-600" },
-  { label: "ANDAMENTO AGUARDANDO PAGAMENTO CLIENTE", count: 17, color: "border-t-orange-500", textColor: "text-orange-600" },
-  { label: "INCONSISTÊNCIAS NO BANCO", count: 17, color: "border-t-blue-500", textColor: "text-blue-600" },
-  { label: "PAGO AO CLIENTE", count: 189, color: "border-t-cyan-500", textColor: "text-cyan-600" },
-  { label: "PÓS-VENDA", count: 0, color: "border-t-emerald-500", textColor: "text-emerald-600" },
-  { label: "CANCELADOS", count: 323, color: "border-t-rose-500", textColor: "text-rose-600" },
+const statusCardsTemplate = [
+  { label: "AGUARDANDO DIGITAÇÃO", color: "border-t-amber-500", textColor: "text-amber-600" },
+  { label: "ANDAMENTO AGUARDANDO PAGAMENTO CLIENTE", color: "border-t-orange-500", textColor: "text-orange-600" },
+  { label: "INCONSISTÊNCIAS NO BANCO", color: "border-t-blue-500", textColor: "text-blue-600" },
+  { label: "PAGO AO CLIENTE", color: "border-t-cyan-500", textColor: "text-cyan-600" },
+  { label: "PÓS-VENDA", color: "border-t-emerald-500", textColor: "text-emerald-600" },
+  { label: "CANCELADOS", color: "border-t-rose-500", textColor: "text-rose-600" },
 ]
 
-const secondaryCards = [
-  { label: "AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO", count: 33, color: "text-slate-600" },
-  { label: "AGUARDANDO DIGITAÇÃO OPERACIONAL", count: 17, color: "text-slate-600" },
-  { label: "COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO", count: 17, color: "text-slate-600" },
+const secondaryCardsTemplate = [
+  { label: "AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO", color: "text-slate-600" },
+  { label: "AGUARDANDO DIGITAÇÃO OPERACIONAL", color: "text-slate-600" },
+  { label: "COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO", color: "text-slate-600" },
 ]
 
-const proposals = [
-  { 
-    id: "34558", 
-    cpf: "277.428.418-00", 
-    client: "VIVIANE FRANCISCA R SANTOS", 
-    operation: "Margem Livre (Novo)", 
-    bankAgreement: "PEHTECH - FEDERAL", 
-    commercial: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", 
-    status: "Com inconsistência / Pendência para Digitação", 
-    brokerResponse: "Aguardando normalizar sistema no banco", 
-    installment: "350,00", 
-    lastCheck: "06-02-2026 13:14:34" 
-  },
-  { 
-    id: "34557", 
-    cpf: "277.428.418-00", 
-    client: "DOUGLAINA RIBEIRO SANTIAGO", 
-    operation: "Margem Livre (Novo)", 
-    bankAgreement: "PEHTECH - FEDERAL", 
-    commercial: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", 
-    status: "Com inconsistência / Pendência para Digitação", 
-    brokerResponse: "Aguardando normalizar sistema no banco", 
-    installment: "350,00", 
-    lastCheck: "06-02-2026 13:14:34" 
-  },
-  { 
-    id: "34556", 
-    cpf: "277.428.418-00", 
-    client: "ANA PAULA FORNER", 
-    operation: "Margem Livre (Novo)", 
-    bankAgreement: "PEHTECH - FEDERAL", 
-    commercial: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", 
-    status: "Com inconsistência / Pendência para Digitação", 
-    brokerResponse: "Aguardando normalizar sistema no banco", 
-    installment: "350,00", 
-    lastCheck: "06-02-2026 13:14:34" 
-  },
-  { 
-    id: "34555", 
-    cpf: "277.428.418-00", 
-    client: "LUIZ ALBERTO MARINHO FARIAS", 
-    operation: "Margem Livre (Novo)", 
-    bankAgreement: "PEHTECH - FEDERAL", 
-    commercial: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", 
-    status: "Com inconsistência / Pendência para Digitação", 
-    brokerResponse: "Aguardando normalizar sistema no banco", 
-    installment: "350,00", 
-    lastCheck: "06-02-2026 13:14:34" 
-  },
-  { 
-    id: "34554", 
-    cpf: "277.428.418-00", 
-    client: "CASTER CESAR DA SILVA", 
-    operation: "Margem Livre (Novo)", 
-    bankAgreement: "PEHTECH - FEDERAL", 
-    commercial: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", 
-    status: "Com inconsistência / Pendência para Digitação", 
-    brokerResponse: "Aguardando normalizar sistema no banco", 
-    installment: "350,00", 
-    lastCheck: "06-02-2026 13:14:34" 
-  },
-  { 
-    id: "34553", 
-    cpf: "277.428.418-00", 
-    client: "CHERLITON DE CASTRO GUEDES", 
-    operation: "Margem Livre (Novo)", 
-    bankAgreement: "PEHTECH - FEDERAL", 
-    commercial: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", 
-    status: "Com inconsistência / Pendência para Digitação", 
-    brokerResponse: "Aguardando normalizar sistema no banco", 
-    installment: "350,00", 
-    lastCheck: "06-02-2026 13:14:34" 
-  },
-  { 
-    id: "34552", 
-    cpf: "277.428.418-00", 
-    client: "FERNANDO LUIZ PALHANO XAVIER", 
-    operation: "Margem Livre (Novo)", 
-    bankAgreement: "PEHTECH - FEDERAL", 
-    commercial: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", 
-    status: "Com inconsistência / Pendência para Digitação", 
-    brokerResponse: "Aguardando normalizar sistema no banco", 
-    installment: "350,00", 
-    lastCheck: "06-02-2026 13:14:34" 
-  },
-]
+interface Proposal {
+  id: number
+  id_lead: string
+  nome_cliente: string
+  cliente_cpf: string
+  convenio: string
+  banco: string
+  tipo_operacao: string
+  status: string
+  created_at: string
+}
 
 export default function ProposalsPage() {
+  const [proposals, setProposals] = useState<Proposal[]>([])
+  const [counts, setCounts] = useState<{[key: string]: number}>({})
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
-  const [startDate, setStartDate] = useState("09/02/2026")
-  const [endDate, setEndDate] = useState("09/02/2026")
+  const [startDate, setStartDate] = useState(format(new Date(), "dd/MM/yyyy"))
+  const [endDate, setEndDate] = useState(format(new Date(), "dd/MM/yyyy"))
   const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null)
 
-  // Pagination State
+  useEffect(() => {
+    async function fetchProposals() {
+      try {
+        const { data, error } = await supabase
+          .from('propostas')
+          .select('*')
+          .order('created_at', { ascending: false })
+
+        if (error) {
+          console.error("Erro Supabase:", error.message)
+          throw error
+        }
+        setProposals(data || [])
+
+        // Calculate counts
+        const newCounts: {[key: string]: number} = {}
+        data?.forEach(p => {
+          newCounts[p.status] = (newCounts[p.status] || 0) + 1
+        })
+        setCounts(newCounts)
+      } catch (error) {
+        console.error("Erro ao buscar propostas:", error)
+      }
+    }
+    fetchProposals()
+  }, [])
+
+  const statusCards = statusCardsTemplate.map(card => ({
+    ...card,
+    count: counts[card.label] || 0
+  }))
+
+  const secondaryCards = secondaryCardsTemplate.map(card => ({
+    ...card,
+    count: counts[card.label] || 0
+  }))
+
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
   const filteredProposals = proposals.filter(proposal => {
     const matchesSearch = 
-      proposal.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      proposal.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      proposal.cpf.toLowerCase().includes(searchTerm.toLowerCase())
+      (proposal.id_lead?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+      (proposal.nome_cliente?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+      (proposal.cliente_cpf?.toLowerCase() || "").includes(searchTerm.toLowerCase())
     
-    return matchesSearch
+    const matchesStatus = !selectedStatus || proposal.status === selectedStatus
+    const matchesSecondary = !selectedSecondaryStatus || proposal.status === selectedSecondaryStatus
+    
+    return matchesSearch && matchesStatus && matchesSecondary
   })
 
   // Pagination Logic
@@ -174,7 +142,7 @@ export default function ProposalsPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="LISTA DE PROPOSTAS" />
+      <Header title="PROPOSTAS" />
       
       <main className="flex-1 p-4 lg:p-8 bg-slate-50/50 space-y-8 max-w-[1600px] mx-auto w-full">
         {/* Filters Card */}
@@ -328,24 +296,24 @@ export default function ProposalsPage() {
                   paginatedProposals.map((proposal) => (
                     <React.Fragment key={proposal.id}>
                       <tr 
-                        onClick={() => toggleProposalExpansion(proposal.id)}
+                        onClick={() => toggleProposalExpansion(proposal.id_lead)}
                         className={cn(
                           "hover:bg-slate-50/80 transition-colors group cursor-pointer",
-                          expandedProposalId === proposal.id && "bg-slate-50"
+                          expandedProposalId === proposal.id_lead && "bg-slate-50"
                         )}
                       >
-                        <td className="px-4 py-4 text-[12px] font-bold text-slate-400 group-hover:text-primary">{proposal.id}</td>
-                        <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{proposal.cpf}</td>
-                        <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 uppercase tracking-tight">{proposal.client}</td>
-                        <td className="px-4 py-4 text-[12px] font-bold text-slate-500">{proposal.operation}</td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.bankAgreement}</td>
+                        <td className="px-4 py-4 text-[12px] font-bold text-slate-400 group-hover:text-primary">{proposal.id_lead}</td>
+                        <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{proposal.cliente_cpf}</td>
+                        <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 uppercase tracking-tight">{proposal.nome_cliente}</td>
+                        <td className="px-4 py-4 text-[12px] font-bold text-slate-500">{proposal.tipo_operacao}</td>
+                        <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.banco}/{proposal.convenio}</td>
                         <td className="px-4 py-4 text-[10px] font-bold text-slate-400 leading-tight max-w-[150px] truncate" title={proposal.commercial}>
-                          {proposal.commercial}
+                          -
                         </td>
                         <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.status}</td>
-                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.brokerResponse}</td>
-                        <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">R$ {proposal.installment}</td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-600">{proposal.lastCheck}</td>
+                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">-</td>
+                        <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">R$ {proposal.valor_parcela?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td className="px-4 py-4 text-[11px] font-bold text-slate-600">{format(new Date(proposal.created_at), "dd/MM/yyyy HH:mm:ss")}</td>
                         <td className="px-4 py-4 text-center">
                           <Button 
                             variant="ghost" 
@@ -353,14 +321,14 @@ export default function ProposalsPage() {
                             className="h-8 w-8 text-slate-300 hover:text-primary hover:bg-primary/5 rounded-full transition-all"
                             onClick={(e) => {
                               e.stopPropagation()
-                              toggleProposalExpansion(proposal.id)
+                              toggleProposalExpansion(proposal.id_lead)
                             }}
                           >
-                            {expandedProposalId === proposal.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            {expandedProposalId === proposal.id_lead ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                           </Button>
                         </td>
                       </tr>
-                      {expandedProposalId === proposal.id && (
+                      {expandedProposalId === proposal.id_lead && (
                         <tr>
                           <td colSpan={11} className="p-0 border-b border-slate-200">
                             <div className="animate-in slide-in-from-top-2 duration-300">
