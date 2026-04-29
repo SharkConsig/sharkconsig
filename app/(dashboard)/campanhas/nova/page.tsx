@@ -118,7 +118,8 @@ export default function NewCampaignPage() {
     "CAIXA ECONOMICA FEDERAL", "CAPITAL", "BANCO DAYCOVAL", 
     "BANCO DIGIMAIS", "BANCO DIGIO", "EAGLE", "BANCO ITAU CONSIGNADO", 
     "BANCO ITAU", "MEUCASH", "NEOCREDITO", "NUBANK", "PARANA BANCO", 
-    "SABEMI", "BANCO SAFRA", "XNBANK", "BANCO C6", "BANCO BRADESCO"
+    "SABEMI", "BANCO SAFRA", "XNBANK", "BANCO C6", "BANCO BRADESCO",
+    "BANCO INTERMEDIUM", "BANCO PAULISTA", "INBURSA", "LECCA"
   ])
 
   useEffect(() => {
@@ -129,7 +130,8 @@ export default function NewCampaignPage() {
       "CAIXA ECONOMICA FEDERAL", "CAPITAL", "BANCO DAYCOVAL", 
       "BANCO DIGIMAIS", "BANCO DIGIO", "EAGLE", "BANCO ITAU CONSIGNADO", 
       "BANCO ITAU", "MEUCASH", "NEOCREDITO", "NUBANK", "PARANA BANCO", 
-      "SABEMI", "BANCO SAFRA", "XNBANK", "BANCO C6", "BANCO BRADESCO"
+      "SABEMI", "BANCO SAFRA", "XNBANK", "BANCO C6", "BANCO BRADESCO",
+      "BANCO INTERMEDIUM", "BANCO PAULISTA", "INBURSA", "LECCA"
     ])
   }, []);
 
@@ -311,15 +313,6 @@ export default function NewCampaignPage() {
         }
       }
 
-      // 3. Filtros Financeiros
-      const mMin = parseSafeNumber(margemMin);
-      const mMax = parseSafeNumber(margemMax);
-      if (mMin !== null || mMax !== null) {
-        query = query.not('margem_35', 'is', null);
-        if (mMin !== null) query = query.gte('margem_35', mMin);
-        if (mMax !== null) query = query.lte('margem_35', mMax);
-      }
-      
       const sMin = parseSafeNumber(saldoMin);
       if (sMin !== null) {
         query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
@@ -366,6 +359,23 @@ export default function NewCampaignPage() {
       const pMax = parseInt(loanPrazoMax);
       if (!isNaN(pMin)) query = query.gte('prazo', pMin);
       if (!isNaN(pMax)) query = query.lte('prazo', pMax);
+
+      // APLICAÇÃO DOS FILTROS DE MARGEM 35% NO FINAL PARA GARANTIR CONSISTÊNCIA
+      const mMinNum = parseSafeNumber(margemMin);
+      const mMaxNum = parseSafeNumber(margemMax);
+      
+      if (mMinNum !== null || mMaxNum !== null) {
+        // Explicitamente filtramos nulos para garantir performance e correção com o builder de query
+        query = query.not("margem_35", "is", null);
+        
+        if (mMinNum !== null && mMaxNum !== null) {
+          query = query.gte("margem_35", mMinNum).lte("margem_35", mMaxNum);
+        } else if (mMinNum !== null) {
+          query = query.gte("margem_35", mMinNum);
+        } else if (mMaxNum !== null) {
+          query = query.lte("margem_35", mMaxNum);
+        }
+      }
 
       const { count, error } = await query;
 

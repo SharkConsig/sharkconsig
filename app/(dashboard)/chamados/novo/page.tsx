@@ -61,7 +61,8 @@ function NewTicketForm() {
     verso: null,
     contracheque: null,
     extrato: null,
-    outros: null
+    outros: null,
+    outros_2: null
   })
 
   // Pasted images from clipboard
@@ -115,7 +116,7 @@ function NewTicketForm() {
       // Se temos o ID mas não o nome no perfil, buscamos via API otimizada
       if (perfil?.supervisor_id && !formData.equipe) {
         try {
-          const res = await fetch(`/api/usuarios?id=${perfil.supervisor_id}`);
+          const res = await withRetry(() => fetch(`/api/usuarios?id=${perfil.supervisor_id}`));
           if (res.ok) {
             const supervisorData = await res.json();
             if (supervisorData.nome) {
@@ -138,7 +139,8 @@ function NewTicketForm() {
     verso: useRef<HTMLInputElement>(null),
     contracheque: useRef<HTMLInputElement>(null),
     extrato: useRef<HTMLInputElement>(null),
-    outros: useRef<HTMLInputElement>(null)
+    outros: useRef<HTMLInputElement>(null),
+    outros_2: useRef<HTMLInputElement>(null)
   }
 
   const getMarginClasses = (value: string, isSelected: boolean) => {
@@ -389,7 +391,8 @@ function NewTicketForm() {
         verso: null,
         contracheque: null,
         extrato: null,
-        outros: null
+        outros: null,
+        outros_2: null
       };
 
       // Sequencial para melhor controle de erro no log
@@ -431,17 +434,10 @@ function NewTicketForm() {
         }
       }
 
-      // Adiciona informações de margens adicionais na descrição se selecionadas
+      // Adiciona imagens coladas se houver
       let finalDescription = description;
       if (pastedUrls.length > 0) {
         finalDescription += "\n\n--- IMAGENS EM ANEXO ---\n" + pastedUrls.map((url, i) => `![Print ${i+1}](${url})`).join("\n");
-      }
-      const extraMargins = [];
-      if (formData.liquida5) extraMargins.push(`Líquida 5%: ${formData.liquida5}`);
-      if (formData.beneficio5) extraMargins.push(`Benefício Líquida 5%: ${formData.beneficio5}`);
-      
-      if (extraMargins.length > 0) {
-        finalDescription += `\n\n--- MARGENS SELECIONADAS ---\n${extraMargins.join("\n")}`;
       }
 
       console.log("Enviando dados para o banco de dados...");
@@ -476,7 +472,8 @@ function NewTicketForm() {
           arquivo_rg_verso: fileUrls.verso,
           arquivo_contracheque: fileUrls.contracheque,
           arquivo_extrato: fileUrls.extrato,
-          arquivo_outros: fileUrls.outros
+          arquivo_outros: fileUrls.outros,
+          arquivo_outros_2: fileUrls.outros_2
         })
       );
 
@@ -507,10 +504,11 @@ function NewTicketForm() {
         <Card className="card-shadow border border-slate-200 overflow-hidden">
           <CardContent className="p-4 sm:p-8">
             <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-6 border-b border-slate-100 pb-8">
-              <div>
-                <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
-                  Chamado nº <span className="text-slate-900 font-bold text-lg ml-2 normal-case tracking-normal">{ticketNumber}</span>
-                </p>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Número do Chamado</label>
+                <span className="block text-xl font-black text-slate-900 tracking-tight py-1">
+                  {ticketNumber}
+                </span>
               </div>
               <div className="w-full sm:w-72 space-y-2">
                 <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -820,7 +818,8 @@ function NewTicketForm() {
                    { label: "RG (VERSO)", id: "verso", ref: fileRefs.verso, required: false },
                    { label: "CONTRA CHEQUE", id: "contracheque", ref: fileRefs.contracheque, required: false },
                    { label: "EXTRATO DE CONSIGNAÇÃO", id: "extrato", ref: fileRefs.extrato, required: false },
-                   { label: "OUTROS", id: "outros", ref: fileRefs.outros, required: false }
+                   { label: "OUTROS", id: "outros", ref: fileRefs.outros, required: false },
+                   { label: "OUTROS", id: "outros_2", ref: fileRefs.outros_2, required: false }
                 ].map((field) => (
                   <div key={field.id} className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">

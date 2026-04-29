@@ -22,10 +22,12 @@ import {
   Send,
   X,
   ChevronDown,
-  Search
+  Search,
+  Plus
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
+import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
@@ -155,7 +157,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     } : null;
 
     return initialMessage ? [initialMessage, ...messages] : messages;
-  }, [ticket, messages]);
+  }, [ticket, messages, user?.id, perfil?.avatar_url]);
 
   const fetchMessages = useCallback(async () => {
     setIsLoading(true)
@@ -622,6 +624,14 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 <ImageIcon className="w-3.5 h-3.5" />
                 Anexar Arquivos
               </Button>
+              <Link href="/propostas/nova">
+                <Button 
+                  className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  DIGITAR PROPOSTA
+                </Button>
+              </Link>
             </div>
             <p className="text-[9px] text-slate-400 max-w-sm leading-relaxed">Pressione <kbd className="bg-slate-100 px-1 rounded font-bold">Ctrl + Enter</kbd> para enviar rapidamente. Tamanho máximo 20mb (jpg, png, pdf, docx, xlsx).</p>
           </div>

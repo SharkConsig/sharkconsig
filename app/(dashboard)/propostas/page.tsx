@@ -1,108 +1,426 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/context/auth-context"
 import { format } from "date-fns"
 import { 
   Search, 
-  Filter, 
-  Calendar,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
-  ChevronUp
+  Eye,
+  Loader2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ProposalDetailsAccordion } from "@/components/propostas/proposal-details-accordion"
+import { StatusPropostaModal } from "@/components/propostas/status-proposta-modal"
+import { toast } from "react-hot-toast"
 
-const statusCardsTemplate = [
-  { label: "AGUARDANDO DIGITAÇÃO", color: "border-t-amber-500", textColor: "text-amber-600" },
-  { label: "ANDAMENTO AGUARDANDO PAGAMENTO CLIENTE", color: "border-t-orange-500", textColor: "text-orange-600" },
-  { label: "INCONSISTÊNCIAS NO BANCO", color: "border-t-blue-500", textColor: "text-blue-600" },
-  { label: "PAGO AO CLIENTE", color: "border-t-cyan-500", textColor: "text-cyan-600" },
-  { label: "PÓS-VENDA", color: "border-t-emerald-500", textColor: "text-emerald-600" },
-  { label: "CANCELADOS", color: "border-t-rose-500", textColor: "text-rose-600" },
-]
-
-const secondaryCardsTemplate = [
-  { label: "AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO", color: "text-slate-600" },
-  { label: "AGUARDANDO DIGITAÇÃO OPERACIONAL", color: "text-slate-600" },
-  { label: "COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO", color: "text-slate-600" },
+const TABS_CONFIG = [
+  {
+    label: "DIGITAÇÃO",
+    color: "border-t-amber-500",
+    textColor: "text-amber-600",
+    subTabs: [
+      "AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO",
+      "AGUARDANDO DIGITAÇÃO OPERACIONAL",
+      "COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO",
+      "COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL"
+    ]
+  },
+  {
+    label: "EM ANDAMENTO",
+    color: "border-t-orange-500",
+    textColor: "text-orange-600",
+    subTabs: [
+      "ANDAMENTO / AGUARDANDO PAGAMENTO",
+      "COM INCONSISTÊNCIA NO BANCO",
+      "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL"
+    ]
+  },
+  {
+    label: "PAGO AO CLIENTE",
+    color: "border-t-cyan-500",
+    textColor: "text-cyan-600",
+    subTabs: [
+      "PAGAMENTO DEVOLVIDO",
+      "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA",
+      "PÓS-VENDA REALIZADA"
+    ]
+  },
+  {
+    label: "CANCELADOS",
+    color: "border-t-rose-500",
+    textColor: "text-rose-600",
+    subTabs: [
+      "CANCELADO"
+    ]
+  }
 ]
 
 interface Proposal {
   id: number
   id_lead: string
+  corretor_id?: string
+  ade?: string
+  nome_corretor?: string
+  equipe?: string
   nome_cliente: string
   cliente_cpf: string
   convenio: string
   banco: string
   tipo_operacao: string
   status: string
+  resposta_corretor?: string
+  obs_corretor?: string
+  obs_operacional?: string
+  observacoes?: string
+  valor_base?: number
+  valor_parcela?: number
+  updated_at?: string
   created_at: string
 }
 
 export default function ProposalsPage() {
+  const { perfil } = useAuth()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [counts, setCounts] = useState<{[key: string]: number}>({})
+  const [isLoading, setIsLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
-  const [startDate, setStartDate] = useState(format(new Date(), "dd/MM/yyyy"))
-  const [endDate, setEndDate] = useState(format(new Date(), "dd/MM/yyyy"))
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
   const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null)
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false)
+  const [selectedProposalForStatus, setSelectedProposalForStatus] = useState<Proposal | null>(null)
+
+  const handleStatusUpdate = async (idLead: string, newStatus: string, ade?: string, obsCorretor?: string, obsOperacional?: string, customDate?: string) => {
+    if (!perfil) return
+    const loadingToast = toast.loading("Atualizando status...")
+    
+    try {
+      const proposal = proposals.find(p => p.id_lead === idLead)
+      if (!proposal) throw new Error("Proposta não encontrada")
+
+      // Use de data selecionada ou data atual
+      const baseDate = customDate ? new Date(`${customDate}T${new Date().toISOString().split('T')[1]}`) : new Date();
+      const isoDate = baseDate.toISOString();
+
+      // Base data that definitely exists
+      const baseUpdate = { 
+        status: newStatus, 
+        updated_at: isoDate 
+      }
+
+      // Try with all columns first
+      const actualFullUpdate: Record<string, string | number | undefined | null> = { ...baseUpdate }
+      if (typeof ade === 'string') actualFullUpdate.ade = ade
+      if (typeof obsCorretor === 'string') actualFullUpdate.obs_corretor = obsCorretor
+      if (typeof obsOperacional === 'string') actualFullUpdate.obs_operacional = obsOperacional
+
+      // Verificar se é status de pagamento para salvar data_pago_cliente
+      if (newStatus.includes("PAGO AO CLIENTE")) {
+        actualFullUpdate.data_pago_cliente = isoDate
+      }
+
+      let { error: updateError } = await supabase
+        .from('propostas')
+        .update(actualFullUpdate)
+        .eq('id_lead', idLead)
+
+      if (updateError) {
+        const errDetails = {
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint
+        }
+        console.error("Erro na primeira tentativa de atualização:", errDetails)
+        
+        // Se o erro for de coluna inexistente, tenta o fallback
+        if (updateError.code === '42703' || updateError.message?.includes('column')) {
+          console.warn("Iniciando fallback: Tentando salvar dados extras no campo 'observacoes'...")
+          const currentObs = (proposal as Proposal).observacoes || ""
+          
+          const cleanObs = currentObs
+            .replace(/\[ADE\]:.*?(?:\n\n|\n|$)/g, "")
+            .replace(/\[CORRETOR\]:.*?(?:\n\n|\n|$)/g, "")
+            .replace(/\[OPERACIONAL\]:.*?(?:\n\n|\n|$)/g, "")
+            .trim()
+          
+          const combinedObs = `${cleanObs}${cleanObs ? "\n\n" : ""}[ADE]: ${ade || ""}\n[CORRETOR]: ${obsCorretor || ""}\n[OPERACIONAL]: ${obsOperacional || ""}`
+          
+          // Fallback seguro: tenta salvar apenas o que é garantido
+          const safeFallbackData = {
+            status: newStatus,
+            updated_at: isoDate,
+            observacoes: combinedObs
+          }
+          
+          const { error: fallbackError } = await supabase
+            .from('propostas')
+            .update(safeFallbackData)
+            .eq('id_lead', idLead)
+          
+          if (!fallbackError) {
+            console.log("Fallback concluído com sucesso!")
+            actualFullUpdate.observacoes = combinedObs
+            delete actualFullUpdate.ade
+            delete actualFullUpdate.obs_corretor
+            delete actualFullUpdate.obs_operacional
+            updateError = null
+          } else {
+            console.error("Erro no fallback seguro:", fallbackError)
+            
+            // Tentativa FINAL de desespero: Salvar APENAS o status
+            console.warn("Tentativa de emergência: Salvando apenas o STATUS...")
+            const { error: emergencyError } = await supabase
+              .from('propostas')
+              .update({ status: newStatus })
+              .eq('id_lead', idLead)
+            
+            if (!emergencyError) {
+              console.log("Status salvo via emergência (sem observações)")
+              updateError = null
+            } else {
+              updateError = emergencyError
+            }
+          }
+        }
+      }
+      
+      if (updateError) throw updateError
+
+      // Log de Histórico
+      try {
+        const histObs = []
+        if (ade) histObs.push(`ADE: ${ade}`)
+        if (obsCorretor) histObs.push(`Obs Corretor: ${obsCorretor}`)
+        if (obsOperacional) histObs.push(`Obs Operacional: ${obsOperacional}`)
+        
+        // Inserção no histórico - usamos proposta_id_lead como TEXT (REFERENCES propostas(id_lead))
+        await supabase.from('historico_propostas').insert({
+          proposta_id_lead: proposal.id_lead,
+          usuario_id: perfil.id,
+          status_anterior: proposal.status,
+          status_novo: newStatus,
+          observacoes: histObs.join(' | '),
+          descricao: `Status alterado de "${proposal.status}" para "${newStatus}"`,
+          tipo: 'alteracao_status',
+          created_at: isoDate
+        })
+      } catch (histErr) {
+        console.warn("Erro ao gravar histórico (não letal):", histErr)
+      }
+
+      // Update local state
+      setProposals(prev => prev.map(p => 
+        p.id_lead === idLead ? { ...p, ...actualFullUpdate } : p
+      ))
+
+      // Update counts
+      setCounts(prev => {
+        const newCounts = { ...prev }
+        if (proposal.status !== newStatus) {
+          newCounts[proposal.status] = Math.max(0, (newCounts[proposal.status] || 0) - 1)
+          newCounts[newStatus] = (newCounts[newStatus] || 0) + 1
+        }
+        return newCounts
+      })
+
+      toast.success("Status atualizado com sucesso!", { id: loadingToast })
+    } catch (error: unknown) {
+      console.error("Erro completo capturado:", error)
+      let errorMessage = "Erro desconhecido"
+      
+      if (error && typeof error === 'object' && 'message' in error) {
+        const err = error as { message?: string; details?: string; hint?: string; code?: string }
+        errorMessage = err.message || err.details || err.hint || err.code || JSON.stringify(err)
+        if (errorMessage === '{}') {
+          errorMessage = `Código: ${err.code || 'N/A'}, Mensagem: ${err.message || 'N/A'}`
+        }
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      }
+      
+      toast.error(`Erro ao atualizar status: ${errorMessage}`, { id: loadingToast, duration: 5000 })
+    }
+  }
+
+  const fetchProposals = async () => {
+    if (!perfil) return
+    setIsLoading(true)
+    try {
+      let query = supabase.from('propostas').select('*')
+      
+      if (perfil.role_slug === 'corretor') {
+        query = query.eq('corretor_id', perfil.id)
+      } else if (perfil.role_slug === 'supervisor') {
+        // Consultar equipe do supervisor
+        const { data: teamData, error: teamError } = await supabase
+          .from('equipes')
+          .select('id')
+          .eq('supervisor_id', perfil.id)
+        
+        if (teamError) {
+          console.error("Erro ao buscar equipes:", teamError.message)
+          // fallback to own proposals if we can't fetch team
+          query = query.eq('corretor_id', perfil.id)
+        } else if (teamData && teamData.length > 0) {
+          const teamIds = teamData.map(t => t.id)
+          // Buscar usuários dessa equipe
+          const { data: teamUsers, error: usersError } = await supabase
+            .from('usuarios')
+            .select('id')
+            .in('equipe_id', teamIds)
+          
+          if (usersError) {
+            console.error("Erro ao buscar usuários da equipe:", usersError.message)
+            query = query.eq('corretor_id', perfil.id)
+          } else if (teamUsers && teamUsers.length > 0) {
+            query = query.in('corretor_id', teamUsers.map(u => u.id))
+          } else {
+            // Se não tem usuários na equipe, vê apenas as suas
+            query = query.eq('corretor_id', perfil.id)
+          }
+        } else {
+          // Se não tem equipe, vê apenas as suas
+          query = query.eq('corretor_id', perfil.id)
+        }
+      }
+      // Se for operacional, administrador ou desenvolvedor, não filtra (vê tudo)
+
+      const { data, error } = await query.order('created_at', { ascending: false })
+      
+      if (error) {
+        console.error("Erro Supabase ao buscar propostas:", error.message)
+        toast.error("Erro ao conectar com o banco de dados. Verifique sua conexão ou configuração do Supabase.")
+        setIsLoading(false)
+        return
+      }
+
+      if (!data || data.length === 0) {
+        setProposals([])
+        setCounts({})
+        setIsLoading(false)
+        return
+      }
+
+      // Fetch users and teams separately to avoid join relationship issues
+      const brokerIds = Array.from(new Set(data.map((p: Proposal) => p.corretor_id).filter(Boolean)))
+      
+      const usersMap = new Map<string, { nome: string, equipe: string }>()
+      if (brokerIds.length > 0) {
+        try {
+          // First fetch users basic info
+          const { data: usersData, error: usersFetchError } = await supabase
+            .from('usuarios')
+            .select('id, full_name, equipe_id')
+            .in('id', brokerIds)
+          
+          if (!usersFetchError && usersData) {
+            const teamIds = Array.from(new Set(usersData.map((u: { equipe_id?: string }) => u.equipe_id).filter(Boolean)))
+            
+            const teamsMap = new Map<string, string>()
+            if (teamIds.length > 0) {
+              const { data: teamsData, error: teamsError } = await supabase
+                .from('equipes')
+                .select('id, nome')
+                .in('id', teamIds)
+              
+              if (!teamsError && teamsData) {
+                teamsData.forEach((t: { id: string, nome: string }) => teamsMap.set(t.id, t.nome))
+              }
+            }
+
+            usersData.forEach((u: { id: string, full_name?: string, equipe_id?: string }) => {
+              usersMap.set(u.id, {
+                nome: u.full_name || '-',
+                equipe: (u.equipe_id && teamsMap.get(u.equipe_id)) || '-'
+              })
+            })
+          } else if (usersFetchError) {
+            console.warn("Aviso ao buscar nomes de corretores:", usersFetchError.message)
+          }
+        } catch (e) {
+          console.warn("Falha silenciosa ao buscar detalhes dos corretores:", e)
+        }
+      }
+
+      const formattedData = data.map((p: Proposal) => {
+        // Normalizar status para garantir que apareça nas abas corretas (com espaços ao redor da barra)
+        let normalizedStatus = p.status
+        if (normalizedStatus === "ANDAMENTO/AGUARDANDO PAGAMENTO") {
+          normalizedStatus = "ANDAMENTO / AGUARDANDO PAGAMENTO"
+        }
+        
+        return {
+          ...p,
+          status: normalizedStatus,
+          nome_corretor: usersMap.get(p.corretor_id as string)?.nome || '-',
+          equipe: usersMap.get(p.corretor_id as string)?.equipe || '-'
+        }
+      })
+
+      setProposals(formattedData)
+
+      // Calculate counts based on current accessible proposals
+      const newCounts: {[key: string]: number} = {}
+      formattedData.forEach((p: Proposal) => {
+        newCounts[p.status] = (newCounts[p.status] || 0) + 1
+      })
+      setCounts(newCounts)
+    } catch (error: unknown) {
+      console.error("Erro geral ao buscar propostas:", error)
+      const err = error as { message?: string }
+      if (err?.message === 'Failed to fetch') {
+        toast.error("Falha na conexão com o Supabase. Verifique se o seu projeto está ativo ou se a URL está correta.")
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const stabilizedFetchProposals = useCallback(fetchProposals, [perfil])
 
   useEffect(() => {
-    async function fetchProposals() {
-      try {
-        const { data, error } = await supabase
-          .from('propostas')
-          .select('*')
-          .order('created_at', { ascending: false })
-
-        if (error) {
-          console.error("Erro Supabase:", error.message)
-          throw error
-        }
-        setProposals(data || [])
-
-        // Calculate counts
-        const newCounts: {[key: string]: number} = {}
-        data?.forEach(p => {
-          newCounts[p.status] = (newCounts[p.status] || 0) + 1
-        })
-        setCounts(newCounts)
-      } catch (error) {
-        console.error("Erro ao buscar propostas:", error)
-      }
+    if (perfil) {
+      stabilizedFetchProposals()
+    } else {
+      setIsLoading(false)
     }
-    fetchProposals()
-  }, [])
+  }, [perfil, stabilizedFetchProposals])
 
-  const statusCards = statusCardsTemplate.map(card => ({
-    ...card,
-    count: counts[card.label] || 0
-  }))
+  const statusCards = TABS_CONFIG.map(tab => {
+    const total = (tab.subTabs || []).reduce((acc, sub) => acc + (counts[sub] || 0), 0)
+    return {
+      ...tab,
+      count: total
+    }
+  })
 
-  const secondaryCards = secondaryCardsTemplate.map(card => ({
-    ...card,
-    count: counts[card.label] || 0
-  }))
+  const selectedTabObj = TABS_CONFIG.find(t => t.label === selectedStatus)
+  const secondaryCards = selectedTabObj ? selectedTabObj.subTabs.map(sub => ({
+    label: sub,
+    count: counts[sub] || 0
+  })) : []
 
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
-  const filteredProposals = proposals.filter(proposal => {
+  const filteredProposals = proposals.filter((proposal: Proposal) => {
     const matchesSearch = 
       (proposal.id_lead?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
       (proposal.nome_cliente?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
       (proposal.cliente_cpf?.toLowerCase() || "").includes(searchTerm.toLowerCase())
     
-    const matchesStatus = !selectedStatus || proposal.status === selectedStatus
+    const matchesStatus = !selectedStatus || 
+      TABS_CONFIG.find(t => t.label === selectedStatus)?.subTabs.includes(proposal.status)
     const matchesSecondary = !selectedSecondaryStatus || proposal.status === selectedSecondaryStatus
     
     return matchesSearch && matchesStatus && matchesSecondary
@@ -124,6 +442,7 @@ export default function ProposalsPage() {
     } else {
       setSelectedStatus(status)
     }
+    setSelectedSecondaryStatus(null)
     setCurrentPage(1)
   }
 
@@ -162,46 +481,36 @@ export default function ProposalsPage() {
               <div className="flex flex-wrap items-end gap-3">
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Período</label>
-                  <div className="flex items-center gap-2 bg-slate-50/50 border border-slate-100 rounded-lg px-3 h-[38px] focus-within:border-primary/30 transition-colors">
-                    <Calendar className="w-4 h-4 text-slate-400" />
-                    <input 
-                      type="text" 
-                      value={startDate} 
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="text-[11px] font-bold w-18 bg-transparent focus:outline-none text-slate-600" 
-                    />
-                    <span className="text-slate-300 text-[10px] font-bold">A</span>
-                    <input 
-                      type="text" 
-                      value={endDate} 
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="text-[11px] font-bold w-18 bg-transparent focus:outline-none text-slate-600" 
-                    />
+                  <div className="flex items-center gap-2">
+                    {/* Data Inicial */}
+                    <div className="relative">
+                      <Input 
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="h-[38px] w-[140px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
+                      />
+                    </div>
+
+                    <span className="text-slate-300 text-[10px] font-bold scale-x-75">A</span>
+
+                    {/* Data Final */}
+                    <div className="relative">
+                      <Input 
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="h-[38px] w-[140px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
+                      />
+                    </div>
                   </div>
                 </div>
-                <Button className="bg-[#1A2B49] hover:bg-[#1A2B49]/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-slate-200">
-                  BUSCAR
-                </Button>
                 <Button 
-                  variant="outline" 
-                  className="h-[38px] border-slate-200 text-[11px] font-bold px-6 bg-white hover:bg-slate-50"
-                  onClick={() => {
-                    setSearchTerm("")
-                    setSelectedStatus(null)
-                    setSelectedSecondaryStatus(null)
-                    setStartDate("09/02/2026")
-                    setEndDate("09/02/2026")
-                    setCurrentPage(1)
-                  }}
+                  onClick={fetchProposals}
+                  disabled={isLoading}
+                  className="bg-[#171717] hover:bg-[#171717]/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-black/20 transition-all"
                 >
-                  <Filter className="w-3.5 h-3.5 mr-2" />
-                  FILTRAR
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="h-[38px] border-slate-200 text-[11px] font-bold px-6 bg-white hover:bg-slate-50"
-                >
-                  HOJE
+                  {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "BUSCAR"}
                 </Button>
               </div>
             </div>
@@ -210,31 +519,30 @@ export default function ProposalsPage() {
 
         {/* Status Section with Grouping */}
         <div className="space-y-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 relative z-10">
-            {statusCards.map((card, index) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+            {statusCards.map((card) => (
               <div 
                 key={card.label} 
                 className="relative group cursor-pointer"
                 onClick={() => handleParentClick(card.label)}
               >
-                {index === 0 && (
+                {selectedStatus === card.label && (
                   <div className={cn(
-                    "absolute -left-4 -right-4 -top-4 -bottom-10 rounded-t-3xl z-0 hidden lg:block transition-colors",
-                    selectedStatus === "AGUARDANDO DIGITAÇÃO" ? "bg-slate-300" : "bg-slate-200"
+                    "absolute -left-4 -right-4 -top-4 -bottom-10 rounded-t-3xl z-0 hidden lg:block transition-colors bg-slate-300"
                   )} />
                 )}
                 <Card className={cn(
                   "card-shadow border border-slate-200 border-t-4 bg-white h-full relative z-10 transition-all hover:scale-[1.02]", 
                   card.color,
-                  selectedStatus === card.label && "ring-2 ring-primary ring-offset-2"
+                  selectedStatus === card.label && "ring-2 ring-primary ring-offset-2 shadow-xl shadow-primary/10"
                 )}>
                   <CardContent className="p-5">
                     <p className="text-[9px] font-bold text-slate-400 uppercase mb-4 h-8 leading-tight tracking-widest">{card.label}</p>
-                    <div className="flex items-end gap-2">
-                      <div className={cn("px-2 py-0.5 rounded text-[10px] font-normal text-white", card.textColor.replace('text-', 'bg-'))}>
+                    <div className="flex items-center gap-2">
+                      <div className="bg-[#1e293b] px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
                         {card.count}
                       </div>
-                      <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest mb-0.5">Contrato(s)</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Contrato(s)</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -242,34 +550,34 @@ export default function ProposalsPage() {
             ))}
           </div>
 
-          {/* Secondary Cards Container */}
-          <div className={cn(
-            "rounded-3xl p-6 mt-6 relative z-0 border border-slate-300/50 shadow-inner transition-colors -mx-4",
-            selectedStatus === "AGUARDANDO DIGITAÇÃO" ? "bg-slate-300" : "bg-slate-200"
-          )}>
-            <div className="flex overflow-x-auto gap-4 pb-2 custom-scrollbar lg:grid lg:grid-cols-3 lg:overflow-x-visible max-w-4xl">
-              {secondaryCards.map((card) => (
-                <Card 
-                  key={card.label} 
-                  className={cn(
-                    "card-shadow border border-slate-200 bg-white min-w-[160px] lg:min-w-0 cursor-pointer transition-all hover:scale-[1.02]",
-                    selectedSecondaryStatus === card.label && "ring-2 ring-primary ring-offset-2"
-                  )}
-                  onClick={() => handleSecondaryClick(card.label)}
-                >
-                  <CardContent className="p-4">
-                    <p className="text-[8.5px] font-bold text-slate-400 uppercase mb-3 h-7 leading-tight tracking-wider">{card.label}</p>
-                    <div className="flex items-center gap-2">
-                      <div className="bg-slate-700 px-2 py-0.5 rounded text-[10px] font-normal text-white">
-                        {card.count}
+          {selectedStatus && secondaryCards.length > 0 && (
+            <div className={cn(
+              "rounded-3xl p-6 mt-6 relative z-0 border border-slate-300/50 shadow-inner transition-colors -mx-4 bg-slate-300"
+            )}>
+              <div className="flex overflow-x-auto gap-4 pb-2 custom-scrollbar lg:grid lg:grid-cols-4 lg:overflow-x-visible">
+                {secondaryCards.map((card) => (
+                  <Card 
+                    key={card.label} 
+                    className={cn(
+                      "card-shadow border border-slate-200 bg-white min-w-[160px] lg:min-w-0 cursor-pointer transition-all hover:scale-[1.02]",
+                      selectedSecondaryStatus === card.label && "ring-2 ring-primary ring-offset-2"
+                    )}
+                    onClick={() => handleSecondaryClick(card.label)}
+                  >
+                    <CardContent className="p-4">
+                      <p className="text-[8.5px] font-bold text-slate-400 uppercase mb-3 h-7 leading-tight tracking-wider">{card.label}</p>
+                      <div className="flex items-center gap-2">
+                        <div className="bg-slate-700 px-2 py-0.5 rounded text-[10px] font-normal text-white">
+                          {card.count}
+                        </div>
+                        <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Contrato(s)</span>
                       </div>
-                      <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Contrato(s)</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Table */}
@@ -277,62 +585,111 @@ export default function ProposalsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-[#1A2B49] border-b border-slate-200">
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest">ID</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest">CPF</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest">Nome do Cliente</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest">Operação</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest">Banco/Convênio</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest">Sala/Comercial</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest">Situação Contrato</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest">Resposta Corretor</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest text-right">Valor da Parcela</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest">Última Verificação</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-white uppercase tracking-widest text-center">Ações</th>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ID</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ADE</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">CORRETOR</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">EQUIPE</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">CPF</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">CLIENTE</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">BANCO/CONVÊNIO</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">OPERAÇÃO</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">STATUS</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">VALOR BASE</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ÚLTIMA ALTERAÇÃO</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">AÇÕES</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {paginatedProposals.length > 0 ? (
-                  paginatedProposals.map((proposal) => (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={12} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
+                      Carregando propostas...
+                    </td>
+                  </tr>
+                ) : paginatedProposals.length > 0 ? (
+                  paginatedProposals.map((proposal, index) => (
                     <React.Fragment key={proposal.id}>
                       <tr 
                         onClick={() => toggleProposalExpansion(proposal.id_lead)}
                         className={cn(
-                          "hover:bg-slate-50/80 transition-colors group cursor-pointer",
-                          expandedProposalId === proposal.id_lead && "bg-slate-50"
+                          "hover:bg-slate-50 transition-colors group cursor-pointer",
+                          expandedProposalId === proposal.id_lead ? "bg-slate-50 border-l-2 border-primary" : (index % 2 === 0 ? "bg-slate-100" : "bg-white")
                         )}
                       >
-                        <td className="px-4 py-4 text-[12px] font-bold text-slate-400 group-hover:text-primary">{proposal.id_lead}</td>
-                        <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{proposal.cliente_cpf}</td>
-                        <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 uppercase tracking-tight">{proposal.nome_cliente}</td>
-                        <td className="px-4 py-4 text-[12px] font-bold text-slate-500">{proposal.tipo_operacao}</td>
+                        <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">{proposal.id_lead}</td>
+                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.ade || '-'}</td>
+                        <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase">{proposal.nome_corretor || '-'}</td>
+                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500 uppercase">{proposal.equipe || '-'}</td>
+                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.cliente_cpf}</td>
+                        <td className="px-4 py-4 text-[11px] font-bold text-slate-700 uppercase tracking-tight">{proposal.nome_cliente}</td>
                         <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.banco}/{proposal.convenio}</td>
-                        <td className="px-4 py-4 text-[10px] font-bold text-slate-400 leading-tight max-w-[150px] truncate" title={proposal.commercial}>
-                          -
+                        <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.tipo_operacao}</td>
+                        <td className="px-4 py-4">
+                          <span className={cn(
+                            "px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider",
+                            proposal.status?.includes('CANCELADO') ? "bg-rose-100 text-rose-600" :
+                            (proposal.status?.includes('PAGO') || proposal.status?.includes('FORMALIZAÇÃO') || proposal.status === "PAGO AO CLIENTE E SEM PENDÊNCIAS") ? "bg-cyan-100 text-cyan-600" :
+                            (proposal.status?.includes('ANDAMENTO') || proposal.status?.includes('AGUARDANDO')) ? "bg-amber-100 text-amber-600" :
+                            "bg-slate-100 text-slate-600"
+                          )}>
+                            {proposal.status}
+                          </span>
                         </td>
-                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.status}</td>
-                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">-</td>
-                        <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">R$ {proposal.valor_parcela?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-600">{format(new Date(proposal.created_at), "dd/MM/yyyy HH:mm:ss")}</td>
-                        <td className="px-4 py-4 text-center">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-300 hover:text-primary hover:bg-primary/5 rounded-full transition-all"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleProposalExpansion(proposal.id_lead)
-                            }}
-                          >
-                            {expandedProposalId === proposal.id_lead ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </Button>
+                        <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-right">
+                          R$ {(proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-4 text-[10px] font-bold text-slate-600">
+                          {proposal.updated_at ? (
+                            (() => {
+                              try {
+                                return format(new Date(proposal.updated_at), "dd/MM/yyyy HH:mm")
+                              } catch {
+                                return '-'
+                              }
+                            })()
+                          ) : '-'}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center justify-center gap-1">
+                            {selectedStatus !== "CANCELADOS" && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setSelectedProposalForStatus(proposal)
+                                  setIsStatusModalOpen(true)
+                                }}
+                                className="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md p-1 group/btn transition-all"
+                                title="ALTERAR STATUS DA PROPOSTA"
+                              >
+                                <ChevronRight className="w-4 h-4" />
+                              </Button>
+                            )}
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                toggleProposalExpansion(proposal.id_lead)
+                              }}
+                              className="w-8 h-8 bg-sky-500 hover:bg-sky-600 text-white rounded-md p-1 group/btn transition-all"
+                              title="VISUALIZAR/EDITAR PROPOSTA"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                       {expandedProposalId === proposal.id_lead && (
                         <tr>
-                          <td colSpan={11} className="p-0 border-b border-slate-200">
+                          <td colSpan={12} className="p-0 border-b border-slate-200">
                             <div className="animate-in slide-in-from-top-2 duration-300">
-                              <ProposalDetailsAccordion proposal={proposal} />
+                              <ProposalDetailsAccordion 
+                                proposal={proposal} 
+                                onRefresh={fetchProposals}
+                              />
                             </div>
                           </td>
                         </tr>
@@ -341,7 +698,7 @@ export default function ProposalsPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
+                    <td colSpan={12} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
                       Nenhuma proposta encontrada com os filtros selecionados.
                     </td>
                   </tr>
@@ -401,6 +758,13 @@ export default function ProposalsPage() {
           )}
         </Card>
       </main>
+
+      <StatusPropostaModal 
+        isOpen={isStatusModalOpen}
+        onClose={() => setIsStatusModalOpen(false)}
+        proposal={selectedProposalForStatus}
+        onStatusUpdate={handleStatusUpdate}
+      />
     </div>
   )
 }

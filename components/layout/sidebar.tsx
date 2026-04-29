@@ -15,7 +15,8 @@ import {
   FileEdit,
   ChevronLeft,
   ChevronRight,
-  Settings
+  Settings,
+  Landmark
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
@@ -25,6 +26,12 @@ const menuItems = [
   {
     title: "GESTÃO DE CLIENTES",
     items: [
+      { 
+        name: "DASHBOARD", 
+        href: "/", 
+        icon: Landmark, 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+      },
       { 
         name: "IMPORTAR LOTE", 
         href: "/importar", 
@@ -45,7 +52,7 @@ const menuItems = [
       },
       { 
         name: "ACESSAR CLIENTE", 
-        href: "/", 
+        href: "/pesquisa", 
         icon: Search, 
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
       },

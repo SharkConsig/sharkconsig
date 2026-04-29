@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
+import { format } from "date-fns"
+
 interface FichaPropostaModalProps {
   isOpen: boolean
   onClose: () => void
@@ -13,32 +15,35 @@ interface FichaPropostaModalProps {
 
 interface FieldProps {
   label: string
-  value: string
+  value: string | number | null | undefined
   id: string
   className?: string
   onCopy: (text: string, id: string) => void
   isCopied: boolean
 }
 
-const Field = ({ label, value, id, className, onCopy, isCopied }: FieldProps) => (
-  <div 
-    className={cn(
-      "p-3 space-y-1 group/field relative cursor-pointer hover:bg-slate-50 transition-all active:bg-slate-100", 
-      className
-    )}
-    onClick={() => onCopy(value, id)}
-  >
-    <p className="text-[9px] font-bold text-slate-400 uppercase select-none">{label}</p>
-    <div className="flex items-center justify-between gap-2">
-      <p className="text-[11px] font-bold text-slate-800">{value}</p>
-      {isCopied && (
-        <span className="text-[8px] font-black text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100 animate-in fade-in zoom-in duration-200">
-          COPIADO
-        </span>
+const Field = ({ label, value, id, className, onCopy, isCopied }: FieldProps) => {
+  const displayValue = value === null || value === undefined ? "-" : value.toString();
+  return (
+    <div 
+      className={cn(
+        "p-3 space-y-1 group/field relative cursor-pointer hover:bg-slate-50 transition-all active:bg-slate-100", 
+        className
       )}
+      onClick={() => onCopy(displayValue, id)}
+    >
+      <p className="text-[9px] font-bold text-slate-400 uppercase select-none">{label}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-bold text-slate-800">{displayValue}</p>
+        {isCopied && (
+          <span className="text-[8px] font-black text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100 animate-in fade-in zoom-in duration-200">
+            COPIADO
+          </span>
+        )}
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaModalProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null)
@@ -46,22 +51,19 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
   if (!isOpen) return null
 
   const handlePrint = () => {
-    // Ensure the window is focused before printing
     window.focus();
-    // Use a slightly longer timeout to ensure the browser has time to process the focus
     setTimeout(() => {
       try {
         window.print();
       } catch (e) {
         console.error("Print failed:", e);
-        // Fallback for some environments
         document.execCommand('print', false);
       }
     }, 250);
   }
 
   const copyToClipboard = (text: string, fieldId: string) => {
-    if (!text) return
+    if (!text || text === "-") return
     navigator.clipboard.writeText(text)
     setCopiedField(fieldId)
     setTimeout(() => setCopiedField(null), 2000)
@@ -109,10 +111,10 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
                 <h3 className="text-[11px] font-black text-slate-700 uppercase tracking-widest text-center">Tipo de contrato</h3>
               </div>
               <div className="grid grid-cols-4 border-x border-b border-slate-300 divide-x divide-slate-300">
-                <Field label="Operação" value={proposal.tipo_operacao || "-"} id="operacao" onCopy={copyToClipboard} isCopied={copiedField === "operacao"} />
+                <Field label="Operação" value={proposal.tipo_operacao} id="operacao" onCopy={copyToClipboard} isCopied={copiedField === "operacao"} />
                 <Field label="Tabela" value="-" id="tabela" onCopy={copyToClipboard} isCopied={copiedField === "tabela"} />
-                <Field label="Convênio" value={proposal.convenio || "INSS"} id="convenio" onCopy={copyToClipboard} isCopied={copiedField === "convenio"} />
-                <Field label="Matrícula" value={proposal.matricula || "-"} id="matricula" onCopy={copyToClipboard} isCopied={copiedField === "matricula"} />
+                <Field label="Convênio" value={proposal.convenio} id="convenio" onCopy={copyToClipboard} isCopied={copiedField === "convenio"} />
+                <Field label="Matrícula" value={proposal.matricula} id="matricula" onCopy={copyToClipboard} isCopied={copiedField === "matricula"} />
               </div>
             </div>
 
@@ -131,32 +133,32 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
                   <Field label="Data Nascimento" value={proposal.data_nascimento ? format(new Date(proposal.data_nascimento), "dd/MM/yyyy") : "-"} id="data_nascimento" onCopy={copyToClipboard} isCopied={copiedField === "data_nascimento"} />
                 </div>
                 <div className="grid grid-cols-4 divide-x divide-slate-300">
-                  <Field label="Identidade" value="4062638" id="identidade" onCopy={copyToClipboard} isCopied={copiedField === "identidade"} />
-                  <Field label="Convênio Emissor" value="SSP SC" id="convenio_emissor" onCopy={copyToClipboard} isCopied={copiedField === "convenio_emissor"} />
-                  <Field label="UF" value="SC" id="uf" onCopy={copyToClipboard} isCopied={copiedField === "uf"} />
-                  <Field label="Emissão" value="28/09/2020" id="emissao" onCopy={copyToClipboard} isCopied={copiedField === "emissao"} />
+                  <Field label="Identidade" value={proposal.identidade} id="identidade" onCopy={copyToClipboard} isCopied={copiedField === "identidade"} />
+                  <Field label="Orgão Emissor" value={proposal.orgao_emissor} id="orgao_emissor" onCopy={copyToClipboard} isCopied={copiedField === "orgao_emissor"} />
+                  <Field label="UF Emissão" value={proposal.uf_emissao} id="uf_emissao" onCopy={copyToClipboard} isCopied={copiedField === "uf_emissao"} />
+                  <Field label="Emissão" value={proposal.data_emissao ? format(new Date(proposal.data_emissao), "dd/MM/yyyy") : "-"} id="emissao" onCopy={copyToClipboard} isCopied={copiedField === "emissao"} />
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
-                  <Field label="Naturalidade" value="VARGEM" id="naturalidade" onCopy={copyToClipboard} isCopied={copiedField === "naturalidade"} />
-                  <Field label="UF Naturalidade" value="SC" id="uf_naturalidade" onCopy={copyToClipboard} isCopied={copiedField === "uf_naturalidade"} />
+                  <Field label="Naturalidade" value={proposal.naturalidade} id="naturalidade" onCopy={copyToClipboard} isCopied={copiedField === "naturalidade"} />
+                  <Field label="UF Naturalidade" value={proposal.uf_naturalidade} id="uf_naturalidade" onCopy={copyToClipboard} isCopied={copiedField === "uf_naturalidade"} />
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
-                  <Field label="Nome do Pai" value="JOAO BATISTA RODRIGUES" id="nome_pai" onCopy={copyToClipboard} isCopied={copiedField === "nome_pai"} />
-                  <Field label="Nome da Mãe" value="MARIA JOAQUINA RIBEIRO" id="nome_mae" onCopy={copyToClipboard} isCopied={copiedField === "nome_mae"} />
+                  <Field label="Nome do Pai" value={proposal.nome_pai} id="nome_pai" onCopy={copyToClipboard} isCopied={copiedField === "nome_pai"} />
+                  <Field label="Nome da Mãe" value={proposal.nome_mae} id="nome_mae" onCopy={copyToClipboard} isCopied={copiedField === "nome_mae"} />
                 </div>
                 <div className="grid grid-cols-4 divide-x divide-slate-300">
-                  <Field label="Endereço" value="RUA HELENA KRAUSER DUARTE" id="endereco" className="col-span-3" onCopy={copyToClipboard} isCopied={copiedField === "endereco"} />
-                  <Field label="Complemento" value="CASA" id="complemento" onCopy={copyToClipboard} isCopied={copiedField === "complemento"} />
+                  <Field label="Endereço" value={proposal.endereco} id="endereco" className="col-span-3" onCopy={copyToClipboard} isCopied={copiedField === "endereco"} />
+                  <Field label="Complemento" value={proposal.complemento} id="complemento" onCopy={copyToClipboard} isCopied={copiedField === "complemento"} />
                 </div>
                 <div className="grid grid-cols-6 divide-x divide-slate-300">
-                  <Field label="UF" value="SC" id="uf_end" onCopy={copyToClipboard} isCopied={copiedField === "uf_end"} />
-                  <Field label="Cidade" value="Palhoça" id="cidade" className="col-span-2" onCopy={copyToClipboard} isCopied={copiedField === "cidade"} />
-                  <Field label="CEP" value="88138-157" id="cep" className="col-span-2" onCopy={copyToClipboard} isCopied={copiedField === "cep"} />
-                  <Field label="Número" value="02" id="numero" onCopy={copyToClipboard} isCopied={copiedField === "numero"} />
+                  <Field label="UF" value={proposal.uf} id="uf_end" onCopy={copyToClipboard} isCopied={copiedField === "uf_end"} />
+                  <Field label="Cidade" value={proposal.cidade} id="cidade" className="col-span-2" onCopy={copyToClipboard} isCopied={copiedField === "cidade"} />
+                  <Field label="CEP" value={proposal.cep} id="cep" className="col-span-2" onCopy={copyToClipboard} isCopied={copiedField === "cep"} />
+                  <Field label="Número" value={proposal.numero} id="numero" onCopy={copyToClipboard} isCopied={copiedField === "numero"} />
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
-                  <Field label="Nacionalidade" value="Brasileira" id="nacionalidade" onCopy={copyToClipboard} isCopied={copiedField === "nacionalidade"} />
-                  <Field label="Telefone Celular" value="(48) 98404-6286" id="celular" onCopy={copyToClipboard} isCopied={copiedField === "celular"} />
+                  <Field label="Telefones" value={`${proposal.tel_residencial_1 || ""} ${proposal.tel_residencial_2 || ""} ${proposal.tel_comercial || ""}`} id="telefones" onCopy={copyToClipboard} isCopied={copiedField === "telefones"} />
+                  <Field label="Bairro" value={proposal.bairro} id="bairro" onCopy={copyToClipboard} isCopied={copiedField === "bairro"} />
                 </div>
               </div>
             </div>
@@ -167,14 +169,14 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
                 <h3 className="text-[11px] font-black text-slate-700 uppercase tracking-widest text-center">Dados bancários</h3>
               </div>
               <div className="grid grid-cols-6 border-x border-b border-slate-300 divide-x divide-slate-300">
-                <Field label="Banco" value="341 - BANCO ITAÚ" id="banco" className="col-span-2" onCopy={copyToClipboard} isCopied={copiedField === "banco"} />
-                <Field label="Agência" value="6243" id="agencia" onCopy={copyToClipboard} isCopied={copiedField === "agencia"} />
-                <Field label="DV AG" value="0" id="dv_ag" onCopy={copyToClipboard} isCopied={copiedField === "dv_ag"} />
-                <Field label="Nº Conta" value="0465" id="conta" onCopy={copyToClipboard} isCopied={copiedField === "conta"} />
-                <Field label="DV" value="9" id="dv_conta" onCopy={copyToClipboard} isCopied={copiedField === "dv_conta"} />
+                <Field label="Banco" value={proposal.banco_cliente} id="banco" className="col-span-2" onCopy={copyToClipboard} isCopied={copiedField === "banco"} />
+                <Field label="Agência" value={proposal.agencia} id="agencia" onCopy={copyToClipboard} isCopied={copiedField === "agencia"} />
+                <Field label="DV AG" value="-" id="dv_ag" onCopy={copyToClipboard} isCopied={copiedField === "dv_ag"} />
+                <Field label="Nº Conta" value={proposal.conta} id="conta" onCopy={copyToClipboard} isCopied={copiedField === "conta"} />
+                <Field label="DV" value={proposal.dv} id="dv_conta" onCopy={copyToClipboard} isCopied={copiedField === "dv_conta"} />
               </div>
               <div className="border-x border-b border-slate-300">
-                <Field label="Tipo de Conta" value="CONTA CORRENTE" id="tipo_conta" onCopy={copyToClipboard} isCopied={copiedField === "tipo_conta"} />
+                <Field label="Tipo de Conta" value={proposal.tipo_conta} id="tipo_conta" onCopy={copyToClipboard} isCopied={copiedField === "tipo_conta"} />
               </div>
             </div>
 
@@ -185,17 +187,17 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
               </div>
               <div className="border-x border-b border-slate-300 divide-y divide-slate-300">
                 <div className="grid grid-cols-5 divide-x divide-slate-300">
-                  <Field label="Valor Parcela" value={`R$ ${proposal.valor_parcela?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || "0,00"}`} id="v_parcela" onCopy={copyToClipboard} isCopied={copiedField === "v_parcela"} />
+                  <Field label="Valor Parcela" value={proposal.valor_parcela ? `R$ ${proposal.valor_parcela.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "R$ 0,00"} id="v_parcela" onCopy={copyToClipboard} isCopied={copiedField === "v_parcela"} />
                   <Field label="Prazo" value="-" id="prazo" onCopy={copyToClipboard} isCopied={copiedField === "prazo"} />
-                  <Field label="Coeficiente" value="-" id="coeficiente" onCopy={copyToClipboard} isCopied={copiedField === "coeficiente"} />
-                  <Field label="Valor Operação" value="-" id="v_operacao" onCopy={copyToClipboard} isCopied={copiedField === "v_operacao"} />
-                  <Field label="Valor Liberado" value="-" id="v_liberado" onCopy={copyToClipboard} isCopied={copiedField === "v_liberado"} />
+                  <Field label="Coeficiente" value={proposal.coeficiente_prazo} id="coeficiente" onCopy={copyToClipboard} isCopied={copiedField === "coeficiente"} />
+                  <Field label="Valor Operação" value={proposal.valor_operacao_operacional ? `R$ ${proposal.valor_operacao_operacional.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "R$ 0,00"} id="v_operacao" onCopy={copyToClipboard} isCopied={copiedField === "v_operacao"} />
+                  <Field label="Valor Cliente" value={proposal.valor_cliente_operacional ? `R$ ${proposal.valor_cliente_operacional.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "R$ 0,00"} id="v_liberado" onCopy={copyToClipboard} isCopied={copiedField === "v_liberado"} />
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
                   <Field label="Banco Empréstimo" value={proposal.banco || "-"} id="banco_emp" onCopy={copyToClipboard} isCopied={copiedField === "banco_emp"} />
-                  <Field label="Valor Negociado" value="R$ -" id="v_negociado" onCopy={copyToClipboard} isCopied={copiedField === "v_negociado"} />
+                  <Field label="PIX" value={proposal.chave_pix} id="pix" onCopy={copyToClipboard} isCopied={copiedField === "pix"} />
                 </div>
-                <Field label="Observações" value={proposal.observations || "Nenhuma observação registrada."} id="obs" onCopy={copyToClipboard} isCopied={copiedField === "obs"} />
+                <Field label="Observações" value={proposal.observacoes || "Nenhuma observação registrada."} id="obs" onCopy={copyToClipboard} isCopied={copiedField === "obs"} />
               </div>
             </div>
 

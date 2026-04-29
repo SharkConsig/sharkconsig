@@ -5,16 +5,29 @@ const getEnvVarByPrefix = (prefix: string) => {
   return key ? process.env[key] : '';
 };
 
-let supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_URL'))?.trim() || 'https://placeholder.supabase.co';
+let supabaseUrl = (
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 
+  process.env.SUPABASE_URL ||
+  getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_URL') ||
+  getEnvVarByPrefix('SUPABASE_LINK')
+)?.trim() || 'https://placeholder.supabase.co';
+
 // Remove trailing slash if present
-if (supabaseUrl.endsWith('/')) {
+if (supabaseUrl && supabaseUrl.endsWith('/')) {
   supabaseUrl = supabaseUrl.slice(0, -1);
+}
+
+// Add protocol if missing
+if (supabaseUrl && !supabaseUrl.startsWith('http') && supabaseUrl !== 'placeholder' && !supabaseUrl.includes('placeholder')) {
+  supabaseUrl = `https://${supabaseUrl}`;
 }
 
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || 
                         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
+                        process.env.SUPABASE_ANON_KEY ||
                         getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_PUBLISHABLE') ||
-                        getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_ANON'))?.trim() || 'placeholder';
+                        getEnvVarByPrefix('NEXT_PUBLIC_SUPABASE_ANON') ||
+                        getEnvVarByPrefix('SUPABASE_ANON'))?.trim() || 'placeholder';
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -25,12 +38,15 @@ export const isSupabaseConfigured = Boolean(
 );
 
 if (typeof window !== 'undefined') {
-  const maskedUrl = supabaseUrl.includes('placeholder') ? 'PLACEHOLDER' : supabaseUrl.substring(0, 15) + '...';
-  console.log('Supabase URL detectada:', maskedUrl);
-  console.log('Supabase Key detectada:', supabaseAnonKey !== 'placeholder' ? 'OK (Real)' : 'ERRO (Placeholder)');
+  const maskedUrl = supabaseUrl.includes('placeholder') ? 'PLACEHOLDER' : supabaseUrl.substring(0, 20) + '...';
+  console.log('Supabase Configuration Status:', {
+    url: maskedUrl,
+    keyDetected: supabaseAnonKey !== 'placeholder',
+    isConfigured: isSupabaseConfigured
+  });
   
   if (!isSupabaseConfigured) {
-    console.warn('Supabase não configurado corretamente. Verifique as variáveis na aba Secrets.');
+    console.error('CRITICAL: Supabase is NOT configured. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to Settings -> Secrets.');
   }
 }
 

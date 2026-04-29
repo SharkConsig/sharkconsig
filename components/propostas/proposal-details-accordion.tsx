@@ -1,111 +1,487 @@
 "use client"
 
-import { useState } from "react"
+import Image from "next/image"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Eye, History, FileText, Plus, Save } from "lucide-react"
+import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { FichaPropostaModal } from "./ficha-proposta-modal"
-
-interface ProposalDetailsAccordionProps {
-  proposal: {
-    id_lead: string;
-    cliente_cpf: string;
-    nome_cliente: string;
-    tipo_operacao: string;
-    banco: string;
-    convenio: string;
-    status: string;
-    valor_parcela: number;
-    created_at: string;
-    origem?: string;
-    matricula?: string;
-    responsible?: string;
-  }
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
+import { Input } from "@/components/ui/input"
+import { format } from "date-fns"
+import { useAuth } from "@/context/auth-context"
+import { useRef } from "react"
+interface HistoryItem {
+  id: string;
+  created_at: string;
+  status_anterior: string | null;
+  status_novo: string;
+  descricao: string;
+  observacoes: string;
+  tipo: string;
+  alteracoes: Record<string, { old: string | number; new: string | number }> | null;
+  usuario_id: string;
 }
 
-const DataField = ({ label, value, className, labelColor = "text-white", valueColor = "text-slate-300", hoverColor = "group-hover/copy:text-white" }: { label: string, value: string | undefined, className?: string, labelColor?: string, valueColor?: string, hoverColor?: string }) => {
-  const [isCopied, setIsCopied] = useState(false)
-  
-  const handleCopy = () => {
-    if (!value) return
-    navigator.clipboard.writeText(value)
-    setIsCopied(true)
-    setTimeout(() => setIsCopied(false), 2000)
-  }
-
-  const isLight = labelColor.includes("slate-900")
-
-  return (
-    <div 
-      className={cn("flex items-center gap-2 cursor-pointer group/copy relative w-fit", className)}
-      onClick={handleCopy}
-      title="Clique para copiar"
-    >
-      <span className={cn("text-[10px] font-bold uppercase shrink-0", labelColor)}>{label}:</span>
-      <span className={cn("text-[10px] font-medium transition-colors", valueColor, hoverColor)}>{value || "-"}</span>
-      {isCopied && (
-        <span className={cn(
-          "absolute left-full ml-2 text-[8px] font-black px-1 rounded animate-in fade-in zoom-in duration-200 whitespace-nowrap z-20",
-          isLight ? "text-green-600 bg-green-50 border border-green-100 shadow-sm" : "text-green-400 bg-slate-900/50"
-        )}>
-          COPIADO
-        </span>
-      )}
-    </div>
-  )
+interface Proposal {
+  id: number
+  id_lead: string
+  corretor_id?: string
+  ade?: string
+  nome_corretor?: string
+  equipe?: string
+  nome_cliente: string
+  cliente_cpf: string
+  convenio: string
+  banco: string
+  tipo_operacao: string
+  status: string
+  resposta_corretor?: string
+  obs_corretor?: string
+  obs_operacional?: string
+  observacoes?: string
+  valor_base?: number
+  valor_parcela?: number
+  updated_at?: string
+  created_at: string
+  data_nascimento?: string
+  origem?: string
+  matricula?: string
+  naturalidade?: string
+  uf_naturalidade?: string
+  identidade?: string
+  orgao_emissor?: string
+  uf_emissao?: string
+  data_emissao?: string
+  nome_pai?: string
+  nome_mae?: string
+  tel_residencial_1?: string
+  tel_residencial_2?: string
+  tel_comercial?: string
+  cep?: string
+  endereco?: string
+  numero?: string
+  complemento?: string
+  bairro?: string
+  cidade?: string
+  uf?: string
+  banco_cliente?: string
+  chave_pix?: string
+  conta?: string
+  agencia?: string
+  dv?: string
+  tipo_conta?: string
+  valor_operacao_operacional?: number
+  valor_cliente_operacional?: number
+  margem_utilizada?: number
+  coeficiente_prazo?: string
+  valor_producao_corretor?: number
+  arquivo_rg_frente?: string
+  arquivo_rg_verso?: string
+  arquivo_contracheque?: string
+  arquivo_extrato?: string
+  arquivo_outros?: string
+  arquivo_outros_2?: string
 }
 
-const ClickToCopy = ({ children, text, className }: { children: React.ReactNode, text: string | undefined, className?: string }) => {
-  const [isCopied, setIsCopied] = useState(false)
-  
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!text) return
-    navigator.clipboard.writeText(text)
-    setIsCopied(true)
-    setTimeout(() => setIsCopied(false), 2000)
-  }
-
-  return (
-    <div 
-      className={cn("cursor-pointer hover:text-primary transition-colors relative group/copy", className)}
-      onClick={handleCopy}
-      title="Clique para copiar"
-    >
-      {children}
-      {isCopied && (
-        <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[8px] font-black text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100 animate-in fade-in zoom-in duration-200 z-30">
-          COPIADO
-        </span>
-      )}
-    </div>
-  )
-}
-
-export function ProposalDetailsAccordion({ proposal: prop }: ProposalDetailsAccordionProps) {
+export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
+  const { perfil: user, isCorretor } = useAuth()
   const [activeTab, setActiveTab] = useState<"visualizar" | "historico">("visualizar")
   const [isFichaModalOpen, setIsFichaModalOpen] = useState(false)
+  const [history, setHistory] = useState<HistoryItem[]>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  
+  const [dbProdutosConfigs, setDbProdutosConfigs] = useState<Record<string, unknown>[]>([])
+  const [selectedCoefValue, setSelectedCoefValue] = useState<number | null>(null)
+  const [selectedProdPercent, setSelectedProdPercent] = useState<number | null>(null)
+  const [isCoefDropdownOpen, setIsCoefDropdownOpen] = useState(false)
+  const [coefSearchTerm, setCoefSearchTerm] = useState("")
+  const coefDropdownRef = useRef<HTMLDivElement>(null)
 
-  // Use real data keys
-  const proposal = {
-    ...prop,
-    registrationDate: prop.created_at ? new Date(prop.created_at).toLocaleDateString('pt-BR') : "-",
-    responsible: prop.responsible || "NÃO ATRIBUÍDO",
-    ade: "-",
-    bank: prop.banco,
-    opType: prop.tipo_operacao,
-    origin: prop.origem || "-",
-    insurance: "-",
-    agreement: prop.convenio,
-    usedMargin: prop.valor_parcela?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || "0,00",
-    production: {
-      type: prop.tipo_operacao,
-      percent: "-",
-      base: prop.valor_parcela?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
-      gross: "-",
-      net: "-"
-    },
-    observations: "Sem observações no momento."
+  const [selection] = useState({
+    convenio: proposal.convenio || "",
+    banco: proposal.banco || "",
+    operacao: proposal.tipo_operacao || ""
+  })
+
+  useEffect(() => {
+    async function fetchHistory() {
+      if (activeTab !== "historico") return
+      setIsLoadingHistory(true)
+      try {
+        const { data, error } = await supabase
+          .from('historico_propostas')
+          .select(`
+            id,
+            created_at,
+            status_anterior,
+            status_novo,
+            descricao,
+            observacoes,
+            tipo,
+            alteracoes,
+            usuario_id
+          `)
+          .eq('proposta_id_lead', proposal.id_lead)
+          .order('created_at', { ascending: false })
+        
+        if (error) {
+          console.warn("Aviso na busca de histórico:", error.message)
+          setHistory([])
+        } else {
+          setHistory(data || [])
+        }
+      } catch (err) {
+        console.error("Exceção ao carregar histórico:", err)
+        setHistory([])
+      } finally {
+        setIsLoadingHistory(false)
+      }
+    }
+    fetchHistory()
+  }, [activeTab, proposal.id_lead])
+
+  const [formData, setFormData] = useState({
+    nome: proposal.nome_cliente || "",
+    cpf: proposal.cliente_cpf || "",
+    nascimento: proposal.data_nascimento ? format(new Date(proposal.data_nascimento), "dd/MM/yyyy") : "",
+    idLead: proposal.id_lead || "",
+    origem: proposal.origem || "",
+    matricula: proposal.matricula || "",
+    naturalidade: proposal.naturalidade || "",
+    uf_naturalidade: proposal.uf_naturalidade || "",
+    identidade: proposal.identidade || "",
+    orgao_emissor: proposal.orgao_emissor || "",
+    uf_emissao: proposal.uf_emissao || "",
+    data_emissao: proposal.data_emissao ? format(new Date(proposal.data_emissao), "dd/MM/yyyy") : "",
+    nome_pai: proposal.nome_pai || "",
+    nome_mae: proposal.nome_mae || "",
+    tel_1: proposal.tel_residencial_1 || "",
+    tel_2: proposal.tel_residencial_2 || "",
+    tel_3: proposal.tel_comercial || "",
+    cep: proposal.cep || "",
+    endereco: proposal.endereco || "",
+    numero: proposal.numero || "",
+    complemento: proposal.complemento || "",
+    bairro: proposal.bairro || "",
+    cidade: proposal.cidade || "",
+    uf: proposal.uf || "",
+    banco_cliente: proposal.banco_cliente || "",
+    chave_pix: proposal.chave_pix || "",
+    conta: proposal.conta || "",
+    agencia: proposal.agencia || "",
+    dv: proposal.dv || "",
+    tipo_conta: proposal.tipo_conta || "",
+    valor_parcela: proposal.valor_parcela ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_parcela) : "",
+    valor_operacao_operacional: proposal.valor_operacao_operacional ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_operacao_operacional) : "",
+    valor_cliente_operacional: proposal.valor_cliente_operacional ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_cliente_operacional) : "",
+    margem_utilizada: proposal.margem_utilizada ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.margem_utilizada) : "",
+    coeficiente_prazo: proposal.coeficiente_prazo || "",
+    valor_producao_corretor: proposal.valor_producao_corretor ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao_corretor) : "",
+    observacoes: proposal.observacoes || ""
+  })
+
+  const [selectedFiles, setSelectedFiles] = useState<{ [key: string]: File | null }>({
+    frente: null,
+    verso: null,
+    contracheque: null,
+    extrato: null,
+    outros: null,
+    outros_2: null
+  })
+
+  const [existingAttachments] = useState<{ [key: string]: string | null }>({
+    frente: (proposal.arquivo_rg_frente as string) || null,
+    verso: (proposal.arquivo_rg_verso as string) || null,
+    contracheque: (proposal.arquivo_contracheque as string) || null,
+    extrato: (proposal.arquivo_extrato as string) || null,
+    outros: (proposal.arquivo_outros as string) || null,
+    outros_2: (proposal.arquivo_outros_2 as string) || null
+  })
+
+  const getFileName = (url: string) => {
+    try {
+      const decodedUrl = decodeURIComponent(url);
+      const parts = decodedUrl.split('/');
+      const lastPart = parts[parts.length - 1];
+      // Remove query params and possible supabase path prefixes
+      return lastPart.split('?')[0].replace(/^[a-z0-9-]+\//i, '');
+    } catch {
+      return "Documento";
+    }
+  }
+
+  const [isSearchingCEP, setIsSearchingCEP] = useState(false)
+  const [pastedImages, setPastedImages] = useState<File[]>([])
+
+  const fileRefs = {
+    frente: useRef<HTMLInputElement>(null),
+    verso: useRef<HTMLInputElement>(null),
+    contracheque: useRef<HTMLInputElement>(null),
+    extrato: useRef<HTMLInputElement>(null),
+    outros: useRef<HTMLInputElement>(null),
+    outros_2: useRef<HTMLInputElement>(null)
+  }
+
+  useEffect(() => {
+    async function fetchConfigs() {
+      try {
+        const { data, error } = await supabase
+          .from('produtos_config')
+          .select(`
+            id,
+            nome_tabela,
+            prazo,
+            coeficiente,
+            percentual_producao,
+            convenio_id,
+            operacoes,
+            convenios (nome)
+          `)
+          .eq('ativo', true)
+        if (error) throw error
+        setDbProdutosConfigs(data || [])
+      } catch (err) {
+        console.error("Erro ao buscar tabelas de regras:", err)
+      }
+    }
+    fetchConfigs()
+  }, [])
+
+  const handleSearchCEP = async () => {
+    const cep = formData.cep.replace(/\D/g, "")
+    if (cep.length !== 8) {
+      toast.error("Por favor, informe um CEP válido com 8 dígitos.")
+      return
+    }
+    setIsSearchingCEP(true)
+    const loadingToast = toast.loading("Buscando endereço...")
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+      const data = await response.json()
+      if (data.erro) {
+        toast.error("CEP não encontrado.", { id: loadingToast })
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          endereco: data.logradouro || prev.endereco,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.localidade || prev.cidade,
+          uf: data.uf || prev.uf
+        }))
+        toast.success("Endereço preenchido com sucesso!", { id: loadingToast })
+      }
+    } catch {
+      toast.error("Erro ao conectar com o serviço de CEP.", { id: loadingToast })
+    } finally {
+      setIsSearchingCEP(false)
+    }
+  }
+
+  // Helper to convert DD/MM/YYYY to YYYY-MM-DD for native input
+  const toInputDate = (val: string) => {
+    if (!val || !val.includes('/')) return val;
+    const [d, m, y] = val.split('/');
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  };
+
+  // Helper to convert YYYY-MM-DD to DD/MM/YYYY for state
+  const fromInputDate = (val: string) => {
+    if (!val || !val.includes('-')) return val;
+    const [y, m, d] = val.split('-');
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+  };
+
+  const handleFormChange = (field: string, value: string) => {
+    let newValue = value
+    if (field === "cep") {
+      const digits = value.replace(/\D/g, "")
+      if (digits.length <= 8) {
+        if (digits.length > 5) newValue = `${digits.substring(0, 5)}-${digits.substring(5, 8)}`
+        else newValue = digits
+      } else return
+    }
+    if (["valor_parcela", "valor_operacao_operacional", "valor_cliente_operacional", "margem_utilizada", "valor_producao_corretor"].includes(field)) {
+      const digits = value.replace(/\D/g, "")
+      if (digits) {
+        const amount = parseFloat(digits) / 100
+        newValue = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount)
+      } else newValue = ""
+    }
+    if (["nascimento", "data_emissao"].includes(field)) {
+      const digits = value.replace(/\D/g, "")
+      if (digits.length <= 8) {
+        if (digits.length > 4) newValue = `${digits.substring(0, 2)}/${digits.substring(2, 4)}/${digits.substring(4, 8)}`
+        else if (digits.length > 2) newValue = `${digits.substring(0, 2)}/${digits.substring(2, 4)}`
+        else newValue = digits
+      } else return
+    }
+    if (["tel_1", "tel_2", "tel_3"].includes(field)) {
+      const digits = value.replace(/\D/g, "")
+      if (digits.length <= 11) {
+        if (digits.length > 2) {
+          const part1 = digits.substring(0, 2), part2 = digits.substring(2, 7), part3 = digits.substring(7, 11)
+          newValue = `(${part1}) ${part2}${part3 ? "-" + part3 : ""}`
+        } else if (digits.length > 0) newValue = `(${digits}`
+      } else return
+    }
+    setFormData(prev => {
+      const updated = { ...prev, [field]: newValue }
+      if (field === "margem_utilizada") updated.valor_parcela = newValue
+      else if (field === "valor_parcela") updated.margem_utilizada = newValue
+      
+      if ((field === "margem_utilizada" || field === "valor_parcela") && selectedCoefValue) {
+        const rawMargem = (field === "margem_utilizada" ? newValue : updated.margem_utilizada).replace(/\D/g, "")
+        if (rawMargem) {
+          const margemValue = parseFloat(rawMargem) / 100
+          const valorCliente = margemValue / selectedCoefValue
+          updated.valor_cliente_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorCliente)
+          if (selectedProdPercent) {
+            const valorProducao = (valorCliente * selectedProdPercent) / 100
+            updated.valor_producao_corretor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+          }
+        }
+      }
+      return updated
+    })
+  }
+
+  const uploadFile = async (file: File, path: string) => {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+    const fullPath = `${path}/${fileName}`
+    const { error: uploadError } = await supabase.storage.from('propostas-attachments').upload(fullPath, file)
+    if (uploadError) throw uploadError
+    const { data } = supabase.storage.from('propostas-attachments').getPublicUrl(fullPath)
+    return data.publicUrl
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) files.push(new File([blob], `screenshot_${Date.now()}.png`, { type: blob.type }));
+      }
+    }
+    if (files.length > 0) {
+      setPastedImages(prev => [...prev, ...files]);
+      toast.success(`${files.length} imagem(ns) colada(s)`);
+    }
+  };
+
+  const handleUpdateProposal = async () => {
+    setIsSaving(true)
+    const loadingToast = toast.loading("Atualizando proposta...")
+    try {
+      const currentUser = user
+      if (!currentUser) throw new Error("Usuário não autenticado")
+
+      const fileUrls: { [key: string]: string | null } = {}
+      for (const [key, file] of Object.entries(selectedFiles)) {
+        if (file) fileUrls[key] = await uploadFile(file, `${currentUser.id}/${Date.now()}`)
+      }
+
+      const pastedUrls = []
+      for (const file of pastedImages) pastedUrls.push(await uploadFile(file, `pasted/${currentUser.id}/${Date.now()}`))
+
+      let finalObservations = formData.observacoes
+      if (pastedUrls.length > 0) {
+        finalObservations += "\n\n--- IMAGENS EM ANEXO ---\n" + pastedUrls.map((url, i) => `![Print ${i+1}](${url})`).join("\n")
+      }
+
+      const cleanMoney = (val: string) => {
+        if (!val) return null
+        const cleaned = val.replace(/[R$\s.]/g, "").replace(",", ".")
+        return isNaN(parseFloat(cleaned)) ? null : parseFloat(cleaned)
+      }
+
+      const formatDate = (val: string) => {
+        if (!val) return null
+        const parts = val.split('/')
+        return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : val
+      }
+
+      const { error } = await supabase.from('propostas').update({
+        cliente_cpf: formData.cpf.replace(/\D/g, ""),
+        nome_cliente: formData.nome,
+        data_nascimento: formatDate(formData.nascimento),
+        origem: formData.origem,
+        matricula: formData.matricula,
+        naturalidade: formData.naturalidade,
+        uf_naturalidade: formData.uf_naturalidade,
+        identidade: formData.identidade,
+        orgao_emissor: formData.orgao_emissor,
+        uf_emissao: formData.uf_emissao,
+        data_emissao: formatDate(formData.data_emissao),
+        nome_pai: formData.nome_pai,
+        nome_mae: formData.nome_mae,
+        tel_residencial_1: formData.tel_1,
+        tel_residencial_2: formData.tel_2,
+        tel_comercial: formData.tel_3,
+        cep: formData.cep,
+        endereco: formData.endereco,
+        numero: formData.numero,
+        complemento: formData.complemento,
+        bairro: formData.bairro,
+        cidade: formData.cidade,
+        uf: formData.uf,
+        banco_cliente: formData.banco_cliente,
+        chave_pix: formData.chave_pix,
+        conta: formData.conta,
+        agencia: formData.agencia,
+        dv: formData.dv,
+        tipo_conta: formData.tipo_conta,
+        valor_parcela: cleanMoney(formData.valor_parcela),
+        valor_operacao_operacional: cleanMoney(formData.valor_operacao_operacional),
+        valor_cliente_operacional: cleanMoney(formData.valor_cliente_operacional),
+        margem_utilizada: cleanMoney(formData.margem_utilizada),
+        coeficiente_prazo: formData.coeficiente_prazo,
+        observacoes: finalObservations,
+        arquivo_rg_frente: fileUrls.frente || existingAttachments.frente,
+        arquivo_rg_verso: fileUrls.verso || existingAttachments.verso,
+        arquivo_contracheque: fileUrls.contracheque || existingAttachments.contracheque,
+        arquivo_extrato: fileUrls.extrato || existingAttachments.extrato,
+        arquivo_outros: fileUrls.outros || existingAttachments.outros,
+        arquivo_outros_2: fileUrls.outros_2 || existingAttachments.outros_2,
+        updated_at: new Date().toISOString()
+      }).eq('id_lead', proposal.id_lead)
+
+      if (error) throw error
+      
+      // Log de Histórico para Edição
+      try {
+        await supabase.from('historico_propostas').insert({
+          proposta_id_lead: proposal.id_lead,
+          usuario_id: currentUser.id,
+          status_anterior: proposal.status,
+          status_novo: proposal.status,
+          descricao: "Dados da proposta atualizados pelo usuário",
+          tipo: 'info',
+          observacoes: "Edição de campos do formulário e/ou anexos.",
+          created_at: new Date().toISOString()
+        })
+      } catch (histErr) {
+        console.warn("Erro ao gravar histórico de edição:", histErr)
+      }
+
+      toast.success("Proposta atualizada com sucesso!", { id: loadingToast })
+      if (_onRefresh) _onRefresh()
+    } catch (error) {
+      console.error("Erro ao atualizar:", error)
+      toast.error("Erro ao atualizar proposta", { id: loadingToast })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleFileClick = (ref: React.RefObject<HTMLInputElement | null>) => ref.current?.click()
+  const handleFileChange = (field: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null
+    setSelectedFiles(prev => ({ ...prev, [field]: file }))
   }
 
   return (
@@ -122,7 +498,7 @@ export function ProposalDetailsAccordion({ proposal: prop }: ProposalDetailsAcco
           )}
         >
           <Eye className="w-3.5 h-3.5 mr-2" />
-          Visualizar
+          VISUALIZAR/EDITAR
         </Button>
         <Button 
           onClick={() => setActiveTab("historico")}
@@ -144,6 +520,8 @@ export function ProposalDetailsAccordion({ proposal: prop }: ProposalDetailsAcco
           <FileText className="w-3.5 h-3.5 mr-2" />
           Ficha Proposta
         </Button>
+
+        {/* Botão Deletar removido a pedido do usuário */}
       </div>
 
       <FichaPropostaModal 
@@ -153,253 +531,760 @@ export function ProposalDetailsAccordion({ proposal: prop }: ProposalDetailsAcco
       />
 
       {activeTab === "visualizar" && (
-        <div className="space-y-6 animate-in fade-in duration-500">
-          {/* Arquivos */}
-          <div className="space-y-3">
-            <h3 className="text-[10px] font-bold text-slate-900 uppercase tracking-[0.2em] text-center">Arquivos</h3>
-            <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <div className="relative">
-                  <FileText className="w-6 h-6 text-slate-400" />
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-slate-900 rounded-full flex items-center justify-center">
-                    <Plus className="w-2 h-2 text-white" />
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-6">
-                <span className="text-[11px] font-bold text-slate-700 cursor-pointer hover:text-primary transition-colors">Contracheque.pdf</span>
-                <span className="text-[11px] font-bold text-slate-700 cursor-pointer hover:text-primary transition-colors">RG/CNH.jpg</span>
-              </div>
+        <div className="space-y-12 animate-in fade-in duration-500 pb-10 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar" onPaste={handlePaste}>
+          <div className="flex flex-wrap justify-center gap-2 md:gap-8 items-center bg-white py-4 px-8 rounded-2xl border border-slate-200 shadow-sm w-fit mx-auto mb-6 text-left">
+            <div className="flex flex-col items-center md:items-start">
+              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
+              <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
+            </div>
+            <div className="h-8 w-px bg-slate-100 hidden md:block" />
+            <div className="flex flex-col items-center md:items-start">
+              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
+              <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
+            </div>
+            <div className="h-8 w-px bg-slate-100 hidden md:block" />
+            <div className="flex flex-col items-center md:items-start">
+              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
+              <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
             </div>
           </div>
 
-          {/* Dados da Proposta */}
-          <div className="space-y-3">
-            <h3 className="text-[10px] font-bold text-slate-900 uppercase tracking-[0.2em] text-center">Dados da Proposta</h3>
-            <div className="bg-[#2D3E61] rounded-lg overflow-hidden shadow-lg">
-              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8 text-left">
-                <div className="space-y-3">
-                  <DataField label="ID" value={`FF-${proposal.id}`} />
-                  <DataField label="Responsável" value={proposal.responsible} />
-                  <DataField label="Banco de Empréstimo" value={proposal.bank} />
-                  <DataField label="Tipo de Operação" value={proposal.opType} />
-                </div>
-                <div className="space-y-3">
-                  <DataField label="Data do Cadastro" value={proposal.registrationDate} />
-                  <DataField label="ADE" value={proposal.ade} />
-                  <DataField label="Origem do Cliente" value={proposal.origin} />
-                  <DataField label="Incluir Seguro" value={proposal.insurance} />
-                </div>
+          <div className="bg-white border border-slate-200 rounded-xl p-8 space-y-12 shadow-sm text-left">
+            {/* Top Info */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">ID Lead</label>
+                <span className="block text-xl font-black text-slate-900 tracking-tight py-1">
+                  {formData.idLead}
+                </span>
               </div>
-              <div className="bg-white p-6 grid grid-cols-1 md:grid-cols-2 gap-y-3 gap-x-8 border-t border-slate-100 text-left">
-                <DataField label="Nome" value={proposal.client} labelColor="text-slate-900" valueColor="text-slate-600" hoverColor="group-hover/copy:text-primary" />
-                <DataField label="CPF" value={proposal.cpf} labelColor="text-slate-900" valueColor="text-slate-600" hoverColor="group-hover/copy:text-primary" />
-                <DataField label="Convênio" value={proposal.agreement} labelColor="text-slate-900" valueColor="text-slate-600" hoverColor="group-hover/copy:text-primary" />
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Sections */}
-          <div className="bg-white rounded-lg p-6 space-y-8 border border-slate-100 shadow-sm text-left">
-            <div className="space-y-4">
-              <DataField label="Margem Utilizada" value={`R$ ${proposal.usedMargin}`} labelColor="text-slate-900" valueColor="text-slate-600" hoverColor="group-hover/copy:text-primary" />
-              <div className="flex items-center gap-4">
-                <span className="text-[10px] font-bold text-slate-900 uppercase">Coeficiente e Prazo</span>
-                <select className="h-7 w-32 bg-white border border-slate-100 rounded px-2 text-[10px] font-medium text-slate-600 focus:outline-none focus:ring-1 focus:ring-primary">
-                  <option>Selecione</option>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Origem do Cliente</label>
+                <select 
+                  value={formData.origem}
+                  onChange={(e) => handleFormChange("origem", e.target.value)}
+                  className="w-full h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                >
+                  <option value="">Selecione</option>
+                  <option value="disparo">DISPARO</option>
+                  <option value="tráfego">TRÁFEGO</option>
+                  <option value="indicação">INDICAÇÃO</option>
+                  <option value="cliente da casa">CLIENTE DA CASA</option>
                 </select>
               </div>
-            </div>
-
-            {/* Operacional Box */}
-            <div className="bg-[#FFF9C4]/40 border border-[#FFF59D] rounded-lg p-4 space-y-4">
-              <p className="text-[9px] font-bold text-slate-700 leading-relaxed">
-                <span className="font-black">Operacional:</span> Preencha os campos abaixo em caso de divergência nos valores informados pelo corretor do valores do banco.
-              </p>
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="space-y-1 flex-1 min-w-[120px]">
-                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Parcela</label>
-                  <input className="h-8 w-full bg-white border border-slate-100 rounded px-2 text-[11px] font-medium" defaultValue="R$ 0,00" />
-                </div>
-                <div className="space-y-1 flex-1 min-w-[120px]">
-                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Valor Operação</label>
-                  <input className="h-8 w-full bg-white border border-slate-100 rounded px-2 text-[11px] font-medium" defaultValue="R$ 0,00" />
-                </div>
-                <div className="space-y-1 flex-1 min-w-[120px]">
-                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Valor Cliente</label>
-                  <input className="h-8 w-full bg-white border border-slate-100 rounded px-2 text-[11px] font-medium" defaultValue="R$ 0,00" />
-                </div>
-                <Button variant="ghost" size="icon" className="w-8 h-8 text-[#1A2B49] hover:bg-white/50">
-                  <Save className="w-5 h-5" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Produção Contrato Table */}
-            <div className="overflow-hidden border border-slate-200 rounded-lg">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#E2E8F0]">
-                    <th className="px-4 py-2 text-[9px] font-bold text-slate-700 uppercase tracking-widest">Produção Contrato</th>
-                    <th className="px-4 py-2 text-[9px] font-bold text-slate-700 uppercase tracking-widest text-center border-l border-slate-300">% Produção</th>
-                    <th className="px-4 py-2 text-[9px] font-bold text-slate-700 uppercase tracking-widest text-center border-l border-slate-300">Valor Base</th>
-                    <th className="px-4 py-2 text-[9px] font-bold text-slate-700 uppercase tracking-widest text-center border-l border-slate-300">Bruta</th>
-                    <th className="px-4 py-2 text-[9px] font-bold text-slate-700 uppercase tracking-widest text-center border-l border-slate-300">Líquida</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="bg-[#F1F5F9]/50">
-                    <td className="px-4 py-2 text-[10px] font-medium text-slate-600">
-                      <ClickToCopy text={proposal.production.type}>{proposal.production.type}</ClickToCopy>
-                    </td>
-                    <td className="px-4 py-2 text-[10px] font-bold text-slate-600 text-center border-l border-slate-200">
-                      <ClickToCopy text={proposal.production.percent}>{proposal.production.percent}</ClickToCopy>
-                    </td>
-                    <td className="px-4 py-2 text-[10px] font-bold text-slate-600 text-center border-l border-slate-200">
-                      <ClickToCopy text={`R$ ${proposal.production.base}`}>R$ {proposal.production.base}</ClickToCopy>
-                    </td>
-                    <td className="px-4 py-2 text-[10px] font-bold text-slate-600 text-center border-l border-slate-200">
-                      <ClickToCopy text={`R$ ${proposal.production.gross}`}>R$ {proposal.production.gross}</ClickToCopy>
-                    </td>
-                    <td className="px-4 py-2 text-[10px] font-bold text-slate-600 text-center border-l border-slate-200">
-                      <ClickToCopy text={`R$ ${proposal.production.net}`}>R$ {proposal.production.net}</ClickToCopy>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Observações */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">Observações</label>
-              <div className="border border-slate-100 rounded-lg overflow-hidden">
-                <textarea 
-                  className="w-full p-3 text-[11px] font-medium text-slate-700 min-h-[100px] focus:outline-none"
-                  defaultValue={proposal.observations}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Matrícula <span className="text-red-500">*</span></label>
+                <Input 
+                  value={formData.matricula}
+                  onChange={(e) => handleFormChange("matricula", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
+            </div>
+
+            {/* Dados Pessoais */}
+            <div className="space-y-10">
+              <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">DADOS PESSOAIS</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div className="md:col-span-1 space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">CPF</label>
+                  <Input 
+                    value={formData.cpf}
+                    onChange={(e) => handleFormChange("cpf", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome</label>
+                  <Input 
+                    value={formData.nome}
+                    onChange={(e) => handleFormChange("nome", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Data de Nascimento</label>
+                  <div className="relative">
+                    <Input 
+                      type="date"
+                      value={toInputDate(formData.nascimento)}
+                      onChange={(e) => handleFormChange("nascimento", fromInputDate(e.target.value))}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none" 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Naturalidade</label>
+                  <Input 
+                    value={formData.naturalidade}
+                    onChange={(e) => handleFormChange("naturalidade", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF Naturalidade</label>
+                  <select 
+                    value={formData.uf_naturalidade}
+                    onChange={(e) => handleFormChange("uf_naturalidade", e.target.value)}
+                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                  >
+                    <option value="">Selecione</option>
+                    {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                      <option key={uf} value={uf}>{uf}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Identidade</label>
+                  <Input 
+                    value={formData.identidade}
+                    onChange={(e) => handleFormChange("identidade", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Órgão Emissor</label>
+                  <Input 
+                    value={formData.orgao_emissor}
+                    onChange={(e) => handleFormChange("orgao_emissor", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF Emissão</label>
+                  <select 
+                    value={formData.uf_emissao}
+                    onChange={(e) => handleFormChange("uf_emissao", e.target.value)}
+                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                  >
+                    <option value="">Selecione</option>
+                    {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                      <option key={uf} value={uf}>{uf}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Data de Emissão</label>
+                  <div className="relative">
+                    <Input 
+                      type="date"
+                      value={toInputDate(formData.data_emissao)}
+                      onChange={(e) => handleFormChange("data_emissao", fromInputDate(e.target.value))}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none" 
+                    />
+                  </div>
+                </div>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome do Pai</label>
+                  <Input 
+                    value={formData.nome_pai}
+                    onChange={(e) => handleFormChange("nome_pai", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome da Mãe</label>
+                  <Input 
+                    value={formData.nome_mae}
+                    onChange={(e) => handleFormChange("nome_mae", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 1</label>
+                  <Input 
+                    value={formData.tel_1}
+                    onChange={(e) => handleFormChange("tel_1", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 2</label>
+                  <Input 
+                    value={formData.tel_2}
+                    onChange={(e) => handleFormChange("tel_2", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 3</label>
+                  <Input 
+                    value={formData.tel_3}
+                    onChange={(e) => handleFormChange("tel_3", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">CEP</label>
+                  <div className="flex gap-2">
+                    <Input 
+                      value={formData.cep}
+                      onChange={(e) => handleFormChange("cep", e.target.value)}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                      placeholder="00000-000"
+                    />
+                    <button 
+                      type="button" 
+                      disabled={isSearchingCEP}
+                      onClick={handleSearchCEP}
+                      className="text-[10px] font-bold text-primary italic whitespace-nowrap hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      {isSearchingCEP ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                      Buscar CEP
+                    </button>
+                  </div>
+                </div>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Endereço</label>
+                  <Input 
+                    value={formData.endereco}
+                    onChange={(e) => handleFormChange("endereco", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Número</label>
+                  <Input 
+                    value={formData.numero}
+                    onChange={(e) => handleFormChange("numero", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Complemento</label>
+                  <Input 
+                    value={formData.complemento}
+                    onChange={(e) => handleFormChange("complemento", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Bairro</label>
+                  <Input 
+                    value={formData.bairro}
+                    onChange={(e) => handleFormChange("bairro", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Cidade</label>
+                  <Input 
+                    value={formData.cidade}
+                    onChange={(e) => handleFormChange("cidade", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF</label>
+                  <select 
+                    value={formData.uf}
+                    onChange={(e) => handleFormChange("uf", e.target.value)}
+                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                  >
+                    <option value="">Selecione</option>
+                    {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                      <option key={uf} value={uf}>{uf}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Dados Bancários */}
+            <div className="space-y-10">
+              <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">DADOS BANCÁRIOS</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Banco</label>
+                  <Input 
+                    value={formData.banco_cliente}
+                    onChange={(e) => handleFormChange("banco_cliente", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">CHAVE PIX</label>
+                  <Input 
+                    value={formData.chave_pix}
+                    onChange={(e) => handleFormChange("chave_pix", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Conta</label>
+                  <Input 
+                    value={formData.conta}
+                    onChange={(e) => handleFormChange("conta", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Agência</label>
+                  <Input 
+                    value={formData.agencia}
+                    onChange={(e) => handleFormChange("agencia", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">DV</label>
+                  <Input 
+                    value={formData.dv}
+                    onChange={(e) => handleFormChange("dv", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Tipo de Conta</label>
+                  <select 
+                    value={formData.tipo_conta}
+                    onChange={(e) => handleFormChange("tipo_conta", e.target.value)}
+                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                  >
+                    <option value="">Selecione</option>
+                    <option value="corrente">CORRENTE</option>
+                    <option value="poupanca">POUPANÇA</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Dados da Operação */}
+            <div className="space-y-10">
+              <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">DADOS DA OPERAÇÃO</h3>
+              
+              {!isCorretor && (
+                <div className="bg-[#FEFCE8] border border-amber-100 rounded-xl p-8 space-y-6">
+                  <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
+                    <span className="font-bold text-slate-900">Operacional:</span> Preencha os campos abaixo em caso de divergência nos valores informados pelo corretor do valores do banco. Salvar valor operacional atualizará somente os campos abaixo.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
+                      <Input 
+                        value={formData.valor_parcela}
+                        onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
+                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                        placeholder="R$ 0,00" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Operação</label>
+                      <Input 
+                        value={formData.valor_operacao_operacional}
+                        onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
+                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                        placeholder="R$ 0,00" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Cliente</label>
+                      <Input 
+                        value={formData.valor_cliente_operacional}
+                        onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
+                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                        placeholder="R$ 0,00" 
+                      />
+                    </div>
+                    <Button 
+                      onClick={handleUpdateProposal} 
+                      className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg"
+                      disabled={isSaving}
+                    >
+                      {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Margem Utilizada</label>
+                  <Input 
+                    value={formData.margem_utilizada}
+                    onChange={(e) => handleFormChange("margem_utilizada", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    placeholder="R$ 0,00" 
+                  />
+                </div>
+                <div className="space-y-2 relative" ref={coefDropdownRef}>
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Coeficiente e Prazo</label>
+                  <div 
+                    className={cn(
+                      "h-9 px-4 rounded-md border border-slate-800 bg-[#171717] flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all",
+                      isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary"
+                    )}
+                    onClick={() => setIsCoefDropdownOpen(!isCoefDropdownOpen)}
+                  >
+                    <span className="text-[13px] font-medium text-white truncate">
+                      {formData.coeficiente_prazo || "Selecione uma tabela"}
+                    </span>
+                    <ChevronDown className={cn("w-4 h-4 text-white/70 transition-transform", isCoefDropdownOpen && "rotate-180")} />
+                  </div>
+
+                  {isCoefDropdownOpen && (
+                    <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-100 rounded-xl shadow-2xl z-[50] animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden flex flex-col max-h-[300px]">
+                      <div className="p-2 border-b border-slate-50 bg-slate-50/50 sticky top-0 z-10">
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                          <input 
+                            autoFocus
+                            type="text"
+                            placeholder="Buscar tabela..."
+                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                            value={coefSearchTerm}
+                            onChange={(e) => setCoefSearchTerm(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="overflow-y-auto p-1">
+                        {dbProdutosConfigs.filter(config => {
+                          const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''}`.toLowerCase()
+                          return searchStr.includes(coefSearchTerm.toLowerCase())
+                        }).map((config) => {
+                          const label = config.nome_tabela || `${config.convenios?.nome || 'Tabela'} - ${config.prazo}x ${config.coeficiente}`
+                          return (
+                            <div
+                              key={config.id}
+                              onClick={() => {
+                                handleFormChange("coeficiente_prazo", label)
+                                setSelectedCoefValue(config.coeficiente)
+                                setSelectedProdPercent(config.percentual_producao)
+                                setIsCoefDropdownOpen(false)
+                                setCoefSearchTerm("")
+                              }}
+                              className={cn(
+                                "px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase transition-all cursor-pointer flex flex-col gap-0.5",
+                                formData.coeficiente_prazo === label ? "bg-primary text-white" : "text-slate-600 hover:bg-slate-50"
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span>{label}</span>
+                                {formData.coeficiente_prazo === label && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </div>
+                              <span className={cn("text-[8px] font-medium opacity-70", formData.coeficiente_prazo === label ? "text-white" : "text-slate-400")}>
+                                Prazo: {config.prazo}x | Coef: {config.coeficiente} | Prod: {config.percentual_producao}%
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Produção</label>
+                  <Input 
+                    value={formData.valor_producao_corretor}
+                    onChange={(e) => handleFormChange("valor_producao_corretor", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    placeholder="R$ 0,00" 
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
+                  <Input 
+                    value={formData.valor_parcela}
+                    onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    placeholder="R$ 0,00" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Cliente</label>
+                  <Input 
+                    value={formData.valor_cliente_operacional}
+                    onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    placeholder="R$ 0,00" 
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Outras Informações */}
+            <div className="space-y-10">
+              <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">OUTRAS INFORMAÇÕES</h3>
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Observações</label>
+                <div className="border border-slate-100 rounded-lg overflow-hidden focus-within:border-primary transition-colors">
+                  <textarea 
+                    value={formData.observacoes}
+                    onChange={(e) => handleFormChange("observacoes", e.target.value)}
+                    className="w-full p-6 text-[14px] font-medium focus:outline-none min-h-[200px] bg-[#E8E8E8]" 
+                    placeholder="Digite suas observações aqui..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Anexos Editáveis */}
+            <div className="space-y-8">
+              <div className="text-center space-y-2">
+                <h3 className="text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">ANEXAR DOCUMENTOS</h3>
+                <p className="text-[10px] font-bold text-primary uppercase tracking-wider">Anexar RG VERSO somente se não tiver enviado um CNH.</p>
+              </div>
+
+              {/* Arquivos Atuais - Estilo Chamados */}
+              {Object.entries(existingAttachments).some(([, url]) => url) && (
+                <div className="space-y-2">
+                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-left">ANEXOS</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(existingAttachments).map(([key, url]) => {
+                      if (!url) return null
+                      const fileName = getFileName(url)
+                      return (
+                        <a
+                          key={key}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 bg-[#F1F1F1] hover:bg-slate-200 text-slate-900 px-4 py-2.5 rounded-full text-[11px] font-bold transition-all border border-transparent hover:border-slate-300 shadow-sm"
+                        >
+                          <FileText className="w-4 h-4 text-slate-600" />
+                          <span className="max-w-[200px] truncate uppercase tracking-tight">{fileName}</span>
+                        </a>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {pastedImages.length > 0 && (
+                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex flex-wrap gap-3">
+                  {pastedImages.map((file, idx) => (
+                    <div key={idx} className="relative group w-16 h-16 rounded-lg border border-emerald-200 overflow-hidden bg-white shadow-sm">
+                      <Image 
+                        src={URL.createObjectURL(file)} 
+                        alt="Pasted" 
+                        width={64} 
+                        height={64} 
+                        className="w-full h-full object-cover" 
+                        unoptimized
+                        referrerPolicy="no-referrer"
+                      />
+                      <button onClick={() => setPastedImages(prev => prev.filter((_, i) => i !== idx))} className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[
+                  { label: "RG ou CNH (FRENTE)", id: "frente", ref: fileRefs.frente },
+                  { label: "RG (VERSO)", id: "verso", ref: fileRefs.verso },
+                  { label: "CONTRA CHEQUE", id: "contracheque", ref: fileRefs.contracheque },
+                  { label: "EXTRATO DE CONSIGNAÇÃO", id: "extrato", ref: fileRefs.extrato },
+                  { label: "OUTROS", id: "outros", ref: fileRefs.outros },
+                  { label: "OUTROS", id: "outros_2", ref: fileRefs.outros_2 }
+                ].map((field) => (
+                  <div key={field.id} className="space-y-2">
+                    <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest block">{field.label}</label>
+                    <div 
+                      onClick={() => handleFileClick(field.ref)}
+                      className={cn(
+                        "w-full h-11 px-4 rounded-lg border text-[12px] flex items-center gap-3 cursor-pointer transition-all",
+                        selectedFiles[field.id]
+                          ? "bg-[#171717] text-white border-[#171717] shadow-lg"
+                          : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200"
+                      )}
+                    >
+                      <UploadCloud className={cn("w-5 h-5", selectedFiles[field.id] ? "text-white" : "text-slate-400")} />
+                      <span className="truncate font-medium flex-1">
+                        {selectedFiles[field.id] ? selectedFiles[field.id]?.name : "Selecionar arquivo..."}
+                      </span>
+                      {selectedFiles[field.id] && (
+                        <button 
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            setSelectedFiles(prev => ({ ...prev, [field.id]: null })); 
+                          }} 
+                          className="p-1 hover:bg-white/10 rounded-full"
+                        >
+                          <X className="w-4 h-4 text-white/70" />
+                        </button>
+                      )}
+                    </div>
+                    <input type="file" ref={field.ref} className="hidden" onChange={(e) => handleFileChange(field.id, e)} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-center pt-8">
+              <Button 
+                onClick={handleUpdateProposal}
+                disabled={isSaving}
+                className="w-full max-w-md h-12 bg-[#171717] hover:bg-[#171717]/90 text-white text-[12px] font-bold uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02]"
+              >
+                {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> SALVANDO...</> : "SALVAR ALTERAÇÕES"}
+              </Button>
             </div>
           </div>
         </div>
       )}
 
       {activeTab === "historico" && (
-        <div className="space-y-6 animate-in fade-in duration-500 max-h-[500px] overflow-y-auto pr-2 no-scrollbar">
-          <h3 className="text-[10px] font-bold text-slate-900 uppercase tracking-[0.2em] text-center">Rastreamento do Contrato</h3>
-          <div className="relative pl-8 space-y-8 before:absolute before:left-3 before:top-0 before:bottom-0 before:w-0.5 before:bg-slate-200">
-            {[
-              {
-                id: 6,
-                date: "08/01/2026",
-                time: "16:17:34",
-                status: "Com Inconsistência / Pendência para Digitação",
-                description: "Com Inconsistência / Pendência para Digitação - Aguardando Banco: AGUARDANDO SISTEMA BANCO NORMALIZAR",
-                author: "4752 - ALESSANDRA P. MATOS (Operacional)",
-                type: "warning"
-              },
-              {
-                id: 5,
-                date: "08/01/2026",
-                time: "13:22:42",
-                status: "Aguardando Digitação",
-                author: "2758 - TALIA ALVES (Corretora)",
-                type: "info"
-              },
-              {
-                id: 4,
-                date: "17/12/2025",
-                time: "18:29:04",
-                status: "Com Inconsistência / Pendência para Digitação",
-                description: "Aguardar ativação das tabelas",
-                author: "4621 - TALITA SANTOS (Operacional)",
-                type: "warning"
-              },
-              {
-                id: 3,
-                date: "17/12/2025",
-                time: "18:22:15",
-                status: "Aguardando Digitação",
-                author: "4621 - TALITA SANTOS (Operacional)",
-                type: "info",
-                changes: [
-                  { label: "Valor Operação", old: "R$ 6.049,72", new: "R$ 6,05" },
-                  { label: "Valor Cliente", old: "R$ 6.049,72", new: "R$ 6,05" },
-                  { label: "Valor Liberado (Operacional)", old: "R$ 6.097,03", new: "R$ 6,05" }
-                ]
-              },
-              {
-                id: 2,
-                date: "17/12/2025",
-                time: "18:10:23",
-                status: "Aguardando Digitação",
-                description: "Solicitado Digitação",
-                author: "2758 - TALIA ALVES (Corretora)",
-                type: "info"
-              },
-              {
-                id: 1,
-                date: "17/12/2025",
-                time: "18:09:02",
-                status: "Contrato Criado se ADE",
-                description: "Criado por um Operacional em 17/12/2025",
-                observations: "Chave PIX: 12953087893\nSenha Portal: 16R27v2$",
-                author: "2758 - TALIA ALVES (Corretora)",
-                type: "default"
-              }
-            ].map((event) => (
-              <div key={event.id} className="relative text-left">
-                <div className={cn(
-                  "absolute -left-8 top-0 w-6 h-6 rounded-full border-2 border-white shadow-sm z-10 flex items-center justify-center text-[10px] font-bold text-white",
-                  event.type === 'warning' ? "bg-[#E69100]" : event.type === 'info' ? "bg-[#00BCD4]" : "bg-[#D1D5DB]"
-                )}>
-                  {event.id}
-                </div>
-                <div className="bg-white p-4 rounded-lg border border-slate-100 shadow-sm space-y-2">
-                  <div className="flex justify-between items-start gap-4">
-                    <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight leading-tight">{event.status}</h4>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-[10px] font-bold text-slate-900">{event.date}</p>
-                      <p className="text-[9px] font-medium text-slate-500">{event.time}</p>
-                    </div>
-                  </div>
-                  
-                  {event.description && (
-                    <p className="text-[10px] font-medium text-slate-700 leading-relaxed italic">{event.description}</p>
-                  )}
+        <div className="space-y-8 animate-in fade-in duration-500 max-h-[700px] overflow-y-auto pb-10 px-4 custom-scrollbar border-t border-slate-100 pt-8">
+          <div className="flex flex-col items-center">
+            <h3 className="text-[12px] font-bold text-slate-800 uppercase tracking-[0.2em] mb-2">Rastreamento do Contrato</h3>
+            <div className="w-full h-px bg-slate-100 max-w-2xl" />
+          </div>
 
-                  {event.changes && (
-                    <div className="space-y-2 pt-1 border-t border-slate-50">
-                      <p className="text-[9px] font-bold text-slate-900 uppercase">Alterações no Contrato</p>
-                      <div className="grid grid-cols-1 gap-2">
-                        {event.changes.map((change, i) => (
-                          <div key={i} className="bg-slate-50 p-1.5 rounded text-[9px]">
-                            <p className="font-bold text-slate-900">{change.label}</p>
-                            <div className="flex gap-2 text-slate-600">
-                              <span>De: {change.old}</span>
-                              <span>Para: {change.new}</span>
-                            </div>
+          {isLoadingHistory ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-primary/30" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando Histórico...</span>
+            </div>
+          ) : (
+            <div className="relative pt-4">
+              {/* Central Line */}
+              <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-1 bg-slate-200/60" />
+              
+              <div className="space-y-12 relative">
+                {history.length > 0 ? history.map((event, index) => {
+                  const isEven = index % 2 === 0;
+                  const stepNumber = history.length - index;
+                  
+                  // Logic for status colors
+                  let statusColor = "bg-[#D1D5DB]"; // Gray
+                  const upperStatus = (event.status_novo || "").toUpperCase();
+                  if (upperStatus.includes("PAGO") || upperStatus.includes("FINALIZADO") || upperStatus.includes("CONCLUÍDO")) {
+                    statusColor = "bg-[#43A047]"; // Green
+                  } else if (upperStatus.includes("BANCO") || upperStatus.includes("PENDENTE") || upperStatus.includes("REPROVADO") || upperStatus.includes("INCONSISTÊNCIA")) {
+                    statusColor = "bg-[#FB8C00]"; // Orange
+                  } else if (event.tipo === 'info' || upperStatus.includes("DIGITAÇÃO") || upperStatus.includes("AGUARDANDO")) {
+                    statusColor = "bg-[#039BE5]"; // Blue
+                  } else if (index === history.length - 1) {
+                    statusColor = "bg-slate-400"; // Gray for first step
+                  }
+
+                  return (
+                    <div key={event.id} className="grid grid-cols-[1fr_auto_1fr] items-start w-full">
+                      {/* Left Side */}
+                      <div className={cn("px-4", isEven ? "text-right" : "")}>
+                        {isEven ? (
+                          <div className="space-y-0.5">
+                            <p className="text-[11px] font-black text-slate-900">{new Date(event.created_at).toLocaleDateString('pt-BR')}</p>
+                            <p className="text-[10px] font-medium text-slate-500">{new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                           </div>
-                        ))}
+                        ) : (
+                          <HistoryCard event={event} />
+                        )}
+                      </div>
+
+                      {/* Center Badge */}
+                      <div className="relative z-10 flex flex-col items-center">
+                        <div className={cn(
+                          "w-10 h-10 rounded-full border-4 border-white shadow-md flex items-center justify-center text-[13px] font-black text-white transition-transform hover:scale-110",
+                          statusColor
+                        )}>
+                          {stepNumber}
+                        </div>
+                      </div>
+
+                      {/* Right Side */}
+                      <div className={cn("px-4", !isEven ? "text-left" : "")}>
+                        {!isEven ? (
+                          <div className="space-y-0.5">
+                            <p className="text-[11px] font-black text-slate-900">{new Date(event.created_at).toLocaleDateString('pt-BR')}</p>
+                            <p className="text-[10px] font-medium text-slate-500">{new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                          </div>
+                        ) : (
+                          <HistoryCard event={event} />
+                        )}
                       </div>
                     </div>
-                  )}
-
-                  {event.observations && (
-                    <div className="space-y-1 pt-1 border-t border-slate-50">
-                      <p className="text-[9px] font-bold text-slate-900 uppercase">Observações</p>
-                      <p className="text-[9px] font-medium text-slate-700 whitespace-pre-line bg-slate-50 p-1.5 rounded">{event.observations}</p>
-                    </div>
-                  )}
-
-                  <p className="text-[9px] font-bold text-slate-400 uppercase pt-1">
-                    Por: {event.author}
-                  </p>
-                </div>
+                  );
+                }) : (
+                  <div className="text-center py-20 relative z-10">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] bg-white px-4 py-2 rounded-full inline-block border border-slate-100">
+                      Nenhum histórico encontrado
+                    </p>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
   )
+}
+
+function HistoryCard({ event }: { event: HistoryItem }) {
+  return (
+    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-3 w-full max-w-[450px] transition-all hover:shadow-md">
+      <div className="space-y-1">
+        <h4 className="text-[12px] font-black text-slate-900 uppercase tracking-tight leading-tight">
+          {event.status_novo || event.descricao}
+        </h4>
+        <div className="flex flex-col gap-1">
+          {event.status_anterior && event.status_anterior !== event.status_novo && (
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+              Status Anterior: <span className="text-slate-500 line-through">{event.status_anterior}</span>
+            </p>
+          )}
+          {event.status_novo && (
+            <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
+              {event.descricao}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {event.alteracoes && Object.keys(event.alteracoes).length > 0 && (
+        <div className="border border-slate-100 rounded overflow-hidden">
+          <div className="bg-[#E3F2FD] px-3 py-1.5 flex justify-between items-center">
+            <span className="text-[9px] font-black text-slate-800 uppercase tracking-tighter">Alterações no Contrato</span>
+            <ChevronDown className="w-3 h-3 text-slate-500" />
+          </div>
+          <div className="p-3 space-y-3 bg-white">
+            {Object.entries(event.alteracoes).map(([key, value], i) => (
+              <div key={i} className="space-y-0.5">
+                <p className="text-[9px] font-black text-slate-900 uppercase tracking-tighter">{key.replace(/_/g, ' ')}</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-medium text-slate-500 italic">Nova:</span>
+                  <span className="text-[10px] font-bold text-slate-800">
+                    {typeof value.new === 'number' 
+                      ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value.new)
+                      : String(value.new || '---')}
+                  </span>
+                </div>
+                {i < Object.keys(event.alteracoes!).length - 1 && (
+                  <div className="border-b border-dotted border-slate-200 pt-1" />
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="bg-slate-50 h-1.5 flex items-center justify-end px-3">
+             <ChevronDown className="w-3 h-3 text-slate-300 rotate-180" />
+          </div>
+        </div>
+      )}
+
+      {event.observacoes && (
+        <div className="space-y-1 pt-2 border-t border-slate-50">
+          <p className="text-[9px] font-black text-slate-900 uppercase tracking-tighter">Observações:</p>
+          <p className="text-[10px] font-medium text-slate-700 whitespace-pre-line leading-snug">{event.observacoes}</p>
+        </div>
+      )}
+
+      <div className="pt-2 border-t border-slate-50">
+        <p className="text-[9px] font-medium text-slate-400 italic">
+          Alterado por: <span className="font-bold text-slate-500 uppercase">{(event as HistoryItem & { usuario?: { full_name?: string } }).usuario?.full_name || event.usuario_id || "SISTEMA"}</span>
+        </p>
+      </div>
+    </div>
+  );
 }

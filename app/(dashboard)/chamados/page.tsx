@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
 import { 
   Search, 
-  Calendar,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -27,10 +26,10 @@ import { format } from "date-fns"
 const statusCardsList = [
   { label: "ABERTO", count: 0, color: "border-t-amber-500", textColor: "text-amber-600" },
   { label: "AGUARDANDO OPERACIONAL", count: 0, color: "border-t-orange-500", textColor: "text-orange-600" },
-  { label: "PROPOSTA CADASTRADA", count: 0, color: "border-t-blue-500", textColor: "text-blue-600" },
   { label: "EM NEGOCIAÇÃO / PROPOSTA ENVIADA", count: 0, color: "border-t-cyan-500", textColor: "text-cyan-600" },
   { label: "APROVADOS", count: 0, color: "border-t-emerald-500", textColor: "text-emerald-600" },
   { label: "NÃO APROVADOS", count: 0, color: "border-t-rose-500", textColor: "text-rose-600" },
+  { label: "TODOS", count: 0, color: "border-t-slate-800", textColor: "text-slate-900" },
 ]
 
 export interface Ticket {
@@ -74,10 +73,10 @@ export default function TicketsPage() {
   const router = useRouter()
   const { perfil, user, isOperational, isAdmin } = useAuth()
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
+  const [selectedStatus, setSelectedStatus] = useState<string | null>("TODOS")
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
-  const [startDate, setStartDate] = useState(format(new Date(), "dd/MM/yyyy"))
-  const [endDate, setEndDate] = useState(format(new Date(), "dd/MM/yyyy"))
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -103,7 +102,7 @@ export default function TicketsPage() {
       } else if (perfil.role === 'Supervisor') {
         // Supervisor vê os seus + os corretores sob sua supervisão
         try {
-          const response = await fetch("/api/usuarios")
+          const response = await withRetry(() => fetch("/api/usuarios"))
           if (response.ok) {
             const allUsers = await response.json()
             const subordinates = allUsers
@@ -148,7 +147,7 @@ export default function TicketsPage() {
   const counts = useMemo(() => {
     const res: Record<string, number> = {}
     tickets.forEach(t => {
-      const s = t.status_chamados?.nome.toUpperCase() || t.status.toUpperCase()
+      const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
       res[s] = (res[s] || 0) + 1
     })
     return res
@@ -158,7 +157,7 @@ export default function TicketsPage() {
     return tickets.filter(ticket => {
       // Basic text search
       const searchLower = searchTerm.toLowerCase()
-      const ticketStatusName = (ticket.status_chamados?.nome || ticket.status).toLowerCase()
+      const ticketStatusName = (ticket.status_chamados?.nome || ticket.status || "").toLowerCase()
       
       const matchesSearch = 
         ticket.id.toString().includes(searchTerm) ||
@@ -178,15 +177,15 @@ export default function TicketsPage() {
 
       // Status category filter
       let matchesStatus = true
-      const ticketStatusUpper = ticketStatusName.toUpperCase()
+      const ticketStatusUpper = (ticket.status_chamados?.nome || ticket.status || "").trim().toUpperCase()
       
       if (selectedSecondaryStatus) {
         matchesStatus = ticketStatusUpper === selectedSecondaryStatus.toUpperCase()
-      } else if (selectedStatus) {
+      } else if (selectedStatus && selectedStatus !== "TODOS") {
         if (selectedStatus === "APROVADOS") {
           matchesStatus = ticketStatusUpper.includes("APROVADO")
         } else if (selectedStatus === "ABERTO") {
-          matchesStatus = ticketStatusUpper === "ABERTO" || ticketStatusUpper === "ABERTOS"
+          matchesStatus = ticketStatusUpper === "ABERTO" || ticketStatusUpper === "ABERTOS" || ticketStatusUpper.includes("ABERTO")
         } else {
           matchesStatus = ticketStatusUpper === selectedStatus.toUpperCase()
         }
@@ -196,13 +195,26 @@ export default function TicketsPage() {
       let matchesDate = true
       if (startDate && endDate) {
         try {
-          const [startDay, startMonth, startYear] = startDate.split("/").map(Number)
-          const [endDay, endMonth, endYear] = endDate.split("/").map(Number)
+          // Detect format: yyyy-mm-dd (native date picker) or dd/mm/yyyy (manual)
+          let start: Date, end: Date
           
-          const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0)
-          const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59)
+          if (startDate.includes("-")) {
+            const [y, m, d] = startDate.split("-").map(Number)
+            start = new Date(y, m - 1, d, 0, 0, 0)
+          } else {
+            const [d, m, y] = startDate.split("/").map(Number)
+            start = new Date(y, m - 1, d, 0, 0, 0)
+          }
+
+          if (endDate.includes("-")) {
+            const [y, m, d] = endDate.split("-").map(Number)
+            end = new Date(y, m - 1, d, 23, 59, 59)
+          } else {
+            const [d, m, y] = endDate.split("/").map(Number)
+            end = new Date(y, m - 1, d, 23, 59, 59)
+          }
+
           const ticketDate = new Date(ticket.created_at)
-          
           matchesDate = ticketDate >= start && ticketDate <= end
         } catch (e) {
           console.error("Erro ao validar datas:", e)
@@ -219,14 +231,16 @@ export default function TicketsPage() {
       count = (counts["ABERTO"] || 0) + (counts["ABERTOS"] || 0)
     } else if (card.label === "APROVADOS") {
       count = Object.entries(counts).reduce((acc, [k, v]) => k.includes("APROVADO") ? acc + v : acc, 0)
+    } else if (card.label === "TODOS") {
+      count = tickets.length
     }
     return { ...card, count }
-  }), [counts])
+  }), [counts, tickets.length])
 
   const handleParentClick = (status: string) => {
     setCurrentPage(1)
     if (selectedStatus === status) {
-      setSelectedStatus(null)
+      setSelectedStatus("TODOS")
       setSelectedSecondaryStatus(null)
     } else {
       setSelectedStatus(status)
@@ -344,21 +358,28 @@ export default function TicketsPage() {
               <div className="flex flex-wrap items-end gap-3">
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Período</label>
-                  <div className="flex items-center gap-2 bg-slate-50/50 border border-slate-100 rounded-lg px-3 h-[38px] focus-within:border-primary/30 transition-colors">
-                    <Calendar className="w-4 h-4 text-slate-400" />
-                    <input 
-                      type="text" 
-                      value={startDate} 
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="text-[11px] font-bold w-18 bg-transparent focus:outline-none text-slate-600" 
-                    />
-                    <span className="text-slate-300 text-[10px] font-bold">A</span>
-                    <input 
-                      type="text" 
-                      value={endDate} 
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="text-[11px] font-bold w-18 bg-transparent focus:outline-none text-slate-600" 
-                    />
+                  <div className="flex items-center gap-2">
+                    {/* Data Inicial */}
+                    <div className="relative">
+                      <Input 
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="h-[38px] w-[130px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
+                      />
+                    </div>
+
+                    <span className="text-slate-300 text-[10px] font-bold scale-x-75">A</span>
+
+                    {/* Data Final */}
+                    <div className="relative">
+                      <Input 
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="h-[38px] w-[130px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
+                      />
+                    </div>
                   </div>
                 </div>
                 <Button 

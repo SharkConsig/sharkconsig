@@ -336,6 +336,7 @@ export default function SettingsPage() {
           .insert({
             banco_id: selectedBancoForProd.id,
             convenio_id: selectedConvenioForProd.id,
+            ativo: false,
             ...payload
           })
         if (error) throw error
@@ -539,8 +540,8 @@ export default function SettingsPage() {
                         <TableRow className="hover:bg-transparent border-slate-100">
                           <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Status</TableHead>
                           <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Cor de Identificação</TableHead>
-                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                           <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                           <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -585,19 +586,19 @@ export default function SettingsPage() {
                                   </span>
                                 </div>
                               </TableCell>
+                              <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
+                                {format(new Date(status.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                              </TableCell>
                               <TableCell className="py-4 text-center">
                                 <button 
                                   onClick={() => toggleAtivo('status_chamados', status.id, status.ativo !== false)}
                                   className={cn(
                                     "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
-                                    status.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-50 text-slate-400 border border-slate-100"
+                                    status.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
                                   )}
                                 >
                                   {status.ativo !== false ? "ATIVO" : "INATIVO"}
                                 </button>
-                              </TableCell>
-                              <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
-                                {format(new Date(status.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                               </TableCell>
                               <TableCell className="py-4 text-right pr-8">
                                 <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -717,8 +718,8 @@ export default function SettingsPage() {
                     <TableHeader className="bg-slate-50/50">
                       <TableRow className="border-slate-100">
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Convênio</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
+                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -729,20 +730,20 @@ export default function SettingsPage() {
                         convenios.map((item) => (
                           <TableRow key={item.id} className="group border-slate-100">
                             <TableCell className="py-4 pl-8 font-bold text-[12px] text-slate-700">{item.nome}</TableCell>
+                            <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
+                              {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                            </TableCell>
                             <TableCell className="py-4 text-center">
                                 <button 
                                   onClick={() => toggleAtivo('convenios', item.id, item.ativo !== false)}
                                   className={cn(
                                     "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
-                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-50 text-slate-400 border border-slate-100"
+                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
                                   )}
                                 >
                                   {item.ativo !== false ? "ATIVO" : "INATIVO"}
                                 </button>
                               </TableCell>
-                            <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
-                              {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                            </TableCell>
                             <TableCell className="py-4 text-right pr-8">
                               <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary" onClick={() => handleOpenGenericModal('convenio', item)}><Pencil className="w-4 h-4" /></Button>
@@ -797,8 +798,8 @@ export default function SettingsPage() {
                     <TableHeader className="bg-slate-50/50">
                       <TableRow className="border-slate-100">
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Banco</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
+                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -809,20 +810,20 @@ export default function SettingsPage() {
                         bancos.map((item) => (
                           <TableRow key={item.id} className="group border-slate-100">
                             <TableCell className="py-4 pl-8 font-bold text-[12px] text-slate-700">{item.nome}</TableCell>
+                            <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
+                              {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                            </TableCell>
                             <TableCell className="py-4 text-center">
                                 <button 
                                   onClick={() => toggleAtivo('bancos', item.id, item.ativo !== false)}
                                   className={cn(
                                     "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
-                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-50 text-slate-400 border border-slate-100"
+                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
                                   )}
                                 >
                                   {item.ativo !== false ? "ATIVO" : "INATIVO"}
                                 </button>
                               </TableCell>
-                            <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
-                              {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                            </TableCell>
                             <TableCell className="py-4 text-right pr-8">
                               <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary" onClick={() => handleOpenGenericModal('banco', item)}><Pencil className="w-4 h-4" /></Button>
@@ -877,8 +878,8 @@ export default function SettingsPage() {
                     <TableHeader className="bg-slate-50/50">
                       <TableRow className="border-slate-100">
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Tipo</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
+                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
                         <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -889,20 +890,20 @@ export default function SettingsPage() {
                         tiposOperacao.map((item) => (
                           <TableRow key={item.id} className="group border-slate-100">
                             <TableCell className="py-4 pl-8 font-bold text-[12px] text-slate-700">{item.nome}</TableCell>
+                            <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
+                              {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                            </TableCell>
                             <TableCell className="py-4 text-center">
                                 <button 
                                   onClick={() => toggleAtivo('tipos_operacao', item.id, item.ativo !== false)}
                                   className={cn(
                                     "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
-                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-50 text-slate-400 border border-slate-100"
+                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
                                   )}
                                 >
                                   {item.ativo !== false ? "ATIVO" : "INATIVO"}
                                 </button>
                               </TableCell>
-                            <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
-                              {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                            </TableCell>
                             <TableCell className="py-4 text-right pr-8">
                               <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary" onClick={() => handleOpenGenericModal('operacao', item)}><Pencil className="w-4 h-4" /></Button>
@@ -966,7 +967,7 @@ export default function SettingsPage() {
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-slate-100">
                           <div className="p-6 bg-slate-50/30 space-y-4">
                             <div className="flex items-center justify-between">
-                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Convênios Vinculados</h4>
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">TABELAS DE REGRAS</h4>
                               <Button 
                                 size="sm" 
                                 variant="outline" 
@@ -994,12 +995,17 @@ export default function SettingsPage() {
                                       <div className="space-y-3">
                                         <div className="flex items-center gap-3">
                                           <span className="font-bold text-[13px] text-slate-800 uppercase tracking-widest">{prod.nome_tabela || convenio.nome}</span>
-                                          <span className={cn(
-                                            "px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest",
-                                            prod.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
-                                          )}>
-                                            {prod.ativo !== false ? "ATIVO" : "INATIVO"}
-                                          </span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                              {format(new Date(prod.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                                            </span>
+                                            <span className={cn(
+                                              "px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest",
+                                              prod.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
+                                            )}>
+                                              {prod.ativo !== false ? "ATIVO" : "INATIVO"}
+                                            </span>
+                                          </div>
                                         </div>
 
                                         <div className="flex flex-col gap-1">
@@ -1055,7 +1061,7 @@ export default function SettingsPage() {
                                               : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"
                                           )}
                                         >
-                                          {prod.ativo !== false ? "INATIVAR" : "ATIVAR"}
+                                          {prod.ativo !== false ? "ATIVO" : "INATIVO"}
                                         </button>
 
                                         {/* Botão Editar */}

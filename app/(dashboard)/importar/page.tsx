@@ -19,7 +19,7 @@ import {
   AlertCircle,
   Loader2
 } from "lucide-react"
-import { cn, normalizeText } from "@/lib/utils"
+import { cn, normalizeText, withRetry } from "@/lib/utils"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import Papa from "papaparse"
 
@@ -36,27 +36,7 @@ interface Batch {
 
 import { useAuth } from "@/context/auth-context"
 
-async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
-  try {
-    return await fn();
-  } catch (err: unknown) {
-    const error = err as any;
-    const isNetworkError = 
-      !error.status || // No status often means network failure
-      error.message?.includes('fetch') || 
-      error.message?.includes('NetworkError') || 
-      error.message?.includes('Failed to fetch') ||
-      error.code === 'PGRST301' || // JWT expired (sometimes retry helps if it's a glitch)
-      error.code === 'ECONNRESET';
 
-    if (retries > 0 && isNetworkError) {
-      console.warn(`[RETRY] Falha na rede (${error.message || error.code}), tentando novamente em ${delay}ms... (${retries} tentativas restantes)`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return withRetry(fn, retries - 1, delay * 2);
-    }
-    throw error;
-  }
-}
 
 export default function ImportBatchPage() {
   const router = useRouter()
@@ -1254,7 +1234,7 @@ export default function ImportBatchPage() {
                       const pages = [];
                       const maxVisiblePages = 5;
                       let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-                      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                      const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
                       
                       if (endPage - startPage + 1 < maxVisiblePages) {
                         startPage = Math.max(1, endPage - maxVisiblePages + 1);

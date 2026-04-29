@@ -218,9 +218,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[750px] p-0 overflow-hidden border-none rounded-2xl shadow-2xl">
-        <form onSubmit={handleSubmit}>
-          <div className="p-8 space-y-8">
+      <DialogContent className="sm:max-w-[750px] p-0 overflow-hidden border-none rounded-2xl shadow-2xl max-h-[95vh] flex flex-col">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
+          <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar flex-1">
             <DialogHeader className="space-y-1">
               <DialogTitle className="text-[16.5px] font-black text-slate-800 uppercase tracking-widest">
                 {usuario ? 'EDITAR USUÁRIO' : 'NOVO USUÁRIO'}

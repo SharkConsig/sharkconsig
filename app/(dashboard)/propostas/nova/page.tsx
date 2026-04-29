@@ -14,7 +14,6 @@ import {
   ChevronLeft, 
   ChevronDown,
   Search,
-  Calendar, 
   Save, 
   Bold,
   Italic,
@@ -29,10 +28,14 @@ import {
   Link2,
   Image as ImageIcon,
   Paperclip,
-  Loader2
+  Loader2,
+  UploadCloud,
+  X
 } from "lucide-react"
+import { useAuth } from "@/context/auth-context"
 
 function NewProposalForm() {
+  const { isCorretor } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
@@ -41,7 +44,20 @@ function NewProposalForm() {
   const [dbConvenios, setDbConvenios] = useState<{id: string, nome: string}[]>([])
   const [dbBancos, setDbBancos] = useState<{id: string, nome: string}[]>([])
   const [dbOperacoes, setDbOperacoes] = useState<{id: string, nome: string}[]>([])
-  const [dbProdutosConfigs, setDbProdutosConfigs] = useState<any[]>([])
+  interface ProdutoConfig {
+    id: string
+    nome_tabela: string | null
+    prazo: number
+    coeficiente: number
+    percentual_producao: number
+    convenio_id: string
+    operacoes: string[]
+    convenios: { nome: string } | null
+  }
+
+  const [dbProdutosConfigs, setDbProdutosConfigs] = useState<ProdutoConfig[]>([])
+  const [selectedCoefValue, setSelectedCoefValue] = useState<number | null>(null)
+  const [selectedProdPercent, setSelectedProdPercent] = useState<number | null>(null)
 
   const [selection, setSelection] = useState({
     convenio: "",
@@ -98,14 +114,40 @@ function NewProposalForm() {
     fetchData()
   }, [])
 
-  // Fetch product configurations when selections change
+  useEffect(() => {
+    async function loadTicketAttachments() {
+      const idLead = searchParams.get("idLead")
+      const origem = searchParams.get("origem")
+
+      if (idLead && (origem === "chamado" || searchParams.has("idLead"))) {
+        try {
+          const { data: ticket, error } = await supabase
+            .from('chamados')
+            .select('*')
+            .eq('id', idLead)
+            .maybeSingle()
+
+          if (ticket && !error) {
+            setExistingAttachments({
+              frente: ticket.arquivo_rg_frente || null,
+              verso: ticket.arquivo_rg_verso || null,
+              contracheque: ticket.arquivo_contracheque || null,
+              extrato: ticket.arquivo_extrato || null,
+              outros: ticket.arquivo_outros || null,
+              outros_2: ticket.arquivo_outros_2 || null
+            })
+          }
+        } catch (err) {
+          console.error("Erro ao carregar anexos do chamado:", err)
+        }
+      }
+    }
+    loadTicketAttachments()
+  }, [searchParams])
+
+  // Fetch product configurations
   useEffect(() => {
     async function fetchConfigs() {
-      if (!selection.bancoId) {
-        setDbProdutosConfigs([])
-        return
-      }
-      
       try {
         const { data, error } = await supabase
           .from('produtos_config')
@@ -114,35 +156,39 @@ function NewProposalForm() {
             nome_tabela,
             prazo,
             coeficiente,
+            percentual_producao,
             convenio_id,
             operacoes,
             convenios (nome)
           `)
-          .eq('banco_id', selection.bancoId)
           .eq('ativo', true)
 
         if (error) throw error
 
-        // Filter by selected operation ID if it exists in the array
-        let filtered = data || []
+        const filtered = data || []
+        // Optional: filter by selected operation ID if it exists in the array
+        // and bank/convention if they are set, but the request says "todas"
+        /*
+        if (selection.bancoId) {
+          filtered = filtered.filter(config => config.banco_id === selection.bancoId)
+        }
         if (selection.operacaoId) {
           filtered = filtered.filter(config => 
             config.operacoes && config.operacoes.includes(selection.operacaoId)
           )
         }
-        
-        // Also filter by selected convenio if necessary
         if (selection.convenioId) {
           filtered = filtered.filter(config => config.convenio_id === selection.convenioId)
         }
+        */
 
         setDbProdutosConfigs(filtered)
       } catch (err) {
-        console.error("Erro ao buscar regras de coeficiente:", err)
+        console.error("Erro ao buscar tabelas de regras:", err)
       }
     }
     fetchConfigs()
-  }, [selection.bancoId, selection.convenioId, selection.operacaoId])
+  }, []) // Fetch once on mount or when needed, request says "todas as regras"
   
   const [formData, setFormData] = useState({
     nome: searchParams.get("nome") || "",
@@ -159,9 +205,9 @@ function NewProposalForm() {
     data_emissao: "",
     nome_pai: "",
     nome_mae: "",
-    tel_residencial_1: "",
-    tel_residencial_2: "",
-    tel_comercial: "",
+    tel_1: searchParams.get("tel1") || "",
+    tel_2: searchParams.get("tel2") || "",
+    tel_3: searchParams.get("tel3") || "",
     cep: "",
     endereco: "",
     numero: "",
@@ -180,10 +226,128 @@ function NewProposalForm() {
     valor_cliente_operacional: "",
     margem_utilizada: "",
     coeficiente_prazo: "",
+    valor_producao_corretor: "",
     observacoes: ""
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSearchingCEP, setIsSearchingCEP] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState<{ [key: string]: File | null }>({
+    frente: null,
+    verso: null,
+    contracheque: null,
+    extrato: null,
+    outros: null,
+    outros_2: null
+  })
+  const [existingAttachments, setExistingAttachments] = useState<{ [key: string]: string | null }>({
+    frente: null,
+    verso: null,
+    contracheque: null,
+    extrato: null,
+    outros: null,
+    outros_2: null
+  })
+  const [pastedImages, setPastedImages] = useState<File[]>([])
+
+  const fileRefs = {
+    frente: useRef<HTMLInputElement>(null),
+    verso: useRef<HTMLInputElement>(null),
+    contracheque: useRef<HTMLInputElement>(null),
+    extrato: useRef<HTMLInputElement>(null),
+    outros: useRef<HTMLInputElement>(null),
+    outros_2: useRef<HTMLInputElement>(null)
+  }
+
+  const handleSearchCEP = async () => {
+    console.log("handleSearchCEP called. Current CEP:", formData.cep);
+    const cep = formData.cep.replace(/\D/g, "")
+    if (cep.length !== 8) {
+      console.warn("Invalid CEP length:", cep.length);
+      toast.error("Por favor, informe um CEP válido com 8 dígitos.")
+      return
+    }
+
+    setIsSearchingCEP(true)
+    const loadingToast = toast.loading("Buscando endereço...")
+    
+    try {
+      console.log("Fetching from ViaCEP:", cep);
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json()
+      console.log("ViaCEP response data:", data);
+
+      if (data.erro) {
+        toast.error("CEP não encontrado.", { id: loadingToast })
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          endereco: data.logradouro || prev.endereco,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.localidade || prev.cidade,
+          uf: data.uf || prev.uf
+        }))
+        toast.success("Endereço preenchido com sucesso!", { id: loadingToast })
+      }
+    } catch (error) {
+      console.error("Erro ao buscar CEP:", error)
+      toast.error("Erro ao conectar com o serviço de CEP.", { id: loadingToast })
+    } finally {
+      setIsSearchingCEP(false)
+    }
+  }
+
+  const handleFileClick = (ref: React.RefObject<HTMLInputElement | null>) => {
+    ref.current?.click()
+  }
+
+  const handleFileChange = (field: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null
+    setSelectedFiles(prev => ({ ...prev, [field]: file }))
+    // If a new file is uploaded, clear the existing attachment for that slot
+    setExistingAttachments(prev => ({ ...prev, [field]: null }))
+  }
+
+  const uploadFile = async (file: File, path: string) => {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+    const fullPath = `${path}/${fileName}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('propostas-attachments')
+      .upload(fullPath, file)
+
+    if (uploadError) throw uploadError
+
+    const { data } = supabase.storage
+      .from('propostas-attachments')
+      .getPublicUrl(fullPath)
+
+    return data.publicUrl
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const file = new File([blob], `screenshot_${Date.now()}.png`, { type: blob.type });
+          files.push(file);
+        }
+      }
+    }
+    if (files.length > 0) {
+      setPastedImages(prev => [...prev, ...files]);
+      toast.success(`${files.length} imagem(ns) colada(s) do clipboard`);
+    }
+  };
 
   useEffect(() => {
     async function fetchClientData() {
@@ -234,14 +398,14 @@ function NewProposalForm() {
         // If no records found, start from 1
         const nextId = maxId > 0 ? maxId + 1 : 1
         setFormData(prev => ({ ...prev, idLead: nextId.toString() }))
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("Erro ao gerar ID de Lead:", err)
       }
     }
     generateLeadId()
   }, [searchParams])
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (targetStatus?: string) => {
     if (!selection.convenio || !selection.banco || !selection.operacao) {
       toast.error("Por favor, selecione o convênio, banco e tipo de operação.")
       return
@@ -253,11 +417,54 @@ function NewProposalForm() {
     }
 
     setIsSubmitting(true)
-    const loadingToast = toast.loading("Salvando proposta...")
+    const loadingToast = toast.loading("Salvando proposta e anexos...")
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      
+      if (!user) throw new Error("Usuário não autenticado")
+
+      // Upload de arquivos
+      const fileUrls: { [key: string]: string | null } = {
+        frente: null,
+        verso: null,
+        contracheque: null,
+        extrato: null,
+        outros: null,
+        outros_2: null
+      };
+
+      for (const [key, file] of Object.entries(selectedFiles)) {
+        if (file) {
+          try {
+            const url = await uploadFile(file, `${user.id}/${Date.now()}`);
+            fileUrls[key] = url;
+          } catch (uploadErr: unknown) {
+            const err = uploadErr as { message?: string };
+            console.error(`Erro ao enviar arquivo ${key}:`, err);
+            throw new Error(`Falha no upload do arquivo ${key}: ${err.message || 'Erro desconhecido'}`);
+          }
+        }
+      }
+
+      // Upload de imagens coladas (screenshots)
+      const pastedUrls = [];
+      if (pastedImages.length > 0) {
+        for (const file of pastedImages) {
+          try {
+            const url = await uploadFile(file, `pasted/${user.id}/${Date.now()}`);
+            pastedUrls.push(url);
+          } catch (err: unknown) {
+            console.error("Erro ao subir imagem colada:", err);
+          }
+        }
+      }
+
+      // Se houver imagens coladas, adiciona às observações
+      let finalObservations = formData.observacoes;
+      if (pastedUrls.length > 0) {
+        finalObservations += "\n\n--- IMAGENS EM ANEXO ---\n" + pastedUrls.map((url, i) => `![Print ${i+1}](${url})`).join("\n");
+      }
+
       const cleanMoney = (val: string) => {
         if (!val) return null
         const cleaned = val.replace(/[R$\s.]/g, "").replace(",", ".")
@@ -277,7 +484,9 @@ function NewProposalForm() {
         }
       }
 
-      const { error } = await supabase.from('propostas').insert({
+      const currentStatus = targetStatus || 'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO'
+
+      const { error } = await supabase.from('propostas').upsert({
         id_lead: formData.idLead,
         cliente_cpf: formData.cpf.replace(/\D/g, ""),
         nome_cliente: formData.nome,
@@ -288,7 +497,7 @@ function NewProposalForm() {
         banco: selection.banco,
         tipo_operacao: selection.operacao,
         corretor_id: user?.id,
-        status: 'AGUARDANDO DIGITAÇÃO',
+        status: currentStatus,
         naturalidade: formData.naturalidade,
         uf_naturalidade: formData.uf_naturalidade,
         identidade: formData.identidade,
@@ -297,9 +506,9 @@ function NewProposalForm() {
         data_emissao: formatDate(formData.data_emissao),
         nome_pai: formData.nome_pai,
         nome_mae: formData.nome_mae,
-        tel_residencial_1: formData.tel_residencial_1,
-        tel_residencial_2: formData.tel_residencial_2,
-        tel_comercial: formData.tel_comercial,
+        tel_residencial_1: formData.tel_1,
+        tel_residencial_2: formData.tel_2,
+        tel_comercial: formData.tel_3,
         cep: formData.cep,
         endereco: formData.endereco,
         numero: formData.numero,
@@ -318,19 +527,27 @@ function NewProposalForm() {
         valor_cliente_operacional: cleanMoney(formData.valor_cliente_operacional),
         margem_utilizada: cleanMoney(formData.margem_utilizada),
         coeficiente_prazo: formData.coeficiente_prazo,
-        observacoes: formData.observacoes
-      })
+        observacoes: finalObservations,
+        arquivo_rg_frente: fileUrls.frente || existingAttachments.frente,
+        arquivo_rg_verso: fileUrls.verso || existingAttachments.verso,
+        arquivo_contracheque: fileUrls.contracheque || existingAttachments.contracheque,
+        arquivo_extrato: fileUrls.extrato || existingAttachments.extrato,
+        arquivo_outros: fileUrls.outros || existingAttachments.outros,
+        arquivo_outros_2: fileUrls.outros_2 || existingAttachments.outros_2,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id_lead' })
 
       if (error) throw error
 
       toast.dismiss(loadingToast)
-      toast.success("Proposta cadastrada com sucesso!")
+      toast.success("Proposta salva com sucesso!")
       router.push("/propostas")
     } catch (err: unknown) {
       console.error("Erro ao salvar proposta:", JSON.stringify(err, null, 2))
       console.log("Detalhes do erro:", err)
       toast.dismiss(loadingToast)
-      const message = (err as any)?.message || (err as any)?.error_description || "Erro ao salvar proposta."
+      const error = err as { message?: string; error_description?: string }
+      const message = error?.message || error?.error_description || "Erro ao salvar proposta."
       toast.error(message)
     } finally {
       setIsSubmitting(false)
@@ -344,7 +561,7 @@ function NewProposalForm() {
       try {
         const { data, error } = await supabase
           .from('base_consulta_rapida')
-          .select('numero_matricula, data_nascimento, nome, telefone_1')
+          .select('numero_matricula, data_nascimento, nome, telefone_1, telefone_2, telefone_3')
           .eq('cpf', formData.cpf.replace(/\D/g, ""))
           .order('created_at', { ascending: false })
           .limit(1)
@@ -355,7 +572,10 @@ function NewProposalForm() {
             ...prev, 
             matricula: prev.matricula || data.numero_matricula || "",
             nascimento: prev.nascimento || (data.data_nascimento ? format(new Date(data.data_nascimento), "dd/MM/yyyy") : ""),
-            nome: prev.nome || data.nome || ""
+            nome: prev.nome || data.nome || "",
+            tel_1: prev.tel_1 || data.telefone_1 || "",
+            tel_2: prev.tel_2 || data.telefone_2 || "",
+            tel_3: prev.tel_3 || data.telefone_3 || ""
           }))
         }
       } catch (error) {
@@ -365,8 +585,130 @@ function NewProposalForm() {
     fetchClientDetails()
   }, [formData.cpf])
 
+  // Helper to convert DD/MM/YYYY to YYYY-MM-DD for native input
+  const toInputDate = (val: string) => {
+    if (!val || !val.includes('/')) return val;
+    const [d, m, y] = val.split('/');
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  };
+
+  // Helper to convert YYYY-MM-DD to DD/MM/YYYY for state
+  const fromInputDate = (val: string) => {
+    if (!val || !val.includes('-')) return val;
+    const [y, m, d] = val.split('-');
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+  };
+
   const handleFormChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+    let newValue = value
+    
+    // CEP formatting (00000-000)
+    if (field === "cep") {
+      const digits = value.replace(/\D/g, "")
+      if (digits.length <= 8) {
+        if (digits.length > 5) {
+          newValue = `${digits.substring(0, 5)}-${digits.substring(5, 8)}`
+        } else {
+          newValue = digits
+        }
+      } else {
+        return // Reject values longer than 8 digits
+      }
+    }
+
+    // Currency fields formatting
+    if (["valor_parcela", "valor_operacao_operacional", "valor_cliente_operacional", "margem_utilizada", "valor_producao_corretor"].includes(field)) {
+      const digits = value.replace(/\D/g, "")
+      if (digits) {
+        const amount = parseFloat(digits) / 100
+        newValue = new Intl.NumberFormat('pt-BR', {
+          style: 'currency',
+          currency: 'BRL',
+        }).format(amount)
+      } else {
+        newValue = ""
+      }
+    }
+
+    // Date fields formatting (DD/MM/AAAA)
+    if (["nascimento", "data_emissao"].includes(field)) {
+      const digits = value.replace(/\D/g, "")
+      if (digits.length <= 8) {
+        if (digits.length > 4) {
+          newValue = `${digits.substring(0, 2)}/${digits.substring(2, 4)}/${digits.substring(4, 8)}`
+        } else if (digits.length > 2) {
+          newValue = `${digits.substring(0, 2)}/${digits.substring(2, 4)}`
+        } else {
+          newValue = digits
+        }
+      } else {
+        return // Reject values longer than 8 digits
+      }
+    }
+    // Phone fields formatting
+    if (["tel_1", "tel_2", "tel_3"].includes(field)) {
+      const digits = value.replace(/\D/g, "")
+      if (digits.length <= 11) {
+        if (digits.length > 2) {
+          const part1 = digits.substring(0, 2)
+          const part2 = digits.substring(2, 7)
+          const part3 = digits.substring(7, 11)
+          newValue = `(${part1}) ${part2}${part3 ? "-" + part3 : ""}`
+        } else if (digits.length > 0) {
+          newValue = `(${digits}`
+        }
+      } else {
+        return // Reject values longer than 11 digits
+      }
+    }
+
+    setFormData(prev => {
+      const updated = { ...prev, [field]: newValue }
+
+      // Se o CPF mudar, podemos tentar limpar ou reagir se necessário
+      if (field === "cpf") {
+        // ... ja tratado no useEffect
+      }
+
+      // Sync parcel with margin
+      if (field === "margem_utilizada") {
+        updated.valor_parcela = newValue
+      } else if (field === "valor_parcela") {
+        updated.margem_utilizada = newValue
+      }
+
+      // Auto-calculations check
+      if ((field === "margem_utilizada" || field === "valor_parcela") && selectedCoefValue) {
+        const rawMargem = (field === "margem_utilizada" ? newValue : updated.margem_utilizada).replace(/\D/g, "")
+        if (rawMargem) {
+          const margemValue = parseFloat(rawMargem) / 100
+          const valorCliente = margemValue / selectedCoefValue
+          updated.valor_cliente_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorCliente)
+          
+          // Re-calculate production if percent is available
+          if (selectedProdPercent) {
+            const valorProducao = (valorCliente * selectedProdPercent) / 100
+            updated.valor_producao_corretor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+          }
+        } else {
+          updated.valor_cliente_operacional = ""
+          updated.valor_producao_corretor = ""
+        }
+      }
+
+      if (field === "valor_cliente_operacional" && selectedProdPercent) {
+        const rawValue = newValue.replace(/\D/g, "")
+        if (rawValue) {
+          const valorCliente = parseFloat(rawValue) / 100
+          const valorProducao = (valorCliente * selectedProdPercent) / 100
+          updated.valor_producao_corretor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+        } else {
+          updated.valor_producao_corretor = ""
+        }
+      }
+
+      return updated
+    })
   }
 
   const nextStep = () => setStep(prev => prev + 1)
@@ -510,15 +852,13 @@ function NewProposalForm() {
           {/* Top Fields */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID Lead</label>
-              <Input 
-                value={formData.idLead}
-                readOnly
-                className="h-9 border-none bg-transparent p-0 text-lg font-bold text-black/80 shadow-none focus-visible:ring-0 cursor-default" 
-              />
+              <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">ID Lead</label>
+              <span className="block text-xl font-black text-slate-900 tracking-tight py-1">
+                {formData.idLead}
+              </span>
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Origem do Cliente</label>
+              <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Origem do Cliente</label>
               <select 
                 value={formData.origem}
                 onChange={(e) => handleFormChange("origem", e.target.value)}
@@ -532,7 +872,7 @@ function NewProposalForm() {
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula <span className="text-red-500">*</span></label>
+              <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Matrícula <span className="text-red-500">*</span></label>
               <Input 
                 value={formData.matricula}
                 onChange={(e) => handleFormChange("matricula", e.target.value)}
@@ -546,7 +886,7 @@ function NewProposalForm() {
             <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">DADOS PESSOAIS</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="md:col-span-1 space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CPF</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">CPF</label>
                 <Input 
                   value={formData.cpf}
                   onChange={(e) => handleFormChange("cpf", e.target.value)}
@@ -554,7 +894,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome</label>
                 <Input 
                   value={formData.nome}
                   onChange={(e) => handleFormChange("nome", e.target.value)}
@@ -562,19 +902,19 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data de Nascimento</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Data de Nascimento</label>
                 <div className="relative">
                   <Input 
-                    value={formData.nascimento}
-                    onChange={(e) => handleFormChange("nascimento", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors pr-10" 
+                    type="date"
+                    value={toInputDate(formData.nascimento)}
+                    onChange={(e) => handleFormChange("nascimento", fromInputDate(e.target.value))}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none" 
                   />
-                  <Calendar className="absolute right-3 top-2 w-5 h-5 text-slate-400" />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Naturalidade</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Naturalidade</label>
                 <Input 
                   value={formData.naturalidade}
                   onChange={(e) => handleFormChange("naturalidade", e.target.value)}
@@ -583,7 +923,7 @@ function NewProposalForm() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF Naturalidade</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF Naturalidade</label>
                 <select 
                   value={formData.uf_naturalidade}
                   onChange={(e) => handleFormChange("uf_naturalidade", e.target.value)}
@@ -596,7 +936,7 @@ function NewProposalForm() {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identidade</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Identidade</label>
                 <Input 
                   value={formData.identidade}
                   onChange={(e) => handleFormChange("identidade", e.target.value)}
@@ -604,7 +944,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão Emissor</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Órgão Emissor</label>
                 <Input 
                   value={formData.orgao_emissor}
                   onChange={(e) => handleFormChange("orgao_emissor", e.target.value)}
@@ -612,7 +952,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF Emissão</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF Emissão</label>
                 <select 
                   value={formData.uf_emissao}
                   onChange={(e) => handleFormChange("uf_emissao", e.target.value)}
@@ -626,19 +966,18 @@ function NewProposalForm() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data de Emissão</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Data de Emissão</label>
                 <div className="relative">
                   <Input 
-                    value={formData.data_emissao}
-                    onChange={(e) => handleFormChange("data_emissao", e.target.value)}
-                    placeholder="DD/MM/AAAA"
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors pr-10" 
+                    type="date"
+                    value={toInputDate(formData.data_emissao)}
+                    onChange={(e) => handleFormChange("data_emissao", fromInputDate(e.target.value))}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none" 
                   />
-                  <Calendar className="absolute right-3 top-2 w-5 h-5 text-slate-400" />
                 </div>
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome do Pai</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome do Pai</label>
                 <Input 
                   value={formData.nome_pai}
                   onChange={(e) => handleFormChange("nome_pai", e.target.value)}
@@ -646,7 +985,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome da Mãe</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome da Mãe</label>
                 <Input 
                   value={formData.nome_mae}
                   onChange={(e) => handleFormChange("nome_mae", e.target.value)}
@@ -655,43 +994,60 @@ function NewProposalForm() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Residencial 1</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 1</label>
                 <Input 
-                  value={formData.tel_residencial_1}
-                  onChange={(e) => handleFormChange("tel_residencial_1", e.target.value)}
+                  value={formData.tel_1}
+                  onChange={(e) => handleFormChange("tel_1", e.target.value)}
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Residencial 2</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 2</label>
                 <Input 
-                  value={formData.tel_residencial_2}
-                  onChange={(e) => handleFormChange("tel_residencial_2", e.target.value)}
+                  value={formData.tel_2}
+                  onChange={(e) => handleFormChange("tel_2", e.target.value)}
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Comercial</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 3</label>
                 <Input 
-                  value={formData.tel_comercial}
-                  onChange={(e) => handleFormChange("tel_comercial", e.target.value)}
+                  value={formData.tel_3}
+                  onChange={(e) => handleFormChange("tel_3", e.target.value)}
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CEP</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">CEP</label>
                 <div className="flex gap-2">
                   <Input 
                     value={formData.cep}
                     onChange={(e) => handleFormChange("cep", e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSearchCEP();
+                      }
+                    }}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    placeholder="00000-000"
                   />
-                  <button type="button" className="text-[10px] font-bold text-primary italic whitespace-nowrap hover:underline">Buscar CEP</button>
+                  <button 
+                    type="button" 
+                    disabled={isSearchingCEP}
+                    onClick={handleSearchCEP}
+                    className="text-[10px] font-bold text-primary italic whitespace-nowrap hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    {isSearchingCEP ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : null}
+                    Buscar CEP
+                  </button>
                 </div>
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Endereço</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Endereço</label>
                 <Input 
                   value={formData.endereco}
                   onChange={(e) => handleFormChange("endereco", e.target.value)}
@@ -699,7 +1055,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Número</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Número</label>
                 <Input 
                   value={formData.numero}
                   onChange={(e) => handleFormChange("numero", e.target.value)}
@@ -707,7 +1063,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Complemento</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Complemento</label>
                 <Input 
                   value={formData.complemento}
                   onChange={(e) => handleFormChange("complemento", e.target.value)}
@@ -715,7 +1071,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bairro</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Bairro</label>
                 <Input 
                   value={formData.bairro}
                   onChange={(e) => handleFormChange("bairro", e.target.value)}
@@ -723,7 +1079,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cidade</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Cidade</label>
                 <Input 
                   value={formData.cidade}
                   onChange={(e) => handleFormChange("cidade", e.target.value)}
@@ -731,7 +1087,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF</label>
                 <select 
                   value={formData.uf}
                   onChange={(e) => handleFormChange("uf", e.target.value)}
@@ -753,7 +1109,7 @@ function NewProposalForm() {
             {/* Primeira linha */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Banco</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Banco</label>
                 <Input 
                   value={formData.banco_cliente}
                   onChange={(e) => handleFormChange("banco_cliente", e.target.value)}
@@ -761,7 +1117,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CHAVE PIX</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">CHAVE PIX</label>
                 <Input 
                   value={formData.chave_pix}
                   onChange={(e) => handleFormChange("chave_pix", e.target.value)}
@@ -773,7 +1129,7 @@ function NewProposalForm() {
             {/* Segunda linha */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Conta</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Conta</label>
                 <Input 
                   value={formData.conta}
                   onChange={(e) => handleFormChange("conta", e.target.value)}
@@ -781,7 +1137,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Agência</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Agência</label>
                 <Input 
                   value={formData.agencia}
                   onChange={(e) => handleFormChange("agencia", e.target.value)}
@@ -789,7 +1145,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">DV</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">DV</label>
                 <Input 
                   value={formData.dv}
                   onChange={(e) => handleFormChange("dv", e.target.value)}
@@ -797,7 +1153,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Conta</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Tipo de Conta</label>
                 <select 
                   value={formData.tipo_conta}
                   onChange={(e) => handleFormChange("tipo_conta", e.target.value)}
@@ -816,50 +1172,52 @@ function NewProposalForm() {
             <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">DADOS DA OPERAÇÃO</h3>
             
             {/* Operacional Box */}
-            <div className="bg-[#FEFCE8] border border-amber-100 rounded-xl p-8 space-y-6">
-              <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
-                <span className="font-bold text-slate-900">Operacional:</span> Preencha os campos abaixo em caso de divergência nos valores informados pelo corretor do valores do banco. Salvar valor operacional atualizará somente os campos abaixo.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Parcela</label>
-                  <Input 
-                    value={formData.valor_parcela}
-                    onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
-                    placeholder="R$ 0,00" 
-                  />
+            {!isCorretor && (
+              <div className="bg-[#FEFCE8] border border-amber-100 rounded-xl p-8 space-y-6">
+                <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
+                  <span className="font-bold text-slate-900">Operacional:</span> Preencha os campos abaixo em caso de divergência nos valores informados pelo corretor do valores do banco. Salvar valor operacional atualizará somente os campos abaixo.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
+                    <Input 
+                      value={formData.valor_parcela}
+                      onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                      placeholder="R$ 0,00" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Operação</label>
+                    <Input 
+                      value={formData.valor_operacao_operacional}
+                      onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                      placeholder="R$ 0,00" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Cliente</label>
+                    <Input 
+                      value={formData.valor_cliente_operacional}
+                      onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                      placeholder="R$ 0,00" 
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleSubmit} 
+                    className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
+                  >
+                    <Save className="w-5 h-5" />
+                  </Button>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Operação</label>
-                  <Input 
-                    value={formData.valor_operacao_operacional}
-                    onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
-                    placeholder="R$ 0,00" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Cliente</label>
-                  <Input 
-                    value={formData.valor_cliente_operacional}
-                    onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
-                    placeholder="R$ 0,00" 
-                  />
-                </div>
-                <Button 
-                  onClick={handleSubmit} 
-                  className="h-9 bg-[#1A2B49] hover:bg-[#1A2B49]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
-                >
-                  <Save className="w-5 h-5" />
-                </Button>
               </div>
-            </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Margem Utilizada</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Margem Utilizada</label>
                 <Input 
                   value={formData.margem_utilizada}
                   onChange={(e) => handleFormChange("margem_utilizada", e.target.value)}
@@ -868,15 +1226,18 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2 relative" ref={coefDropdownRef}>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente e Prazo</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Coeficiente e Prazo</label>
                 <div 
-                  className="h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all"
+                  className={cn(
+                    "h-9 px-4 rounded-md border border-slate-800 bg-[#171717] flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all",
+                    isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary"
+                  )}
                   onClick={() => setIsCoefDropdownOpen(!isCoefDropdownOpen)}
                 >
-                  <span className="text-[13px] font-medium text-slate-700 truncate">
-                    {formData.coeficiente_prazo || "Selecione uma regra"}
+                  <span className="text-[13px] font-medium text-white truncate">
+                    {formData.coeficiente_prazo || "Selecione uma tabela"}
                   </span>
-                  <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform", isCoefDropdownOpen && "rotate-180")} />
+                  <ChevronDown className={cn("w-4 h-4 text-white/70 transition-transform", isCoefDropdownOpen && "rotate-180")} />
                 </div>
 
                 {isCoefDropdownOpen && (
@@ -888,7 +1249,7 @@ function NewProposalForm() {
                         <input 
                           autoFocus
                           type="text"
-                          placeholder="Buscar regra..."
+                          placeholder="Buscar tabela..."
                           className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                           value={coefSearchTerm}
                           onChange={(e) => setCoefSearchTerm(e.target.value)}
@@ -908,12 +1269,34 @@ function NewProposalForm() {
                             return searchStr.includes(coefSearchTerm.toLowerCase())
                           })
                           .map((config) => {
-                            const label = config.nome_tabela || `${config.convenios?.nome || 'Regra'} - ${config.prazo}x ${config.coeficiente}`
+                            const label = config.nome_tabela || `${config.convenios?.nome || 'Tabela'} - ${config.prazo}x ${config.coeficiente}`
                             return (
                               <div
                                 key={config.id}
                                 onClick={() => {
                                   handleFormChange("coeficiente_prazo", label)
+                                  setSelectedCoefValue(config.coeficiente)
+                                  setSelectedProdPercent(config.percentual_producao)
+                                  
+                                  // Auto-calculate Valor Cliente (Margin / Coef)
+                                  let currentValorCliente = 0
+                                  if (formData.margem_utilizada && config.coeficiente) {
+                                    const rawMargem = formData.margem_utilizada.replace(/\D/g, "")
+                                    const margemValue = parseFloat(rawMargem) / 100
+                                    currentValorCliente = margemValue / config.coeficiente
+                                    const formattedCliente = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentValorCliente)
+                                    handleFormChange("valor_cliente_operacional", formattedCliente)
+                                  } else if (formData.valor_cliente_operacional) {
+                                    currentValorCliente = parseFloat(formData.valor_cliente_operacional.replace(/\D/g, "")) / 100
+                                  }
+
+                                  // Auto-calculate production value based on Valor Cliente
+                                  if (currentValorCliente && config.percentual_producao) {
+                                    const valorProducao = (currentValorCliente * config.percentual_producao) / 100
+                                    const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+                                    handleFormChange("valor_producao_corretor", formatted)
+                                  }
+
                                   setIsCoefDropdownOpen(false)
                                   setCoefSearchTerm("")
                                 }}
@@ -932,25 +1315,34 @@ function NewProposalForm() {
                                   "text-[9px] font-medium lowercase tracking-normal",
                                   formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
                                 )}>
-                                  Prazo: {config.prazo}x | Coef: {config.coeficiente}
+                                  Prazo: {config.prazo}x | Coef: {config.coeficiente} | Prod: {config.percentual_producao}%
                                 </span>
                               </div>
                             )
                           })
                       ) : (
                         <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic">
-                          Nenhuma regra encontrada para este banco e operação
+                          Nenhuma tabela encontrada
                         </div>
                       )}
                     </div>
                   </div>
                 )}
               </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Produção</label>
+                <Input 
+                  value={formData.valor_producao_corretor}
+                  onChange={(e) => handleFormChange("valor_producao_corretor", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  placeholder="R$ 0,00" 
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Parcela</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
                 <Input 
                   value={formData.valor_parcela}
                   onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
@@ -959,7 +1351,7 @@ function NewProposalForm() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Cliente</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Cliente</label>
                 <Input 
                   value={formData.valor_cliente_operacional}
                   onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
@@ -974,7 +1366,7 @@ function NewProposalForm() {
           <div className="space-y-10">
             <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">OUTRAS INFORMAÇÕES</h3>
             <div className="space-y-3">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Observações</label>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Observações</label>
               <div className="border border-slate-100 rounded-lg overflow-hidden focus-within:border-primary transition-colors">
                 <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap gap-1.5">
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><Bold className="w-4 h-4" /></Button>
@@ -1005,11 +1397,135 @@ function NewProposalForm() {
             </div>
           </div>
 
-          <div className="flex justify-center pt-12">
+          {/* Anexos */}
+          <div className="space-y-8" onPaste={handlePaste}>
+            <div className="text-center space-y-2">
+              <h3 className="text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">ANEXAR DOCUMENTOS</h3>
+              <p className="text-[10px] font-bold text-primary uppercase tracking-wider">Anexar RG VERSO somente se não tiver enviado um CNH.</p>
+              <p className="text-[10px] text-slate-400 max-w-2xl mx-auto">Você pode enviar arquivos com tamanho máximo de 20 mb dos tipos jpg, jpeg, png, webp, gif, pdf, doc, docx, ppt, pptx, pps, ppsx, odt, xls, xlsx.</p>
+            </div>
+
+            {Object.values(existingAttachments).some(val => !!val) && (
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-6">
+                <p className="text-[10px] font-bold text-slate-700 uppercase mb-4 tracking-widest text-center">Arquivos Vinculados ao Chamado</p>
+                <div className="flex flex-wrap justify-center gap-4">
+                  {Object.entries(existingAttachments).map(([field, url]) => {
+                    if (!url) return null;
+                    const labels: { [key: string]: string } = {
+                      frente: "RG/CNH Frente",
+                      verso: "RG Verso",
+                      contracheque: "Contra Cheque",
+                      extrato: "Extrato",
+                      outros: "Outros",
+                      outros_2: "Outros 2"
+                    };
+                    return (
+                      <div key={field} className="relative group">
+                        <a 
+                          href={url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 px-4 py-2.5 bg-white border border-slate-200 rounded-lg hover:border-primary hover:shadow-md transition-all"
+                        >
+                          <Paperclip className="w-4 h-4 text-primary" />
+                          <span className="text-[10px] font-bold text-slate-600 uppercase whitespace-nowrap">{labels[field]}</span>
+                        </a>
+                        <button 
+                          onClick={() => setExistingAttachments(prev => ({ ...prev, [field]: null }))}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Remover vínculo"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {pastedImages.length > 0 && (
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                <p className="text-[10px] font-bold text-emerald-700 uppercase mb-3">Imagens Coladas ({pastedImages.length})</p>
+                <div className="flex flex-wrap gap-3">
+                  {pastedImages.map((file, idx) => (
+                    <div key={idx} className="relative group">
+                      <div className="w-20 h-20 rounded-lg border-2 border-emerald-200 overflow-hidden bg-white">
+                        <img 
+                          src={URL.createObjectURL(file)} 
+                          alt="Pasted" 
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <button 
+                        onClick={() => setPastedImages(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[
+                  { label: "RG ou CNH (FRENTE)", id: "frente", ref: fileRefs.frente },
+                  { label: "RG (VERSO)", id: "verso", ref: fileRefs.verso },
+                  { label: "CONTRA CHEQUE", id: "contracheque", ref: fileRefs.contracheque },
+                  { label: "EXTRATO DE CONSIGNAÇÃO", id: "extrato", ref: fileRefs.extrato },
+                  { label: "OUTROS", id: "outros", ref: fileRefs.outros },
+                  { label: "OUTROS", id: "outros_2", ref: fileRefs.outros_2 }
+              ].map((field) => (
+                <div key={field.id} className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest block">
+                    {field.label}
+                  </label>
+                  <div 
+                    onClick={() => handleFileClick(field.ref)}
+                    className={cn(
+                      "w-full h-11 px-4 rounded-lg border text-[12px] flex items-center gap-3 cursor-pointer transition-all",
+                      selectedFiles[field.id]
+                        ? "bg-[#171717] text-white border-[#171717] shadow-lg"
+                        : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200"
+                    )}
+                  >
+                    <UploadCloud className={cn("w-5 h-5", selectedFiles[field.id] ? "text-white" : "text-slate-400")} />
+                    <span className={cn("truncate font-medium", selectedFiles[field.id] ? "text-white" : "text-slate-500")}>
+                      {selectedFiles[field.id] 
+                        ? selectedFiles[field.id]?.name 
+                        : "Selecionar arquivo..."}
+                    </span>
+                    {selectedFiles[field.id] && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFiles(prev => ({ ...prev, [field.id]: null }));
+                        }}
+                        className="ml-auto p-1 hover:bg-white/10 rounded-full transition-colors"
+                      >
+                        <X className="w-4 h-4 text-white/70" />
+                      </button>
+                    )}
+                  </div>
+                  <input 
+                    type="file" 
+                    ref={field.ref} 
+                    className="hidden" 
+                    accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.ppt,.pptx,.pps,.ppsx,.odt,.xls,.xlsx"
+                    onChange={(e) => handleFileChange(field.id, e)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-center gap-4 pt-12">
             <Button 
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               disabled={isSubmitting}
-              className="w-full max-w-md h-12 bg-primary text-white text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className="w-full max-w-xs h-12 bg-primary text-white text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               {isSubmitting ? (
                 <>
@@ -1018,6 +1534,21 @@ function NewProposalForm() {
                 </>
               ) : (
                 "CADASTRAR PROPOSTA"
+              )}
+            </Button>
+
+            <Button 
+              onClick={() => handleSubmit('AGUARDANDO DIGITAÇÃO OPERACIONAL')}
+              disabled={isSubmitting}
+              className="w-full max-w-xs h-12 bg-[#00C853] hover:bg-[#00B248] text-white text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-[#00C853]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ENVIANDO...
+                </>
+              ) : (
+                "ENVIAR PROPOSTA PARA DIGITAÇÃO"
               )}
             </Button>
           </div>
