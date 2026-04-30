@@ -256,22 +256,11 @@ export default function SearchClientPage() {
     window.open(`https://wa.me/${finalPhone}`, '_blank');
   };
 
-  const getUtilizadaStatus = (bruta: number | null, liquida: number | null, utilizada?: number | null) => {
-    // Se a líquida for 0 ou null, o usuário quer que mostre SIM e fique vermelho
-    if (liquida === null || liquida <= 0) return "SIM"
-    
-    if (bruta === null) return "NÃO"
-    
-    // Se temos o valor de utilizada explicitamente, usamos para maior precisão
-    if (utilizada !== undefined && utilizada !== null && utilizada > 0) {
-      return "PARCIAL"
-    }
-
-    // Se a líquida for igual ou maior que a bruta, nada foi usado
-    if (liquida >= bruta && bruta > 0) return "NÃO"
-    
-    // Se a líquida for menor que a bruta mas maior que zero, é parcial
-    return "PARCIAL"
+  const getUtilizadaStatus = (bruta: number | null, liquida: number | null) => {
+    const b = bruta || 0;
+    const l = liquida || 0;
+    // Se a líquida for diferente da bruta, quer dizer que foi utilizado
+    return Math.abs(l - b) > 0.01 ? "SIM" : "NÃO"
   }
 
   const formatDate = (dateStr: string | null) => {
@@ -520,10 +509,10 @@ export default function SearchClientPage() {
                                 (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "text-emerald-700" : "text-red-700"
                               )}>{formatCurrency(allRegs[activeRegIndex].margem_35)}</p>
                             </div>
-                            <div className="flex items-center gap-1.5 invisible">
+                            <div className="flex items-center gap-1.5">
                               <div className={cn("w-1.5 h-1.5 rounded-full", (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
                               <span className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
-                                STATUS
+                                {(Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
                               </span>
                             </div>
                           </div>
@@ -551,45 +540,36 @@ export default function SearchClientPage() {
                           </div>
                           <div className={cn(
                             "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
-                            allRegs[activeRegIndex].bruta_5 === null && allRegs[activeRegIndex].liquida_5 !== null && (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "bg-[#F1F5F9] border-slate-200" :
-                            getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "PARCIAL" ? "bg-slate-300 border-slate-400" :
-                            getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "SIM" ? "bg-red-100/50 border-red-200" :
-                            "bg-emerald-100/50 border-emerald-200"
+                            getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
                           )}>
                             <p className={cn(
                               "text-[9px] font-bold uppercase tracking-widest",
-                              allRegs[activeRegIndex].bruta_5 === null && allRegs[activeRegIndex].liquida_5 !== null && (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "text-slate-400" :
-                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "PARCIAL" ? "text-slate-600" :
-                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "SIM" ? "text-red-700/60" :
-                              "text-emerald-700/60"
+                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
                             )}>Utilizada 5%</p>
                             <p className={cn(
                               "text-[17px] font-bold tracking-tight uppercase",
-                              allRegs[activeRegIndex].bruta_5 === null && allRegs[activeRegIndex].liquida_5 !== null && (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "text-slate-900" :
-                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "PARCIAL" ? "text-slate-800" :
-                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5) === "SIM" ? "text-red-700" :
-                              "text-emerald-700"
+                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
                             )}>
-                              {getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5, allRegs[activeRegIndex].utilizada_5)}
+                              {getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5)}
                             </p>
                           </div>
                           <div className={cn(
                             "p-3.5 border rounded-xl space-y-0.5",
-                            (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                            getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
                           )}>
                             <p className={cn(
                               "text-[9px] font-bold uppercase tracking-widest",
-                              (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "text-emerald-700/60" : "text-red-700/60"
+                              getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
                             )}>Líquida 5%</p>
                             <div className="flex flex-col">
                               <p className={cn(
                                 "text-[17px] font-bold tracking-tight",
-                                (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "text-emerald-700" : "text-red-700"
+                                getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
                               )}>{formatCurrency(allRegs[activeRegIndex].liquida_5)}</p>
                               <div className="flex items-center gap-1.5">
-                                <div className={cn("w-1.5 h-1.5 rounded-full", (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
-                                <span className={cn("text-[8px] font-bold uppercase tracking-widest", (allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
-                                  {(allRegs[activeRegIndex].liquida_5 || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                <div className={cn("w-1.5 h-1.5 rounded-full", getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5) === "SIM" ? "bg-red-600" : "bg-emerald-600")}></div>
+                                <span className={cn("text-[8px] font-bold uppercase tracking-widest", getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5) === "SIM" ? "text-red-600" : "text-emerald-600")}>
+                                  {getUtilizadaStatus(allRegs[activeRegIndex].bruta_5, allRegs[activeRegIndex].liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
                                 </span>
                               </div>
                             </div>
@@ -600,45 +580,36 @@ export default function SearchClientPage() {
                           </div>
                           <div className={cn(
                             "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
-                            allRegs[activeRegIndex].beneficio_bruta_5 === null && allRegs[activeRegIndex].beneficio_liquida_5 !== null && (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "bg-[#F1F5F9] border-slate-200" :
-                            getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "PARCIAL" ? "bg-slate-300 border-slate-400" :
-                            getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "SIM" ? "bg-red-100/50 border-red-200" :
-                            "bg-emerald-100/50 border-emerald-200"
+                            getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
                           )}>
                             <p className={cn(
                               "text-[9px] font-bold uppercase tracking-widest",
-                              allRegs[activeRegIndex].beneficio_bruta_5 === null && allRegs[activeRegIndex].beneficio_liquida_5 !== null && (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "text-slate-400" :
-                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "PARCIAL" ? "text-slate-600" :
-                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "SIM" ? "text-red-700/60" :
-                              "text-emerald-700/60"
+                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
                             )}>Benefício Utilizada 5%</p>
                             <p className={cn(
                               "text-[17px] font-bold tracking-tight uppercase",
-                              allRegs[activeRegIndex].beneficio_bruta_5 === null && allRegs[activeRegIndex].beneficio_liquida_5 !== null && (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "text-slate-900" :
-                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "PARCIAL" ? "text-slate-800" :
-                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5) === "SIM" ? "text-red-700" :
-                              "text-emerald-700"
+                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
                             )}>
-                              {getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5, allRegs[activeRegIndex].beneficio_utilizada_5)}
+                              {getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5)}
                             </p>
                           </div>
                           <div className={cn(
                             "p-3.5 border rounded-xl space-y-0.5",
-                            (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                            getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
                           )}>
                             <p className={cn(
                               "text-[9px] font-bold uppercase tracking-widest",
-                              (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "text-emerald-700/60" : "text-red-700/60"
+                              getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
                             )}>Benefício Líquida 5%</p>
                             <div className="flex flex-col">
                               <p className={cn(
                                 "text-[17px] font-bold tracking-tight",
-                                (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "text-emerald-700" : "text-red-700"
+                                getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
                               )}>{formatCurrency(allRegs[activeRegIndex].beneficio_liquida_5)}</p>
                               <div className="flex items-center gap-1.5">
-                                <div className={cn("w-1.5 h-1.5 rounded-full", (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
-                                <span className={cn("text-[8px] font-bold uppercase tracking-widest", (allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
-                                  {(allRegs[activeRegIndex].beneficio_liquida_5 || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                <div className={cn("w-1.5 h-1.5 rounded-full", getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5) === "SIM" ? "bg-red-600" : "bg-emerald-600")}></div>
+                                <span className={cn("text-[8px] font-bold uppercase tracking-widest", getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5) === "SIM" ? "text-red-600" : "text-emerald-600")}>
+                                  {getUtilizadaStatus(allRegs[activeRegIndex].beneficio_bruta_5, allRegs[activeRegIndex].beneficio_liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
                                 </span>
                               </div>
                             </div>
@@ -880,12 +851,27 @@ export default function SearchClientPage() {
                         status = 'NÃO';
                       }
                       
-                      return { status, liquida_val: l };
+                      return { 
+                        status, 
+                        liquida_val: l,
+                        label: l > 0 ? 'DISPONÍVEL' : 'INDISPONÍVEL'
+                      };
+                    };
+
+                    const getCardLogic = (bruta: number | null, liquida_db: number | null) => {
+                      const b = bruta || 0;
+                      const l = liquida_db || 0;
+                      const used = Math.abs(l - b) > 0.01;
+                      return {
+                        status: used ? 'SIM' : 'NÃO' as const,
+                        liquida_val: l,
+                        label: used ? 'INDISPONÍVEL' : 'DISPONÍVEL'
+                      };
                     };
 
                     const consignacoes = getMarginLogic(lotacao.mb_consignacoes, lotacao.md_consignacoes);
-                    const cartao = getMarginLogic(lotacao.mb_cartao_credito, lotacao.md_cartao_credito);
-                    const beneficio = getMarginLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
+                    const cartao = getCardLogic(lotacao.mb_cartao_credito, lotacao.md_cartao_credito);
+                    const beneficio = getCardLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
 
                     return (
                       <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
@@ -949,7 +935,15 @@ export default function SearchClientPage() {
                                 consignacoes.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
                               )}>
                                 <p className={cn("text-[9px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
-                                <p className={cn("text-[17px] font-bold", consignacoes.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
+                                <div className="flex flex-col">
+                                  <p className={cn("text-[17px] font-bold", consignacoes.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", consignacoes.liquida_val > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-600" : "text-red-600")}>
+                                      {consignacoes.label}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
 
@@ -961,27 +955,29 @@ export default function SearchClientPage() {
                               </div>
                               <div className={cn(
                                 "p-3.5 border rounded-xl space-y-0.5",
-                                cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : 
-                                cartao.status === 'PARCIAL' ? "bg-slate-100/80 border-slate-200" : 
-                                "bg-emerald-100/50 border-emerald-200"
+                                cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
                               )}>
                                 <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
-                                  cartao.status === 'SIM' ? "text-red-700/60" : 
-                                  cartao.status === 'PARCIAL' ? "text-slate-500" : 
-                                  "text-emerald-700/60"
+                                  cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
                                 )}>Utilizada</p>
                                 <p className={cn("text-[17px] font-bold uppercase", 
-                                  cartao.status === 'SIM' ? "text-red-700" : 
-                                  cartao.status === 'PARCIAL' ? "text-slate-600" : 
-                                  "text-emerald-700"
+                                  cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700"
                                 )}>{cartao.status}</p>
                               </div>
                               <div className={cn(
                                 "p-3.5 border rounded-xl space-y-0.5",
-                                cartao.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
                               )}>
-                                <p className={cn("text-[9px] font-bold uppercase tracking-widest", cartao.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
-                                <p className={cn("text-[17px] font-bold", cartao.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(cartao.liquida_val)}</p>
+                                <p className={cn("text-[9px] font-bold uppercase tracking-widest", cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
+                                <div className="flex flex-col">
+                                  <p className={cn("text-[17px] font-bold", cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(cartao.liquida_val)}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", cartao.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
+                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", cartao.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
+                                      {cartao.label}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
 
@@ -993,27 +989,29 @@ export default function SearchClientPage() {
                               </div>
                               <div className={cn(
                                 "p-3.5 border rounded-xl space-y-0.5",
-                                beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : 
-                                beneficio.status === 'PARCIAL' ? "bg-slate-100/80 border-slate-200" : 
-                                "bg-emerald-100/50 border-emerald-200"
+                                beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
                               )}>
                                 <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
-                                  beneficio.status === 'SIM' ? "text-red-700/60" : 
-                                  beneficio.status === 'PARCIAL' ? "text-slate-500" : 
-                                  "text-emerald-700/60"
+                                  beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
                                 )}>Utilizada</p>
                                 <p className={cn("text-[17px] font-bold uppercase", 
-                                  beneficio.status === 'SIM' ? "text-red-700" : 
-                                  beneficio.status === 'PARCIAL' ? "text-slate-600" : 
-                                  "text-emerald-700"
+                                  beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700"
                                 )}>{beneficio.status}</p>
                               </div>
                               <div className={cn(
                                 "p-3.5 border rounded-xl space-y-0.5",
-                                beneficio.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
                               )}>
-                                <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
-                                <p className={cn("text-[17px] font-bold", beneficio.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(beneficio.liquida_val)}</p>
+                                <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
+                                <div className="flex flex-col">
+                                  <p className={cn("text-[17px] font-bold", beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(beneficio.liquida_val)}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", beneficio.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
+                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
+                                      {beneficio.label}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1110,11 +1108,26 @@ export default function SearchClientPage() {
                         status = 'NÃO';
                       }
                       
-                      return { status, liquida_val: l };
+                      return { 
+                        status, 
+                        liquida_val: l,
+                        label: l > 0 ? 'DISPONÍVEL' : 'INDISPONÍVEL'
+                      };
+                    };
+
+                    const getCardLogic = (bruta: number | null, liquida_db: number | null) => {
+                      const b = bruta || 0;
+                      const l = liquida_db || 0;
+                      const used = Math.abs(l - b) > 0.01;
+                      return {
+                        status: used ? 'SIM' : 'NÃO' as const,
+                        liquida_val: l,
+                        label: used ? 'INDISPONÍVEL' : 'DISPONÍVEL'
+                      };
                     };
 
                     const consignacoes = getMarginLogic(lotacao.mb_consignacoes, lotacao.md_consignacoes);
-                    const beneficio = getMarginLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
+                    const beneficio = getCardLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
 
                     return (
                       <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
@@ -1178,7 +1191,15 @@ export default function SearchClientPage() {
                                 consignacoes.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
                               )}>
                                 <p className={cn("text-[9px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
-                                <p className={cn("text-[17px] font-bold", consignacoes.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
+                                <div className="flex flex-col">
+                                  <p className={cn("text-[17px] font-bold", consignacoes.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", consignacoes.liquida_val > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-600" : "text-red-600")}>
+                                      {consignacoes.label}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
 
@@ -1190,27 +1211,29 @@ export default function SearchClientPage() {
                               </div>
                               <div className={cn(
                                 "p-3.5 border rounded-xl space-y-0.5",
-                                beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : 
-                                beneficio.status === 'PARCIAL' ? "bg-slate-100/80 border-slate-200" : 
-                                "bg-emerald-100/50 border-emerald-200"
+                                beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
                               )}>
                                 <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
-                                  beneficio.status === 'SIM' ? "text-red-700/60" : 
-                                  beneficio.status === 'PARCIAL' ? "text-slate-500" : 
-                                  "text-emerald-700/60"
+                                  beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
                                 )}>Utilizada</p>
                                 <p className={cn("text-[17px] font-bold uppercase", 
-                                  beneficio.status === 'SIM' ? "text-red-700" : 
-                                  beneficio.status === 'PARCIAL' ? "text-slate-600" : 
-                                  "text-emerald-700"
+                                  beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700"
                                 )}>{beneficio.status}</p>
                               </div>
                               <div className={cn(
                                 "p-3.5 border rounded-xl space-y-0.5",
-                                beneficio.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
                               )}>
-                                <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
-                                <p className={cn("text-[17px] font-bold", beneficio.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(beneficio.liquida_val)}</p>
+                                <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
+                                <div className="flex flex-col">
+                                  <p className={cn("text-[17px] font-bold", beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(beneficio.liquida_val)}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", beneficio.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
+                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
+                                      {beneficio.label}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </div>
