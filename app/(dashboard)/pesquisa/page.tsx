@@ -872,16 +872,15 @@ export default function SearchClientPage() {
                       const l = liquida_db || 0;
                       
                       let status: 'SIM' | 'NÃO' | 'PARCIAL' = 'NÃO';
-                      if (l >= b && b > 0) {
+                      if (l <= 0) {
                         status = 'SIM';
-                      } else if (l > 0 && l < b) {
+                      } else if (l < b) {
                         status = 'PARCIAL';
                       } else {
                         status = 'NÃO';
                       }
                       
-                      const liquida_val = b - l;
-                      return { status, liquida_val };
+                      return { status, liquida_val: l };
                     };
 
                     const consignacoes = getMarginLogic(lotacao.mb_consignacoes, lotacao.md_consignacoes);
@@ -1103,16 +1102,15 @@ export default function SearchClientPage() {
                       const l = liquida_db || 0;
                       
                       let status: 'SIM' | 'NÃO' | 'PARCIAL' = 'NÃO';
-                      if (l >= b && b > 0) {
+                      if (l <= 0) {
                         status = 'SIM';
-                      } else if (l > 0 && l < b) {
+                      } else if (l < b) {
                         status = 'PARCIAL';
                       } else {
                         status = 'NÃO';
                       }
                       
-                      const liquida_val = b - l;
-                      return { status, liquida_val };
+                      return { status, liquida_val: l };
                     };
 
                     const consignacoes = getMarginLogic(lotacao.mb_consignacoes, lotacao.md_consignacoes);
