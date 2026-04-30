@@ -35,7 +35,7 @@ import {
 import { useAuth } from "@/context/auth-context"
 
 function NewProposalForm() {
-  const { isCorretor } = useAuth()
+  const { isCorretor, perfil } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
@@ -196,7 +196,7 @@ function NewProposalForm() {
     nascimento: searchParams.get("nascimento") || "",
     idLead: searchParams.get("idLead") || "",
     origem: searchParams.get("origem") || "",
-    matricula: "",
+    matricula: searchParams.get("idLead") || "",
     naturalidade: "",
     uf_naturalidade: "",
     identidade: "",
@@ -496,7 +496,9 @@ function NewProposalForm() {
         convenio: selection.convenio,
         banco: selection.banco,
         tipo_operacao: selection.operacao,
-        corretor_id: user?.id,
+        corretor_id: perfil?.id,
+        corretor: perfil?.nome,
+        equipe: perfil?.supervisor_nome,
         status: currentStatus,
         naturalidade: formData.naturalidade,
         uf_naturalidade: formData.uf_naturalidade,
@@ -872,7 +874,9 @@ function NewProposalForm() {
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Matrícula <span className="text-red-500">*</span></label>
+              <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">
+                {selection.convenio?.toUpperCase() === "GOVERNO SP" ? "Identificação" : "Matrícula"} <span className="text-red-500">*</span>
+              </label>
               <Input 
                 value={formData.matricula}
                 onChange={(e) => handleFormChange("matricula", e.target.value)}
@@ -1129,18 +1133,18 @@ function NewProposalForm() {
             {/* Segunda linha */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Conta</label>
-                <Input 
-                  value={formData.conta}
-                  onChange={(e) => handleFormChange("conta", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
-                />
-              </div>
-              <div className="space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Agência</label>
                 <Input 
                   value={formData.agencia}
                   onChange={(e) => handleFormChange("agencia", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Conta</label>
+                <Input 
+                  value={formData.conta}
+                  onChange={(e) => handleFormChange("conta", e.target.value)}
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>

@@ -110,7 +110,8 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
       "cancelado": "CANCELADO",
       "pendencia-banco": "COM INCONSISTÊNCIA NO BANCO",
       "devolvido-banco": "PAGAMENTO DEVOLVIDO",
-      "reapresentar-pagamento": "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL"
+      "reapresentar-pagamento": "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL",
+      "pos-venda-realizada": "PÓS-VENDA REALIZADA"
     }
 
     const finalStatus = statusMapping[selectedStatus] || selectedStatus
@@ -417,6 +418,15 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                 </>
               ) : (proposal.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA" || proposal.status === "PÓS-VENDA REALIZADA") ? (
                 <>
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="pos-venda-realizada" id="pos-venda-realizada" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="pos-venda-realizada" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        PÓS-VENDA REALIZADA
+                      </Label>
+                    </div>
+                    {selectedStatus === "pos-venda-realizada" && renderObservations()}
+                  </div>
                   <div className="flex flex-col space-y-1">
                     <div className="flex items-center space-x-3 group">
                       <RadioGroupItem value="devolvido-banco" id="devolvido-banco-2" className="text-[#00a6ed] border-slate-300" />

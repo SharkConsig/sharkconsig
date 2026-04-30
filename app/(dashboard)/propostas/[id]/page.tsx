@@ -10,25 +10,40 @@ import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { ProposalDetailsAccordion } from "@/components/propostas/proposal-details-accordion"
 
+import { useAuth } from "@/context/auth-context"
+import { Proposal } from "../page"
+
 export default function ProposalDetailsPage() {
   const params = useParams()
   const router = useRouter()
   const id = params.id as string
-  const [proposal, setProposal] = useState<any>(null)
+  const { isCorretor, user } = useAuth()
+  const [proposal, setProposal] = useState<Proposal | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     async function fetchProposal() {
+      if (!user) return
       setIsLoading(true)
       try {
-        const { data, error } = await supabase
+        const query = supabase
           .from('propostas')
           .select('*')
           .eq('id_lead', id)
           .single()
 
+        const { data, error } = await query
+
         if (error) throw error
-        setProposal(data)
+        
+        // Access control: Corretor only sees their own proposals
+        if (isCorretor && data.corretor_id !== user.id) {
+          toast.error("Você não tem permissão para visualizar esta proposta")
+          router.push('/propostas')
+          return
+        }
+
+        setProposal(data as Proposal)
       } catch (error) {
         console.error("Erro ao buscar proposta:", error)
         toast.error("Erro ao carregar detalhes da proposta")
@@ -37,10 +52,10 @@ export default function ProposalDetailsPage() {
       }
     }
 
-    if (id) {
+    if (id && user) {
       fetchProposal()
     }
-  }, [id])
+  }, [id, user, isCorretor, router])
 
   if (isLoading) {
     return (
@@ -150,7 +165,7 @@ export default function ProposalDetailsPage() {
   )
 }
 
-function EyeOff(props: any) {
+function EyeOff(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       {...props}

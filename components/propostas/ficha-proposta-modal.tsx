@@ -6,11 +6,12 @@ import { cn } from "@/lib/utils"
 import { useState } from "react"
 
 import { format } from "date-fns"
+import { Proposal } from "@/app/(dashboard)/propostas/page"
 
 interface FichaPropostaModalProps {
   isOpen: boolean
   onClose: () => void
-  proposal: any
+  proposal: Proposal
 }
 
 interface FieldProps {

@@ -168,6 +168,17 @@ function NewTicketForm() {
     if (validationError) setValidationError(null)
   }
 
+  // Monitor convenio changes to sync description labels
+  useEffect(() => {
+    if (formData.margem || formData.liquida5 || formData.beneficio5) {
+      updateDescription({
+        margem: formData.margem,
+        liquida5: formData.liquida5,
+        beneficio5: formData.beneficio5
+      });
+    }
+  }, [formData.convenio]);
+
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
     const files: File[] = [];
@@ -187,11 +198,19 @@ function NewTicketForm() {
   };
 
   const updateDescription = (margins: { margem: string, liquida5: string, beneficio5: string }) => {
+    const isGovSP = formData.convenio?.toUpperCase() === "GOVERNO SP";
+    
     // Build the introductory text
     const activeLabels = [];
-    if (margins.margem) activeLabels.push(`35% (${margins.margem})`);
-    if (margins.liquida5) activeLabels.push(`LÍQUIDA 5% (${margins.liquida5})`);
-    if (margins.beneficio5) activeLabels.push(`BENEFÍCIO LÍQUIDA 5% (${margins.beneficio5})`);
+    if (isGovSP) {
+      if (margins.margem) activeLabels.push(`LÍQUIDA CONSIGNAÇÕES (${margins.margem})`);
+      if (margins.liquida5) activeLabels.push(`LÍQUIDA CARTÃO CRÉDITO (${margins.liquida5})`);
+      if (margins.beneficio5) activeLabels.push(`LÍQUIDA CARTÃO BENEFÍCIO (${margins.beneficio5})`);
+    } else {
+      if (margins.margem) activeLabels.push(`35% (${margins.margem})`);
+      if (margins.liquida5) activeLabels.push(`LÍQUIDA 5% (${margins.liquida5})`);
+      if (margins.beneficio5) activeLabels.push(`BENEFÍCIO LÍQUIDA 5% (${margins.beneficio5})`);
+    }
 
     let introText = "";
     if (activeLabels.length > 0) {
@@ -630,7 +649,7 @@ function NewTicketForm() {
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 items-end">
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      Margem 35% <span className="text-red-500">*</span>
+                      {formData.convenio?.toUpperCase() === "GOVERNO SP" ? "LÍQUIDA CONSIGNAÇÕES" : "Margem 35%"} <span className="text-red-500">*</span>
                     </label>
                     {isFromClient && originalMargins.margem ? (
                       <button
@@ -659,7 +678,7 @@ function NewTicketForm() {
 
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      Líquida 5%
+                      {formData.convenio?.toUpperCase() === "GOVERNO SP" ? "LÍQUIDA CARTÃO CRÉDITO" : "Líquida 5%"}
                     </label>
                     {isFromClient && originalMargins.liquida5 ? (
                       <button
@@ -688,7 +707,7 @@ function NewTicketForm() {
 
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      Benefício Líquida 5%
+                      {formData.convenio?.toUpperCase() === "GOVERNO SP" ? "LÍQUIDA CARTÃO BENEFÍCIO" : "Benefício Líquida 5%"}
                     </label>
                     {isFromClient && originalMargins.beneficio5 ? (
                       <button

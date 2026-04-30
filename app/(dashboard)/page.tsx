@@ -32,7 +32,8 @@ export default function DashboardPage() {
     totalPropostas: 0,
     propostasAprovadas: 0,
     chamadosAbertos: 0,
-    totalClientes: 0
+    totalClientesSiape: 0,
+    totalClientesGovSP: 0
   })
 
   useEffect(() => {
@@ -42,19 +43,22 @@ export default function DashboardPage() {
           { count: propostasCount },
           { count: aprovadasCount },
           { count: chamadosCount },
-          { count: clientesCount }
+          { count: clientesSiapeCount },
+          { count: clientesGovSPCount }
         ] = await Promise.all([
           supabase.from('propostas').select('*', { count: 'exact', head: true }),
           supabase.from('propostas').select('*', { count: 'exact', head: true }).eq('status', 'APROVADA'),
           supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'ABERTO'),
-          supabase.from('clientes').select('*', { count: 'exact', head: true })
+          supabase.from('clientes').select('*', { count: 'exact', head: true }),
+          supabase.from('governo_sp_clientes').select('*', { count: 'exact', head: true })
         ])
 
         setStats({
           totalPropostas: propostasCount || 0,
           propostasAprovadas: aprovadasCount || 0,
           chamadosAbertos: chamadosCount || 0,
-          totalClientes: clientesCount || 0
+          totalClientesSiape: clientesSiapeCount || 0,
+          totalClientesGovSP: clientesGovSPCount || 0
         })
       } catch (err) {
         console.error("Error fetching dashboard stats:", err)
@@ -125,7 +129,10 @@ export default function DashboardPage() {
           />
           <StatCard 
             title="Clientes na Base" 
-            value={stats.totalClientes.toLocaleString()} 
+            value={stats.totalClientesSiape.toLocaleString()} 
+            subValue={stats.totalClientesGovSP.toLocaleString()}
+            label="SIAPE"
+            subLabel="GOV SP"
             icon={Users}
             trend="+1.2k"
             trendUp={true}
@@ -200,9 +207,12 @@ export default function DashboardPage() {
   )
 }
 
-function StatCard({ title, value, icon: Icon, trend, trendUp, color = "primary" }: { 
+function StatCard({ title, value, subValue, label, subLabel, icon: Icon, trend, trendUp, color = "primary" }: { 
   title: string, 
   value: string, 
+  subValue?: string,
+  label?: string,
+  subLabel?: string,
   icon: any, 
   trend: string, 
   trendUp: boolean, 
@@ -232,7 +242,18 @@ function StatCard({ title, value, icon: Icon, trend, trendUp, color = "primary" 
         </div>
         <div className="space-y-1">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">{title}</p>
-          <p className="text-3xl font-black text-slate-900 tracking-tighter">{value}</p>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <p className="text-2xl font-black text-slate-900 tracking-tighter">{value}</p>
+              {label && <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">{label}</span>}
+            </div>
+            {subValue && (
+              <div className="flex items-center gap-2">
+                <p className="text-lg font-bold text-slate-500 tracking-tighter">{subValue}</p>
+                {subLabel && <span className="text-[9px] font-black bg-slate-50 text-slate-400 px-1.5 py-0.5 rounded leading-none">{subLabel}</span>}
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

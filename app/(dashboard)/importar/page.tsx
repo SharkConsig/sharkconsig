@@ -42,7 +42,8 @@ export default function ImportBatchPage() {
   const router = useRouter()
   const { canAccessAdminAreas, isLoading: authLoading } = useAuth()
   const [batchList, setBatchList] = useState<Batch[]>([]);
-  const [totalBase, setTotalBase] = useState(0);
+  const [totalBaseSiape, setTotalBaseSiape] = useState(0);
+  const [totalBaseGovSP, setTotalBaseGovSP] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
   
   // Pagination State
@@ -109,23 +110,28 @@ export default function ImportBatchPage() {
       console.log("Estado da Sessão (fetchTotalBase):", `Logado como ${session.user.email}`);
       console.log("Token JWT (Tamanho):", session.access_token.length);
 
-      const { count, error } = await withRetry(async () => {
-        return await supabase
-          .from('clientes')
-          .select('*', { count: 'exact', head: true });
-      });
+      const [siapeRes, govSPRes] = await Promise.all([
+        withRetry(async () => {
+          return await supabase
+            .from('clientes')
+            .select('*', { count: 'exact', head: true });
+        }),
+        withRetry(async () => {
+          return await supabase
+            .from('governo_sp_clientes')
+            .select('*', { count: 'exact', head: true });
+        })
+      ]);
       
-      if (error) {
-        // Usamos console.warn para evitar o "Error Overlay" do Next.js em desenvolvimento
-        console.warn("Aviso Supabase (Total Base):", {
-          message: error.message || "Sem mensagem (verifique conexão/CORS)",
-          details: error.details,
-          hint: error.hint || "Dica: Verifique se as tabelas foram criadas no SQL Editor do Supabase.",
-          code: error.code
-        });
-        return;
+      if (siapeRes.error) {
+        console.warn("Aviso Supabase (Total SIAPE):", siapeRes.error.message);
       }
-      setTotalBase(count || 0);
+      if (govSPRes.error) {
+        console.warn("Aviso Supabase (Total GOV SP):", govSPRes.error.message);
+      }
+
+      setTotalBaseSiape(siapeRes.count || 0);
+      setTotalBaseGovSP(govSPRes.count || 0);
     } catch (err: unknown) {
       const error = err as Error;
       console.warn("Aviso inesperado ao buscar total da base:", error?.message || error);
@@ -684,6 +690,120 @@ export default function ImportBatchPage() {
     }
   };
 
+  const processGovernoSpChunk = async (results: any[], loteId: string) => {
+    // 1. Normalização e Agrupamento inicial
+    const normalizedRows = results.map(row => ({
+      cpf: normalizeCPF(row.cpf),
+      nome: normalizeText(row.nome),
+      data_nascimento: normalizeDate(row.data_nascimento),
+      identificacao_val: normalizeText(row.identificação || row.identificacao),
+      data_nomeacao: normalizeDate(row.data_nomeacao),
+      lotacao: normalizeText(row.lotacao),
+      orgao: normalizeText(row.orgao),
+      tipo_vinculo: normalizeText(row.tipo_vinculo),
+      mb_consignacoes: normalizeMoney(row.mb_consignacoes),
+      md_consignacoes: normalizeMoney(row.md_consignacoes),
+      mb_cartao_credito: normalizeMoney(row.mb_cartao_credito),
+      md_cartao_credito: normalizeMoney(row.md_cartao_credito),
+      mb_cartao_beneficio: normalizeMoney(row.mb_cartao_beneficio),
+      md_cartao_beneficio: normalizeMoney(row.md_cartao_beneficio),
+      telefone_1: normalizePhone(row.telefone_1),
+      telefone_2: normalizePhone(row.telefone_2),
+      telefone_3: normalizePhone(row.telefone_3)
+    })).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    // --- PASSO 1: Garantir Entidade Cliente (CPF Único) ---
+    // Usamos um Map para evitar CPFs duplicados no próprio lote
+    const clientMap = new Map();
+    normalizedRows.forEach(row => {
+      const existing = clientMap.get(row.cpf);
+      // Mantemos o registro que tiver mais informações (ex: nome preenchido)
+      if (!existing || (!existing.nome && row.nome)) {
+        clientMap.set(row.cpf, {
+          cpf: row.cpf,
+          nome: row.nome || 'NAO INFORMADO',
+          data_nascimento: row.data_nascimento,
+          telefone_1: row.telefone_1,
+          telefone_2: row.telefone_2,
+          telefone_3: row.telefone_3,
+          updated_at: new Date().toISOString()
+        });
+      }
+    });
+
+      const clientRows = Array.from(clientMap.values()) as any[];
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      // Upsert para garantir regra de unicidade de CPF
+      return await supabase.from('governo_sp_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Governo SP: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: any) => [c.cpf, c.id]));
+
+    // --- PASSO 2: Processar Identificações (N:1 com Cliente) ---
+    const identMap = new Map();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId || !row.identificacao_val) return;
+
+      const key = `${clientId}-${row.identificacao_val}`;
+      if (!identMap.has(key)) {
+        identMap.set(key, {
+          cliente_id: clientId,
+          identificacao: row.identificacao_val,
+          data_nomeacao: row.data_nomeacao,
+          tipo_vinculo: row.tipo_vinculo,
+          updated_at: new Date().toISOString()
+        });
+      }
+    });
+
+    const identRows = Array.from(identMap.values()) as any[];
+    const { data: identsData, error: identErr } = await withRetry(async () => {
+      return await supabase.from('governo_sp_identificacoes')
+        .upsert(identRows, { onConflict: 'cliente_id, identificacao' })
+        .select('id, cliente_id, identificacao');
+    });
+
+    if (identErr || !identsData) throw new Error(`Erro ao salvar identificações Governo SP: ${identErr?.message}`);
+
+    const keyToIdentId = new Map<string, string>(identsData.map((id: any) => [`${id.cliente_id}-${id.identificacao}`, id.id]));
+
+    // --- PASSO 3: Inserir Lotações (N:1 com Identificação) ---
+    const lotacaoRows = normalizedRows.map(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      const identId = keyToIdentId.get(`${clientId}-${row.identificacao_val}`);
+      
+      if (!identId) return null;
+
+      return {
+        identificacao_id: identId,
+        lotacao: row.lotacao,
+        orgao: row.orgao,
+        mb_consignacoes: row.mb_consignacoes,
+        md_consignacoes: row.md_consignacoes,
+        mb_cartao_credito: row.mb_cartao_credito,
+        md_cartao_credito: row.md_cartao_credito,
+        mb_cartao_beneficio: row.mb_cartao_beneficio,
+        md_cartao_beneficio: row.md_cartao_beneficio,
+        lote_id: loteId,
+        updated_at: new Date().toISOString()
+      };
+    }).filter(Boolean);
+
+    if (lotacaoRows.length > 0) {
+      const { error: lotErr } = await withRetry(async () => {
+        return await supabase.from('governo_sp_lotacoes').insert(lotacaoRows);
+      });
+      if (lotErr) throw new Error(`Erro ao salvar lotações Governo SP: ${lotErr.message}`);
+    }
+  };
+
   const handleStartImport = async () => {
     console.log("Botão 'Iniciar Importação' clicado");
     setImportError(null);
@@ -724,6 +844,12 @@ export default function ImportBatchPage() {
                 // Cabeçalhos essenciais do modelo CONTRATOS
                 const required = ["cpf", "numero_do_contrato", "banco", "parcela", "orgao"];
                 const isValid = required.every(h => headers.includes(h));
+                resolve(isValid);
+              } else if (type === "GOVERNO_SP") {
+                // Cabeçalhos essenciais do modelo GOVERNO SP
+                const required = ["cpf", "identificação", "lotacao", "orgao", "tipo_vinculo"];
+                // Normalizamos para checar sem aceitos se necessário, mas PapaParse costuma ser literal
+                const isValid = required.every(h => headers.includes(h) || headers.includes(normalizeText(h)));
                 resolve(isValid);
               } else {
                 resolve(false);
@@ -816,8 +942,10 @@ export default function ImportBatchPage() {
             await withRetry(async () => {
               if (type === "SIAPE") {
                 await processSiapeChunk(results.data);
-              } else {
+              } else if (type === "CONTRATOS") {
                 await processContratosChunk(results.data);
+              } else if (type === "GOVERNO_SP") {
+                await processGovernoSpChunk(results.data, currentBatch.id);
               }
             });
             
@@ -909,16 +1037,26 @@ export default function ImportBatchPage() {
     ));
   };
 
-  const downloadCSV = (type: 'siape' | 'contratos') => {
-    const headers = type === 'siape' 
-      ? "cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,matricula,orgao,situacao_funcional,salario,instituidor,regime_juridico,uf,saldo_70%,margem_35%,bruta_5,utilizada_5,liquida_5,beneficio_bruta_5,beneficio_utilizada_5,beneficio_liquida_5"
-      : "cpf,nome,uf,matricula,orgao,instituidor,banco,tipo,numero_do_contrato,parcela,prazo";
+  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp') => {
+    let headers = "";
+    let filename = "";
+
+    if (type === 'siape') {
+      headers = "cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,matricula,orgao,situacao_funcional,salario,instituidor,regime_juridico,uf,saldo_70%,margem_35%,bruta_5,utilizada_5,liquida_5,beneficio_bruta_5,beneficio_utilizada_5,beneficio_liquida_5";
+      filename = "modelo_siape.csv";
+    } else if (type === 'contratos') {
+      headers = "cpf,nome,uf,matricula,orgao,instituidor,banco,tipo,numero_do_contrato,parcela,prazo";
+      filename = "modelo_contratos.csv";
+    } else if (type === 'governo_sp') {
+      headers = "cpf,nome,data_nascimento,identificação,data_nomeacao,lotacao,orgao,tipo_vinculo,mb_consignacoes,md_consignacoes,mb_cartao_credito,md_cartao_credito,mb_cartao_beneficio,md_cartao_beneficio,telefone_1,telefone_2,telefone_3";
+      filename = "modelo_governo_sp.csv";
+    }
     
     const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `modelo_${type}.csv`);
+    link.setAttribute("download", filename);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -946,6 +1084,7 @@ export default function ImportBatchPage() {
                   >
                     <option value="SIAPE">SIAPE</option>
                     <option value="CONTRATOS">CONTRATOS</option>
+                    <option value="GOVERNO_SP">GOVERNO SP</option>
                   </select>
                   <Input 
                     value={description}
@@ -1038,6 +1177,16 @@ export default function ImportBatchPage() {
                         <p className="text-[10px] text-slate-400">Contratos Ativos</p>
                       </div>
                     </button>
+                    <button 
+                      onClick={() => downloadCSV('governo_sp')}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
+                    >
+                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO SP</p>
+                        <p className="text-[10px] text-slate-400">Base Governo São Paulo</p>
+                      </div>
+                    </button>
                   </div>
                 </div>
 
@@ -1089,11 +1238,26 @@ export default function ImportBatchPage() {
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                 </button>
               </div>
-              <div className="flex flex-col">
-                <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
-                  {totalBase.toLocaleString('pt-BR')}
-                </span>
-                <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
+                      {totalBaseSiape.toLocaleString('pt-BR')}
+                    </span>
+                    <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">SIAPE</span>
+                  </div>
+                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
+                </div>
+
+                <div className="flex flex-col border-t border-slate-100 pt-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
+                      {totalBaseGovSP.toLocaleString('pt-BR')}
+                    </span>
+                    <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">GOV SP</span>
+                  </div>
+                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -1136,9 +1300,10 @@ export default function ImportBatchPage() {
                         <div className="flex items-center gap-3">
                           <span className={cn(
                             "px-2 py-1 text-[7.5px] font-bold text-white rounded uppercase tracking-tighter",
-                            batch.tipo === "SIAPE" ? "bg-primary" : "bg-[#F59E0B]"
+                            batch.tipo === "SIAPE" ? "bg-primary" : 
+                            batch.tipo === "CONTRATOS" ? "bg-[#F59E0B]" : "bg-emerald-600"
                           )}>
-                            {batch.tipo}
+                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo}
                           </span>
                           <span className="text-[12px] font-semibold text-slate-600 uppercase">{batch.descricao}</span>
                         </div>

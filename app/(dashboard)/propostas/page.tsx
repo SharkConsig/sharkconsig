@@ -66,9 +66,10 @@ interface Proposal {
   id: number
   id_lead: string
   corretor_id?: string
+  corretor?: string
+  equipe?: string
   ade?: string
   nome_corretor?: string
-  equipe?: string
   nome_cliente: string
   cliente_cpf: string
   convenio: string
@@ -86,7 +87,7 @@ interface Proposal {
 }
 
 export default function ProposalsPage() {
-  const { perfil } = useAuth()
+  const { perfil, isCorretor } = useAuth()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [counts, setCounts] = useState<{[key: string]: number}>({})
   const [isLoading, setIsLoading] = useState(false)
@@ -258,42 +259,10 @@ export default function ProposalsPage() {
     try {
       let query = supabase.from('propostas').select('*')
       
-      if (perfil.role_slug === 'corretor') {
+      if (isCorretor) {
         query = query.eq('corretor_id', perfil.id)
-      } else if (perfil.role_slug === 'supervisor') {
-        // Consultar equipe do supervisor
-        const { data: teamData, error: teamError } = await supabase
-          .from('equipes')
-          .select('id')
-          .eq('supervisor_id', perfil.id)
-        
-        if (teamError) {
-          console.error("Erro ao buscar equipes:", teamError.message)
-          // fallback to own proposals if we can't fetch team
-          query = query.eq('corretor_id', perfil.id)
-        } else if (teamData && teamData.length > 0) {
-          const teamIds = teamData.map(t => t.id)
-          // Buscar usuários dessa equipe
-          const { data: teamUsers, error: usersError } = await supabase
-            .from('usuarios')
-            .select('id')
-            .in('equipe_id', teamIds)
-          
-          if (usersError) {
-            console.error("Erro ao buscar usuários da equipe:", usersError.message)
-            query = query.eq('corretor_id', perfil.id)
-          } else if (teamUsers && teamUsers.length > 0) {
-            query = query.in('corretor_id', teamUsers.map(u => u.id))
-          } else {
-            // Se não tem usuários na equipe, vê apenas as suas
-            query = query.eq('corretor_id', perfil.id)
-          }
-        } else {
-          // Se não tem equipe, vê apenas as suas
-          query = query.eq('corretor_id', perfil.id)
-        }
       }
-      // Se for operacional, administrador ou desenvolvedor, não filtra (vê tudo)
+      // Se for operacional, supervisor, administrador ou desenvolvedor, não filtra (vê tudo)
 
       const { data, error } = await query.order('created_at', { ascending: false })
       
@@ -311,45 +280,27 @@ export default function ProposalsPage() {
         return
       }
 
-      // Fetch users and teams separately to avoid join relationship issues
-      const brokerIds = Array.from(new Set(data.map((p: Proposal) => p.corretor_id).filter(Boolean)))
+      // Fetch users list to map missing names
+      interface UserSummary {
+        id: string;
+        nome: string;
+        supervisor_nome?: string;
+      }
       
       const usersMap = new Map<string, { nome: string, equipe: string }>()
-      if (brokerIds.length > 0) {
-        try {
-          // First fetch users basic info
-          const { data: usersData, error: usersFetchError } = await supabase
-            .from('usuarios')
-            .select('id, full_name, equipe_id')
-            .in('id', brokerIds)
-          
-          if (!usersFetchError && usersData) {
-            const teamIds = Array.from(new Set(usersData.map((u: { equipe_id?: string }) => u.equipe_id).filter(Boolean)))
-            
-            const teamsMap = new Map<string, string>()
-            if (teamIds.length > 0) {
-              const { data: teamsData, error: teamsError } = await supabase
-                .from('equipes')
-                .select('id, nome')
-                .in('id', teamIds)
-              
-              if (!teamsError && teamsData) {
-                teamsData.forEach((t: { id: string, nome: string }) => teamsMap.set(t.id, t.nome))
-              }
-            }
-
-            usersData.forEach((u: { id: string, full_name?: string, equipe_id?: string }) => {
-              usersMap.set(u.id, {
-                nome: u.full_name || '-',
-                equipe: (u.equipe_id && teamsMap.get(u.equipe_id)) || '-'
-              })
+      try {
+        const usersResponse = await fetch("/api/usuarios")
+        if (usersResponse.ok) {
+          const usersList: UserSummary[] = await usersResponse.json()
+          usersList.forEach((u) => {
+            usersMap.set(u.id, {
+              nome: u.nome || "-",
+              equipe: u.supervisor_nome || "-"
             })
-          } else if (usersFetchError) {
-            console.warn("Aviso ao buscar nomes de corretores:", usersFetchError.message)
-          }
-        } catch (e) {
-          console.warn("Falha silenciosa ao buscar detalhes dos corretores:", e)
+          })
         }
+      } catch (err) {
+        console.warn("Erro ao buscar usuários para mapeamento:", err)
       }
 
       const formattedData = data.map((p: Proposal) => {
@@ -359,11 +310,13 @@ export default function ProposalsPage() {
           normalizedStatus = "ANDAMENTO / AGUARDANDO PAGAMENTO"
         }
         
+        const userDetails = p.corretor_id ? usersMap.get(p.corretor_id) : null
+
         return {
           ...p,
           status: normalizedStatus,
-          nome_corretor: usersMap.get(p.corretor_id as string)?.nome || '-',
-          equipe: usersMap.get(p.corretor_id as string)?.equipe || '-'
+          nome_corretor: p.corretor || userDetails?.nome || '-',
+          equipe: p.equipe || userDetails?.equipe || '-'
         }
       })
 
@@ -386,7 +339,7 @@ export default function ProposalsPage() {
     }
   }
 
-  const stabilizedFetchProposals = useCallback(fetchProposals, [perfil])
+  const stabilizedFetchProposals = useCallback(fetchProposals, [perfil, isCorretor])
 
   useEffect(() => {
     if (perfil) {
@@ -589,7 +542,7 @@ export default function ProposalsPage() {
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ID</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ADE</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">CORRETOR</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">EQUIPE</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">SUPERVISOR (EQUIPE)</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">CPF</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">CLIENTE</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">BANCO/CONVÊNIO</th>
@@ -620,7 +573,7 @@ export default function ProposalsPage() {
                         <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">{proposal.id_lead}</td>
                         <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.ade || '-'}</td>
                         <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase">{proposal.nome_corretor || '-'}</td>
-                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500 uppercase">{proposal.equipe || '-'}</td>
+                        <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase">{proposal.equipe || '-'}</td>
                         <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.cliente_cpf}</td>
                         <td className="px-4 py-4 text-[11px] font-bold text-slate-700 uppercase tracking-tight">{proposal.nome_cliente}</td>
                         <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.banco}/{proposal.convenio}</td>
@@ -653,19 +606,25 @@ export default function ProposalsPage() {
                         <td className="px-4 py-4">
                           <div className="flex items-center justify-center gap-1">
                             {selectedStatus !== "CANCELADOS" && (
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  setSelectedProposalForStatus(proposal)
-                                  setIsStatusModalOpen(true)
-                                }}
-                                className="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md p-1 group/btn transition-all"
-                                title="ALTERAR STATUS DA PROPOSTA"
-                              >
-                                <ChevronRight className="w-4 h-4" />
-                              </Button>
+                              (!isCorretor || [
+                                'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
+                                'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
+                                'COM INCONSISTÊNCIA NO BANCO'
+                              ].includes(proposal.status)) && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    setSelectedProposalForStatus(proposal)
+                                    setIsStatusModalOpen(true)
+                                  }}
+                                  className="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md p-1 group/btn transition-all"
+                                  title="ALTERAR STATUS DA PROPOSTA"
+                                >
+                                  <ChevronRight className="w-4 h-4" />
+                                </Button>
+                              )
                             )}
                             <Button 
                               variant="ghost" 

@@ -87,10 +87,25 @@ interface Proposal {
 
 export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
   const { perfil: user, isCorretor } = useAuth()
+  
+  const canEditFields = !isCorretor || [
+    'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
+    'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO'
+  ].includes(proposal.status);
+
+  const canAttach = !isCorretor || [
+    'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
+    'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
+    'COM INCONSISTÊNCIA NO BANCO'
+  ].includes(proposal.status);
+
+  const canSave = canEditFields || canAttach;
+
   const [activeTab, setActiveTab] = useState<"visualizar" | "historico">("visualizar")
   const [isFichaModalOpen, setIsFichaModalOpen] = useState(false)
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [usersMap, setUsersMap] = useState<Map<string, string>>(new Map())
   const [isSaving, setIsSaving] = useState(false)
   
   const [dbProdutosConfigs, setDbProdutosConfigs] = useState<Record<string, unknown>[]>([])
@@ -105,6 +120,23 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     banco: proposal.banco || "",
     operacao: proposal.tipo_operacao || ""
   })
+
+  useEffect(() => {
+    async function fetchUsers() {
+      try {
+        const response = await fetch('/api/usuarios')
+        if (response.ok) {
+          const users = await response.json()
+          const map = new Map<string, string>()
+          users.forEach((u: { id: string; nome?: string; username?: string }) => map.set(u.id, u.nome || u.username || 'Sem Nome'))
+          setUsersMap(map)
+        }
+      } catch (err) {
+        console.warn("Erro ao buscar usuários para histórico:", err)
+      }
+    }
+    fetchUsers()
+  }, [])
 
   useEffect(() => {
     async function fetchHistory() {
@@ -405,50 +437,62 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : val
       }
 
-      const { error } = await supabase.from('propostas').update({
-        cliente_cpf: formData.cpf.replace(/\D/g, ""),
-        nome_cliente: formData.nome,
-        data_nascimento: formatDate(formData.nascimento),
-        origem: formData.origem,
-        matricula: formData.matricula,
-        naturalidade: formData.naturalidade,
-        uf_naturalidade: formData.uf_naturalidade,
-        identidade: formData.identidade,
-        orgao_emissor: formData.orgao_emissor,
-        uf_emissao: formData.uf_emissao,
-        data_emissao: formatDate(formData.data_emissao),
-        nome_pai: formData.nome_pai,
-        nome_mae: formData.nome_mae,
-        tel_residencial_1: formData.tel_1,
-        tel_residencial_2: formData.tel_2,
-        tel_comercial: formData.tel_3,
-        cep: formData.cep,
-        endereco: formData.endereco,
-        numero: formData.numero,
-        complemento: formData.complemento,
-        bairro: formData.bairro,
-        cidade: formData.cidade,
-        uf: formData.uf,
-        banco_cliente: formData.banco_cliente,
-        chave_pix: formData.chave_pix,
-        conta: formData.conta,
-        agencia: formData.agencia,
-        dv: formData.dv,
-        tipo_conta: formData.tipo_conta,
-        valor_parcela: cleanMoney(formData.valor_parcela),
-        valor_operacao_operacional: cleanMoney(formData.valor_operacao_operacional),
-        valor_cliente_operacional: cleanMoney(formData.valor_cliente_operacional),
-        margem_utilizada: cleanMoney(formData.margem_utilizada),
-        coeficiente_prazo: formData.coeficiente_prazo,
-        observacoes: finalObservations,
-        arquivo_rg_frente: fileUrls.frente || existingAttachments.frente,
-        arquivo_rg_verso: fileUrls.verso || existingAttachments.verso,
-        arquivo_contracheque: fileUrls.contracheque || existingAttachments.contracheque,
-        arquivo_extrato: fileUrls.extrato || existingAttachments.extrato,
-        arquivo_outros: fileUrls.outros || existingAttachments.outros,
-        arquivo_outros_2: fileUrls.outros_2 || existingAttachments.outros_2,
+      const updateData: Record<string, string | number | null> = {
         updated_at: new Date().toISOString()
-      }).eq('id_lead', proposal.id_lead)
+      };
+
+      if (canEditFields) {
+        Object.assign(updateData, {
+          cliente_cpf: formData.cpf.replace(/\D/g, ""),
+          nome_cliente: formData.nome,
+          data_nascimento: formatDate(formData.nascimento),
+          origem: formData.origem,
+          matricula: formData.matricula,
+          naturalidade: formData.naturalidade,
+          uf_naturalidade: formData.uf_naturalidade,
+          identidade: formData.identidade,
+          orgao_emissor: formData.orgao_emissor,
+          uf_emissao: formData.uf_emissao,
+          data_emissao: formatDate(formData.data_emissao),
+          nome_pai: formData.nome_pai,
+          nome_mae: formData.nome_mae,
+          tel_residencial_1: formData.tel_1,
+          tel_residencial_2: formData.tel_2,
+          tel_comercial: formData.tel_3,
+          cep: formData.cep,
+          endereco: formData.endereco,
+          numero: formData.numero,
+          complemento: formData.complemento,
+          bairro: formData.bairro,
+          cidade: formData.cidade,
+          uf: formData.uf,
+          banco_cliente: formData.banco_cliente,
+          chave_pix: formData.chave_pix,
+          conta: formData.conta,
+          agencia: formData.agencia,
+          dv: formData.dv,
+          tipo_conta: formData.tipo_conta,
+          valor_parcela: cleanMoney(formData.valor_parcela),
+          valor_operacao_operacional: cleanMoney(formData.valor_operacao_operacional),
+          valor_cliente_operacional: cleanMoney(formData.valor_cliente_operacional),
+          margem_utilizada: cleanMoney(formData.margem_utilizada),
+          coeficiente_prazo: formData.coeficiente_prazo,
+          observacoes: finalObservations,
+        });
+      }
+
+      if (canAttach) {
+        Object.assign(updateData, {
+          arquivo_rg_frente: fileUrls.frente || existingAttachments.frente,
+          arquivo_rg_verso: fileUrls.verso || existingAttachments.verso,
+          arquivo_contracheque: fileUrls.contracheque || existingAttachments.contracheque,
+          arquivo_extrato: fileUrls.extrato || existingAttachments.extrato,
+          arquivo_outros: fileUrls.outros || existingAttachments.outros,
+          arquivo_outros_2: fileUrls.outros_2 || existingAttachments.outros_2,
+        });
+      }
+
+      const { error } = await supabase.from('propostas').update(updateData).eq('id_lead', proposal.id_lead)
 
       if (error) throw error
       
@@ -563,7 +607,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                 <select 
                   value={formData.origem}
                   onChange={(e) => handleFormChange("origem", e.target.value)}
-                  className="w-full h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                  disabled={!canEditFields}
+                  className="w-full h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors disabled:opacity-75 cursor-pointer disabled:cursor-not-allowed"
                 >
                   <option value="">Selecione</option>
                   <option value="disparo">DISPARO</option>
@@ -577,7 +622,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                 <Input 
                   value={formData.matricula}
                   onChange={(e) => handleFormChange("matricula", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  disabled={!canEditFields}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                 />
               </div>
             </div>
@@ -591,7 +637,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.cpf}
                     onChange={(e) => handleFormChange("cpf", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="md:col-span-2 space-y-2">
@@ -599,7 +646,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.nome}
                     onChange={(e) => handleFormChange("nome", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -609,7 +657,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                       type="date"
                       value={toInputDate(formData.nascimento)}
                       onChange={(e) => handleFormChange("nascimento", fromInputDate(e.target.value))}
-                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none" 
+                      disabled={!canEditFields}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none disabled:opacity-75" 
                     />
                   </div>
                 </div>
@@ -619,7 +668,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.naturalidade}
                     onChange={(e) => handleFormChange("naturalidade", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
 
@@ -628,7 +678,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <select 
                     value={formData.uf_naturalidade}
                     onChange={(e) => handleFormChange("uf_naturalidade", e.target.value)}
-                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                    disabled={!canEditFields}
+                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors disabled:opacity-75 cursor-pointer disabled:cursor-not-allowed"
                   >
                     <option value="">Selecione</option>
                     {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
@@ -641,7 +692,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.identidade}
                     onChange={(e) => handleFormChange("identidade", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -649,7 +701,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.orgao_emissor}
                     onChange={(e) => handleFormChange("orgao_emissor", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -657,7 +710,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <select 
                     value={formData.uf_emissao}
                     onChange={(e) => handleFormChange("uf_emissao", e.target.value)}
-                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                    disabled={!canEditFields}
+                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors disabled:opacity-75 cursor-pointer disabled:cursor-not-allowed"
                   >
                     <option value="">Selecione</option>
                     {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
@@ -673,7 +727,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                       type="date"
                       value={toInputDate(formData.data_emissao)}
                       onChange={(e) => handleFormChange("data_emissao", fromInputDate(e.target.value))}
-                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none" 
+                      disabled={!canEditFields}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none disabled:opacity-75" 
                     />
                   </div>
                 </div>
@@ -682,7 +737,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.nome_pai}
                     onChange={(e) => handleFormChange("nome_pai", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="md:col-span-2 space-y-2">
@@ -690,7 +746,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.nome_mae}
                     onChange={(e) => handleFormChange("nome_mae", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
 
@@ -699,7 +756,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.tel_1}
                     onChange={(e) => handleFormChange("tel_1", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -707,7 +765,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.tel_2}
                     onChange={(e) => handleFormChange("tel_2", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -715,7 +774,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.tel_3}
                     onChange={(e) => handleFormChange("tel_3", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
 
@@ -725,12 +785,13 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     <Input 
                       value={formData.cep}
                       onChange={(e) => handleFormChange("cep", e.target.value)}
-                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                      disabled={!canEditFields}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                       placeholder="00000-000"
                     />
                     <button 
                       type="button" 
-                      disabled={isSearchingCEP}
+                      disabled={isSearchingCEP || !canEditFields}
                       onClick={handleSearchCEP}
                       className="text-[10px] font-bold text-primary italic whitespace-nowrap hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                     >
@@ -744,7 +805,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.endereco}
                     onChange={(e) => handleFormChange("endereco", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -752,7 +814,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.numero}
                     onChange={(e) => handleFormChange("numero", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -760,7 +823,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.complemento}
                     onChange={(e) => handleFormChange("complemento", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="md:col-span-2 space-y-2">
@@ -768,7 +832,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.bairro}
                     onChange={(e) => handleFormChange("bairro", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="md:col-span-2 space-y-2">
@@ -776,7 +841,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.cidade}
                     onChange={(e) => handleFormChange("cidade", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -784,7 +850,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <select 
                     value={formData.uf}
                     onChange={(e) => handleFormChange("uf", e.target.value)}
-                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                    disabled={!canEditFields}
+                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors disabled:opacity-75 cursor-pointer disabled:cursor-not-allowed"
                   >
                     <option value="">Selecione</option>
                     {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
@@ -804,7 +871,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.banco_cliente}
                     onChange={(e) => handleFormChange("banco_cliente", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -812,7 +880,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.chave_pix}
                     onChange={(e) => handleFormChange("chave_pix", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
               </div>
@@ -822,7 +891,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.conta}
                     onChange={(e) => handleFormChange("conta", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -830,7 +900,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.agencia}
                     onChange={(e) => handleFormChange("agencia", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -838,7 +909,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.dv}
                     onChange={(e) => handleFormChange("dv", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -846,7 +918,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <select 
                     value={formData.tipo_conta}
                     onChange={(e) => handleFormChange("tipo_conta", e.target.value)}
-                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                    disabled={!canEditFields}
+                    className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors disabled:opacity-75 cursor-pointer disabled:cursor-not-allowed"
                   >
                     <option value="">Selecione</option>
                     <option value="corrente">CORRENTE</option>
@@ -910,7 +983,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.margem_utilizada}
                     onChange={(e) => handleFormChange("margem_utilizada", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
                 </div>
@@ -919,9 +993,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <div 
                     className={cn(
                       "h-9 px-4 rounded-md border border-slate-800 bg-[#171717] flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all",
-                      isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary"
+                      isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary",
+                      !canEditFields && "opacity-75 cursor-not-allowed pointer-events-none"
                     )}
-                    onClick={() => setIsCoefDropdownOpen(!isCoefDropdownOpen)}
+                    onClick={() => canEditFields && setIsCoefDropdownOpen(!isCoefDropdownOpen)}
                   >
                     <span className="text-[13px] font-medium text-white truncate">
                       {formData.coeficiente_prazo || "Selecione uma tabela"}
@@ -984,7 +1059,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_producao_corretor}
                     onChange={(e) => handleFormChange("valor_producao_corretor", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
                 </div>
@@ -996,7 +1072,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_parcela}
                     onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
                 </div>
@@ -1005,7 +1082,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_cliente_operacional}
                     onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
                 </div>
@@ -1021,7 +1099,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <textarea 
                     value={formData.observacoes}
                     onChange={(e) => handleFormChange("observacoes", e.target.value)}
-                    className="w-full p-6 text-[14px] font-medium focus:outline-none min-h-[200px] bg-[#E8E8E8]" 
+                    disabled={!canEditFields}
+                    className="w-full p-6 text-[14px] font-medium focus:outline-none min-h-[200px] bg-[#E8E8E8] disabled:opacity-75" 
                     placeholder="Digite suas observações aqui..."
                   />
                 </div>
@@ -1091,19 +1170,20 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <div key={field.id} className="space-y-2">
                     <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest block">{field.label}</label>
                     <div 
-                      onClick={() => handleFileClick(field.ref)}
+                      onClick={() => canAttach && handleFileClick(field.ref)}
                       className={cn(
                         "w-full h-11 px-4 rounded-lg border text-[12px] flex items-center gap-3 cursor-pointer transition-all",
                         selectedFiles[field.id]
                           ? "bg-[#171717] text-white border-[#171717] shadow-lg"
-                          : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200"
+                          : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200",
+                        !canAttach && "opacity-50 cursor-not-allowed pointer-events-none"
                       )}
                     >
                       <UploadCloud className={cn("w-5 h-5", selectedFiles[field.id] ? "text-white" : "text-slate-400")} />
                       <span className="truncate font-medium flex-1">
                         {selectedFiles[field.id] ? selectedFiles[field.id]?.name : "Selecionar arquivo..."}
                       </span>
-                      {selectedFiles[field.id] && (
+                      {selectedFiles[field.id] && canAttach && (
                         <button 
                           onClick={(e) => { 
                             e.stopPropagation(); 
@@ -1121,15 +1201,17 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               </div>
             </div>
 
-            <div className="flex justify-center pt-8">
-              <Button 
-                onClick={handleUpdateProposal}
-                disabled={isSaving}
-                className="w-full max-w-md h-12 bg-[#171717] hover:bg-[#171717]/90 text-white text-[12px] font-bold uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02]"
-              >
-                {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> SALVANDO...</> : "SALVAR ALTERAÇÕES"}
-              </Button>
-            </div>
+            {canSave && (
+              <div className="flex justify-center pt-8">
+                <Button 
+                  onClick={handleUpdateProposal}
+                  disabled={isSaving}
+                  className="w-full max-w-md h-12 bg-[#171717] hover:bg-[#171717]/90 text-white text-[12px] font-bold uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02]"
+                >
+                  {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> SALVANDO...</> : "SALVAR ALTERAÇÕES"}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1179,7 +1261,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                             <p className="text-[10px] font-medium text-slate-500">{new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                           </div>
                         ) : (
-                          <HistoryCard event={event} />
+                          <HistoryCard event={event} usersMap={usersMap} />
                         )}
                       </div>
 
@@ -1201,7 +1283,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                             <p className="text-[10px] font-medium text-slate-500">{new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                           </div>
                         ) : (
-                          <HistoryCard event={event} />
+                          <HistoryCard event={event} usersMap={usersMap} />
                         )}
                       </div>
                     </div>
@@ -1222,7 +1304,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   )
 }
 
-function HistoryCard({ event }: { event: HistoryItem }) {
+function HistoryCard({ event, usersMap }: { event: HistoryItem; usersMap: Map<string, string> }) {
+  const userName = usersMap.get(event.usuario_id) || event.usuario_id || "SISTEMA";
+  
   return (
     <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-3 w-full max-w-[450px] transition-all hover:shadow-md">
       <div className="space-y-1">
@@ -1282,7 +1366,7 @@ function HistoryCard({ event }: { event: HistoryItem }) {
 
       <div className="pt-2 border-t border-slate-50">
         <p className="text-[9px] font-medium text-slate-400 italic">
-          Alterado por: <span className="font-bold text-slate-500 uppercase">{(event as HistoryItem & { usuario?: { full_name?: string } }).usuario?.full_name || event.usuario_id || "SISTEMA"}</span>
+          Alterado por: <span className="font-bold text-slate-500 uppercase">{userName}</span>
         </p>
       </div>
     </div>

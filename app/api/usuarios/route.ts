@@ -15,6 +15,17 @@ export async function GET(request: Request) {
       if (!user) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
 
       const metadata = user.user_metadata || {};
+      let supervisorNome = metadata.supervisor_nome;
+
+      // If supervisor_nome is missing but id is present, try to find it
+      if (!supervisorNome && metadata.supervisor_id) {
+        const { data: supervisorUser } = await supabaseAdmin.auth.admin.getUserById(metadata.supervisor_id)
+        if (supervisorUser?.user?.user_metadata) {
+          const sMeta = supervisorUser.user.user_metadata;
+          supervisorNome = sMeta.nome_completo || sMeta.full_name || 'Sem Nome';
+        }
+      }
+
       return NextResponse.json({
         id: user.id,
         email: user.email,
@@ -22,6 +33,7 @@ export async function GET(request: Request) {
         username: metadata.username,
         funcao: metadata.funcao || 'Corretor',
         supervisor_id: metadata.supervisor_id,
+        supervisor_nome: supervisorNome,
         avatar_url: metadata.avatar_url || `https://picsum.photos/seed/${metadata.username || user.id}/200/200`,
         status: (metadata.status || 'ATIVO').toUpperCase()
       })
@@ -30,9 +42,24 @@ export async function GET(request: Request) {
     const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers()
     if (listError) throw listError
 
+    // Create a map for quick name lookup
+    const nameMap = new Map<string, string>()
+    users.forEach(user => {
+      const metadata = user.user_metadata || {}
+      nameMap.set(user.id, metadata.nome_completo || metadata.full_name || 'Sem Nome')
+    })
+
     // Mesclar dados
     const combinedUsers = users.map((user) => {
       const metadata = user.user_metadata || {};
+      const supervisorId = metadata.supervisor_id;
+      let supervisorNome = metadata.supervisor_nome;
+      
+      // If supervisor_nome is missing but id is present, try to find it in our list
+      if (!supervisorNome && supervisorId && nameMap.has(supervisorId)) {
+        supervisorNome = nameMap.get(supervisorId);
+      }
+
       return {
         id: user.id,
         email: user.email,
@@ -40,6 +67,7 @@ export async function GET(request: Request) {
         username: metadata.username,
         funcao: metadata.funcao || 'Corretor',
         supervisor_id: metadata.supervisor_id,
+        supervisor_nome: supervisorNome,
         avatar_url: metadata.avatar_url || `https://picsum.photos/seed/${metadata.username || user.id}/200/200`,
         status: (metadata.status || 'ATIVO').toUpperCase(),
         created_at: user.created_at,
