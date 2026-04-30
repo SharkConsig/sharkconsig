@@ -60,7 +60,7 @@ function NewProposalForm() {
   const [selectedProdPercent, setSelectedProdPercent] = useState<number | null>(null)
 
   const [selection, setSelection] = useState({
-    convenio: "",
+    convenio: searchParams.get("convenio") || "",
     convenioId: "",
     banco: "",
     bancoId: "",
@@ -411,10 +411,10 @@ function NewProposalForm() {
       return
     }
 
-    if (!formData.nome || !formData.cpf || !formData.matricula) {
-      toast.error("Preencha os campos obrigatórios (Matrícula, CPF e Nome).")
-      return
-    }
+      if (!formData.nome || !formData.cpf || !formData.matricula) {
+        toast.error(`Preencha os campos obrigatórios (MATRÍCULA/IDENTIFICAÇÃO, CPF e Nome).`)
+        return
+      }
 
     setIsSubmitting(true)
     const loadingToast = toast.loading("Salvando proposta e anexos...")
@@ -875,7 +875,7 @@ function NewProposalForm() {
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">
-                {selection.convenio?.toUpperCase() === "GOVERNO SP" ? "Identificação" : "Matrícula"} <span className="text-red-500">*</span>
+                MATRÍCULA/IDENTIFICAÇÃO <span className="text-red-500">*</span>
               </label>
               <Input 
                 value={formData.matricula}

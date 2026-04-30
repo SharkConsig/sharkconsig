@@ -649,7 +649,7 @@ function NewTicketForm() {
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 items-end">
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      {formData.convenio?.toUpperCase() === "GOVERNO SP" ? "LÍQUIDA CONSIGNAÇÕES" : "Margem 35%"} <span className="text-red-500">*</span>
+                      {(formData.convenio?.toUpperCase() === "GOVERNO SP" || formData.convenio?.toUpperCase() === "PREFEITURA SP") ? "LÍQUIDA CONSIGNAÇÕES" : "Margem 35%"} <span className="text-red-500">*</span>
                     </label>
                     {isFromClient && originalMargins.margem ? (
                       <button
@@ -678,7 +678,7 @@ function NewTicketForm() {
 
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      {formData.convenio?.toUpperCase() === "GOVERNO SP" ? "LÍQUIDA CARTÃO CRÉDITO" : "Líquida 5%"}
+                      {(formData.convenio?.toUpperCase() === "GOVERNO SP" || formData.convenio?.toUpperCase() === "PREFEITURA SP") ? "LÍQUIDA CARTÃO CRÉDITO" : "Líquida 5%"}
                     </label>
                     {isFromClient && originalMargins.liquida5 ? (
                       <button
@@ -707,7 +707,7 @@ function NewTicketForm() {
 
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      {formData.convenio?.toUpperCase() === "GOVERNO SP" ? "LÍQUIDA CARTÃO BENEFÍCIO" : "Benefício Líquida 5%"}
+                      {(formData.convenio?.toUpperCase() === "GOVERNO SP" || formData.convenio?.toUpperCase() === "PREFEITURA SP") ? "LÍQUIDA CARTÃO BENEFÍCIO" : "Benefício Líquida 5%"}
                     </label>
                     {isFromClient && originalMargins.beneficio5 ? (
                       <button

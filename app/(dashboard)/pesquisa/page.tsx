@@ -60,7 +60,7 @@ export default function SearchClientPage() {
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   
   const [client, setClient] = useState<any>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | null>(null)
   const [registrations, setRegistrations] = useState<any[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -147,6 +147,38 @@ export default function SearchClientPage() {
         )
 
         if (idError) console.error("Erro ao buscar identificações Governo SP:", idError)
+        setRegistrations(idData || [])
+        setShowProfile(true)
+        return
+      }
+
+      // 3. Try search in Prefeitura SP Clients
+      let pmspQuery = supabase.from('prefeitura_sp_clientes').select('*')
+      if (digits.length <= 11) {
+        const paddedCpf = digits.padStart(11, '0')
+        pmspQuery = pmspQuery.or(`cpf.eq.${paddedCpf},telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
+      } else {
+        pmspQuery = pmspQuery.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
+      }
+
+      const { data: pmspData } = await withRetry<any>(async () => await pmspQuery.maybeSingle())
+
+      if (pmspData) {
+        setClient(pmspData)
+        setClientType('prefeitura_sp')
+
+        // Search Prefeitura SP Identificações and Lotações
+        const { data: idData, error: idError } = await withRetry<any>(async () =>
+          await supabase
+            .from('prefeitura_sp_identificacoes')
+            .select(`
+              *,
+              prefeitura_sp_lotacoes (*)
+            `)
+            .eq('cliente_id', pmspData.id)
+        )
+
+        if (idError) console.error("Erro ao buscar identificações Prefeitura SP:", idError)
         setRegistrations(idData || [])
         setShowProfile(true)
         return
@@ -784,9 +816,6 @@ export default function SearchClientPage() {
                           </Button>
                           <Button 
                             onClick={() => {
-                              const orgao = allRegs[activeRegIndex].orgao;
-                              const determinedConvenio = (orgao && ORGAOS_MAPPING[orgao]) ? "FEDERAL" : "OUTROS";
-
                               const params = new URLSearchParams({
                                 nome: client.nome || "NOME NÃO INFORMADO",
                                 cpf: client.cpf,
@@ -795,7 +824,8 @@ export default function SearchClientPage() {
                                 tel1: unmaskPhone(client.telefone_1),
                                 tel2: unmaskPhone(client.telefone_2),
                                 tel3: unmaskPhone(client.telefone_3),
-                                origem: "pesquisa"
+                                origem: "pesquisa",
+                                convenio: "FEDERAL"
                               });
                               router.push(`/propostas/nova?${params.toString()}`);
                             }}
@@ -1024,7 +1054,206 @@ export default function SearchClientPage() {
                                   tel1: unmaskPhone(client.telefone_1),
                                   tel2: unmaskPhone(client.telefone_2),
                                   tel3: unmaskPhone(client.telefone_3),
-                                  origem: "pesquisa"
+                                  origem: "pesquisa",
+                                  convenio: "GOVERNO SP"
+                                });
+                                router.push(`/propostas/nova?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                            >
+                              <FileEdit className="w-4 h-4 mr-2" />
+                              Digitar Proposta
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {clientType === 'prefeitura_sp' && registrations.length > 0 && (() => {
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-pmsp-${reg.id}-${idx}`}
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)]" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        IDENTIFICAÇÃO {reg.identificacao}
+                      </button>
+                    ))}
+                  </div>
+
+                  {registrations[activeRegIndex] && (() => {
+                    const reg = registrations[activeRegIndex];
+                    const lotacao = reg.prefeitura_sp_lotacoes?.[0] || {};
+                    
+                    const getMarginLogic = (bruta: number | null, liquida_db: number | null) => {
+                      const b = bruta || 0;
+                      const l = liquida_db || 0;
+                      
+                      let status: 'SIM' | 'NÃO' | 'PARCIAL' = 'NÃO';
+                      if (l >= b && b > 0) {
+                        status = 'SIM';
+                      } else if (l > 0 && l < b) {
+                        status = 'PARCIAL';
+                      } else {
+                        status = 'NÃO';
+                      }
+                      
+                      const liquida_val = b - l;
+                      return { status, liquida_val };
+                    };
+
+                    const consignacoes = getMarginLogic(lotacao.mb_consignacoes, lotacao.md_consignacoes);
+                    const beneficio = getMarginLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
+
+                    return (
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                        <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Identificação (PMSP)</h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identificação</p>
+                                <p className="text-[13px] font-bold text-slate-900">{reg.identificacao}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data da Nomeação</p>
+                                <p className="text-[13px] font-bold text-slate-900">{formatDate(reg.data_nomeacao)}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Vínculo</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.tipo_vinculo || "NÃO INFORMADO"}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lotação</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{lotacao.lotacao || "NÃO INFORMADO"}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{lotacao.orgao || "NÃO INFORMADO"}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-6">
+                            {/* Consignações */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Consignações</p>
+                                <p className="text-[17px] font-bold text-slate-900">{formatCurrency(lotacao.mb_consignacoes)}</p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5",
+                                consignacoes.status === 'SIM' ? "bg-red-100/50 border-red-200" : 
+                                consignacoes.status === 'PARCIAL' ? "bg-slate-100/80 border-slate-200" : 
+                                "bg-emerald-100/50 border-emerald-200"
+                              )}>
+                                <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                  consignacoes.status === 'SIM' ? "text-red-700/60" : 
+                                  consignacoes.status === 'PARCIAL' ? "text-slate-500" : 
+                                  "text-emerald-700/60"
+                                )}>Utilizada</p>
+                                <p className={cn("text-[17px] font-bold uppercase", 
+                                  consignacoes.status === 'SIM' ? "text-red-700" : 
+                                  consignacoes.status === 'PARCIAL' ? "text-slate-600" : 
+                                  "text-emerald-700"
+                                )}>{consignacoes.status}</p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5",
+                                consignacoes.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                              )}>
+                                <p className={cn("text-[9px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
+                                <p className={cn("text-[17px] font-bold", consignacoes.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
+                              </div>
+                            </div>
+
+                            {/* Cartão Benefício */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Benefício</p>
+                                <p className="text-[17px] font-bold text-slate-900">{formatCurrency(lotacao.mb_cartao_beneficio)}</p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5",
+                                beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : 
+                                beneficio.status === 'PARCIAL' ? "bg-slate-100/80 border-slate-200" : 
+                                "bg-emerald-100/50 border-emerald-200"
+                              )}>
+                                <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                  beneficio.status === 'SIM' ? "text-red-700/60" : 
+                                  beneficio.status === 'PARCIAL' ? "text-slate-500" : 
+                                  "text-emerald-700/60"
+                                )}>Utilizada</p>
+                                <p className={cn("text-[17px] font-bold uppercase", 
+                                  beneficio.status === 'SIM' ? "text-red-700" : 
+                                  beneficio.status === 'PARCIAL' ? "text-slate-600" : 
+                                  "text-emerald-700"
+                                )}>{beneficio.status}</p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5",
+                                beneficio.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                              )}>
+                                <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
+                                <p className={cn("text-[17px] font-bold", beneficio.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(beneficio.liquida_val)}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Footer Buttons for PMSP */}
+                          <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button 
+                              onClick={() => {
+                                const rawCpf = client.cpf || "";
+                                const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: formattedCpf,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  margem: formatCurrency(consignacoes.liquida_val),
+                                  liquida5: "R$ 0,00", // PMSP doesn't have 5% CC
+                                  beneficio5: formatCurrency(beneficio.liquida_val),
+                                  convenio: "PREFEITURA SP"
+                                });
+                                router.push(`/chamados/novo?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Abrir Chamado
+                            </Button>
+                            <Button 
+                              onClick={() => {
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: client.cpf,
+                                  nascimento: formatDate(client.data_nascimento),
+                                  idLead: reg.identificacao,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  origem: "pesquisa",
+                                  convenio: "PREFEITURA SP"
                                 });
                                 router.push(`/propostas/nova?${params.toString()}`);
                               }}
