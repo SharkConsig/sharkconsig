@@ -724,28 +724,45 @@ export default function ImportBatchPage() {
 
     if (normalizedRows.length === 0) return;
 
-    // --- PASSO 1: Garantir Entidade Cliente (CPF Único) ---
+    // --- PASSO 1: Garantir Entidade Cliente (CPF Único) com Regra de Preservação ---
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<any>('governo_sp_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf, c]));
+
+    // Helper para verificar se devemos preservar o valor do banco (Anti-Null e Anti-Zero)
+    // Retorna true se o valor da planilha for vazio (""), nulo ou '0'
+    const shouldPreserve = (val: any) => {
+      const v = String(val).trim();
+      return v === "" || v === "0" || val === null || val === undefined;
+    };
+
     // Usamos um Map para evitar CPFs duplicados no próprio lote
     const clientMap = new Map();
     normalizedRows.forEach(row => {
-      const existing = clientMap.get(row.cpf);
-      // Mantemos o registro que tiver mais informações (ex: nome preenchido)
-      if (!existing || (!existing.nome && row.nome)) {
-        clientMap.set(row.cpf, {
-          cpf: row.cpf,
-          nome: row.nome || 'NAO INFORMADO',
-          data_nascimento: row.data_nascimento,
-          telefone_1: row.telefone_1,
-          telefone_2: row.telefone_2,
-          telefone_3: row.telefone_3,
-          updated_at: new Date().toISOString()
-        });
-      }
+      const dbClient = existingClientsMap.get(row.cpf);
+      const existingInMap = clientMap.get(row.cpf);
+
+      // Regra: Se a planilha trouxer Vazio ou 0, e existir dado no Banco ou no Lote, preserva o dado.
+      // Caso contrário (planilha tem valor válido), atualiza.
+      const nome = !shouldPreserve(row.nome) ? row.nome : (existingInMap?.nome || dbClient?.nome || 'NAO INFORMADO');
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : (existingInMap?.data_nascimento || dbClient?.data_nascimento || null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : (existingInMap?.telefone_1 || dbClient?.telefone_1 || null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : (existingInMap?.telefone_2 || dbClient?.telefone_2 || null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : (existingInMap?.telefone_3 || dbClient?.telefone_3 || null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf, 
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
     });
 
-      const clientRows = Array.from(clientMap.values()) as any[];
+    const clientRows = Array.from(clientMap.values()) as any[];
     const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      // Upsert para garantir regra de unicidade de CPF
       return await supabase.from('governo_sp_clientes')
         .upsert(clientRows, { onConflict: 'cpf' })
         .select('id, cpf');
@@ -755,22 +772,31 @@ export default function ImportBatchPage() {
 
     const cpfToClientId = new Map<string, string>(clientsData.map((c: any) => [c.cpf, c.id]));
 
-    // --- PASSO 2: Processar Identificações (N:1 com Cliente) ---
+    // --- PASSO 2: Processar Identificações (N:1 com Cliente) com Regra de Preservação ---
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<any>('governo_sp_identificacoes', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.identificacao}`, i]));
+
     const identMap = new Map();
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       if (!clientId || !row.identificacao_val) return;
 
-      const key = `${clientId}-${row.identificacao_val}`;
-      if (!identMap.has(key)) {
-        identMap.set(key, {
-          cliente_id: clientId,
-          identificacao: row.identificacao_val,
-          data_nomeacao: row.data_nomeacao,
-          tipo_vinculo: row.tipo_vinculo,
-          updated_at: new Date().toISOString()
-        });
-      }
+      const key = `${clientId}_${row.identificacao_val}`;
+      const dbIdent = existingIdentsMap.get(key);
+      const currentInMap = identMap.get(key);
+
+      // Regra Anti-Null/Zero para Identificação e Vínculos
+      const data_nomeacao = !shouldPreserve(row.data_nomeacao) ? row.data_nomeacao : (currentInMap?.data_nomeacao || dbIdent?.data_nomeacao || null);
+      const tipo_vinculo = !shouldPreserve(row.tipo_vinculo) ? row.tipo_vinculo : (currentInMap?.tipo_vinculo || dbIdent?.tipo_vinculo || null);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        identificacao: row.identificacao_val,
+        data_nomeacao,
+        tipo_vinculo,
+        updated_at: new Date().toISOString()
+      });
     });
 
     const identRows = Array.from(identMap.values()) as any[];
@@ -782,7 +808,7 @@ export default function ImportBatchPage() {
 
     if (identErr || !identsData) throw new Error(`Erro ao salvar identificações Governo SP: ${identErr?.message}`);
 
-    const keyToIdentId = new Map<string, string>(identsData.map((id: any) => [`${id.cliente_id}-${id.identificacao}`, id.id]));
+    const keyToIdentId = new Map<string, string>(identsData.map((id: any) => [`${id.cliente_id}_${id.identificacao}`, id.id]));
 
     // --- PASSO 3: Inserir Lotações (N:1 com Identificação) ---
     const lotacaoRows = normalizedRows.map(row => {
@@ -836,21 +862,37 @@ export default function ImportBatchPage() {
 
     if (normalizedRows.length === 0) return;
 
-    // --- PASSO 1: Garantir Entidade Cliente (CPF Único) ---
+    // --- PASSO 1: Garantir Entidade Cliente (CPF Único) com Regra de Preservação ---
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<any>('prefeitura_sp_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf, c]));
+
+    const shouldPreserve = (val: any) => {
+      const v = String(val).trim();
+      return v === "" || v === "0" || val === null || val === undefined;
+    };
+
     const clientMap = new Map();
     normalizedRows.forEach(row => {
-      const existing = clientMap.get(row.cpf);
-      if (!existing || (!existing.nome && row.nome)) {
-        clientMap.set(row.cpf, {
-          cpf: row.cpf,
-          nome: row.nome || 'NAO INFORMADO',
-          data_nascimento: row.data_nascimento,
-          telefone_1: row.telefone_1,
-          telefone_2: row.telefone_2,
-          telefone_3: row.telefone_3,
-          updated_at: new Date().toISOString()
-        });
-      }
+      const dbClient = existingClientsMap.get(row.cpf);
+      const existingInMap = clientMap.get(row.cpf);
+
+      // Regra Anti-Null/Zero para Prefeitura SP
+      const nome = !shouldPreserve(row.nome) ? row.nome : (existingInMap?.nome || dbClient?.nome || 'NAO INFORMADO');
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : (existingInMap?.data_nascimento || dbClient?.data_nascimento || null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : (existingInMap?.telefone_1 || dbClient?.telefone_1 || null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : (existingInMap?.telefone_2 || dbClient?.telefone_2 || null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : (existingInMap?.telefone_3 || dbClient?.telefone_3 || null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
     });
 
     const clientRows = Array.from(clientMap.values());
@@ -864,22 +906,31 @@ export default function ImportBatchPage() {
 
     const cpfToClientId = new Map<string, string>(clientsData.map((c: any) => [c.cpf, c.id]));
 
-    // --- PASSO 2: Processar Identificações (N:1 com Cliente) ---
+    // --- PASSO 2: Processar Identificações (N:1 com Cliente) com Regra de Preservação ---
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<any>('prefeitura_sp_identificacoes', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.identificacao}`, i]));
+
     const identMap = new Map();
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       if (!clientId || !row.identificacao_val) return;
 
-      const key = `${clientId}-${row.identificacao_val}`;
-      if (!identMap.has(key)) {
-        identMap.set(key, {
-          cliente_id: clientId,
-          identificacao: row.identificacao_val,
-          data_nomeacao: row.data_nomeacao,
-          tipo_vinculo: row.tipo_vinculo,
-          updated_at: new Date().toISOString()
-        });
-      }
+      const key = `${clientId}_${row.identificacao_val}`;
+      const dbIdent = existingIdentsMap.get(key);
+      const currentInMap = identMap.get(key);
+
+      // Regra Anti-Null/Zero para Identificação
+      const data_nomeacao = !shouldPreserve(row.data_nomeacao) ? row.data_nomeacao : (currentInMap?.data_nomeacao || dbIdent?.data_nomeacao || null);
+      const tipo_vinculo = !shouldPreserve(row.tipo_vinculo) ? row.tipo_vinculo : (currentInMap?.tipo_vinculo || dbIdent?.tipo_vinculo || null);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        identificacao: row.identificacao_val,
+        data_nomeacao,
+        tipo_vinculo,
+        updated_at: new Date().toISOString()
+      });
     });
 
     const identRows = Array.from(identMap.values());
@@ -891,7 +942,7 @@ export default function ImportBatchPage() {
 
     if (identErr || !identsData) throw new Error(`Erro ao salvar identificações Prefeitura SP: ${identErr?.message}`);
 
-    const keyToIdentId = new Map<string, string>(identsData.map((id: any) => [`${id.cliente_id}-${id.identificacao}`, id.id]));
+    const keyToIdentId = new Map<string, string>(identsData.map((id: any) => [`${id.cliente_id}_${id.identificacao}`, id.id]));
 
     // --- PASSO 3: Inserir Lotações (N:1 com Identificação) ---
     const lotacaoRows = normalizedRows.map(row => {
