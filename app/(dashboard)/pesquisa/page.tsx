@@ -825,11 +825,11 @@ export default function SearchClientPage() {
                         className={cn(
                           "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
                           activeRegIndex === idx 
-                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)]" 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
                             : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
                         )}
                       >
-                        IDENTIFICAÇÃO {reg.identificacao}
+                        ID {reg.identificacao}
                       </button>
                     ))}
                   </div>
@@ -879,7 +879,7 @@ export default function SearchClientPage() {
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
                               <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Identificação</h3>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Identificação (GOVERNO SP)</h3>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
@@ -1082,11 +1082,11 @@ export default function SearchClientPage() {
                         className={cn(
                           "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
                           activeRegIndex === idx 
-                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)]" 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
                             : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
                         )}
                       >
-                        IDENTIFICAÇÃO {reg.identificacao}
+                        ID {reg.identificacao}
                       </button>
                     ))}
                   </div>

@@ -813,7 +813,7 @@ export default function ImportBatchPage() {
     // --- PASSO 3: Inserir Lotações (N:1 com Identificação) ---
     const lotacaoRows = normalizedRows.map(row => {
       const clientId = cpfToClientId.get(row.cpf);
-      const identId = keyToIdentId.get(`${clientId}-${row.identificacao_val}`);
+      const identId = keyToIdentId.get(`${clientId}_${row.identificacao_val}`);
       
       if (!identId) return null;
 
