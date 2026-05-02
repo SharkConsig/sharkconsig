@@ -273,14 +273,31 @@ export default function NewCampaignPage() {
     try {
       const { 
         orgaos, situacoes, regimes, ufs, 
-        margemMin, margemMax, saldoMin, 
+        saldoMin, 
         cardMargemMin, cardBeneficioMin,
         loanBanks, cardBanks, cardTypes, loanPrazoMin, loanPrazoMax,
         idadeMin, idadeMax 
       } = filters;
 
       // CONSULTA DIRETA NA TABELA DE SNAPSHOT (SEM JOINS)
-      let query = supabase.from('base_consulta_rapida').select('*', { count: 'exact', head: true });
+      // Usamos apenas o CPF para contagem de alta performance
+      let query = supabase.from('base_consulta_rapida').select('cpf', { count: 'exact', head: true });
+
+      // Filtros de Margem 35% no topo para priorizar o uso do índice
+      const mMinNum = parseSafeNumber(filters.margemMin);
+      const mMaxNum = parseSafeNumber(filters.margemMax);
+      
+      if (mMinNum !== null || mMaxNum !== null) {
+        // Filtro preventivo de nulos para otimizar a performance do índice
+        query = query.not("margem_35", "is", null);
+        
+        if (mMinNum !== null) {
+          query = query.gte("margem_35", mMinNum);
+        }
+        if (mMaxNum !== null) {
+          query = query.lte("margem_35", mMaxNum);
+        }
+      }
 
       // 1. Filtros de Matrícula
       if (orgaos.length > 0) {
@@ -300,7 +317,8 @@ export default function NewCampaignPage() {
         if (!isNaN(ageMin)) {
           const d = new Date();
           d.setFullYear(d.getFullYear() - ageMin);
-          query = query.lte('data_nascimento', d.toISOString().split('T')[0]);
+          const dateStr = d.toISOString().split('T')[0];
+          query = query.lte('data_nascimento', dateStr);
         }
       }
       if (idadeMax) {
@@ -309,7 +327,8 @@ export default function NewCampaignPage() {
           const d = new Date();
           d.setFullYear(d.getFullYear() - ageMax - 1);
           d.setDate(d.getDate() + 1);
-          query = query.gte('data_nascimento', d.toISOString().split('T')[0]);
+          const dateStr = d.toISOString().split('T')[0];
+          query = query.gte('data_nascimento', dateStr);
         }
       }
 
@@ -360,23 +379,6 @@ export default function NewCampaignPage() {
       if (!isNaN(pMin)) query = query.gte('prazo', pMin);
       if (!isNaN(pMax)) query = query.lte('prazo', pMax);
 
-      // APLICAÇÃO DOS FILTROS DE MARGEM 35% NO FINAL PARA GARANTIR CONSISTÊNCIA
-      const mMinNum = parseSafeNumber(margemMin);
-      const mMaxNum = parseSafeNumber(margemMax);
-      
-      if (mMinNum !== null || mMaxNum !== null) {
-        // Explicitamente filtramos nulos para garantir performance e correção com o builder de query
-        query = query.not("margem_35", "is", null);
-        
-        if (mMinNum !== null && mMaxNum !== null) {
-          query = query.gte("margem_35", mMinNum).lte("margem_35", mMaxNum);
-        } else if (mMinNum !== null) {
-          query = query.gte("margem_35", mMinNum);
-        } else if (mMaxNum !== null) {
-          query = query.lte("margem_35", mMaxNum);
-        }
-      }
-
       const { count, error } = await query;
 
       if (error) {
@@ -399,16 +401,18 @@ export default function NewCampaignPage() {
         throw error;
       }
       setEstimatedAudience(count || 0);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { code?: string; message?: string };
       // Se for timeout ou resposta vazia, não mostramos o Alerta
-      const isSilent = err?.code === '57014' || !err?.code || !err?.message;
+      const isSilent = error?.code === '57014' || !error?.code || !error?.message;
       
       console.error("ERRO NO CÁLCULO DE AUDIÊNCIA:", err);
       
       setEstimatedAudience(0);
       
       if (!isSilent) {
-        alert(`Houve um erro ao processar os filtros: ${err.message || "Erro de conexão ou sintaxe no banco de dados. Verifique os campos informados."}`);
+        const message = error?.message || "Erro de conexão ou sintaxe no banco de dados. Verifique os campos informados.";
+        alert(`Houve um erro ao processar os filtros: ${message}`);
       }
     } finally {
       setIsCalculating(false);
@@ -434,15 +438,17 @@ export default function NewCampaignPage() {
       alert("Campanha criada com sucesso! Agora você pode exportá-la na lista de 'Minhas Campanhas'.");
       router.push('/campanhas');
 
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { message?: string; details?: string; hint?: string; code?: string };
       console.error("Erro detalhado ao criar campanha:", {
-        message: err.message,
-        details: err.details,
-        hint: err.hint,
-        code: err.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
         fullError: err
       });
-      alert(`Erro ao criar campanha: ${err.message || "Verifique o console."}`);
+      const message = error?.message || "Verifique o console.";
+      alert(`Erro ao criar campanha: ${message}`);
     } finally {
       setIsCreating(false);
     }

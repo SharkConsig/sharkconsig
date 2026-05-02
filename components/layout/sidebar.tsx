@@ -13,8 +13,8 @@ import {
   MessageSquareText,
   ClipboardList,
   FileEdit,
-  ChevronLeft,
   ChevronRight,
+  ChevronLeft,
   Settings,
   Landmark
 } from "lucide-react"

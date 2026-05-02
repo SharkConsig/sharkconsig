@@ -28,10 +28,14 @@ import {
   Loader2, 
   Settings2,
   Tag,
+  Trophy,
+  Target,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
   ChevronUp,
+  TrendingUp,
   Check
 } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
@@ -72,6 +76,34 @@ interface ProdutoConfig {
   created_at: string
 }
 
+interface MetaConfig {
+  id: string
+  tipo: 'empresa' | 'time' | 'corretor'
+  alvo_id?: string
+  alvo_nome?: string
+  valor_mensal: number
+  mes: number
+  ano: number
+  created_at: string
+}
+
+interface CampanhaBonificacao {
+  id: string
+  titulo: string
+  descricao: string
+  data_inicio: string
+  data_fim: string
+  ativo: boolean
+  regras?: Record<string, unknown>
+  created_at: string
+}
+
+interface UsuarioAPI {
+  id: string
+  nome: string
+  funcao: string
+}
+
 export default function SettingsPage() {
   const { perfil, isAdmin } = useAuth()
   const [statuses, setStatuses] = useState<TicketStatus[]>([])
@@ -90,6 +122,45 @@ export default function SettingsPage() {
   const [isBancoExpanded, setIsBancoExpanded] = useState(false)
   const [isOperacaoExpanded, setIsOperacaoExpanded] = useState(false)
   const [isProdutosExpanded, setIsProdutosExpanded] = useState(false)
+  const [isMetasExpanded, setIsMetasExpanded] = useState(false)
+
+  // Metas & Bonificações State
+  const [metas, setMetas] = useState<MetaConfig[]>([])
+  const [campanhas, setCampanhas] = useState<CampanhaBonificacao[]>([])
+  const [corretoresList, setCorretoresList] = useState<{id: string, nome: string}[]>([])
+  const [supervisoresList, setSupervisoresList] = useState<{id: string, nome: string}[]>([])
+  
+  const [isMacroMetaModalOpen, setIsMacroMetaModalOpen] = useState(false)
+  const [isTeamMetaModalOpen, setIsTeamMetaModalOpen] = useState(false)
+  const [isIndividualMetaModalOpen, setIsIndividualMetaModalOpen] = useState(false)
+  const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false)
+
+  const [macroValue, setMacroValue] = useState("")
+  const [selectedTeam, setSelectedTeam] = useState("")
+  const [teamMetaValue, setTeamMetaValue] = useState("")
+  const [selectedCorretor, setSelectedCorretor] = useState("")
+  const [individualMetaValue, setIndividualMetaValue] = useState("")
+
+  const formatCurrency = (value: string) => {
+    const cleanValue = value.replace(/\D/g, "")
+    const amount = parseInt(cleanValue) || 0
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(amount / 100)
+  }
+
+  const parseCurrency = (formattedValue: string) => {
+    const cleanValue = formattedValue.replace(/\D/g, "")
+    return (parseInt(cleanValue) || 0) / 100
+  }
+  
+  const [campanhaForm, setCampanhaForm] = useState({
+    titulo: "",
+    descricao: "",
+    inicio: "",
+    fim: ""
+  })
 
   // Products Management State
   const [expandedBankId, setExpandedBankId] = useState<string | null>(null)
@@ -156,13 +227,19 @@ export default function SettingsPage() {
         { data: convData }, 
         { data: bancoData }, 
         { data: operData },
-        { data: prodData }
+        { data: prodData },
+        { data: metasData },
+        { data: campanhasData },
+        usuariosResponse
       ] = await Promise.all([
         supabase.from('status_chamados').select('*').order('created_at', { ascending: true }),
         supabase.from('convenios').select('*').order('nome', { ascending: true }),
         supabase.from('bancos').select('*').order('nome', { ascending: true }),
         supabase.from('tipos_operacao').select('*').order('nome', { ascending: true }),
-        supabase.from('produtos_config').select('*')
+        supabase.from('produtos_config').select('*'),
+        supabase.from('metas_config').select('*'),
+        supabase.from('campanhas_bonificacao').select('*'),
+        fetch("/api/usuarios")
       ])
 
       setStatuses(statusData || [])
@@ -170,6 +247,21 @@ export default function SettingsPage() {
       setBancos(bancoData || [])
       setTiposOperacao(operData || [])
       setProdutosConfig(prodData || [])
+
+      const perfisData: UsuarioAPI[] = usuariosResponse.ok ? await usuariosResponse.json() : []
+      const brokers = perfisData?.filter((p) => p.funcao === 'Corretor').map((p) => ({ id: p.id, nome: p.nome })) || []
+      const supervisors = perfisData?.filter((p) => p.funcao === 'Supervisor' || p.funcao === 'Administrador').map((p) => ({ id: p.id, nome: p.nome })) || []
+      setCorretoresList(brokers)
+      setSupervisoresList(supervisors)
+      
+      setMetas(metasData || [])
+      setCampanhas(campanhasData || [])
+      
+      // Meta macro do mês atual
+      const mes = new Date().getMonth() + 1
+      const ano = new Date().getFullYear()
+      const macro = metasData?.find(m => m.tipo === 'empresa' && m.mes === mes && m.ano === ano)
+      if (macro) setMacroValue(formatCurrency((macro.valor_mensal * 100).toString()))
     } catch (error: unknown) {
       console.error("Erro ao carregar configurações:", error)
       toast.error("Erro ao carregar lista de configurações")
@@ -384,6 +476,200 @@ export default function SettingsPage() {
       toast.error(err.message || `Erro ao excluir ${label.toLowerCase()}`)
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleSaveMacroMeta = async () => {
+    if (!macroValue) {
+      toast.error("Informe um valor para a meta macro")
+      return
+    }
+    const value = parseCurrency(macroValue)
+    if (isNaN(value) || value <= 0) {
+      toast.error("Valor inválido")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const mes = new Date().getMonth() + 1
+      const ano = new Date().getFullYear()
+      
+      const existing = metas.find(m => m.tipo === 'empresa' && m.mes === mes && m.ano === ano)
+      
+      if (existing) {
+        const { error } = await supabase.from('metas_config').update({ valor_mensal: value }).eq('id', existing.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('metas_config').insert({
+          tipo: 'empresa',
+          valor_mensal: value,
+          mes,
+          ano
+        })
+        if (error) throw error
+      }
+      
+      toast.success("Meta macro salva com sucesso")
+      setIsMacroMetaModalOpen(false)
+      fetchStatuses()
+    } catch (err: unknown) {
+      console.error("Erro ao salvar meta macro:", err)
+      const error = err as { message?: string; details?: string; hint?: string }
+      const errorMessage = error?.message || error?.details || error?.hint || (typeof err === 'string' ? err : JSON.stringify(err)) || "Erro desconhecido"
+      toast.error(`Erro ao salvar meta macro: ${errorMessage}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleSaveTeamMeta = async () => {
+    if (!selectedTeam || !teamMetaValue) {
+      toast.error("Selecione um supervisor e informe o valor")
+      return
+    }
+    const value = parseCurrency(teamMetaValue)
+    if (isNaN(value) || value <= 0) {
+      toast.error("Valor inválido")
+      return
+    }
+    
+    const team = supervisoresList.find(s => s.id === selectedTeam)
+
+    setIsSubmitting(true)
+    try {
+      const mes = new Date().getMonth() + 1
+      const ano = new Date().getFullYear()
+      
+      const existing = metas.find(m => m.tipo === 'time' && m.alvo_id === selectedTeam && m.mes === mes && m.ano === ano)
+      
+      if (existing) {
+        const { error } = await supabase.from('metas_config').update({ valor_mensal: value }).eq('id', existing.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('metas_config').insert({
+          tipo: 'time',
+          alvo_id: selectedTeam,
+          alvo_nome: team?.nome,
+          valor_mensal: value,
+          mes,
+          ano
+        })
+        if (error) throw error
+      }
+      
+      toast.success("Meta do time salva com sucesso")
+      setIsTeamMetaModalOpen(false)
+      setSelectedTeam("")
+      setTeamMetaValue("")
+      fetchStatuses()
+    } catch (err: unknown) {
+      console.error("Erro ao salvar meta do time:", err)
+      const error = err as { message?: string; details?: string; hint?: string }
+      const errorMessage = error?.message || error?.details || error?.hint || (typeof err === 'string' ? err : JSON.stringify(err)) || "Erro desconhecido"
+      toast.error(`Erro ao salvar meta do time: ${errorMessage}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleSaveIndividualMeta = async () => {
+    if (!selectedCorretor || !individualMetaValue) {
+      toast.error("Selecione um corretor e informe o valor")
+      return
+    }
+    const value = parseCurrency(individualMetaValue)
+    if (isNaN(value) || value <= 0) {
+      toast.error("Valor inválido")
+      return
+    }
+
+    const corretor = corretoresList.find(c => c.id === selectedCorretor)
+
+    setIsSubmitting(true)
+    try {
+      const mes = new Date().getMonth() + 1
+      const ano = new Date().getFullYear()
+      
+      const existing = metas.find(m => m.tipo === 'corretor' && m.alvo_id === selectedCorretor && m.mes === mes && m.ano === ano)
+      
+      if (existing) {
+        const { error } = await supabase.from('metas_config').update({ valor_mensal: value }).eq('id', existing.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('metas_config').insert({
+          tipo: 'corretor',
+          alvo_id: selectedCorretor,
+          alvo_nome: corretor?.nome,
+          valor_mensal: value,
+          mes,
+          ano
+        })
+        if (error) throw error
+      }
+      
+      toast.success("Meta individual salva com sucesso")
+      setIsIndividualMetaModalOpen(false)
+      setSelectedCorretor("")
+      setIndividualMetaValue("")
+      fetchStatuses()
+    } catch (err: unknown) {
+      console.error("Erro ao salvar meta individual:", err)
+      const error = err as { message?: string; details?: string; hint?: string }
+      const errorMessage = error?.message || error?.details || error?.hint || (typeof err === 'string' ? err : JSON.stringify(err)) || "Erro desconhecido"
+      toast.error(`Erro ao salvar meta individual: ${errorMessage}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleSaveCampanha = async () => {
+    if (!campanhaForm.titulo || !campanhaForm.inicio || !campanhaForm.fim) {
+      toast.error("Preencha os campos obrigatórios")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase.from('campanhas_bonificacao').insert({
+        titulo: campanhaForm.titulo.toUpperCase(),
+        descricao: campanhaForm.descricao,
+        data_inicio: campanhaForm.inicio,
+        data_fim: campanhaForm.fim,
+        ativo: true
+      })
+      
+      if (error) throw error
+      
+      toast.success("Campanha criada com sucesso")
+      setIsCampaignModalOpen(false)
+      setCampanhaForm({ titulo: "", descricao: "", inicio: "", fim: "" })
+      fetchStatuses()
+    } catch (err: unknown) {
+      const error = err as { message?: string; details?: string }
+      console.error("Erro ao criar campanha:", error)
+      const errorMessage = error?.message || error?.details || "Erro desconhecido"
+      toast.error(`Erro ao criar campanha: ${errorMessage}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleToggleCampanha = async (id: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('campanhas_bonificacao')
+        .update({ ativo: !currentStatus })
+        .eq('id', id)
+      
+      if (error) throw error
+      toast.success("Status da campanha atualizado")
+      fetchStatuses()
+    } catch (err: unknown) {
+      const error = err as { message?: string; details?: string }
+      console.error("Erro ao atualizar campanha:", error)
+      const errorMessage = error?.message || error?.details || "Erro desconhecido"
+      toast.error(`Erro ao atualizar campanha: ${errorMessage}`)
     }
   }
 
@@ -922,7 +1208,7 @@ export default function SettingsPage() {
         </section>
 
         {/* GERENCIAR PRODUTOS E COMISSÕES */}
-        <section className="space-y-6 pb-20">
+        <section className="space-y-6">
           <div 
             className="flex items-center justify-between cursor-pointer group select-none"
             onClick={() => setIsProdutosExpanded(!isProdutosExpanded)}
@@ -1113,6 +1399,174 @@ export default function SettingsPage() {
                     </AnimatePresence>
                   </Card>
                 ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+
+        {/* GERENCIAR METAS E BONIFICAÇÕES */}
+        <section className="space-y-6 pb-20">
+          <div 
+            className="flex items-center justify-between cursor-pointer group select-none"
+            onClick={() => setIsMetasExpanded(!isMetasExpanded)}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
+                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                  GERENCIAR METAS E BONIFICAÇÕES
+                  {isMetasExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
+                </h2>
+              </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Controle de objetivos e incentivos financeiros</p>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {isMetasExpanded && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }} 
+                animate={{ height: "auto", opacity: 1 }} 
+                exit={{ height: 0, opacity: 0 }} 
+                className="overflow-hidden space-y-4"
+              >
+                {/* 1. Meta da Empresa */}
+                <Card className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm hover:shadow-md transition-all">
+                  <div className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                        <TrendingUp className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">Meta da Empresa</h3>
+                        <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tight">Objetivo macro da organização para o mês corrente</p>
+                      </div>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      className="h-8 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 rounded-xl"
+                      onClick={() => setIsMacroMetaModalOpen(true)}
+                    >
+                      Configurar Macro
+                    </Button>
+                  </div>
+                </Card>
+
+                {/* 2. Meta do Time */}
+                <div className="pl-8 relative">
+                  <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-200" />
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-px bg-slate-200" />
+                  <Card className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm hover:shadow-md transition-all">
+                    <div className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-sky-500/10 flex items-center justify-center text-sky-500">
+                          <BarChart3 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">Meta do Time</h3>
+                          <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tight">Distribuição da meta global por equipes ou supervisores</p>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        className="h-8 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 rounded-xl"
+                        onClick={() => setIsTeamMetaModalOpen(true)}
+                      >
+                        Gerenciar Grupos
+                      </Button>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* 3. Meta do Corretor */}
+                <div className="pl-16 relative">
+                  <div className="absolute left-12 top-0 bottom-0 w-px bg-slate-200" />
+                  <div className="absolute left-12 top-1/2 -translate-y-1/2 w-4 h-px bg-slate-200" />
+                  <Card className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm hover:shadow-md transition-all">
+                    <div className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+                          <Target className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">Meta do Corretor</h3>
+                          <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tight">Objetivos individuais baseados no perfil do vendedor</p>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        className="h-8 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 rounded-xl"
+                        onClick={() => setIsIndividualMetaModalOpen(true)}
+                      >
+                        Ajustar Individuais
+                      </Button>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* 4. Campanhas de Bonificação */}
+                <div className="pl-16 relative">
+                  <div className="absolute left-12 top-0 bottom-0 w-px bg-slate-200" />
+                  <div className="absolute left-12 top-[20px] w-4 h-[1px] bg-slate-200" />
+                  <Card className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm hover:shadow-md transition-all">
+                    <div className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                          <Trophy className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">Campanhas de Bonificação</h3>
+                          <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tight">
+                            Incentivos extras, prêmios e aceleradores de ganhos
+                            {campanhas.length > 0 && ` (${campanhas.filter(c => c.ativo).length} ativas)`}
+                          </p>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        className="h-8 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 rounded-xl"
+                        onClick={() => setIsCampaignModalOpen(true)}
+                      >
+                        Criar Campanhas
+                      </Button>
+                    </div>
+
+                    {/* Campaign List */}
+                    {campanhas.length > 0 && (
+                      <div className="mt-4 border-t border-slate-100 pt-4 space-y-2">
+                        {campanhas.map((camp) => (
+                          <div key={camp.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            <div className="space-y-0.5">
+                              <p className="text-[10px] font-bold text-slate-700 uppercase tracking-tight">{camp.titulo}</p>
+                              <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tight">
+                                {format(new Date(camp.data_inicio), 'dd/MM/yy')} até {format(new Date(camp.data_fim), 'dd/MM/yy')}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className={cn(
+                                "px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-widest",
+                                camp.ativo ? "bg-emerald-100 text-emerald-600" : "bg-slate-200 text-slate-500"
+                              )}>
+                                {camp.ativo ? "Ativa" : "Encerrada"}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleToggleCampanha(camp.id, camp.ativo)}
+                                className={cn(
+                                  "h-7 w-7 rounded-lg p-0",
+                                  camp.ativo ? "text-slate-400 hover:text-amber-500" : "text-slate-400 hover:text-emerald-500"
+                                )}
+                              >
+                                {camp.ativo ? <Trash2 className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -1552,6 +2006,180 @@ export default function SettingsPage() {
                 className="px-6 h-[34px] bg-[#171717] hover:bg-[#171717]/90 text-white font-bold text-[9px] rounded-lg gap-2 min-w-[120px] uppercase tracking-widest shadow-lg shadow-slate-200"
               >
                 {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Salvar Dados'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Modal Meta Macro */}
+      <Dialog open={isMacroMetaModalOpen} onOpenChange={setIsMacroMetaModalOpen}>
+        <DialogContent className="sm:max-w-[400px] border-none rounded-3xl shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              Configurar Meta Macro
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor Produção Geral (R$)</Label>
+              <Input 
+                type="text" 
+                placeholder="R$ 0.000.000,00"
+                value={macroValue}
+                onChange={(e) => setMacroValue(formatCurrency(e.target.value))}
+                className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[14px] text-slate-800 uppercase focus:ring-primary/20"
+              />
+              <p className="text-[9px] text-slate-400 font-medium uppercase mt-1 pl-1">Este valor servirá como base para o cálculo de atingimento global.</p>
+            </div>
+            <DialogFooter className="pt-4 gap-3">
+              <Button variant="outline" onClick={() => setIsMacroMetaModalOpen(false)} className="flex-1 h-[38px] border-slate-200 bg-white text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
+              <Button onClick={handleSaveMacroMeta} disabled={isSubmitting} className="flex-1 h-[38px] bg-primary hover:bg-primary/90 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-primary/20">
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Salvar Alterações'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Meta Time */}
+      <Dialog open={isTeamMetaModalOpen} onOpenChange={setIsTeamMetaModalOpen}>
+        <DialogContent className="sm:max-w-[425px] border-none rounded-3xl shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-sky-500" />
+              Meta do Time / Supervisão
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Selecionar Supervisor</Label>
+              <select
+                className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl px-3 font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-sky-500/20 appearance-none uppercase"
+                value={selectedTeam}
+                onChange={(e) => setSelectedTeam(e.target.value)}
+              >
+                <option value="">Selecione um gestor...</option>
+                {supervisoresList.map(s => (
+                  <option key={s.id} value={s.id}>{s.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor da Meta (R$)</Label>
+              <Input 
+                type="text" 
+                placeholder="R$ 0,00"
+                value={teamMetaValue}
+                onChange={(e) => setTeamMetaValue(formatCurrency(e.target.value))}
+                className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[13px] text-slate-700 uppercase"
+              />
+            </div>
+            <DialogFooter className="pt-4 gap-3">
+              <Button variant="outline" onClick={() => setIsTeamMetaModalOpen(false)} className="px-6 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
+              <Button onClick={handleSaveTeamMeta} disabled={isSubmitting} className="px-6 h-[38px] bg-sky-500 hover:bg-sky-600 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-sky-100">
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Definir Meta'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Meta Individual */}
+      <Dialog open={isIndividualMetaModalOpen} onOpenChange={setIsIndividualMetaModalOpen}>
+        <DialogContent className="sm:max-w-[425px] border-none rounded-3xl shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase flex items-center gap-2">
+              <Target className="w-4 h-4 text-amber-500" />
+              Meta Individual do Corretor
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Selecionar Corretor</Label>
+              <select
+                className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl px-3 font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-amber-500/20 appearance-none uppercase"
+                value={selectedCorretor}
+                onChange={(e) => setSelectedCorretor(e.target.value)}
+              >
+                <option value="">Selecione um vendedor...</option>
+                {corretoresList.map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor da Meta Individual (R$)</Label>
+              <Input 
+                type="text" 
+                placeholder="R$ 0,00"
+                value={individualMetaValue}
+                onChange={(e) => setIndividualMetaValue(formatCurrency(e.target.value))}
+                className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[13px] text-slate-700 uppercase"
+              />
+            </div>
+            <DialogFooter className="pt-4 gap-3">
+              <Button variant="outline" onClick={() => setIsIndividualMetaModalOpen(false)} className="px-6 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
+              <Button onClick={handleSaveIndividualMeta} disabled={isSubmitting} className="px-6 h-[38px] bg-amber-500 hover:bg-amber-600 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-amber-100">
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Salvar Meta'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Campanha */}
+      <Dialog open={isCampaignModalOpen} onOpenChange={setIsCampaignModalOpen}>
+        <DialogContent className="sm:max-w-[500px] border-none rounded-3xl shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-emerald-500" />
+              Nova Campanha de Bonificação
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Título da Campanha</Label>
+              <Input 
+                placeholder="EX: ACELERADOR DE VENDAS SIAPE"
+                value={campanhaForm.titulo}
+                onChange={(e) => setCampanhaForm({...campanhaForm, titulo: e.target.value})}
+                className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] text-slate-700 uppercase"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Descrição / Regras Sugeridas</Label>
+              <textarea 
+                placeholder="Descreva as condições para a bonificação..."
+                value={campanhaForm.descricao}
+                onChange={(e) => setCampanhaForm({...campanhaForm, descricao: e.target.value})}
+                className="w-full h-24 bg-slate-50 border border-slate-100 rounded-xl p-3 font-medium text-[11px] text-slate-600 outline-none focus:ring-2 focus:ring-emerald-500/20 uppercase"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Data Início</Label>
+                <Input 
+                  type="date"
+                  value={campanhaForm.inicio}
+                  onChange={(e) => setCampanhaForm({...campanhaForm, inicio: e.target.value})}
+                  className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] text-slate-700"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Data Fim</Label>
+                <Input 
+                  type="date"
+                  value={campanhaForm.fim}
+                  onChange={(e) => setCampanhaForm({...campanhaForm, fim: e.target.value})}
+                  className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] text-slate-700"
+                />
+              </div>
+            </div>
+            <DialogFooter className="pt-4 gap-3">
+              <Button variant="outline" onClick={() => setIsCampaignModalOpen(false)} className="px-6 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
+              <Button onClick={handleSaveCampanha} disabled={isSubmitting} className="px-6 h-[38px] bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-emerald-100">
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Ativar Campanha'}
               </Button>
             </DialogFooter>
           </div>

@@ -23,14 +23,26 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
+import { useSidebar } from "@/context/sidebar-context"
+import { cn } from "@/lib/utils"
+
+interface UsuarioData {
+  id: string
+  nome: string
+  username: string
+  funcao: string
+  avatar_url?: string
+  supervisor_id?: string
+}
 
 interface NovoUsuarioModalProps {
   isOpen: boolean
   onClose: () => void
-  usuario?: any // Adicionado para modo de edição
+  usuario?: UsuarioData
 }
 
 export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalProps) {
+  const { isCollapsed } = useSidebar()
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
@@ -76,8 +88,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         const response = await fetch("/api/usuarios")
         if (response.ok) {
           const data = await response.json()
-          const supers = data.filter((u: any) => u.funcao === "Supervisor" || u.funcao === "Administrador")
-          setSupervisores(supers)
+          const supers = data.filter((u: UsuarioData) => u.funcao === "Supervisor" || u.funcao === "Administrador")
+          setSupervisores(supers.map((s: UsuarioData) => ({ id: s.id, nome: s.nome })))
         }
       } catch (error) {
         console.error("Erro ao buscar supervisores:", error)
@@ -157,8 +169,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       if (selectedFile) {
         try {
           finalAvatarUrl = await uploadAvatar(selectedFile, formData.username)
-        } catch (uploadErr: any) {
-          toast.error(`Erro no upload da foto: ${uploadErr.message}`)
+        } catch (uploadErr: unknown) {
+          const msg = uploadErr instanceof Error ? uploadErr.message : "Erro desconhecido";
+          toast.error(`Erro no upload da foto: ${msg}`)
           setIsLoading(false)
           return
         }
@@ -218,7 +231,12 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[750px] p-0 overflow-hidden border-none rounded-2xl shadow-2xl max-h-[95vh] flex flex-col">
+      <DialogContent 
+        className={cn(
+          "sm:max-w-[750px] p-0 overflow-hidden border-none rounded-2xl shadow-2xl max-h-[95vh] flex flex-col transition-all duration-300 ease-in-out",
+          isCollapsed ? "lg:ml-[40px]" : "lg:ml-[128px]"
+        )}
+      >
         <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
           <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar flex-1">
             <DialogHeader className="space-y-1">
