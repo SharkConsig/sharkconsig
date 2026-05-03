@@ -230,7 +230,7 @@ export default function DashboardPage() {
                    <p className="text-[13px] font-black text-[#1C2643] mt-1.5 leading-none">
                      {formatCurrency(teamProduced)}
                    </p>
-                   <p className="text-2xl sm:text-3xl lg:text-5xl xl:text-7xl font-black text-[#1C2643] tracking-tighter mt-auto break-words leading-none pb-2">10%</p>
+                   <p className="text-2xl sm:text-3xl lg:text-5xl xl:text-7xl font-black text-[#1C2643] tracking-tighter mt-auto break-words leading-none pb-2">0%</p>
                 </div>
               </DashboardCard>
             </motion.div>
