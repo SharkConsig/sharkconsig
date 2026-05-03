@@ -16,8 +16,6 @@ import { useAuth } from "@/context/auth-context"
 import { cn } from "@/lib/utils"
 import { motion } from "motion/react"
 
-import Image from "next/image"
-
 export default function DashboardPage() {
   const { perfil } = useAuth()
   const [mounted, setMounted] = useState(false)
@@ -52,15 +50,47 @@ export default function DashboardPage() {
   }
 
   // Mock data for dashboard
-  const progressPercent = 68
-  const monthlyGoal = 50000
-  const monthlyProduced = 34000
+  const monthlyGoal = 47000
+  const monthlyProduced = 0 // Zeroed to simulate start of month
+  const progressPercent = Math.round((monthlyProduced / monthlyGoal) * 100)
   const remainingValue = monthlyGoal - monthlyProduced
-  const dailyGoal = 2500
-  const dailyProduced = 1800
-  const currentBonus = 1250.00
-  const teamGoal = 500000
-  const teamProduced = 325000
+  
+  // Calculate business days in current month
+  const getBusinessDaysInMonth = () => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth()
+    const lastDay = new Date(year, month + 1, 0).getDate()
+    let count = 0
+    for (let d = 1; d <= lastDay; d++) {
+      const day = new Date(year, month, d).getDay()
+      if (day !== 0 && day !== 6) count++
+    }
+    return count || 22
+  }
+
+  // Calculate remaining business days excluding today
+  const getRemainingBusinessDays = () => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth()
+    const today = now.getDate()
+    const lastDay = new Date(year, month + 1, 0).getDate()
+    
+    let count = 0
+    for (let d = today + 1; d <= lastDay; d++) {
+      const day = new Date(year, month, d).getDay()
+      if (day !== 0 && day !== 6) count++
+    }
+    return count
+  }
+
+  const businessDays = getBusinessDaysInMonth()
+  const remainingBusinessDays = getRemainingBusinessDays()
+  const dailyGoal = monthlyGoal / businessDays
+  const dailyProduced = 0 // Zeroed as requested
+  const currentBonus = 0 // Zeroed as requested
+  const teamProduced = 448000
 
   return (
     <div className="flex-1 flex flex-col bg-[#F8FAFC]">
@@ -91,13 +121,13 @@ export default function DashboardPage() {
                <Clock className="w-7 h-7 text-amber-500" />
             </div>
             <div className="relative z-10">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Prazo Final da Meta</p>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Prazo Para Bater a Meta</p>
                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-black text-[#1C2643]">05</span>
+                  <span className="text-2xl font-black text-[#1C2643]">{remainingBusinessDays.toString().padStart(2, '0')}</span>
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dias Restantes</span>
                </div>
                <p className="text-[11px] font-medium text-slate-500 mt-1 max-w-[200px] leading-tight">
-                  Ainda dá tempo de <span className="text-amber-600 font-bold">virar o jogo</span>. Cada contrato aproxima você da vitória!
+                  <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta começou!</span> Aproveite cada dia útil para transformar esforço em resultado.
                </p>
             </div>
           </motion.div>
@@ -123,7 +153,7 @@ export default function DashboardPage() {
                 
                 <div className="flex-1 flex flex-col items-center justify-center py-6 relative">
                   <div className="w-full max-w-[280px]">
-                    <Gauge value={progressPercent} />
+                    <Gauge value={progressPercent} producedValue={monthlyProduced} />
                   </div>
                   <div className="mt-4 flex flex-col items-center justify-center">
                      <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#1C2643] tracking-tighter leading-none">{progressPercent}%</p>
@@ -132,18 +162,13 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="space-y-6 mt-auto">
-                  <div className="bg-[#1C2643] p-5 sm:p-6 rounded-[24px] space-y-1 text-center shadow-lg shadow-[#1C2643]/20">
-                    <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest">Produzido Agora</p>
-                    <p className="text-lg sm:text-xl md:text-2xl lg:text-4xl font-black text-white tracking-tighter break-words">{formatCurrency(monthlyProduced)}</p>
-                  </div>
-
                   <div className="flex flex-col items-center gap-2">
                     <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full border border-emerald-100">
                       <TrendingUp className="w-4 h-4" />
                       <span className="text-[11px] font-black uppercase tracking-widest text-center">Você está no caminho!</span>
                     </div>
                     <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-2 text-center shrink-0">
-                      Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para o próximo nível
+                      Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para a meta
                     </p>
                   </div>
                 </div>
@@ -164,10 +189,10 @@ export default function DashboardPage() {
                 </div>
                 <div className="mt-auto pt-4">
                    <div className="flex justify-between items-center mb-2">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Progresso</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
                       <p className="text-[10px] font-black text-[#1C2643]">{Math.round((dailyProduced / dailyGoal) * 100)}%</p>
                    </div>
-                   <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                   <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
                       <motion.div 
                         initial={{ width: 0 }}
                         animate={{ width: `${(dailyProduced / dailyGoal) * 100}%` }}
@@ -185,12 +210,12 @@ export default function DashboardPage() {
                   <Gift className="w-6 h-6 text-amber-400" />
                 </div>
                 <div className="flex flex-col min-w-0 overflow-hidden">
-                   <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest">GARANTIDO</p>
+                   <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest">COMEÇANDO</p>
                    <p className="text-lg sm:text-xl lg:text-2xl xl:text-3xl font-black text-amber-400 tracking-tighter mt-1 break-words leading-none">{formatCurrency(currentBonus)}</p>
                 </div>
                 <div className="mt-auto pt-3 border-t border-white/5">
-                   <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Próximo Bônus: R$ 2.000,00</p>
-                   <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest mt-1 shrink-0">(Meta: R$ 60.000,00)</p>
+                   <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Próxima Faixa: R$ 400,00</p>
+                   <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest mt-1 shrink-0">(Meta: R$ 47.000,00)</p>
                 </div>
               </DashboardCard>
             </motion.div>
@@ -200,21 +225,12 @@ export default function DashboardPage() {
                 <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mb-2 shrink-0">
                   <Users className="w-6 h-6 text-[#1C2643]" />
                 </div>
-                <div className="flex flex-col min-w-0 overflow-hidden">
+                <div className="flex flex-col min-w-0 overflow-hidden flex-1">
                    <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest leading-tight">Meta Mensal do Time</p>
-                   <p className="text-lg sm:text-xl lg:text-2xl xl:text-3xl font-black text-[#1C2643] tracking-tighter mt-1 break-words leading-none">{formatCurrency(teamProduced)}</p>
-                </div>
-                <div className="mt-auto flex items-center gap-2">
-                   <div className="flex -space-x-1.5 shrink-0">
-                      {[1, 2, 3].map(i => (
-                        <div key={i} className="w-6 h-6 rounded-full border-2 border-white bg-slate-200 overflow-hidden relative">
-                           <Image src={`https://picsum.photos/seed/${i + 40}/50/50`} alt="user" fill className="object-cover" referrerPolicy="no-referrer" />
-                        </div>
-                      ))}
-                   </div>
-                   <p className="text-[10px] font-bold text-[#718198] uppercase tracking-widest leading-tight">
-                     {Math.round((teamProduced / teamGoal) * 100)}% completo
+                   <p className="text-[13px] font-black text-[#1C2643] mt-1.5 leading-none">
+                     {formatCurrency(teamProduced)}
                    </p>
+                   <p className="text-2xl sm:text-3xl lg:text-5xl xl:text-7xl font-black text-[#1C2643] tracking-tighter mt-auto break-words leading-none pb-2">10%</p>
                 </div>
               </DashboardCard>
             </motion.div>
@@ -222,55 +238,41 @@ export default function DashboardPage() {
 
           {/* SECTION 3 & 4: MAPA DE OPORTUNIDADES & RANKING */}
           <motion.div variants={item} className="lg:col-span-8">
-            <DashboardCard className="border-none shadow-lg shadow-[#1C2643]/5 flex flex-col">
-              <div className="flex items-center justify-between mb-8">
-                 <div>
-                   <h3 className="text-xl font-black text-[#1C2643] tracking-tight">Mapa de Oportunidades</h3>
-                   <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest mt-1">Seu Pipeline Estratégico</p>
-                 </div>
-                 <div className="bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 italic">
-                    <p className="text-[10px] font-bold text-slate-400">Total: 42 Negócios</p>
-                 </div>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+               {/* Pagos recentemente */}
+               <div className="bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-3 mb-2">
+                     <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
+                        <CheckCircle2 className="w-6 h-6 text-white" />
+                     </div>
+                     <div>
+                        <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none">Pagos recentemente</p>
+                     </div>
+                  </div>
+                  <div className="space-y-3">
+                     {[1, 2, 3].map(i => (
+                        <div key={i} className="h-14 bg-slate-100/70 rounded-2xl border border-slate-200 border-dashed" />
+                     ))}
+                  </div>
+               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 {/* Quase Fechados */}
-                 <div className="bg-emerald-50/50 rounded-[28px] p-6 border border-emerald-100/50 space-y-4">
-                    <div className="flex items-center gap-3 mb-2">
-                       <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
-                          <CheckCircle2 className="w-6 h-6 text-white" />
-                       </div>
-                       <div>
-                          <p className="text-[14px] font-black text-emerald-900 tracking-tight leading-none pb-1">Quase Fechados</p>
-                          <p className="text-[10px] font-bold text-emerald-600/70 uppercase tracking-widest">Dinheiro no Bolso</p>
-                       </div>
-                    </div>
-                    <div className="space-y-3">
-                       <PipelineItem name="Ana Maria Silva" value="R$ 12.500" status="Pendente Assinatura" color="emerald" />
-                       <PipelineItem name="Carlos Roberto" value="R$ 8.200" status="Aguardando CCB" color="emerald" />
-                       <PipelineItem name="Lúcia Oliveira" value="R$ 15.000" status="Pré-Aprovado" color="emerald" />
-                    </div>
-                 </div>
-
-                 {/* Em Andamento */}
-                 <div className="bg-blue-50/50 rounded-[28px] p-6 border border-blue-100/50 space-y-4">
-                    <div className="flex items-center gap-3 mb-2">
-                       <div className="w-10 h-10 bg-[#1C2643] rounded-xl flex items-center justify-center">
-                          <Clock className="w-6 h-6 text-white" />
-                       </div>
-                       <div>
-                          <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none pb-1">Em Andamento</p>
-                          <p className="text-[10px] font-bold text-[#718198] uppercase tracking-widest">Atenção Imediata</p>
-                       </div>
-                    </div>
-                    <div className="space-y-3">
-                       <PipelineItem name="Roberto Santos" value="R$ 5.400" status="Digitação" color="blue" />
-                       <PipelineItem name="Juliana Costa" value="R$ 22.000" status="Em Análise" color="blue" />
-                       <PipelineItem name="Marcos Lima" value="R$ 3.800" status="Aguardando Margem" color="blue" />
-                    </div>
-                 </div>
-              </div>
-            </DashboardCard>
+               {/* Mapa de oportunidades */}
+               <div className="bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-3 mb-2">
+                     <div className="w-10 h-10 bg-[#1C2643] rounded-xl flex items-center justify-center">
+                        <Clock className="w-6 h-6 text-white" />
+                     </div>
+                     <div>
+                        <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none">Mapa de oportunidades</p>
+                     </div>
+                  </div>
+                  <div className="space-y-3">
+                     {[1, 2, 3].map(i => (
+                        <div key={i} className="h-14 bg-slate-100/70 rounded-2xl border border-slate-200 border-dashed" />
+                     ))}
+                  </div>
+               </div>
+            </div>
           </motion.div>
 
           <motion.div variants={item} className="lg:col-span-4">
@@ -280,38 +282,27 @@ export default function DashboardPage() {
                  <Trophy className="w-6 h-6 text-amber-500 fill-amber-500" />
               </div>
 
-              <div className="space-y-6">
-                <div className="flex items-center justify-between p-5 bg-[#1C2643] rounded-[24px] text-white">
+              <div className="space-y-8 flex-1 flex flex-col justify-center">
+                <div className="flex items-center justify-between p-6 bg-[#1C2643] rounded-[24px] text-white shadow-xl shadow-[#1C2643]/20">
                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 border-2 border-white/20 rounded-full flex items-center justify-center font-black text-lg">3º</div>
+                      <div className="w-12 h-12 border-2 border-white/20 rounded-full flex items-center justify-center font-black text-xl">3º</div>
                       <div>
-                         <p className="text-[13px] font-black tracking-tight">Você</p>
-                         <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Sua Posição</p>
+                         <p className="text-[15px] font-black tracking-tight">Você</p>
+                         <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest">Sua Posição</p>
                       </div>
                    </div>
-                   <p className="text-lg font-black tracking-tight">R$ 34k</p>
+                   <p className="text-2xl font-black tracking-tight">{formatCurrency(monthlyProduced)}</p>
                 </div>
 
-                <div className="space-y-4 px-2">
-                   {[
-                     { pos: '1º', name: 'Felícia Moraes', val: 'R$ 52.400' },
-                     { pos: '2º', name: 'Jorge Fabrício', val: 'R$ 41.200' },
-                     { pos: '4º', name: 'Valéria Sena', val: 'R$ 28.900' }
-                   ].map((player, i) => (
-                      <div key={i} className="flex items-center justify-between">
-                         <div className="flex items-center gap-3">
-                            <span className="text-[12px] font-black text-slate-400 w-6">{player.pos}</span>
-                            <p className="text-[13px] font-bold text-[#1C2643]">{player.name}</p>
-                         </div>
-                         <p className="text-[13px] font-black text-[#718198] tracking-tight">{player.val}</p>
+                <div className="pt-8 border-t border-slate-50">
+                   <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-4 border border-slate-100">
+                      <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center shrink-0">
+                         <Target className="w-5 h-5 text-amber-500" />
                       </div>
-                   ))}
-                </div>
-
-                <div className="mt-auto pt-6 border-t border-slate-50">
-                   <p className="text-[11px] font-bold text-slate-400 text-center italic">
-                      Faltam R$ 7.200 para chegar a 2ª posição
-                   </p>
+                      <p className="text-[13px] font-bold text-[#1C2643] leading-tight">
+                         Faltam <span className="text-amber-600 font-black">{formatCurrency(remainingValue)}</span> para você alcançar a <span className="font-black underline decoration-amber-500 decoration-2 underline-offset-2">meta</span>
+                      </p>
+                   </div>
                 </div>
               </div>
             </DashboardCard>
@@ -319,7 +310,7 @@ export default function DashboardPage() {
 
           {/* SECTION 5: CAMPANHAS PROMOCIONAIS */}
           <motion.div variants={item} className="lg:col-span-8">
-            <DashboardCard className="relative overflow-hidden border-none text-white h-full bg-gradient-to-br from-[#1C2643] to-[#2D3A63] min-h-[320px] group flex flex-col justify-center">
+            <DashboardCard className="relative overflow-hidden border-none text-white h-full bg-gradient-to-br from-[#1C2643] to-[#2D3A63] min-h-[320px] group flex flex-col justify-center pl-6 sm:pl-10">
               {/* Decorative background elements */}
               <div className="absolute top-0 right-0 w-64 h-64 bg-amber-400/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
               <div className="absolute bottom-0 left-0 w-max h-max bg-blue-400/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none" />
@@ -327,60 +318,18 @@ export default function DashboardPage() {
               <div className="relative z-10 flex flex-col md:flex-row items-center gap-10 h-full">
                 <div className="flex-1 space-y-6">
                   <div>
-                    <div className="bg-amber-400 inline-block px-3 py-1 rounded-full mb-4">
-                       <p className="text-[10px] font-black text-[#1C2643] uppercase tracking-[0.2em]">Campanha Ativa</p>
-                    </div>
+
                     <h3 className="text-3xl sm:text-4xl font-black tracking-tighter leading-tight italic">
-                      SUPER PRÊMIO <span className="text-amber-400">SHARK 2024</span>
+                      PREPARE-SE: <span className="text-amber-400"> NOVIDADES EM BREVE</span>
                     </h3>
                     <p className="text-white/60 text-sm font-medium mt-3 max-w-[450px] leading-relaxed">
-                      O ano da sua consagração! Alcance a meta diamante e concorra a uma viagem luxuosa para o Caribe, uma Moto 0km para sua liberdade e o novo iPhone de última geração. O topo é o seu lugar!
+                      Uma nova campanha avassaladora está sendo preparada para recompensar sua dedicação. Continue focado em suas metas, pois o que vem por aí será histórico!
                     </p>
                   </div>
                   
-                  <div className="flex flex-wrap gap-4">
-                    <button className="bg-amber-400 text-[#1C2643] px-8 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-amber-300 transition-all transform hover:scale-105 active:scale-95 shadow-lg shadow-amber-400/20">
-                      Aproveitar Agora
-                    </button>
-                    <button className="bg-white/5 text-white px-8 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-white/10 transition-all border border-white/10 backdrop-blur-sm">
-                      Regulamento
-                    </button>
-                  </div>
+
                 </div>
                 
-                <div className="w-1/3 min-w-[220px] h-full relative hidden xl:flex items-center justify-center">
-                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="relative w-56 h-56">
-                         <motion.div 
-                           animate={{ 
-                             y: [0, -15, 0],
-                             rotate: [6, 8, 6]
-                           }}
-                           transition={{ 
-                             duration: 5, 
-                             repeat: Infinity,
-                             ease: "easeInOut"
-                           }}
-                           className="absolute inset-0 flex items-center justify-center"
-                         >
-                           <div className="relative w-full h-full p-2 bg-white/5 rounded-[40px] backdrop-blur-md border border-white/10 shadow-2xl rotate-6 overflow-hidden">
-                              <Image 
-                                src="https://picsum.photos/seed/caribbean/500/500" 
-                                alt="Promo" 
-                                fill
-                                className="object-cover opacity-80 mix-blend-overlay hover:opacity-100 transition-opacity duration-700" 
-                                referrerPolicy="no-referrer"
-                              />
-                              <div className="absolute inset-0 bg-gradient-to-t from-[#1C2643]/80 to-transparent" />
-                              <div className="absolute bottom-6 left-6 right-6">
-                                 <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">Prêmio Shark</p>
-                                 <p className="text-base font-black text-white tracking-tighter uppercase shrink-0">Caribe + Moto + iPhone</p>
-                              </div>
-                           </div>
-                         </motion.div>
-                      </div>
-                   </div>
-                </div>
               </div>
             </DashboardCard>
           </motion.div>
@@ -390,29 +339,33 @@ export default function DashboardPage() {
   )
 }
 
-function Gauge({ value }: { value: number }) {
+function Gauge({ value, producedValue }: { value: number, producedValue: number }) {
   const segments = 9
   const radius = 70
   const centerX = 90
   const centerY = 90
-  const colors = [
-    "#EF4444", // Red
-    "#F87171",
-    "#FB923C", // Orange
-    "#FBBF24",
-    "#FACC15", // Yellow
-    "#A3E635",
-    "#4ADE80", // Light Green
-    "#22C55E",
-    "#10B981"  // Green
-  ]
+  
+  // Dynamic color based on value
+  const getGaugeColor = (val: number) => {
+    if (val <= 25) return "#94A3B8" // Gray
+    if (val <= 50) return "#EF4444" // Red
+    if (val <= 75) return "#FB923C" // Orange
+    if (val <= 90) return "#FACC15" // Yellow
+    if (val <= 99) return "#86EFAC" // Light Green
+    return "#10B981" // Dark Green
+  }
 
-  // Needle rotation: 0% is Left (180deg), 100% is Right (360deg)
+  const currentColor = getGaugeColor(value)
   const needleRotation = 180 + (value / 100) * 180
+  
+  // Format value to "34k" style
+  const formattedValue = producedValue >= 1000 
+    ? `${(producedValue / 1000).toFixed(0)}k` 
+    : producedValue.toString()
 
   return (
     <div className="relative w-full">
-      <svg className="w-full" viewBox="0 0 180 100">
+      <svg className="w-full" viewBox="0 0 180 120">
         {/* Background segments (Track) */}
         {Array.from({ length: segments }).map((_, i) => {
           const startAngle = Math.PI + (i * Math.PI) / segments
@@ -429,14 +382,14 @@ function Gauge({ value }: { value: number }) {
               key={`track-${i}`}
               d={`M ${x1} ${y1} A ${radius} ${radius} 0 0 1 ${x2} ${y2}`}
               fill="none"
-              stroke="#F1F5F9"
+              stroke="#E2E8F0"
               strokeWidth="14"
               strokeLinecap="butt"
             />
           )
         })}
 
-        {/* Color segments (Progress) */}
+        {/* Color segments (Progress) - now using dynamic uniform color */}
         {Array.from({ length: segments }).map((_, i) => {
           const segmentThreshold = (i / segments) * 100
           if (value < segmentThreshold) return null
@@ -459,14 +412,14 @@ function Gauge({ value }: { value: number }) {
               transition={{ delay: i * 0.05, duration: 0.5 }}
               d={`M ${x1} ${y1} A ${radius} ${radius} 0 0 1 ${x2} ${y2}`}
               fill="none"
-              stroke={colors[i]}
+              stroke={currentColor}
               strokeWidth="14"
               strokeLinecap="butt"
             />
           )
         })}
 
-        {/* Needle */}
+        {/* Needle Group */}
         <motion.g
           initial={{ rotate: 180 }}
           animate={{ rotate: needleRotation }}
@@ -484,6 +437,7 @@ function Gauge({ value }: { value: number }) {
             strokeWidth="4"
             className="blur-[1px]"
           />
+          {/* Needle path */}
           <line
             x1="90"
             y1="90"
@@ -491,27 +445,36 @@ function Gauge({ value }: { value: number }) {
             y2="90"
             stroke="#1C2643"
             strokeWidth="3"
+            strokeLinecap="round"
           />
-          <circle cx="90" cy="90" r="6" fill="#1C2643" stroke="white" strokeWidth="2.5" shadow-lg="true" />
+          {/* Center point */}
+          <circle cx="90" cy="90" r="6" fill="#1C2643" stroke="white" strokeWidth="2.5" />
+          
+          {/* Value at the tip */}
+          <g transform={`translate(165, 90) rotate(${-needleRotation}, 0, 0)`}>
+             <rect 
+               x="-12" 
+               y="-7" 
+               width="24" 
+               height="14" 
+               rx="4" 
+               fill="#1C2643"
+             />
+             <text
+               x="0"
+               y="0"
+               dy="3.5"
+               textAnchor="middle"
+               fill="white"
+               className="text-[8px] font-black"
+             >
+               {formattedValue}
+             </text>
+          </g>
         </motion.g>
       </svg>
     </div>
   )
-}
-
-function PipelineItem({ name, value, status, color }: { name: string, value: string, status: string, color: 'emerald' | 'blue' }) {
-   return (
-      <div className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-slate-200 transition-colors">
-         <div>
-            <p className="text-[13px] font-black text-[#1C2643] tracking-tight">{name}</p>
-            <p className={cn(
-              "text-[9px] font-bold uppercase tracking-widest mt-0.5",
-              color === 'emerald' ? "text-emerald-500" : "text-blue-500"
-            )}>{status}</p>
-         </div>
-         <p className="text-[13px] font-black text-[#1C2643]">{value}</p>
-      </div>
-   )
 }
 
 function DashboardCard({ children, className, id }: { children: React.ReactNode, className?: string, id?: string }) {

@@ -57,8 +57,8 @@ export default function LoginPage() {
       // Pequena pausa para garantir que o Supabase persistiu a sessão no storage/cookie
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Redireciona para importar usando router para melhor UX
-      router.push("/importar")
+      // Redireciona para o Dashboard usando router para melhor UX
+      router.push("/")
       
       // Fallback: se em 5 segundos não mudar de página, libera o botão
       setTimeout(() => {
