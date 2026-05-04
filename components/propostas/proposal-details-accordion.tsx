@@ -216,7 +216,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     valor_producao_operacional: proposal.valor_producao_operacional ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao_operacional) : "",
     margem_utilizada: proposal.margem_utilizada ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.margem_utilizada) : "",
     coeficiente_prazo: proposal.coeficiente_prazo || "",
-    valor_producao_corretor: proposal.valor_producao_corretor ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao_corretor) : "",
+    valor_producao: proposal.valor_producao ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao) : "",
     observacoes: proposal.observacoes || ""
   })
 
@@ -287,6 +287,19 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     fetchConfigs()
   }, [])
 
+  useEffect(() => {
+    if (dbProdutosConfigs.length > 0 && proposal.coeficiente_prazo) {
+      const config = dbProdutosConfigs.find(c => {
+        const label = c.nome_tabela || `${c.convenios?.nome || 'Tabela'} - ${c.prazo}x ${c.coeficiente}`
+        return label === proposal.coeficiente_prazo
+      })
+      if (config) {
+        setSelectedCoefValue(config.coeficiente as number)
+        setSelectedProdPercent(config.percentual_producao as number)
+      }
+    }
+  }, [dbProdutosConfigs, proposal.coeficiente_prazo])
+
   const handleSearchCEP = async () => {
     const cep = formData.cep.replace(/\D/g, "")
     if (cep.length !== 8) {
@@ -340,7 +353,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         else newValue = digits
       } else return
     }
-    if (["valor_parcela", "valor_operacao_operacional", "valor_cliente_operacional", "valor_producao_operacional", "margem_utilizada", "valor_producao_corretor"].includes(field)) {
+    if (["valor_parcela", "valor_operacao_operacional", "valor_cliente_operacional", "valor_producao_operacional", "margem_utilizada", "valor_producao"].includes(field)) {
       const digits = value.replace(/\D/g, "")
       if (digits) {
         const amount = parseFloat(digits) / 100
@@ -378,13 +391,13 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
             const opValue = parseFloat(rawOp) / 100
             const prodValue = (opValue * selectedProdPercent) / 100
             updated.valor_producao_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prodValue)
-            updated.valor_producao_corretor = updated.valor_producao_operacional
+            updated.valor_producao = updated.valor_producao_operacional
           }
         }
       }
 
       if (field === "valor_producao_operacional") {
-        updated.valor_producao_corretor = newValue
+        updated.valor_producao = newValue
       }
 
       if (field === "valor_cliente_operacional") {
@@ -396,7 +409,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
             const val = parseFloat(rawVal) / 100
             const prodValue = (val * selectedProdPercent) / 100
             updated.valor_producao_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prodValue)
-            updated.valor_producao_corretor = updated.valor_producao_operacional
+            updated.valor_producao = updated.valor_producao_operacional
           }
         }
       }
@@ -416,13 +429,13 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
             const valorProducao = (valorOperacao * selectedProdPercent) / 100
             const formattedProd = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
             updated.valor_producao_operacional = formattedProd
-            updated.valor_producao_corretor = formattedProd
+            updated.valor_producao = formattedProd
           }
         } else {
           updated.valor_operacao_operacional = ""
           updated.valor_cliente_operacional = ""
           updated.valor_producao_operacional = ""
-          updated.valor_producao_corretor = ""
+          updated.valor_producao = ""
         }
       }
       return updated
@@ -525,7 +538,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           valor_operacao_operacional: cleanMoney(formData.valor_operacao_operacional),
           valor_cliente_operacional: cleanMoney(formData.valor_cliente_operacional),
           valor_producao_operacional: cleanMoney(formData.valor_producao_operacional),
-          valor_producao: cleanMoney(formData.valor_producao_corretor),
+          valor_producao: cleanMoney(formData.valor_producao),
           valor_operacao: cleanMoney(formData.valor_operacao_operacional),
           valor_cliente: cleanMoney(formData.valor_cliente_operacional),
           margem_utilizada: cleanMoney(formData.margem_utilizada),
@@ -995,6 +1008,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
                       <Input 
+                        id="operacional-valor-parcela"
                         value={formData.valor_parcela}
                         onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
                         className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
@@ -1004,6 +1018,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Operação</label>
                       <Input 
+                        id="operacional-valor-operacao"
                         value={formData.valor_operacao_operacional}
                         onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
                         className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
@@ -1013,6 +1028,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Cliente</label>
                       <Input 
+                        id="operacional-valor-cliente"
                         value={formData.valor_cliente_operacional}
                         onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
                         className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
@@ -1020,6 +1036,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                       />
                     </div>
                     <Button 
+                      id="save-divergencia-operacional"
                       onClick={handleUpdateProposal} 
                       className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
                       disabled={isSaving}
@@ -1036,7 +1053,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.margem_utilizada}
                     onChange={(e) => handleFormChange("margem_utilizada", e.target.value)}
-                    disabled={!canEditFields}
+                    disabled={!isCorretor ? true : !canEditFields}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
@@ -1047,9 +1064,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     className={cn(
                       "h-9 px-4 rounded-md border border-slate-800 bg-[#171717] flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all",
                       isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary",
-                      !canEditFields && "opacity-75 cursor-not-allowed pointer-events-none"
+                      (!isCorretor || !canEditFields) && "opacity-75 cursor-not-allowed pointer-events-none"
                     )}
-                    onClick={() => canEditFields && setIsCoefDropdownOpen(!isCoefDropdownOpen)}
+                    onClick={() => isCorretor && canEditFields && setIsCoefDropdownOpen(!isCoefDropdownOpen)}
                   >
                     <span className="text-[13px] font-medium text-white truncate">
                       {formData.coeficiente_prazo || "Selecione uma tabela"}
@@ -1104,7 +1121,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                                   const valorProducao = (currentValorOp * config.percentual_producao) / 100
                                   const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
                                   handleFormChange("valor_producao_operacional", formatted)
-                                  handleFormChange("valor_producao_corretor", formatted)
+                                  handleFormChange("valor_producao", formatted)
                                 }
 
                                 setIsCoefDropdownOpen(false)
@@ -1135,9 +1152,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Produção</label>
                   <Input 
-                    value={formData.valor_producao_corretor}
-                    onChange={(e) => handleFormChange("valor_producao_corretor", e.target.value)}
-                    disabled={!canEditFields}
+                    value={formData.valor_producao}
+                    onChange={(e) => handleFormChange("valor_producao", e.target.value)}
+                    disabled={!isCorretor ? true : !canEditFields}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
@@ -1150,7 +1167,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_parcela}
                     onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
-                    disabled={!canEditFields}
+                    disabled={!isCorretor ? true : !canEditFields}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
@@ -1160,7 +1177,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_operacao_operacional}
                     onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
-                    disabled={!canEditFields}
+                    disabled={!isCorretor ? true : !canEditFields}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
@@ -1170,7 +1187,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_cliente_operacional}
                     onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
-                    disabled={!canEditFields}
+                    disabled={!isCorretor ? true : !canEditFields}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
