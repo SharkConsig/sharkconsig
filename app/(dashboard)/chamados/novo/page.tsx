@@ -570,6 +570,7 @@ function NewTicketForm() {
                       <option value="TRÁFEGO">TRÁFEGO</option>
                       <option value="INDICAÇÃO">INDICAÇÃO</option>
                       <option value="CLIENTE DA CASA">CLIENTE DA CASA</option>
+                      <option value="3C - DISCADOR">3C - DISCADOR</option>
                     </select>
                   </div>
 

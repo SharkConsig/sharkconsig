@@ -81,6 +81,7 @@ interface Proposal {
   obs_operacional?: string
   observacoes?: string
   valor_base?: number
+  valor_cliente_operacional?: number
   valor_parcela?: number
   updated_at?: string
   created_at: string
@@ -548,7 +549,7 @@ export default function ProposalsPage() {
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">BANCO/CONVÊNIO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">OPERAÇÃO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">STATUS</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">VALOR BASE</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">VALOR CLIENTE</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ÚLTIMA ALTERAÇÃO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">AÇÕES</th>
                 </tr>
@@ -590,7 +591,7 @@ export default function ProposalsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-right">
-                          R$ {(proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          R$ {(proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-4 py-4 text-[10px] font-bold text-slate-600">
                           {proposal.updated_at ? (

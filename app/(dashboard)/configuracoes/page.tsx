@@ -437,9 +437,10 @@ export default function SettingsPage() {
       setIsAddConvenioModalOpen(false)
       setIsAddOperacaoModalOpen(false)
       fetchStatuses()
-    } catch (error) {
-      console.error("Erro ao salvar configuração de produto:", error)
-      toast.error("Erro ao salvar configuração")
+    } catch (error: unknown) {
+      const err = error as { message?: string }
+      console.error("Erro ao salvar configuração de produto:", err)
+      toast.error(err.message || "Erro ao salvar configuração")
     } finally {
       setIsSubmitting(false)
     }
