@@ -11,7 +11,7 @@
         "nome": { "type": "string", "description": "Nome completo do usuário" },
         "role": { 
           "type": "string", 
-          "enum": ["Desenvolvedor", "Administrador", "Operacional", "Supervisor", "Corretor"],
+          "enum": ["Desenvolvedor", "Administrador", "Operacional", "Supervisor", "Corretor", "Estágio"],
           "description": "Função do usuário no sistema"
         },
         "status": { 

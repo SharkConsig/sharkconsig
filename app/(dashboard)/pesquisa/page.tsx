@@ -13,7 +13,15 @@ import { getContractTypeInfo } from "@/lib/contratos-mapping"
 import { supabase } from "@/lib/supabase"
 import { withRetry } from "@/lib/utils"
 
-function LoanRow({ loan }: { loan: any }) {
+interface LoanData {
+  banco: string;
+  orgao: string | null;
+  contrato: string;
+  parcela: number;
+  prazo: number;
+}
+
+function LoanRow({ loan }: { loan: LoanData }) {
   const [taxa, setTaxa] = useState(1.5);
   const i = taxa / 100;
   const n = loan.prazo;
@@ -51,6 +59,17 @@ function LoanRow({ loan }: { loan: any }) {
 
 import { useAuth } from "@/context/auth-context"
 
+interface ClientData {
+  id: string;
+  nome: string | null;
+  cpf: string;
+  data_nascimento: string | null;
+  telefone_1: string | null;
+  telefone_2: string | null;
+  telefone_3: string | null;
+  [key: string]: any;
+}
+
 export default function SearchClientPage() {
   const router = useRouter()
   const { } = useAuth()
@@ -59,7 +78,7 @@ export default function SearchClientPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   
-  const [client, setClient] = useState<any>(null)
+  const [client, setClient] = useState<ClientData | null>(null)
   const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | null>(null)
   const [registrations, setRegistrations] = useState<any[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)

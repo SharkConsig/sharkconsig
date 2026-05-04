@@ -122,16 +122,16 @@ export function parseDate(dateStr: string | Date | null | undefined): string {
 /**
  * Full row normalization for a "Client" or "Contract" object
  */
-export function normalizeData<T extends Record<string, any>>(data: T): T {
+export function normalizeData<T extends Record<string, unknown>>(data: T): T {
   const normalized = { ...data };
 
-  if (normalized.nome && typeof normalized.nome === 'string') normalized.nome = cleanText(normalized.nome).toUpperCase();
-  if (normalized.cpf && typeof normalized.cpf === 'string') normalized.cpf = normalizeCPF(normalized.cpf);
-  if (normalized.telefone && typeof normalized.telefone === 'string') normalized.telefone = normalizePhone(normalized.telefone);
-  if (normalized.celular && typeof normalized.celular === 'string') normalized.celular = normalizePhone(normalized.celular);
-  if (normalized.dataNascimento) normalized.dataNascimento = parseDate(normalized.dataNascimento);
-  if (normalized.parcela) normalized.parcela = parseCurrency(normalized.parcela);
-  if (normalized.valor) normalized.valor = parseCurrency(normalized.valor);
+  if (normalized.nome && typeof normalized.nome === 'string') normalized.nome = cleanText(normalized.nome as string).toUpperCase();
+  if (normalized.cpf && typeof normalized.cpf === 'string') normalized.cpf = normalizeCPF(normalized.cpf as string);
+  if (normalized.telefone && typeof normalized.telefone === 'string') normalized.telefone = normalizePhone(normalized.telefone as string);
+  if (normalized.celular && typeof normalized.celular === 'string') normalized.celular = normalizePhone(normalized.celular as string);
+  if (normalized.dataNascimento && (typeof normalized.dataNascimento === 'string' || normalized.dataNascimento instanceof Date)) normalized.dataNascimento = parseDate(normalized.dataNascimento as string | Date);
+  if (normalized.parcela && (typeof normalized.parcela === 'string' || typeof normalized.parcela === 'number')) normalized.parcela = parseCurrency(normalized.parcela as string | number);
+  if (normalized.valor && (typeof normalized.valor === 'string' || typeof normalized.valor === 'number')) normalized.valor = parseCurrency(normalized.valor as string | number);
   
   return normalized;
 }

@@ -177,7 +177,7 @@ export default function ImportBatchPage() {
     return clean.padStart(11, "0");
   };
 
-  const normalizeMoney = (value: any) => {
+  const normalizeMoney = (value: string | number | null | undefined) => {
     if (value === null || value === undefined || String(value).trim() === "") return null;
     if (typeof value === 'number') return value;
     
@@ -235,7 +235,7 @@ export default function ImportBatchPage() {
   async function fetchInBatches<T>(
     table: string,
     column: string,
-    values: any[],
+    values: (string | number)[],
     batchSize = 100
   ): Promise<T[]> {
     const results: T[] = [];
@@ -253,19 +253,19 @@ export default function ImportBatchPage() {
     return results;
   }
 
-  const processSiapeChunk = async (results: any[]) => {
-    const cpfs = results.map(r => normalizeCPF(r.cpf)).filter(Boolean);
+  const processSiapeChunk = async (results: Record<string, string | undefined>[]) => {
+    const cpfs = results.map(r => normalizeCPF(r.cpf || "")).filter(Boolean);
     if (cpfs.length === 0) return;
 
     // Fetch existing data to apply merge rules in batches to avoid URL length limits
-    const existingClientsRaw = await fetchInBatches<any>('clientes', 'cpf', cpfs);
-    const existingRegsRaw = await fetchInBatches<any>('matriculas', 'cliente_cpf', cpfs);
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('clientes', 'cpf', cpfs);
+    const existingRegsRaw = await fetchInBatches<Record<string, unknown>>('matriculas', 'cliente_cpf', cpfs);
 
-    const existingClients = new Map(existingClientsRaw.map(c => [c.cpf, c]));
+    const existingClients = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
     const existingRegs = new Map(existingRegsRaw.map(r => [`${r.cliente_cpf}_${r.numero_matricula}`, r]));
 
-    const clientsToUpsertMap = new Map<string, any>();
-    const registrationsToUpsertMap = new Map<string, any>();
+    const clientsToUpsertMap = new Map<string, Record<string, unknown>>();
+    const registrationsToUpsertMap = new Map<string, Record<string, unknown>>();
     
     for (const row of results) {
       const cpf = normalizeCPF(row.cpf);
@@ -407,8 +407,8 @@ export default function ImportBatchPage() {
     }
   };
 
-  const processContratosChunk = async (results: any[]) => {
-    const cpfs = results.map(r => normalizeCPF(r.cpf)).filter(Boolean);
+  const processContratosChunk = async (results: Record<string, string | undefined>[]) => {
+    const cpfs = results.map(r => normalizeCPF(r.cpf || "")).filter(Boolean);
     if (cpfs.length === 0) {
       console.warn("Nenhum CPF válido encontrado no chunk de Contratos.");
       return;
@@ -417,14 +417,14 @@ export default function ImportBatchPage() {
     console.log(`[CONTRATOS] Processando chunk: ${results.length} linhas, ${cpfs.length} CPFs.`);
 
     // Fetch existing data to apply merge rules in batches to avoid URL length limits
-    const existingClientsRaw = await fetchInBatches<any>('clientes', 'cpf', cpfs);
-    const existingRegsRaw = await fetchInBatches<any>('matriculas', 'cliente_cpf', cpfs);
+      const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('clientes', 'cpf', cpfs);
+    const existingRegsRaw = await fetchInBatches<Record<string, unknown>>('matriculas', 'cliente_cpf', cpfs);
 
-    const existingClients = new Map(existingClientsRaw.map(c => [c.cpf, c]));
+    const existingClients = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
     const existingRegs = new Map(existingRegsRaw.map(r => [`${r.cliente_cpf}_${r.numero_matricula}`, r]));
 
-    const clientsToUpsertMap = new Map();
-    const registrationsToUpsertMap = new Map();
+    const clientsToUpsertMap = new Map<string, Record<string, unknown>>();
+    const registrationsToUpsertMap = new Map<string, Record<string, unknown>>();
     
     for (const row of results) {
       const cpf = normalizeCPF(row.cpf);
@@ -700,46 +700,46 @@ export default function ImportBatchPage() {
     }
   };
 
-  const processGovernoSpChunk = async (results: any[], loteId: string) => {
+  const processGovernoSpChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
     // 1. Normalização e Agrupamento inicial
     const normalizedRows = results.map(row => ({
-      cpf: normalizeCPF(row.cpf),
-      nome: normalizeText(row.nome),
-      data_nascimento: normalizeDate(row.data_nascimento),
-      identificacao_val: normalizeText(row.identificação || row.identificacao),
-      data_nomeacao: normalizeDate(row.data_nomeacao),
-      lotacao: normalizeText(row.lotacao),
-      orgao: normalizeText(row.orgao),
-      tipo_vinculo: normalizeText(row.tipo_vinculo),
+      cpf: normalizeCPF(row.cpf || ""),
+      nome: normalizeText(row.nome || ""),
+      data_nascimento: normalizeDate(row.data_nascimento || ""),
+      identificacao_val: normalizeText(row.identificação || row.identificacao || ""),
+      data_nomeacao: normalizeDate(row.data_nomeacao || ""),
+      lotacao: normalizeText(row.lotacao || ""),
+      orgao: normalizeText(row.orgao || ""),
+      tipo_vinculo: normalizeText(row.tipo_vinculo || ""),
       mb_consignacoes: normalizeMoney(row.mb_consignacoes),
       md_consignacoes: normalizeMoney(row.md_consignacoes),
       mb_cartao_credito: normalizeMoney(row.mb_cartao_credito),
       md_cartao_credito: normalizeMoney(row.md_cartao_credito),
       mb_cartao_beneficio: normalizeMoney(row.mb_cartao_beneficio),
       md_cartao_beneficio: normalizeMoney(row.md_cartao_beneficio),
-      telefone_1: normalizePhone(row.telefone_1),
-      telefone_2: normalizePhone(row.telefone_2),
-      telefone_3: normalizePhone(row.telefone_3)
+      telefone_1: normalizePhone(row.telefone_1 || ""),
+      telefone_2: normalizePhone(row.telefone_2 || ""),
+      telefone_3: normalizePhone(row.telefone_3 || "")
     })).filter(r => r.cpf && r.cpf.length > 0);
 
     if (normalizedRows.length === 0) return;
 
     // --- PASSO 1: Garantir Entidade Cliente (CPF Único) com Regra de Preservação ---
     const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
-    const existingClientsRaw = await fetchInBatches<any>('governo_sp_clientes', 'cpf', cpfs);
-    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf, c]));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('governo_sp_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
 
     // Helper para verificar se devemos preservar o valor do banco (Anti-Null e Anti-Zero)
     // Retorna true se o valor da planilha for vazio (""), nulo ou '0'
-    const shouldPreserve = (val: any) => {
+    const shouldPreserve = (val: string | number | null | undefined) => {
       const v = String(val).trim();
       return v === "" || v === "0" || val === null || val === undefined;
     };
 
     // Usamos um Map para evitar CPFs duplicados no próprio lote
-    const clientMap = new Map();
+    const clientMap = new Map<string, Record<string, unknown>>();
     normalizedRows.forEach(row => {
-      const dbClient = existingClientsMap.get(row.cpf);
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
       const existingInMap = clientMap.get(row.cpf);
 
       // Regra: Se a planilha trouxer Vazio ou 0, e existir dado no Banco ou no Lote, preserva o dado.
@@ -761,7 +761,7 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values()) as any[];
+    const clientRows = Array.from(clientMap.values());
     const { data: clientsData, error: clientErr } = await withRetry(async () => {
       return await supabase.from('governo_sp_clientes')
         .upsert(clientRows, { onConflict: 'cpf' })
@@ -770,20 +770,20 @@ export default function ImportBatchPage() {
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Governo SP: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: any) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
 
     // --- PASSO 2: Processar Identificações (N:1 com Cliente) com Regra de Preservação ---
     const clientIds = Array.from(cpfToClientId.values());
-    const existingIdentsRaw = await fetchInBatches<any>('governo_sp_identificacoes', 'cliente_id', clientIds);
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_sp_identificacoes', 'cliente_id', clientIds);
     const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.identificacao}`, i]));
 
-    const identMap = new Map();
+    const identMap = new Map<string, Record<string, unknown>>();
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       if (!clientId || !row.identificacao_val) return;
 
       const key = `${clientId}_${row.identificacao_val}`;
-      const dbIdent = existingIdentsMap.get(key);
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
       const currentInMap = identMap.get(key);
 
       // Regra Anti-Null/Zero para Identificação e Vínculos

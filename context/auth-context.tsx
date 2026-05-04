@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { User } from "@supabase/supabase-js"
 
-export type UserRole = 'Desenvolvedor' | 'Administrador' | 'Operacional' | 'Supervisor' | 'Corretor'
+export type UserRole = 'Desenvolvedor' | 'Administrador' | 'Operacional' | 'Supervisor' | 'Corretor' | 'Estágio'
 
 interface Perfil {
   id: string
@@ -28,6 +28,7 @@ interface AuthContextType {
   isSupervisor: boolean
   isOperational: boolean
   isCorretor: boolean
+  isEstagio: boolean
   canAccessAdminAreas: boolean
 }
 
@@ -76,7 +77,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isDeveloper = isAdmin || perfil?.role === 'Desenvolvedor'
   const isSupervisor = isAdmin || perfil?.role === 'Supervisor'
   const isOperational = isAdmin || perfil?.role === 'Operacional'
-  const isCorretor = perfil?.role === 'Corretor' || (!isAdmin && !!user && !perfil?.role)
+  const isCorretor = perfil?.role === 'Corretor' || perfil?.role === 'Estágio' || (!isAdmin && !!user && !perfil?.role)
+  const isEstagio = perfil?.role === 'Estágio'
   const canAccessAdminAreas = isAdmin || isDeveloper
 
   return (
@@ -89,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isSupervisor,
       isOperational,
       isCorretor,
+      isEstagio,
       canAccessAdminAreas
     }}>
       {children}

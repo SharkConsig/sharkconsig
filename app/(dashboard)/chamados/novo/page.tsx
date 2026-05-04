@@ -32,6 +32,8 @@ function NewTicketForm() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [description, setDescription] = useState("")
   const [validationError, setValidationError] = useState<string | null>(null)
+  
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [originalMargins] = useState({
     margem: searchParams.get("margem") || "",
@@ -177,7 +179,7 @@ function NewTicketForm() {
         beneficio5: formData.beneficio5
       });
     }
-  }, [formData.convenio]);
+  }, [formData.convenio, formData.margem, formData.liquida5, formData.beneficio5, updateDescription]);
 
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
@@ -197,7 +199,7 @@ function NewTicketForm() {
     }
   };
 
-  const updateDescription = (margins: { margem: string, liquida5: string, beneficio5: string }) => {
+  const updateDescription = useCallback((margins: { margem: string, liquida5: string, beneficio5: string }) => {
     const isGovSP = formData.convenio?.toUpperCase() === "GOVERNO SP";
     
     // Build the introductory text
@@ -238,7 +240,7 @@ function NewTicketForm() {
       }
       return lines.join("\n");
     });
-  }
+  }, [formData.convenio]);
 
   const handleMarginInputChange = (field: string, value: string) => {
     // Verificamos se o valor contém o sinal de menos para aceitar números negativos

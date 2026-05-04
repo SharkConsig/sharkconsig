@@ -96,8 +96,8 @@ export default function TicketsPage() {
         `)
 
       // Aplicar filtros de permissão baseados na Role
-      if (perfil.role === 'Corretor') {
-        // Corretor vê apenas os seus
+      if (perfil.role === 'Corretor' || perfil.role === 'Estágio') {
+        // Corretor e Estágio veem apenas os seus
         query = query.eq('user_id', user.id)
       } else if (perfil.role === 'Supervisor') {
         // Supervisor vê os seus + os corretores sob sua supervisão

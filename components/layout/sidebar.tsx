@@ -30,7 +30,7 @@ const menuItems = [
         name: "DASHBOARD", 
         href: "/", 
         icon: Landmark, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
       },
       { 
         name: "IMPORTAR LOTE", 
@@ -54,31 +54,31 @@ const menuItems = [
         name: "ACESSAR CLIENTE", 
         href: "/pesquisa", 
         icon: Search, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
       },
       { 
         name: "ABRIR CHAMADO", 
         href: "/chamados/novo", 
         icon: MessageSquarePlus, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
       },
       { 
         name: "CHAMADOS", 
         href: "/chamados", 
         icon: MessageSquareText, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
       },
       { 
         name: "DIGITAR PROPOSTA", 
         href: "/propostas/nova", 
         icon: FileEdit, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
       },
       { 
         name: "PROPOSTAS", 
         href: "/propostas", 
         icon: ClipboardList, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
       },
       { 
         name: "CONFIGURAÇÕES", 
