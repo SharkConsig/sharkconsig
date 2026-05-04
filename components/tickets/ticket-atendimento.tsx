@@ -75,6 +75,7 @@ interface TicketAtendimentoProps {
     user_nome?: string;
     user_id?: string;
     user_avatar?: string | null;
+    matricula?: string;
     arquivo_rg_frente?: string | null;
     arquivo_rg_verso?: string | null;
     arquivo_contracheque?: string | null;
@@ -624,7 +625,14 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 <ImageIcon className="w-3.5 h-3.5" />
                 Anexar Arquivos
               </Button>
-              <Link href="/propostas/nova">
+              <Link href={`/propostas/nova?${new URLSearchParams({
+                nome: ticket.client || "",
+                cpf: ticket.cpf || "",
+                nascimento: "31/01/1984",
+                idLead: ticket.matricula || ticket.id,
+                matricula: ticket.matricula || "",
+                origem: ticket.origin?.toLowerCase() || ""
+              }).toString()}`}>
                 <Button 
                   className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2"
                 >

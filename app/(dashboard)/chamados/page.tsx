@@ -51,6 +51,7 @@ export interface Ticket {
   margem_beneficio_5?: number
   convenio: string
   equipe: string
+  matricula?: string
   created_at: string
   updated_at: string
   descricao?: string
@@ -283,7 +284,8 @@ export default function TicketsPage() {
       nome: ticket.cliente_nome,
       cpf: ticket.cliente_cpf,
       nascimento: "31/01/1984", 
-      idLead: ticket.id,
+      idLead: ticket.matricula || ticket.id.toString(),
+      matricula: ticket.matricula || "",
       origem: ticket.origem?.toLowerCase() || ""
     });
     router.push(`/propostas/nova?${params.toString()}`);
@@ -596,6 +598,7 @@ export default function TicketsPage() {
                                     user_nome: ticket.user_nome,
                                     user_id: ticket.user_id,
                                     user_avatar: ticket.user_avatar,
+                                    matricula: ticket.matricula,
                                     arquivo_rg_frente: ticket.arquivo_rg_frente,
                                     arquivo_rg_verso: ticket.arquivo_rg_verso,
                                     arquivo_contracheque: ticket.arquivo_contracheque,

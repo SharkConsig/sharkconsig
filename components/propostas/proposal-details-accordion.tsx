@@ -73,6 +73,10 @@ interface Proposal {
   dv?: string
   tipo_conta?: string
   valor_operacao_operacional?: number
+  valor_producao_operacional?: number
+  valor_producao?: number
+  valor_operacao?: number
+  valor_cliente?: number
   valor_cliente_operacional?: number
   margem_utilizada?: number
   coeficiente_prazo?: string
@@ -209,6 +213,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     valor_parcela: proposal.valor_parcela ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_parcela) : "",
     valor_operacao_operacional: proposal.valor_operacao_operacional ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_operacao_operacional) : "",
     valor_cliente_operacional: proposal.valor_cliente_operacional ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_cliente_operacional) : "",
+    valor_producao_operacional: proposal.valor_producao_operacional ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao_operacional) : "",
     margem_utilizada: proposal.margem_utilizada ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.margem_utilizada) : "",
     coeficiente_prazo: proposal.coeficiente_prazo || "",
     valor_producao_corretor: proposal.valor_producao_corretor ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao_corretor) : "",
@@ -335,7 +340,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         else newValue = digits
       } else return
     }
-    if (["valor_parcela", "valor_operacao_operacional", "valor_cliente_operacional", "margem_utilizada", "valor_producao_corretor"].includes(field)) {
+    if (["valor_parcela", "valor_operacao_operacional", "valor_cliente_operacional", "valor_producao_operacional", "margem_utilizada", "valor_producao_corretor"].includes(field)) {
       const digits = value.replace(/\D/g, "")
       if (digits) {
         const amount = parseFloat(digits) / 100
@@ -364,16 +369,60 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       if (field === "margem_utilizada") updated.valor_parcela = newValue
       else if (field === "valor_parcela") updated.margem_utilizada = newValue
       
+      // Operational field changes propagate to primary fields
+      if (field === "valor_operacao_operacional") {
+        updated.valor_cliente_operacional = newValue
+        if (selectedProdPercent) {
+          const rawOp = newValue.replace(/\D/g, "")
+          if (rawOp) {
+            const opValue = parseFloat(rawOp) / 100
+            const prodValue = (opValue * selectedProdPercent) / 100
+            updated.valor_producao_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prodValue)
+            updated.valor_producao_corretor = updated.valor_producao_operacional
+          }
+        }
+      }
+
+      if (field === "valor_producao_operacional") {
+        updated.valor_producao_corretor = newValue
+      }
+
+      if (field === "valor_cliente_operacional") {
+        // Updated requirement: Valor Cliente = Valor Operação
+        updated.valor_operacao_operacional = newValue
+        if (selectedProdPercent) {
+          const rawVal = newValue.replace(/\D/g, "")
+          if (rawVal) {
+            const val = parseFloat(rawVal) / 100
+            const prodValue = (val * selectedProdPercent) / 100
+            updated.valor_producao_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prodValue)
+            updated.valor_producao_corretor = updated.valor_producao_operacional
+          }
+        }
+      }
+
       if ((field === "margem_utilizada" || field === "valor_parcela") && selectedCoefValue) {
         const rawMargem = (field === "margem_utilizada" ? newValue : updated.margem_utilizada).replace(/\D/g, "")
-        if (rawMargem) {
+        if (rawMargem && selectedCoefValue > 0) {
           const margemValue = parseFloat(rawMargem) / 100
-          const valorCliente = margemValue / selectedCoefValue
-          updated.valor_cliente_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorCliente)
+          const valorOperacao = margemValue / selectedCoefValue
+          
+          const formattedOp = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorOperacao)
+          
+          updated.valor_operacao_operacional = formattedOp
+          updated.valor_cliente_operacional = formattedOp
+          
           if (selectedProdPercent) {
-            const valorProducao = (valorCliente * selectedProdPercent) / 100
-            updated.valor_producao_corretor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+            const valorProducao = (valorOperacao * selectedProdPercent) / 100
+            const formattedProd = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+            updated.valor_producao_operacional = formattedProd
+            updated.valor_producao_corretor = formattedProd
           }
+        } else {
+          updated.valor_operacao_operacional = ""
+          updated.valor_cliente_operacional = ""
+          updated.valor_producao_operacional = ""
+          updated.valor_producao_corretor = ""
         }
       }
       return updated
@@ -475,6 +524,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           valor_parcela: cleanMoney(formData.valor_parcela),
           valor_operacao_operacional: cleanMoney(formData.valor_operacao_operacional),
           valor_cliente_operacional: cleanMoney(formData.valor_cliente_operacional),
+          valor_producao_operacional: cleanMoney(formData.valor_producao_operacional),
+          valor_producao: cleanMoney(formData.valor_producao_corretor),
+          valor_operacao: cleanMoney(formData.valor_operacao_operacional),
+          valor_cliente: cleanMoney(formData.valor_cliente_operacional),
           margem_utilizada: cleanMoney(formData.margem_utilizada),
           coeficiente_prazo: formData.coeficiente_prazo,
           observacoes: finalObservations,
@@ -968,7 +1021,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     </div>
                     <Button 
                       onClick={handleUpdateProposal} 
-                      className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg"
+                      className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
                       disabled={isSaving}
                     >
                       {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
@@ -1032,6 +1085,28 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                                 handleFormChange("coeficiente_prazo", label)
                                 setSelectedCoefValue(config.coeficiente)
                                 setSelectedProdPercent(config.percentual_producao)
+                                
+                                // Auto-calculate Valor Operação (Margin / Coef)
+                                let currentValorOp = 0
+                                if (formData.margem_utilizada && config.coeficiente) {
+                                  const rawMargem = formData.margem_utilizada.replace(/\D/g, "")
+                                  const margemValue = parseFloat(rawMargem) / 100
+                                  currentValorOp = margemValue / config.coeficiente
+                                  const formattedOp = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentValorOp)
+                                  handleFormChange("valor_operacao_operacional", formattedOp)
+                                  handleFormChange("valor_cliente_operacional", formattedOp)
+                                } else if (formData.valor_operacao_operacional) {
+                                  currentValorOp = parseFloat(formData.valor_operacao_operacional.replace(/\D/g, "")) / 100
+                                }
+
+                                // Auto-calculate production value based on Valor Operação
+                                if (currentValorOp && config.percentual_producao) {
+                                  const valorProducao = (currentValorOp * config.percentual_producao) / 100
+                                  const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+                                  handleFormChange("valor_producao_operacional", formatted)
+                                  handleFormChange("valor_producao_corretor", formatted)
+                                }
+
                                 setIsCoefDropdownOpen(false)
                                 setCoefSearchTerm("")
                               }}
@@ -1044,7 +1119,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                                 <span>{label}</span>
                                 {formData.coeficiente_prazo === label && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                               </div>
-                              <span className={cn("text-[8px] font-medium opacity-70", formData.coeficiente_prazo === label ? "text-white" : "text-slate-400")}>
+                              <span className={cn(
+                                "text-[9px] font-medium lowercase tracking-normal",
+                                formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
+                              )}>
                                 Prazo: {config.prazo}x | Coef: {config.coeficiente} | Prod: {config.percentual_producao}%
                               </span>
                             </div>
@@ -1072,6 +1150,16 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_parcela}
                     onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
+                    placeholder="R$ 0,00" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Operação</label>
+                  <Input 
+                    value={formData.valor_operacao_operacional}
+                    onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
                     disabled={!canEditFields}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 

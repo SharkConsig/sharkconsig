@@ -67,6 +67,9 @@ function NewTicketForm() {
     outros_2: null
   })
 
+  // Captured matricula from URL
+  const matriculaUrl = searchParams.get("matricula") || ""
+
   // Pasted images from clipboard
   const [pastedImages, setPastedImages] = useState<File[]>([])
   const [dbConvenios, setDbConvenios] = useState<string[]>([])
@@ -489,6 +492,7 @@ function NewTicketForm() {
           margem_beneficio_5: cleanMoney(formData.beneficio5),
           convenio: formData.convenio,
           equipe: formData.equipe,
+          matricula: matriculaUrl,
           descricao: finalDescription,
           user_id: user.id,
           user_nome: perfil?.nome || user.email || "Usuário",

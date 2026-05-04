@@ -51,6 +51,7 @@ function NewProposalForm() {
     coeficiente: number
     percentual_producao: number
     convenio_id: string
+    banco_id: string
     operacoes: string[]
     convenios: { nome: string } | null
   }
@@ -158,6 +159,7 @@ function NewProposalForm() {
             coeficiente,
             percentual_producao,
             convenio_id,
+            banco_id,
             operacoes,
             convenios (nome)
           `)
@@ -196,7 +198,7 @@ function NewProposalForm() {
     nascimento: searchParams.get("nascimento") || "",
     idLead: searchParams.get("idLead") || "",
     origem: searchParams.get("origem") || "",
-    matricula: searchParams.get("idLead") || "",
+    matricula: searchParams.get("matricula") || "",
     naturalidade: "",
     uf_naturalidade: "",
     identidade: "",
@@ -225,6 +227,7 @@ function NewProposalForm() {
     valor_parcela: "",
     valor_operacao_operacional: "",
     valor_cliente_operacional: "",
+    valor_producao_operacional: "",
     margem_utilizada: "",
     coeficiente_prazo: "",
     valor_producao_corretor: "",
@@ -528,6 +531,10 @@ function NewProposalForm() {
         valor_parcela: cleanMoney(formData.valor_parcela),
         valor_operacao_operacional: cleanMoney(formData.valor_operacao_operacional),
         valor_cliente_operacional: cleanMoney(formData.valor_cliente_operacional),
+        valor_producao_operacional: cleanMoney(formData.valor_producao_operacional),
+        valor_producao: cleanMoney(formData.valor_producao_corretor),
+        valor_operacao: cleanMoney(formData.valor_operacao_operacional),
+        valor_cliente: cleanMoney(formData.valor_cliente_operacional),
         margem_utilizada: cleanMoney(formData.margem_utilizada),
         coeficiente_prazo: formData.coeficiente_prazo,
         observacoes: finalObservations,
@@ -627,7 +634,7 @@ function NewProposalForm() {
     }
 
     // Currency fields formatting
-    if (["valor_parcela", "valor_operacao_operacional", "valor_cliente_operacional", "margem_utilizada", "valor_producao_corretor"].includes(field)) {
+    if (["valor_parcela", "valor_operacao_operacional", "valor_cliente_operacional", "valor_producao_operacional", "margem_utilizada", "valor_producao_corretor"].includes(field)) {
       const digits = value.replace(/\D/g, "")
       if (digits) {
         const amount = parseFloat(digits) / 100
@@ -687,32 +694,61 @@ function NewProposalForm() {
         updated.margem_utilizada = newValue
       }
 
-      // Auto-calculations check
-      if ((field === "margem_utilizada" || field === "valor_parcela") && selectedCoefValue) {
-        const rawMargem = (field === "margem_utilizada" ? newValue : updated.margem_utilizada).replace(/\D/g, "")
-        if (rawMargem) {
-          const margemValue = parseFloat(rawMargem) / 100
-          const valorCliente = margemValue / selectedCoefValue
-          updated.valor_cliente_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorCliente)
-          
-          // Re-calculate production if percent is available
-          if (selectedProdPercent) {
-            const valorProducao = (valorCliente * selectedProdPercent) / 100
-            updated.valor_producao_corretor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+      // Operational field changes propagate to primary fields
+      if (field === "valor_operacao_operacional") {
+        updated.valor_cliente_operacional = newValue
+        if (selectedProdPercent) {
+          const rawOp = newValue.replace(/\D/g, "")
+          if (rawOp) {
+            const opValue = parseFloat(rawOp) / 100
+            const prodValue = (opValue * selectedProdPercent) / 100
+            updated.valor_producao_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prodValue)
+            updated.valor_producao_corretor = updated.valor_producao_operacional
           }
-        } else {
-          updated.valor_cliente_operacional = ""
-          updated.valor_producao_corretor = ""
         }
       }
 
-      if (field === "valor_cliente_operacional" && selectedProdPercent) {
-        const rawValue = newValue.replace(/\D/g, "")
-        if (rawValue) {
-          const valorCliente = parseFloat(rawValue) / 100
-          const valorProducao = (valorCliente * selectedProdPercent) / 100
-          updated.valor_producao_corretor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+      if (field === "valor_producao_operacional") {
+        updated.valor_producao_corretor = newValue
+      }
+
+      if (field === "valor_cliente_operacional") {
+        // Updated requirement: Valor Cliente = Valor Operação
+        updated.valor_operacao_operacional = newValue
+        if (selectedProdPercent) {
+          const rawVal = newValue.replace(/\D/g, "")
+          if (rawVal) {
+            const val = parseFloat(rawVal) / 100
+            const prodValue = (val * selectedProdPercent) / 100
+            updated.valor_producao_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prodValue)
+            updated.valor_producao_corretor = updated.valor_producao_operacional
+          }
+        }
+      }
+
+      // Auto-calculations check
+      if ((field === "margem_utilizada" || field === "valor_parcela") && selectedCoefValue) {
+        const rawMargem = (field === "margem_utilizada" ? newValue : updated.margem_utilizada).replace(/\D/g, "")
+        if (rawMargem && selectedCoefValue > 0) {
+          const margemValue = parseFloat(rawMargem) / 100
+          const valorOperacao = margemValue / selectedCoefValue
+          
+          const formattedOp = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorOperacao)
+          
+          updated.valor_operacao_operacional = formattedOp
+          updated.valor_cliente_operacional = formattedOp
+          
+          // Re-calculate production if percent is available
+          if (selectedProdPercent) {
+            const valorProducao = (valorOperacao * selectedProdPercent) / 100
+            const formattedProd = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+            updated.valor_producao_operacional = formattedProd
+            updated.valor_producao_corretor = formattedProd
+          }
         } else {
+          updated.valor_operacao_operacional = ""
+          updated.valor_cliente_operacional = ""
+          updated.valor_producao_operacional = ""
           updated.valor_producao_corretor = ""
         }
       }
@@ -879,6 +915,7 @@ function NewProposalForm() {
                 <option value="tráfego">TRÁFEGO</option>
                 <option value="indicação">INDICAÇÃO</option>
                 <option value="cliente da casa">CLIENTE DA CASA</option>
+                <option value="3c - discador">3C - DISCADOR</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -891,16 +928,7 @@ function NewProposalForm() {
                 className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">
-                EQUIPE COMERCIAL <span className="text-red-500">*</span>
-              </label>
-              <Input 
-                value={formData.equipe}
-                onChange={(e) => handleFormChange("equipe", e.target.value)}
-                className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
-              />
-            </div>
+
           </div>
 
           {/* Dados Pessoais */}
@@ -1281,12 +1309,26 @@ function NewProposalForm() {
 
                     {/* Options List */}
                     <div className="overflow-y-auto custom-scrollbar p-1">
-                      {dbProdutosConfigs.filter(config => {
-                        const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''}`.toLowerCase()
-                        return searchStr.includes(coefSearchTerm.toLowerCase())
-                      }).length > 0 ? (
+                      {dbProdutosConfigs
+                        .filter(config => {
+                          // Filter by selected bank, convenio and operation
+                          const matchBanco = config.banco_id === selection.bancoId;
+                          const matchConvenio = config.convenio_id === selection.convenioId;
+                          const matchOperacao = config.operacoes && config.operacoes.includes(selection.operacaoId);
+                          
+                          if (!matchBanco || !matchConvenio || !matchOperacao) return false;
+
+                          const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''}`.toLowerCase()
+                          return searchStr.includes(coefSearchTerm.toLowerCase())
+                        }).length > 0 ? (
                         dbProdutosConfigs
                           .filter(config => {
+                            const matchBanco = config.banco_id === selection.bancoId;
+                            const matchConvenio = config.convenio_id === selection.convenioId;
+                            const matchOperacao = config.operacoes && config.operacoes.includes(selection.operacaoId);
+                            
+                            if (!matchBanco || !matchConvenio || !matchOperacao) return false;
+
                             const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''}`.toLowerCase()
                             return searchStr.includes(coefSearchTerm.toLowerCase())
                           })
@@ -1300,22 +1342,24 @@ function NewProposalForm() {
                                   setSelectedCoefValue(config.coeficiente)
                                   setSelectedProdPercent(config.percentual_producao)
                                   
-                                  // Auto-calculate Valor Cliente (Margin / Coef)
-                                  let currentValorCliente = 0
+                                  // Auto-calculate Valor Operação (Margin / Coef)
+                                  let currentValorOp = 0
                                   if (formData.margem_utilizada && config.coeficiente) {
                                     const rawMargem = formData.margem_utilizada.replace(/\D/g, "")
                                     const margemValue = parseFloat(rawMargem) / 100
-                                    currentValorCliente = margemValue / config.coeficiente
-                                    const formattedCliente = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentValorCliente)
-                                    handleFormChange("valor_cliente_operacional", formattedCliente)
-                                  } else if (formData.valor_cliente_operacional) {
-                                    currentValorCliente = parseFloat(formData.valor_cliente_operacional.replace(/\D/g, "")) / 100
+                                    currentValorOp = margemValue / config.coeficiente
+                                    const formattedOp = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentValorOp)
+                                    handleFormChange("valor_operacao_operacional", formattedOp)
+                                    handleFormChange("valor_cliente_operacional", formattedOp)
+                                  } else if (formData.valor_operacao_operacional) {
+                                    currentValorOp = parseFloat(formData.valor_operacao_operacional.replace(/\D/g, "")) / 100
                                   }
 
-                                  // Auto-calculate production value based on Valor Cliente
-                                  if (currentValorCliente && config.percentual_producao) {
-                                    const valorProducao = (currentValorCliente * config.percentual_producao) / 100
+                                  // Auto-calculate production value based on Valor Operação
+                                  if (currentValorOp && config.percentual_producao) {
+                                    const valorProducao = (currentValorOp * config.percentual_producao) / 100
                                     const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+                                    handleFormChange("valor_producao_operacional", formatted)
                                     handleFormChange("valor_producao_corretor", formatted)
                                   }
 

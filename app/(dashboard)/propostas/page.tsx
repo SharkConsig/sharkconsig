@@ -82,6 +82,9 @@ interface Proposal {
   observacoes?: string
   valor_base?: number
   valor_cliente_operacional?: number
+  valor_producao?: number
+  valor_operacao?: number
+  valor_cliente?: number
   valor_parcela?: number
   updated_at?: string
   created_at: string
@@ -549,7 +552,7 @@ export default function ProposalsPage() {
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">BANCO/CONVÊNIO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">OPERAÇÃO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">STATUS</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">VALOR CLIENTE</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">VALOR OPERAÇÃO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ÚLTIMA ALTERAÇÃO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">AÇÕES</th>
                 </tr>
@@ -557,7 +560,7 @@ export default function ProposalsPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
+                    <td colSpan={11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
                       Carregando propostas...
                     </td>
                   </tr>
@@ -591,7 +594,7 @@ export default function ProposalsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-right">
-                          R$ {(proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          R$ {(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-4 py-4 text-[10px] font-bold text-slate-600">
                           {proposal.updated_at ? (
@@ -644,7 +647,7 @@ export default function ProposalsPage() {
                       </tr>
                       {expandedProposalId === proposal.id_lead && (
                         <tr>
-                          <td colSpan={12} className="p-0 border-b border-slate-200">
+                          <td colSpan={11} className="p-0 border-b border-slate-200">
                             <div className="animate-in slide-in-from-top-2 duration-300">
                               <ProposalDetailsAccordion 
                                 proposal={proposal} 
@@ -658,7 +661,7 @@ export default function ProposalsPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
+                    <td colSpan={11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
                       Nenhuma proposta encontrada com os filtros selecionados.
                     </td>
                   </tr>

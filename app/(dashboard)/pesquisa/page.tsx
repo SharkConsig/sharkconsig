@@ -827,7 +827,8 @@ export default function SearchClientPage() {
                                 margem: formatCurrency(allRegs[activeRegIndex].margem_35),
                                 liquida5: formatCurrency(allRegs[activeRegIndex].liquida_5),
                                 beneficio5: formatCurrency(allRegs[activeRegIndex].beneficio_liquida_5),
-                                convenio: determinedConvenio
+                                convenio: determinedConvenio,
+                                matricula: allRegs[activeRegIndex].numero_matricula || ""
                               });
                               router.push(`/chamados/novo?${params.toString()}`);
                             }}
@@ -1083,7 +1084,8 @@ export default function SearchClientPage() {
                                   margem: formatCurrency(consignacoes.liquida_val),
                                   liquida5: formatCurrency(cartao.liquida_val),
                                   beneficio5: formatCurrency(beneficio.liquida_val),
-                                  convenio: "GOVERNO SP"
+                                  convenio: "GOVERNO SP",
+                                  matricula: allRegs[activeRegIndex].identificacao || ""
                                 });
                                 router.push(`/chamados/novo?${params.toString()}`);
                               }}
@@ -1305,7 +1307,8 @@ export default function SearchClientPage() {
                                   margem: formatCurrency(consignacoes.liquida_val),
                                   liquida5: "R$ 0,00", // PMSP doesn't have 5% CC
                                   beneficio5: formatCurrency(beneficio.liquida_val),
-                                  convenio: "PREFEITURA SP"
+                                  convenio: "PREFEITURA SP",
+                                  matricula: registrations[activeRegIndex].registro_funcional || ""
                                 });
                                 router.push(`/chamados/novo?${params.toString()}`);
                               }}
