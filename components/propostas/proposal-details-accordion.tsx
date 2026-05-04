@@ -90,7 +90,9 @@ interface Proposal {
 }
 
 export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
-  const { perfil: user, isCorretor } = useAuth()
+  const { perfil: user } = useAuth()
+  const isCorretor = user?.role === 'Corretor'
+  const isFinancialEditor = ['Operacional', 'Administrativo', 'Desenvolvedor', 'Admin'].includes(user?.role || '')
   
   const canEditFields = !isCorretor || [
     'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
@@ -210,13 +212,13 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     agencia: proposal.agencia || "",
     dv: proposal.dv || "",
     tipo_conta: proposal.tipo_conta || "",
-    valor_parcela: proposal.valor_parcela ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_parcela) : "",
-    valor_operacao_operacional: proposal.valor_operacao_operacional ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_operacao_operacional) : "",
-    valor_cliente_operacional: proposal.valor_cliente_operacional ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_cliente_operacional) : "",
-    valor_producao_operacional: proposal.valor_producao_operacional ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao_operacional) : "",
-    margem_utilizada: proposal.margem_utilizada ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.margem_utilizada) : "",
+    valor_parcela: (proposal.valor_parcela !== undefined && proposal.valor_parcela !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_parcela) : "",
+    valor_operacao_operacional: (proposal.valor_operacao_operacional !== undefined && proposal.valor_operacao_operacional !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_operacao_operacional) : "",
+    valor_cliente_operacional: (proposal.valor_cliente_operacional !== undefined && proposal.valor_cliente_operacional !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_cliente_operacional) : "",
+    valor_producao_operacional: (proposal.valor_producao_operacional !== undefined && proposal.valor_producao_operacional !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao_operacional) : "",
+    margem_utilizada: (proposal.margem_utilizada !== undefined && proposal.margem_utilizada !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.margem_utilizada) : "",
     coeficiente_prazo: proposal.coeficiente_prazo || "",
-    valor_producao: proposal.valor_producao ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao) : "",
+    valor_producao: (proposal.valor_producao !== undefined && proposal.valor_producao !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao) : "",
     observacoes: proposal.observacoes || ""
   })
 
@@ -1053,7 +1055,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.margem_utilizada}
                     onChange={(e) => handleFormChange("margem_utilizada", e.target.value)}
-                    disabled={!isCorretor ? true : !canEditFields}
+                    disabled={!isFinancialEditor && (!isCorretor ? true : !canEditFields)}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
@@ -1064,9 +1066,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     className={cn(
                       "h-9 px-4 rounded-md border border-slate-800 bg-[#171717] flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all",
                       isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary",
-                      (!isCorretor || !canEditFields) && "opacity-75 cursor-not-allowed pointer-events-none"
+                      (!isFinancialEditor && (!isCorretor || !canEditFields)) && "opacity-75 cursor-not-allowed pointer-events-none"
                     )}
-                    onClick={() => isCorretor && canEditFields && setIsCoefDropdownOpen(!isCoefDropdownOpen)}
+                    onClick={() => (isFinancialEditor || (isCorretor && canEditFields)) && setIsCoefDropdownOpen(!isCoefDropdownOpen)}
                   >
                     <span className="text-[13px] font-medium text-white truncate">
                       {formData.coeficiente_prazo || "Selecione uma tabela"}
@@ -1154,7 +1156,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_producao}
                     onChange={(e) => handleFormChange("valor_producao", e.target.value)}
-                    disabled={!isCorretor ? true : !canEditFields}
+                    disabled={!isFinancialEditor && (!isCorretor ? true : !canEditFields)}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
@@ -1167,7 +1169,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_parcela}
                     onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
-                    disabled={!isCorretor ? true : !canEditFields}
+                    disabled={!isFinancialEditor && (!isCorretor ? true : !canEditFields)}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
@@ -1177,7 +1179,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_operacao_operacional}
                     onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
-                    disabled={!isCorretor ? true : !canEditFields}
+                    disabled={!isFinancialEditor && (!isCorretor ? true : !canEditFields)}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />
@@ -1187,7 +1189,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.valor_cliente_operacional}
                     onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
-                    disabled={!isCorretor ? true : !canEditFields}
+                    disabled={!isFinancialEditor && (!isCorretor ? true : !canEditFields)}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                     placeholder="R$ 0,00" 
                   />

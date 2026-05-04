@@ -145,6 +145,10 @@ export default function TicketsPage() {
     }
   }, [fetchTickets, user, perfil])
 
+  useEffect(() => {
+    setExpandedTicketId(null)
+  }, [selectedStatus, selectedSecondaryStatus])
+
   const counts = useMemo(() => {
     const res: Record<string, number> = {}
     tickets.forEach(t => {
@@ -467,12 +471,14 @@ export default function TicketsPage() {
                       </td>
                     </tr>
                   ) : paginatedTickets.length > 0 ? (
-                    paginatedTickets.map((ticket, index) => (
+                    paginatedTickets
+                      .filter(t => !expandedTicketId || t.id.toString() === expandedTicketId)
+                      .map((ticket, index) => (
                       <React.Fragment key={ticket.id}>
                         <tr 
                           className={cn(
                             "group cursor-pointer",
-                            index % 2 === 0 ? "bg-slate-100" : "bg-white"
+                            expandedTicketId === ticket.id.toString() ? "bg-slate-50 border-l-2 border-primary border-b-0" : (index % 2 === 0 ? "bg-slate-100" : "bg-white")
                           )}
                           onClick={() => toggleTicketExpansion(ticket.id.toString())}
                         >
@@ -610,6 +616,15 @@ export default function TicketsPage() {
                                     setExpandedTicketId(null);
                                   }}
                                 />
+                                <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
+                                  <Button 
+                                    variant="outline"
+                                    onClick={() => setExpandedTicketId(null)}
+                                    className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-primary transition-colors"
+                                  >
+                                    Fechar e Voltar para a Lista
+                                  </Button>
+                                </div>
                               </div>
                             </td>
                           </tr>
@@ -628,7 +643,7 @@ export default function TicketsPage() {
             </div>
 
             {/* Pagination / List Footer */}
-            {totalPages > 1 && (
+            {totalPages > 1 && !expandedTicketId && (
               <div className="px-8 py-10 flex flex-col sm:flex-row items-center justify-between border-t border-slate-50 bg-slate-50/30 gap-4">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                   Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredTickets.length)} de {filteredTickets.length} chamados

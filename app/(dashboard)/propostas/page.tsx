@@ -353,6 +353,10 @@ export default function ProposalsPage() {
     }
   }, [perfil, stabilizedFetchProposals])
 
+  useEffect(() => {
+    setExpandedProposalId(null)
+  }, [selectedStatus, selectedSecondaryStatus])
+
   const statusCards = TABS_CONFIG.map(tab => {
     const total = (tab.subTabs || []).reduce((acc, sub) => acc + (counts[sub] || 0), 0)
     return {
@@ -565,100 +569,111 @@ export default function ProposalsPage() {
                     </td>
                   </tr>
                 ) : paginatedProposals.length > 0 ? (
-                  paginatedProposals.map((proposal, index) => (
-                    <React.Fragment key={proposal.id}>
-                      <tr 
-                        onClick={() => toggleProposalExpansion(proposal.id_lead)}
-                        className={cn(
-                          "hover:bg-slate-50 transition-colors group cursor-pointer",
-                          expandedProposalId === proposal.id_lead ? "bg-slate-50 border-l-2 border-primary" : (index % 2 === 0 ? "bg-slate-100" : "bg-white")
-                        )}
-                      >
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">{proposal.id_lead}</td>
-                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.ade || '-'}</td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase">{proposal.nome_corretor || '-'}</td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase">{proposal.equipe || '-'}</td>
-                        <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.cliente_cpf}</td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-700 uppercase tracking-tight">{proposal.nome_cliente}</td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.banco}/{proposal.convenio}</td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.tipo_operacao}</td>
-                        <td className="px-4 py-4">
-                          <span className={cn(
-                            "px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider",
-                            proposal.status?.includes('CANCELADO') ? "bg-rose-100 text-rose-600" :
-                            (proposal.status?.includes('PAGO') || proposal.status?.includes('FORMALIZAÇÃO') || proposal.status === "PAGO AO CLIENTE E SEM PENDÊNCIAS") ? "bg-cyan-100 text-cyan-600" :
-                            (proposal.status?.includes('ANDAMENTO') || proposal.status?.includes('AGUARDANDO')) ? "bg-amber-100 text-amber-600" :
-                            "bg-slate-100 text-slate-600"
-                          )}>
-                            {proposal.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-right">
-                          R$ {(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="px-4 py-4 text-[10px] font-bold text-slate-600">
-                          {proposal.updated_at ? (
-                            (() => {
-                              try {
-                                return format(new Date(proposal.updated_at), "dd/MM/yyyy HH:mm")
-                              } catch {
-                                return '-'
-                              }
-                            })()
-                          ) : '-'}
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center justify-center gap-1">
-                            {selectedStatus !== "CANCELADOS" && (
-                              (!isCorretor || [
-                                'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
-                                'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
-                                'COM INCONSISTÊNCIA NO BANCO'
-                              ].includes(proposal.status)) && (
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    setSelectedProposalForStatus(proposal)
-                                    setIsStatusModalOpen(true)
-                                  }}
-                                  className="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md p-1 group/btn transition-all"
-                                  title="ALTERAR STATUS DA PROPOSTA"
-                                >
-                                  <ChevronRight className="w-4 h-4" />
-                                </Button>
-                              )
-                            )}
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                toggleProposalExpansion(proposal.id_lead)
-                              }}
-                              className="w-8 h-8 bg-sky-500 hover:bg-sky-600 text-white rounded-md p-1 group/btn transition-all"
-                              title="VISUALIZAR/EDITAR PROPOSTA"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                      {expandedProposalId === proposal.id_lead && (
-                        <tr>
-                          <td colSpan={11} className="p-0 border-b border-slate-200">
-                            <div className="animate-in slide-in-from-top-2 duration-300">
-                              <ProposalDetailsAccordion 
-                                proposal={proposal} 
-                                onRefresh={fetchProposals}
-                              />
+                  paginatedProposals
+                    .filter(p => !expandedProposalId || p.id_lead === expandedProposalId)
+                    .map((proposal, index) => (
+                      <React.Fragment key={proposal.id}>
+                        <tr 
+                          onClick={() => toggleProposalExpansion(proposal.id_lead)}
+                          className={cn(
+                            "hover:bg-slate-50 transition-colors group cursor-pointer",
+                            expandedProposalId === proposal.id_lead ? "bg-slate-50 border-l-2 border-primary border-b-0" : (index % 2 === 0 ? "bg-slate-100" : "bg-white")
+                          )}
+                        >
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">{proposal.id_lead}</td>
+                          <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.ade || '-'}</td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase">{proposal.nome_corretor || '-'}</td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase">{proposal.equipe || '-'}</td>
+                          <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.cliente_cpf}</td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-700 uppercase tracking-tight">{proposal.nome_cliente}</td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.banco}/{proposal.convenio}</td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.tipo_operacao}</td>
+                          <td className="px-4 py-4">
+                            <span className={cn(
+                              "px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider",
+                              proposal.status?.includes('CANCELADO') ? "bg-rose-100 text-rose-600" :
+                              (proposal.status?.includes('PAGO') || proposal.status?.includes('FORMALIZAÇÃO') || proposal.status === "PAGO AO CLIENTE E SEM PENDÊNCIAS") ? "bg-cyan-100 text-cyan-600" :
+                              (proposal.status?.includes('ANDAMENTO') || proposal.status?.includes('AGUARDANDO')) ? "bg-amber-100 text-amber-600" :
+                              "bg-slate-100 text-slate-600"
+                            )}>
+                              {proposal.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-right">
+                            R$ {(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-4 py-4 text-[10px] font-bold text-slate-600">
+                            {proposal.updated_at ? (
+                              (() => {
+                                try {
+                                  return format(new Date(proposal.updated_at), "dd/MM/yyyy HH:mm")
+                                } catch {
+                                  return '-'
+                                }
+                              })()
+                            ) : '-'}
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center justify-center gap-1">
+                              {selectedStatus !== "CANCELADOS" && (
+                                (!isCorretor || [
+                                  'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
+                                  'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
+                                  'COM INCONSISTÊNCIA NO BANCO'
+                                ].includes(proposal.status)) && (
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setSelectedProposalForStatus(proposal)
+                                      setIsStatusModalOpen(true)
+                                    }}
+                                    className="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md p-1 group/btn transition-all"
+                                    title="ALTERAR STATUS DA PROPOSTA"
+                                  >
+                                    <ChevronRight className="w-4 h-4" />
+                                  </Button>
+                                )
+                              )}
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  toggleProposalExpansion(proposal.id_lead)
+                                }}
+                                className="w-8 h-8 bg-sky-500 hover:bg-sky-600 text-white rounded-md p-1 group/btn transition-all"
+                                title="VISUALIZAR/EDITAR PROPOSTA"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  ))
+                        {expandedProposalId === proposal.id_lead && (
+                          <tr>
+                            <td colSpan={12} className="p-0 border-b border-slate-200">
+                              <div className="animate-in slide-in-from-top-2 duration-300">
+                                <ProposalDetailsAccordion 
+                                  proposal={proposal} 
+                                  onRefresh={fetchProposals}
+                                />
+                                <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
+                                  <Button 
+                                    variant="outline"
+                                    onClick={() => setExpandedProposalId(null)}
+                                    className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-primary transition-colors"
+                                  >
+                                    Fechar e Voltar para a Lista
+                                  </Button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))
                 ) : (
                   <tr>
                     <td colSpan={11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
@@ -671,7 +686,7 @@ export default function ProposalsPage() {
           </div>
 
           {/* Pagination */}
-          {totalPages > 1 && (
+          {totalPages > 1 && !expandedProposalId && (
             <div className="px-8 py-10 flex flex-col sm:flex-row items-center justify-between border-t border-slate-50 bg-slate-50/30 gap-4">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                 Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredProposals.length)} de {filteredProposals.length} propostas

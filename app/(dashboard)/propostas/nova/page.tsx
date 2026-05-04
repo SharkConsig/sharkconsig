@@ -420,6 +420,11 @@ function NewProposalForm() {
         return
       }
 
+    if (!formData.coeficiente_prazo) {
+      toast.error("Por favor, selecione a tabela (Coeficiente e Prazo).")
+      return
+    }
+
     setIsSubmitting(true)
     const loadingToast = toast.loading("Salvando proposta e anexos...")
 
@@ -490,8 +495,11 @@ function NewProposalForm() {
 
       const currentStatus = targetStatus || 'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO'
 
-      const { error } = await supabase.from('propostas').upsert({
-        id_lead: formData.idLead,
+      // Generate a unique ID for this proposal to prevent overwrites
+      const uniqueIdLead = `${Date.now()}${Math.floor(Math.random() * 900) + 100}`
+
+      const { error } = await supabase.from('propostas').insert({
+        id_lead: uniqueIdLead,
         cliente_cpf: formData.cpf.replace(/\D/g, ""),
         nome_cliente: formData.nome,
         data_nascimento: formatDate(formData.nascimento),
@@ -545,7 +553,7 @@ function NewProposalForm() {
         arquivo_outros: fileUrls.outros || existingAttachments.outros,
         arquivo_outros_2: fileUrls.outros_2 || existingAttachments.outros_2,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'id_lead' })
+      })
 
       if (error) throw error
 
@@ -801,9 +809,9 @@ function NewProposalForm() {
           variant="ghost" 
           size="sm" 
           onClick={prevStep}
-          className="absolute left-0 text-slate-400 hover:text-primary font-bold text-[10px] uppercase tracking-widest"
+          className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
         >
-          <ChevronLeft className="w-4 h-4 mr-1" /> Voltar
+          <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
         </Button>
         <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
           ESCOLHA O <span className="text-slate-900 font-extrabold">BANCO DE EMPRÉSTIMO</span> QUE SERÁ UTILIZADO NO CONTRATO
@@ -836,9 +844,9 @@ function NewProposalForm() {
           variant="ghost" 
           size="sm" 
           onClick={prevStep}
-          className="absolute left-0 text-slate-400 hover:text-primary font-bold text-[10px] uppercase tracking-widest"
+          className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
         >
-          <ChevronLeft className="w-4 h-4 mr-1" /> Voltar
+          <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
         </Button>
         <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
           ESCOLHA O <span className="text-slate-900 font-extrabold">TIPO DE OPERAÇÃO</span> DESEJADO
@@ -871,9 +879,9 @@ function NewProposalForm() {
           variant="ghost" 
           size="sm" 
           onClick={prevStep}
-          className="self-start text-slate-400 hover:text-primary font-bold text-[10px] uppercase tracking-widest"
+          className="self-start text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
         >
-          <ChevronLeft className="w-4 h-4 mr-1" /> Alterar Seleção
+          <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
         </Button>
         <div className="flex flex-wrap justify-center gap-2 md:gap-8 items-center bg-white py-4 px-8 rounded-2xl border border-slate-200 shadow-sm w-fit mx-auto">
           <div className="flex flex-col items-center md:items-start">
