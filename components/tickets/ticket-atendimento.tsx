@@ -140,11 +140,11 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   // Use useMemo to include the initial ticket description as the first message
   const allMessages = useMemo(() => {
     const ticketAttachments: Attachment[] = [];
-    if (ticket.arquivo_rg_frente) ticketAttachments.push({ name: "RG FRENTE", url: ticket.arquivo_rg_frente });
-    if (ticket.arquivo_rg_verso) ticketAttachments.push({ name: "RG VERSO", url: ticket.arquivo_rg_verso });
-    if (ticket.arquivo_contracheque) ticketAttachments.push({ name: "CONTRACHEQUE", url: ticket.arquivo_contracheque });
-    if (ticket.arquivo_extrato) ticketAttachments.push({ name: "EXTRATO", url: ticket.arquivo_extrato });
-    if (ticket.arquivo_outros) ticketAttachments.push({ name: "ANEXO ADICIONAL", url: ticket.arquivo_outros });
+    if (ticket.arquivo_rg_frente) ticketAttachments.push({ name: "RG ou CNH (FRENTE)", url: ticket.arquivo_rg_frente });
+    if (ticket.arquivo_rg_verso) ticketAttachments.push({ name: "RG (VERSO)", url: ticket.arquivo_rg_verso });
+    if (ticket.arquivo_contracheque) ticketAttachments.push({ name: "CONTRA CHEQUE", url: ticket.arquivo_contracheque });
+    if (ticket.arquivo_extrato) ticketAttachments.push({ name: "EXTRATO DE CONSIGNAÇÃO", url: ticket.arquivo_extrato });
+    if (ticket.arquivo_outros) ticketAttachments.push({ name: "OUTROS", url: ticket.arquivo_outros });
 
     const initialMessage: Message | null = ticket.description ? {
       id: "initial",

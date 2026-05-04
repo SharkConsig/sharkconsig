@@ -84,6 +84,40 @@ function NewProposalForm() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  // Auto-fill supervisor info
+  useEffect(() => {
+    const fillSupervisor = async () => {
+      // Se o usuário logado é um SUPERVISOR, ele é a própria equipe comercial
+      if (perfil?.role === 'Supervisor' && !formData.equipe) {
+        setFormData(prev => ({ ...prev, equipe: perfil.nome || "" }));
+        return;
+      }
+
+      // Se já temos o nome no perfil e o campo está vazio, preenchemos
+      if (perfil?.supervisor_nome && !formData.equipe) {
+        setFormData(prev => ({ ...prev, equipe: perfil.supervisor_nome }));
+        return;
+      }
+
+      // Se temos o ID mas não o nome no perfil, buscamos via API
+      if (perfil?.supervisor_id && !formData.equipe) {
+        try {
+          const res = await fetch(`/api/usuarios?id=${perfil.supervisor_id}`);
+          if (res.ok) {
+            const supervisorData = await res.json();
+            if (supervisorData.nome) {
+              setFormData(prev => ({ ...prev, equipe: supervisorData.nome }));
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao buscar supervisor:", err);
+        }
+      }
+    };
+
+    fillSupervisor();
+  }, [perfil, formData.equipe])
+
   useEffect(() => {
     async function fetchData() {
       setIsLoading(true)

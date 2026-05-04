@@ -1229,6 +1229,16 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     {Object.entries(existingAttachments).map(([key, url]) => {
                       if (!url) return null
                       const fileName = getFileName(url)
+                      const labelMap: { [key: string]: string } = {
+                        frente: "RG ou CNH (FRENTE)",
+                        verso: "RG (VERSO)",
+                        contracheque: "CONTRA CHEQUE",
+                        extrato: "EXTRATO DE CONSIGNAÇÃO",
+                        outros: "OUTROS",
+                        outros_2: "OUTROS"
+                      }
+                      const label = labelMap[key] || "ANEXO"
+                      
                       return (
                         <a
                           key={key}
@@ -1238,7 +1248,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                           className="flex items-center gap-2 bg-[#F1F1F1] hover:bg-slate-200 text-slate-900 px-4 py-2.5 rounded-full text-[11px] font-bold transition-all border border-transparent hover:border-slate-300 shadow-sm"
                         >
                           <FileText className="w-4 h-4 text-slate-600" />
-                          <span className="max-w-[200px] truncate uppercase tracking-tight">{fileName}</span>
+                          <div className="flex flex-col items-start leading-tight">
+                            <span className="text-[9px] text-primary uppercase tracking-wider">{label}</span>
+                            <span className="max-w-[200px] truncate uppercase tracking-tight">{fileName}</span>
+                          </div>
                         </a>
                       )
                     })}

@@ -23,7 +23,6 @@ import { toast } from "react-hot-toast"
 const TABS_CONFIG = [
   {
     label: "DIGITAÇÃO",
-    color: "border-t-amber-500",
     textColor: "text-amber-600",
     subTabs: [
       "AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO",
@@ -34,17 +33,15 @@ const TABS_CONFIG = [
   },
   {
     label: "EM ANDAMENTO",
-    color: "border-t-orange-500",
     textColor: "text-orange-600",
     subTabs: [
       "ANDAMENTO / AGUARDANDO PAGAMENTO",
       "COM INCONSISTÊNCIA NO BANCO",
-      "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL"
+      "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
     ]
   },
   {
     label: "PAGO AO CLIENTE",
-    color: "border-t-cyan-500",
     textColor: "text-cyan-600",
     subTabs: [
       "PAGAMENTO DEVOLVIDO",
@@ -54,7 +51,6 @@ const TABS_CONFIG = [
   },
   {
     label: "CANCELADOS",
-    color: "border-t-rose-500",
     textColor: "text-rose-600",
     subTabs: [
       "CANCELADO"
@@ -315,12 +311,18 @@ export default function ProposalsPage() {
         }
         
         const userDetails = p.corretor_id ? usersMap.get(p.corretor_id) : null
+        
+        // Define equipe prioritize stored value, then user metadata, then "-"
+        let finalEquipe = p.equipe
+        if (!finalEquipe || finalEquipe === "-" || finalEquipe === "Não informado") {
+          finalEquipe = userDetails?.equipe || "-"
+        }
 
         return {
           ...p,
           status: normalizedStatus,
           nome_corretor: p.corretor || userDetails?.nome || '-',
-          equipe: p.equipe || userDetails?.equipe || '-'
+          equipe: finalEquipe
         }
       })
 
@@ -375,10 +377,15 @@ export default function ProposalsPage() {
   const itemsPerPage = 10
 
   const filteredProposals = proposals.filter((proposal: Proposal) => {
+    const cleanSearch = searchTerm.toLowerCase().replace(/\D/g, "")
+    const cleanCpf = (proposal.cliente_cpf || "").replace(/\D/g, "")
+
     const matchesSearch = 
       (proposal.id_lead?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+      (proposal.ade?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
       (proposal.nome_cliente?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (proposal.cliente_cpf?.toLowerCase() || "").includes(searchTerm.toLowerCase())
+      (proposal.cliente_cpf?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+      (cleanSearch !== "" && cleanCpf.includes(cleanSearch))
     
     const matchesStatus = !selectedStatus || 
       TABS_CONFIG.find(t => t.label === selectedStatus)?.subTabs.includes(proposal.status)
@@ -432,7 +439,7 @@ export default function ProposalsPage() {
               <div className="flex-1 min-w-0">
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Buscar Proposta</label>
                 <Input 
-                  placeholder="ID, Nome do Cliente ou CPF..." 
+                  placeholder="ID, ADE, Nome do Cliente ou CPF..." 
                   className="h-[38px] bg-slate-50/50 border-slate-100 text-[12px]"
                   icon={<Search className="w-4 h-4 text-slate-400" />}
                   value={searchTerm}
@@ -489,21 +496,20 @@ export default function ProposalsPage() {
               >
                 {selectedStatus === card.label && (
                   <div className={cn(
-                    "absolute -left-4 -right-4 -top-4 -bottom-10 rounded-t-3xl z-0 hidden lg:block transition-colors bg-slate-300"
+                    "absolute -left-4 -right-4 -top-4 -bottom-10 rounded-t-3xl z-0 hidden lg:block transition-colors bg-slate-100"
                   )} />
                 )}
                 <Card className={cn(
-                  "card-shadow border border-slate-200 border-t-4 bg-white h-full relative z-10 transition-all hover:scale-[1.02]", 
-                  card.color,
-                  selectedStatus === card.label && "ring-2 ring-primary ring-offset-2 shadow-xl shadow-primary/10"
+                  "card-shadow border border-slate-200 h-full relative z-10 transition-all hover:scale-[1.02]", 
+                  selectedStatus === card.label ? "bg-[#DFF0D8] ring-2 ring-primary ring-offset-2 shadow-xl shadow-primary/10" : "bg-white"
                 )}>
                   <CardContent className="p-5">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-4 h-8 leading-tight tracking-widest">{card.label}</p>
+                    <p className="text-[9px] font-bold text-[#171717] uppercase mb-4 h-8 leading-tight tracking-widest">{card.label}</p>
                     <div className="flex items-center gap-2">
                       <div className="bg-[#1e293b] px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
                         {card.count}
                       </div>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Contrato(s)</span>
+                      <span className="text-[9px] font-bold text-[#171717] uppercase tracking-widest leading-none">Contrato(s)</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -513,25 +519,31 @@ export default function ProposalsPage() {
 
           {selectedStatus && secondaryCards.length > 0 && (
             <div className={cn(
-              "rounded-3xl p-6 mt-6 relative z-0 border border-slate-300/50 shadow-inner transition-colors -mx-4 bg-slate-300"
+              "rounded-3xl p-6 mt-6 relative z-0 border border-slate-200/50 shadow-inner transition-colors -mx-4 bg-slate-100"
             )}>
               <div className="flex overflow-x-auto gap-4 pb-2 custom-scrollbar lg:grid lg:grid-cols-4 lg:overflow-x-visible">
                 {secondaryCards.map((card) => (
                   <Card 
                     key={card.label} 
                     className={cn(
-                      "card-shadow border border-slate-200 bg-white min-w-[160px] lg:min-w-0 cursor-pointer transition-all hover:scale-[1.02]",
-                      selectedSecondaryStatus === card.label && "ring-2 ring-primary ring-offset-2"
+                      "card-shadow border border-slate-200 min-w-[160px] lg:min-w-0 cursor-pointer transition-all hover:scale-[1.02]",
+                      selectedSecondaryStatus === card.label ? "bg-[#DFF0D8] ring-2 ring-primary ring-offset-2" : (
+                        ['AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO', 'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO', 'COM INCONSISTÊNCIA NO BANCO', 'PAGAMENTO DEVOLVIDO'].includes(card.label) ? "bg-[#FCF8E3]" :
+                        ['AGUARDANDO DIGITAÇÃO OPERACIONAL', 'COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL', 'COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL', 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA'].includes(card.label) ? "bg-[#D9EDF7]" :
+                        ['ANDAMENTO / AGUARDANDO PAGAMENTO', 'PÓS-VENDA REALIZADA'].includes(card.label) ? "bg-[#DFF0D8]" :
+                        ['CANCELADO'].includes(card.label) ? "bg-[#F2DEDE]" :
+                        "bg-white"
+                      )
                     )}
                     onClick={() => handleSecondaryClick(card.label)}
                   >
                     <CardContent className="p-4">
-                      <p className="text-[8.5px] font-bold text-slate-400 uppercase mb-3 h-7 leading-tight tracking-wider">{card.label}</p>
+                      <p className="text-[8.5px] font-bold text-[#171717] uppercase mb-3 h-7 leading-tight tracking-wider">{card.label}</p>
                       <div className="flex items-center gap-2">
                         <div className="bg-slate-700 px-2 py-0.5 rounded text-[10px] font-normal text-white">
                           {card.count}
                         </div>
-                        <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Contrato(s)</span>
+                        <span className="text-[8px] font-bold text-[#171717] uppercase tracking-widest">Contrato(s)</span>
                       </div>
                     </CardContent>
                   </Card>
@@ -582,8 +594,8 @@ export default function ProposalsPage() {
                         >
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">{proposal.id_lead}</td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.ade || '-'}</td>
-                          <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase">{proposal.nome_corretor || '-'}</td>
-                          <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase">{proposal.equipe || '-'}</td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-blue-50/20">{proposal.nome_corretor || '-'}</td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-indigo-50/20">{proposal.equipe || '-'}</td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.cliente_cpf}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-700 uppercase tracking-tight">{proposal.nome_cliente}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.banco}/{proposal.convenio}</td>
