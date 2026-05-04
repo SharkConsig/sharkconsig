@@ -208,6 +208,7 @@ function NewProposalForm() {
     tel_1: searchParams.get("tel1") || "",
     tel_2: searchParams.get("tel2") || "",
     tel_3: searchParams.get("tel3") || "",
+    equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
     cep: "",
     endereco: "",
     numero: "",
@@ -498,7 +499,7 @@ function NewProposalForm() {
         tipo_operacao: selection.operacao,
         corretor_id: perfil?.id,
         corretor: perfil?.nome,
-        equipe: perfil?.supervisor_nome,
+        equipe: formData.equipe,
         status: currentStatus,
         naturalidade: formData.naturalidade,
         uf_naturalidade: formData.uf_naturalidade,
@@ -586,6 +587,13 @@ function NewProposalForm() {
     }
     fetchClientDetails()
   }, [formData.cpf])
+
+  useEffect(() => {
+    if (perfil && !formData.equipe) {
+      const equipeValue = (perfil.role === 'Supervisor' ? perfil.nome : perfil.supervisor_nome) || "";
+      setFormData(prev => ({ ...prev, equipe: equipeValue }));
+    }
+  }, [perfil, formData.equipe])
 
   // Helper to convert DD/MM/YYYY to YYYY-MM-DD for native input
   const toInputDate = (val: string) => {
@@ -880,6 +888,16 @@ function NewProposalForm() {
               <Input 
                 value={formData.matricula}
                 onChange={(e) => handleFormChange("matricula", e.target.value)}
+                className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">
+                EQUIPE COMERCIAL <span className="text-red-500">*</span>
+              </label>
+              <Input 
+                value={formData.equipe}
+                onChange={(e) => handleFormChange("equipe", e.target.value)}
                 className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
               />
             </div>
@@ -1350,6 +1368,15 @@ function NewProposalForm() {
                 <Input 
                   value={formData.valor_parcela}
                   onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  placeholder="R$ 0,00" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Operação</label>
+                <Input 
+                  value={formData.valor_operacao_operacional}
+                  onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                   placeholder="R$ 0,00" 
                 />

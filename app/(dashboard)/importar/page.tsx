@@ -268,7 +268,7 @@ export default function ImportBatchPage() {
     const registrationsToUpsertMap = new Map<string, Record<string, unknown>>();
     
     for (const row of results) {
-      const cpf = normalizeCPF(row.cpf);
+      const cpf = normalizeCPF(row.cpf || "");
       if (!cpf) continue;
 
       const existingClient = existingClients.get(cpf);
@@ -277,29 +277,29 @@ export default function ImportBatchPage() {
 
       // Rule 1.5 & 1.7: Update personal data (Don't overwrite with null unless exception)
       const currentClientInMap = clientsToUpsertMap.get(cpf);
-      const clientUpdate: any = { 
+      const clientUpdate: Record<string, unknown> = { 
         cpf,
-        nome: currentClientInMap?.nome ?? existingClient?.nome ?? 'NAO INFORMADO',
-        data_nascimento: currentClientInMap?.data_nascimento ?? existingClient?.data_nascimento ?? null,
-        telefone_1: currentClientInMap?.telefone_1 ?? existingClient?.telefone_1 ?? null,
-        telefone_2: currentClientInMap?.telefone_2 ?? existingClient?.telefone_2 ?? null,
-        telefone_3: currentClientInMap?.telefone_3 ?? existingClient?.telefone_3 ?? null,
+        nome: (currentClientInMap?.nome as string) ?? (existingClient?.nome as string) ?? 'NAO INFORMADO',
+        data_nascimento: (currentClientInMap?.data_nascimento as string) ?? (existingClient?.data_nascimento as string) ?? null,
+        telefone_1: (currentClientInMap?.telefone_1 as string) ?? (existingClient?.telefone_1 as string) ?? null,
+        telefone_2: (currentClientInMap?.telefone_2 as string) ?? (existingClient?.telefone_2 as string) ?? null,
+        telefone_3: (currentClientInMap?.telefone_3 as string) ?? (existingClient?.telefone_3 as string) ?? null,
         updated_at: new Date().toISOString()
       };
       
-      const newName = normalizeText(row.nome);
+      const newName = normalizeText(row.nome || "");
       if (newName) clientUpdate.nome = newName;
 
-      const birthDate = normalizeDate(row.data_de_nascimento);
+      const birthDate = normalizeDate(row.data_de_nascimento || "");
       if (birthDate) clientUpdate.data_nascimento = birthDate;
 
-      const p1 = normalizePhone(row.telefone_1);
+      const p1 = normalizePhone(row.telefone_1 || "");
       if (p1) clientUpdate.telefone_1 = p1;
 
-      const p2 = normalizePhone(row.telefone_2);
+      const p2 = normalizePhone(row.telefone_2 || "");
       if (p2) clientUpdate.telefone_2 = p2;
 
-      const p3 = normalizePhone(row.telefone_3);
+      const p3 = normalizePhone(row.telefone_3 || "");
       if (p3) clientUpdate.telefone_3 = p3;
       
       clientsToUpsertMap.set(cpf, clientUpdate);
@@ -307,30 +307,30 @@ export default function ImportBatchPage() {
       // Rule: Update registration data ONLY if 'matricula' is present in the row
       if (row.matricula) {
         const currentRegInMap = registrationsToUpsertMap.get(`${cpf}_${regNum}`);
-        const regUpdate: any = {
+        const regUpdate: Record<string, unknown> = {
           cliente_cpf: cpf,
           numero_matricula: regNum,
-          orgao: currentRegInMap?.orgao ?? existingReg?.orgao ?? null,
-          situacao_funcional: currentRegInMap?.situacao_funcional ?? existingReg?.situacao_funcional ?? null,
-          salario: currentRegInMap?.salario ?? existingReg?.salario ?? null,
-          regime_juridico: currentRegInMap?.regime_juridico ?? existingReg?.regime_juridico ?? null,
-          uf: currentRegInMap?.uf ?? existingReg?.uf ?? null,
+          orgao: (currentRegInMap?.orgao as string) ?? (existingReg?.orgao as string) ?? null,
+          situacao_funcional: (currentRegInMap?.situacao_funcional as string) ?? (existingReg?.situacao_funcional as string) ?? null,
+          salario: (currentRegInMap?.salario as number) ?? (existingReg?.salario as number) ?? null,
+          regime_juridico: (currentRegInMap?.regime_juridico as string) ?? (existingReg?.regime_juridico as string) ?? null,
+          uf: (currentRegInMap?.uf as string) ?? (existingReg?.uf as string) ?? null,
           updated_at: new Date().toISOString()
         };
 
-        const orgao = normalizeText(row.orgao);
+        const orgao = normalizeText(row.orgao || "");
         if (orgao) regUpdate.orgao = orgao;
 
-        const sitFunc = normalizeText(row.situacao_funcional);
+        const sitFunc = normalizeText(row.situacao_funcional || "");
         if (sitFunc) regUpdate.situacao_funcional = sitFunc;
 
         const salary = normalizeMoney(row.salario);
         if (salary !== null) regUpdate.salario = salary;
 
-        const regime = normalizeText(row.regime_juridico);
+        const regime = normalizeText(row.regime_juridico || "");
         if (regime) regUpdate.regime_juridico = regime;
 
-        const uf = normalizeText(row.uf);
+        const uf = normalizeText(row.uf || "");
         if (uf) regUpdate.uf = uf;
 
         registrationsToUpsertMap.set(`${cpf}_${regNum}`, regUpdate);
@@ -358,11 +358,11 @@ export default function ImportBatchPage() {
       if (regError) throw new Error(`Erro ao salvar matrículas: ${regError.message}`);
 
       // Rule 1.2: Handle Instituidores and Margins
-      const instituidoresToUpsertMap = new Map<string, any>();
+      const instituidoresToUpsertMap = new Map<string, Record<string, unknown>>();
       
-      for (const reg of regData) {
+      for (const reg of regData || []) {
         const matchingRows = results.filter(r => 
-          normalizeCPF(r.cpf) === reg.cliente_cpf && 
+          normalizeCPF(r.cpf || "") === reg.cliente_cpf && 
           (r.matricula || '0') === reg.numero_matricula
         );
 
@@ -373,11 +373,11 @@ export default function ImportBatchPage() {
           const isPension = reg.situacao_funcional === 'BENEFICIARIO PENSAO';
           
           // Rule: If pension, use instituidor. If not, use orgao (New Rule).
-          const instName = isPension ? normalizeText(row.instituidor) : normalizeText(row.orgao);
+          const instName = isPension ? normalizeText(row.instituidor || "") : normalizeText(row.orgao || "");
           
           if (!instName) continue;
           
-          const instUpdate: any = {
+          const instUpdate: Record<string, unknown> = {
             matricula_id: reg.id,
             nome: instName,
             updated_at: new Date().toISOString()
@@ -459,7 +459,7 @@ export default function ImportBatchPage() {
         }
       } else {
         // Update existing client fields ONLY if they are empty or 'NAO INFORMADO'
-        const clientUpdate: any = { 
+        const clientUpdate: Record<string, unknown> = { 
           cpf,
           updated_at: new Date().toISOString() 
         };
@@ -497,7 +497,7 @@ export default function ImportBatchPage() {
 
         if (hasUpdate) {
           clientsToUpsertMap.set(cpf, {
-            ...(currentClientInMap || existingClient),
+            ...(currentClientInMap || (existingClient as Record<string, unknown>)),
             ...clientUpdate
           });
         }
@@ -505,7 +505,7 @@ export default function ImportBatchPage() {
 
       // Rule: Only create registration if it exists in the row and doesn't exist in DB.
       // Rule 1.9: UF from CONTRATOS updates matricula UF if present
-      const newUf = normalizeText(row.uf);
+      const newUf = normalizeText(row.uf || "");
 
       if (row.matricula) {
         const regKey = `${cpf}_${regNum}`;
@@ -520,7 +520,7 @@ export default function ImportBatchPage() {
           });
         } else if (newUf) {
           // If it exists, update UF only if newUf is present (Rule 1.9)
-          const baseReg = currentRegInMap || existingReg;
+          const baseReg = currentRegInMap || (existingReg as Record<string, unknown>);
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { id: _id, ...regWithoutId } = baseReg;
           registrationsToUpsertMap.set(regKey, {
@@ -543,7 +543,7 @@ export default function ImportBatchPage() {
       if (clientError) console.error("[CONTRATOS] Erro clientes:", clientError);
     }
 
-    let regData: any[] = [];
+    let regData: { id: string, cliente_cpf: string, numero_matricula: string }[] = [];
     if (registrationsToUpsert.length > 0) {
       console.log(`[CONTRATOS] Upserting ${registrationsToUpsert.length} registrations...`);
       const { data, error: regError } = await withRetry(async () => {
@@ -557,14 +557,14 @@ export default function ImportBatchPage() {
         console.error("[CONTRATOS] Erro registrations:", regError);
         throw new Error(`Erro ao salvar matrículas (Contratos): ${regError.message}`);
       }
-      regData = data || [];
+      regData = (data as { id: string, cliente_cpf: string, numero_matricula: string }[]) || [];
     }
 
     // Create a complete map of registration IDs (existing + newly upserted)
-    const regMap = new Map();
+    const regMap = new Map<string, string>();
     // First, populate with existing ones
     existingRegs?.forEach(r => {
-      regMap.set(`${r.cliente_cpf}_${r.numero_matricula}`, r.id);
+      regMap.set(`${r.cliente_cpf}_${r.numero_matricula}`, r.id as string);
     });
     // Then, overwrite/add with newly upserted ones (to get IDs of new ones or updated ones)
     regData.forEach(r => {
@@ -579,24 +579,24 @@ export default function ImportBatchPage() {
     // Rule 1.7: Contracts fields CAN be overwritten by null/empty
     // Fetch existing instituidores to preserve margins
     const regIds = Array.from(regMap.values());
-    const existingInstituidoresRaw = await fetchInBatches<any>('instituidores', 'matricula_id', regIds);
+    const existingInstituidoresRaw = await fetchInBatches<Record<string, unknown>>('instituidores', 'matricula_id', regIds);
     // Use normalizeText for the key to ensure consistency with NULL/empty strings
-    const existingInstituidores = new Map(existingInstituidoresRaw.map(i => [`${i.matricula_id}_${normalizeText(i.nome)}`, i]));
+    const existingInstituidores = new Map(existingInstituidoresRaw.map(i => [`${i.matricula_id}_${normalizeText(i.nome as string)}`, i]));
 
-    const instituidoresToUpsertMap = new Map();
+    const instituidoresToUpsertMap = new Map<string, Record<string, unknown>>();
     for (const row of results) {
-      const cpf = normalizeCPF(row.cpf);
+      const cpf = normalizeCPF(row.cpf || "");
       if (!cpf) continue;
       const regNum = row.matricula || '0';
       const regId = regMap.get(`${cpf}_${regNum}`);
       const existingReg = existingRegs.get(`${cpf}_${regNum}`);
       
       if (regId && row.matricula) {
-        const sitFunc = existingReg?.situacao_funcional;
+        const sitFunc = existingReg?.situacao_funcional as string | undefined;
         const isPension = sitFunc === 'BENEFICIARIO PENSAO';
         
         // Rule: Determine instituidor name based on situacao_funcional (Non-pension = orgao)
-        const instName = isPension ? normalizeText(row.instituidor) : normalizeText(row.orgao);
+        const instName = isPension ? normalizeText(row.instituidor || "") : normalizeText(row.orgao || "");
         
         if (!instName) continue;
 
@@ -614,7 +614,7 @@ export default function ImportBatchPage() {
       }
     }
 
-    let instData: any[] = [];
+    let instData: { id: string, matricula_id: string, nome: string }[] = [];
     const instituidoresToUpsert = Array.from(instituidoresToUpsertMap.values());
     if (instituidoresToUpsert.length > 0) {
       console.log(`[CONTRATOS] Upserting ${instituidoresToUpsert.length} NEW instituidores...`);
@@ -629,34 +629,34 @@ export default function ImportBatchPage() {
         console.error("[CONTRATOS] Erro instituidores:", instError);
         throw new Error(`Erro ao salvar instituidores (Contratos): ${instError.message}`);
       }
-      instData = data || [];
+      instData = (data as { id: string, matricula_id: string, nome: string }[]) || [];
       console.log(`[CONTRATOS] ${instData.length} novos instituidores criados.`);
     }
 
     // Create a map for instituidores to link them to contracts
-    const instMap = new Map();
+    const instMap = new Map<string, string>();
     // First, populate with ALL existing ones
     existingInstituidores.forEach(i => {
-      instMap.set(`${i.matricula_id}_${normalizeText(i.nome)}`, i.id);
+      instMap.set(`${i.matricula_id}_${normalizeText(i.nome as string)}`, i.id as string);
     });
     // Then, add newly created ones
     instData.forEach(i => {
       instMap.set(`${i.matricula_id}_${normalizeText(i.nome)}`, i.id);
     });
 
-    const contractsToUpsertMap = new Map();
+    const contractsToUpsertMap = new Map<string, Record<string, unknown>>();
     for (const row of results) {
-      const cpf = normalizeCPF(row.cpf);
+      const cpf = normalizeCPF(row.cpf || "");
       if (!cpf) continue;
       const regNum = row.matricula || '0';
       const regId = regMap.get(`${cpf}_${regNum}`);
       const existingReg = existingRegs.get(`${cpf}_${regNum}`);
       
       if (regId && row.matricula) {
-        const sitFunc = existingReg?.situacao_funcional;
+        const sitFunc = existingReg?.situacao_funcional as string | undefined;
         const isPension = sitFunc === 'BENEFICIARIO PENSAO';
         
-        const instName = isPension ? normalizeText(row.instituidor) : normalizeText(row.orgao);
+        const instName = isPension ? normalizeText(row.instituidor || "") : normalizeText(row.orgao || "");
         
         if (!instName) continue;
 
@@ -667,12 +667,12 @@ export default function ImportBatchPage() {
           contractsToUpsertMap.set(`${instId}_${contractNum}`, {
             instituidor_id: instId,
             numero_contrato: contractNum,
-            banco: normalizeText(row.banco) || null,
-            orgao: normalizeText(row.orgao) || null,
-            tipo: normalizeText(row.tipo) || 'EMPRESTIMO',
-            uf: normalizeText(row.uf) || null,
+            banco: normalizeText(row.banco || "") || null,
+            orgao: normalizeText(row.orgao || "") || null,
+            tipo: normalizeText(row.tipo || "") || 'EMPRESTIMO',
+            uf: normalizeText(row.uf || "") || null,
             parcela: normalizeMoney(row.parcela),
-            prazo: parseInt(row.prazo) || null,
+            prazo: row.prazo ? parseInt(row.prazo) : null,
             updated_at: new Date().toISOString()
           });
         } else {
@@ -799,7 +799,7 @@ export default function ImportBatchPage() {
       });
     });
 
-    const identRows = Array.from(identMap.values()) as any[];
+    const identRows = Array.from(identMap.values());
     const { data: identsData, error: identErr } = await withRetry(async () => {
       return await supabase.from('governo_sp_identificacoes')
         .upsert(identRows, { onConflict: 'cliente_id, identificacao' })
@@ -808,7 +808,7 @@ export default function ImportBatchPage() {
 
     if (identErr || !identsData) throw new Error(`Erro ao salvar identificações Governo SP: ${identErr?.message}`);
 
-    const keyToIdentId = new Map<string, string>(identsData.map((id: any) => [`${id.cliente_id}_${id.identificacao}`, id.id]));
+    const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, identificacao: string}) => [`${id.cliente_id}_${id.identificacao}`, id.id]));
 
     // --- PASSO 3: Inserir Lotações (N:1 com Identificação) ---
     const lotacaoRows = normalizedRows.map(row => {
@@ -840,41 +840,41 @@ export default function ImportBatchPage() {
     }
   };
 
-  const processPrefeituraSpChunk = async (results: any[], loteId: string) => {
+  const processPrefeituraSpChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
     // 1. Normalização e Agrupamento inicial
     const normalizedRows = results.map(row => ({
-      cpf: normalizeCPF(row.cpf),
-      nome: normalizeText(row.nome),
-      data_nascimento: normalizeDate(row.data_nascimento),
-      identificacao_val: normalizeText(row.identificação || row.identificacao),
-      data_nomeacao: normalizeDate(row.data_nomeacao),
-      lotacao: normalizeText(row.lotacao),
-      orgao: normalizeText(row.orgao),
-      tipo_vinculo: normalizeText(row.tipo_vinculo),
+      cpf: normalizeCPF(row.cpf || ""),
+      nome: normalizeText(row.nome || ""),
+      data_nascimento: normalizeDate(row.data_nascimento || ""),
+      identificacao_val: normalizeText(row.identificação || row.identificacao || ""),
+      data_nomeacao: normalizeDate(row.data_nomeacao || ""),
+      lotacao: normalizeText(row.lotacao || ""),
+      orgao: normalizeText(row.orgao || ""),
+      tipo_vinculo: normalizeText(row.tipo_vinculo || ""),
       mb_consignacoes: normalizeMoney(row.mb_consignacoes),
       md_consignacoes: normalizeMoney(row.md_consignacoes),
       mb_cartao_beneficio: normalizeMoney(row.mb_cartao_beneficio),
       md_cartao_beneficio: normalizeMoney(row.md_cartao_beneficio),
-      telefone_1: normalizePhone(row.telefone_1),
-      telefone_2: normalizePhone(row.telefone_2),
-      telefone_3: normalizePhone(row.telefone_3)
+      telefone_1: normalizePhone(row.telefone_1 || ""),
+      telefone_2: normalizePhone(row.telefone_2 || ""),
+      telefone_3: normalizePhone(row.telefone_3 || "")
     })).filter(r => r.cpf && r.cpf.length > 0);
 
     if (normalizedRows.length === 0) return;
 
     // --- PASSO 1: Garantir Entidade Cliente (CPF Único) com Regra de Preservação ---
     const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
-    const existingClientsRaw = await fetchInBatches<any>('prefeitura_sp_clientes', 'cpf', cpfs);
-    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf, c]));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_sp_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
 
-    const shouldPreserve = (val: any) => {
+    const shouldPreserve = (val: string | number | null | undefined) => {
       const v = String(val).trim();
       return v === "" || v === "0" || val === null || val === undefined;
     };
 
-    const clientMap = new Map();
+    const clientMap = new Map<string, Record<string, unknown>>();
     normalizedRows.forEach(row => {
-      const dbClient = existingClientsMap.get(row.cpf);
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
       const existingInMap = clientMap.get(row.cpf);
 
       // Regra Anti-Null/Zero para Prefeitura SP
@@ -904,20 +904,20 @@ export default function ImportBatchPage() {
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Prefeitura SP: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: any) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
 
     // --- PASSO 2: Processar Identificações (N:1 com Cliente) com Regra de Preservação ---
     const clientIds = Array.from(cpfToClientId.values());
-    const existingIdentsRaw = await fetchInBatches<any>('prefeitura_sp_identificacoes', 'cliente_id', clientIds);
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_sp_identificacoes', 'cliente_id', clientIds);
     const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.identificacao}`, i]));
 
-    const identMap = new Map();
+    const identMap = new Map<string, Record<string, unknown>>();
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       if (!clientId || !row.identificacao_val) return;
 
       const key = `${clientId}_${row.identificacao_val}`;
-      const dbIdent = existingIdentsMap.get(key);
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
       const currentInMap = identMap.get(key);
 
       // Regra Anti-Null/Zero para Identificação
@@ -942,12 +942,12 @@ export default function ImportBatchPage() {
 
     if (identErr || !identsData) throw new Error(`Erro ao salvar identificações Prefeitura SP: ${identErr?.message}`);
 
-    const keyToIdentId = new Map<string, string>(identsData.map((id: any) => [`${id.cliente_id}_${id.identificacao}`, id.id]));
+    const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, identificacao: string}) => [`${id.cliente_id}_${id.identificacao}`, id.id]));
 
     // --- PASSO 3: Inserir Lotações (N:1 com Identificação) ---
     const lotacaoRows = normalizedRows.map(row => {
       const clientId = cpfToClientId.get(row.cpf);
-      const identId = keyToIdentId.get(`${clientId}-${row.identificacao_val}`);
+      const identId = keyToIdentId.get(`${clientId}_${row.identificacao_val}`);
       
       if (!identId) return null;
 
@@ -1154,9 +1154,10 @@ export default function ImportBatchPage() {
             // Pequeno delay para permitir que o navegador respire e evitar "Failed to fetch"
             await new Promise(resolve => setTimeout(resolve, 300));
 
-          } catch (error: any) {
-            console.error("[IMPORT] Erro fatal no chunk após retentativas:", error);
-            setCleaningLog(prev => [...prev, `ERRO FATAL: ${error.message}`]);
+          } catch (error: unknown) {
+            const err = error as Error;
+            console.error("[IMPORT] Erro fatal no chunk após retentativas:", err);
+            setCleaningLog(prev => [...prev, `ERRO FATAL: ${err.message}`]);
             // Opcionalmente, poderíamos pausar a importação aqui
           }
           
@@ -1185,7 +1186,7 @@ export default function ImportBatchPage() {
           setCleaningLog([]);
           fetchTotalBase();
         },
-        error: async (error: any) => {
+        error: async (error: Error) => {
           console.warn("Erro de parsing CSV:", error?.message || error);
           
           await withRetry(async () => {
@@ -1201,9 +1202,10 @@ export default function ImportBatchPage() {
           setIsImporting(false);
         }
       });
-    } catch (err: any) {
-      console.error("Erro inesperado na importação:", err);
-      alert(`Erro inesperado: ${err.message}`);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("Erro inesperado na importação:", error);
+      alert(`Erro inesperado: ${error.message}`);
       setIsImporting(false);
     }
   };

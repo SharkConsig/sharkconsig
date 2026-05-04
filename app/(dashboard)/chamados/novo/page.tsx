@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, Suspense, useEffect } from "react"
+import { useState, useRef, Suspense, useEffect, useCallback } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -45,7 +45,7 @@ function NewTicketForm() {
 
   const [formData, setFormData] = useState({
     origem: searchParams.get("origem") || "",
-    equipe: perfil?.supervisor_nome || "",
+    equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
     nome: searchParams.get("nome") || "",
     cpf: searchParams.get("cpf") || "",
     tel1: searchParams.get("tel1") || "",
@@ -106,9 +106,15 @@ function NewTicketForm() {
     fetchConvenios()
   }, [])
 
-  // Auto-fill supervisor info for Corretores
+  // Auto-fill supervisor info for Corretores or for Supervisors themselves
   useEffect(() => {
     const fillSupervisor = async () => {
+      // Se o usuário logado é um SUPERVISOR, ele é a própria equipe comercial
+      if (perfil?.role === 'Supervisor' && !formData.equipe) {
+        setFormData(prev => ({ ...prev, equipe: perfil.nome || "" }));
+        return;
+      }
+
       // Se já temos o nome no perfil e o campo está vazio, preenchemos
       if (perfil?.supervisor_nome && !formData.equipe) {
         setFormData(prev => ({ ...prev, equipe: perfil.supervisor_nome }));
@@ -133,8 +139,6 @@ function NewTicketForm() {
 
     fillSupervisor();
   }, [perfil, formData.equipe])
-  
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   
   const fileRefs = {
     frente: useRef<HTMLInputElement>(null),
@@ -169,35 +173,6 @@ function NewTicketForm() {
     setFormData(prev => ({ ...prev, [field]: value }))
     if (validationError) setValidationError(null)
   }
-
-  // Monitor convenio changes to sync description labels
-  useEffect(() => {
-    if (formData.margem || formData.liquida5 || formData.beneficio5) {
-      updateDescription({
-        margem: formData.margem,
-        liquida5: formData.liquida5,
-        beneficio5: formData.beneficio5
-      });
-    }
-  }, [formData.convenio, formData.margem, formData.liquida5, formData.beneficio5, updateDescription]);
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const items = e.clipboardData.items;
-    const files: File[] = [];
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf("image") !== -1) {
-        const blob = items[i].getAsFile();
-        if (blob) {
-          const file = new File([blob], `screenshot_${Date.now()}.png`, { type: blob.type });
-          files.push(file);
-        }
-      }
-    }
-    if (files.length > 0) {
-      setPastedImages(prev => [...prev, ...files]);
-      toast.success(`${files.length} imagem(ns) colada(s) do clipboard`);
-    }
-  };
 
   const updateDescription = useCallback((margins: { margem: string, liquida5: string, beneficio5: string }) => {
     const isGovSP = formData.convenio?.toUpperCase() === "GOVERNO SP";
@@ -241,6 +216,35 @@ function NewTicketForm() {
       return lines.join("\n");
     });
   }, [formData.convenio]);
+
+  // Monitor convenio changes to sync description labels
+  useEffect(() => {
+    if (formData.margem || formData.liquida5 || formData.beneficio5) {
+      updateDescription({
+        margem: formData.margem,
+        liquida5: formData.liquida5,
+        beneficio5: formData.beneficio5
+      });
+    }
+  }, [formData.convenio, formData.margem, formData.liquida5, formData.beneficio5, updateDescription]);
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const file = new File([blob], `screenshot_${Date.now()}.png`, { type: blob.type });
+          files.push(file);
+        }
+      }
+    }
+    if (files.length > 0) {
+      setPastedImages(prev => [...prev, ...files]);
+      toast.success(`${files.length} imagem(ns) colada(s) do clipboard`);
+    }
+  };
 
   const handleMarginInputChange = (field: string, value: string) => {
     // Verificamos se o valor contém o sinal de menos para aceitar números negativos

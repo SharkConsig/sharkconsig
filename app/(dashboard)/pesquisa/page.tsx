@@ -19,6 +19,7 @@ interface LoanData {
   contrato: string;
   parcela: number;
   prazo: number;
+  tipo: string;
 }
 
 function LoanRow({ loan }: { loan: LoanData }) {
@@ -59,6 +60,37 @@ function LoanRow({ loan }: { loan: LoanData }) {
 
 import { useAuth } from "@/context/auth-context"
 
+interface Contract {
+  id?: string;
+  tipo: string;
+  banco: string;
+  orgao: string | null;
+  numero_contrato: string;
+  parcela: number;
+  prazo: number;
+  [key: string]: unknown;
+}
+
+interface Instituidor {
+  id: string;
+  nome: string | null;
+  itens_credito?: Contract[];
+  [key: string]: unknown;
+}
+
+interface Registration {
+  id: string;
+  numero_matricula: string;
+  situacao_funcional: string | null;
+  salario: number | null;
+  orgao: string | null;
+  regime_juridico: string | null;
+  uf: string | null;
+  instituidores?: Instituidor[];
+  itens_credito?: Contract[];
+  [key: string]: unknown;
+}
+
 interface ClientData {
   id: string;
   nome: string | null;
@@ -67,7 +99,7 @@ interface ClientData {
   telefone_1: string | null;
   telefone_2: string | null;
   telefone_3: string | null;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export default function SearchClientPage() {
@@ -80,7 +112,7 @@ export default function SearchClientPage() {
   
   const [client, setClient] = useState<ClientData | null>(null)
   const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | null>(null)
-  const [registrations, setRegistrations] = useState<any[]>([])
+  const [registrations, setRegistrations] = useState<Registration[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
@@ -113,14 +145,14 @@ export default function SearchClientPage() {
         siapeQuery = siapeQuery.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
       }
 
-      const { data: siapeData } = await withRetry<any>(async () => await siapeQuery.maybeSingle())
+      const { data: siapeData } = await withRetry<ClientData | null>(async () => await siapeQuery.maybeSingle())
 
       if (siapeData) {
         setClient(siapeData)
         setClientType('siape')
 
         // 2. Search SIAPE Registrations
-        const { data: regData, error: regError } = await withRetry<any>(async () => 
+        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase
             .from('matriculas')
             .select(`
@@ -148,14 +180,14 @@ export default function SearchClientPage() {
         govSpQuery = govSpQuery.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
       }
 
-      const { data: govSpData } = await withRetry<any>(async () => await govSpQuery.maybeSingle())
+      const { data: govSpData } = await withRetry<ClientData | null>(async () => await govSpQuery.maybeSingle())
 
       if (govSpData) {
         setClient(govSpData)
         setClientType('governo_sp')
 
         // Search Governo SP Identificações and Lotações
-        const { data: idData, error: idError } = await withRetry<any>(async () =>
+        const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('governo_sp_identificacoes')
             .select(`
@@ -180,14 +212,14 @@ export default function SearchClientPage() {
         pmspQuery = pmspQuery.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
       }
 
-      const { data: pmspData } = await withRetry<any>(async () => await pmspQuery.maybeSingle())
+      const { data: pmspData } = await withRetry<ClientData | null>(async () => await pmspQuery.maybeSingle())
 
       if (pmspData) {
         setClient(pmspData)
         setClientType('prefeitura_sp')
 
         // Search Prefeitura SP Identificações and Lotações
-        const { data: idData, error: idError } = await withRetry<any>(async () =>
+        const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('prefeitura_sp_identificacoes')
             .select(`
@@ -204,7 +236,7 @@ export default function SearchClientPage() {
       }
 
       setError("Cliente não encontrado.")
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Erro na busca:", err)
       setError("Ocorreu um erro ao buscar os dados.")
     } finally {
@@ -425,7 +457,7 @@ export default function SearchClientPage() {
                     currentInstituidorId: null 
                   }];
                 }
-                return reg.instituidores.map((inst: any) => ({
+                return reg.instituidores.map((inst) => ({
                   ...reg,
                   ...inst,
                   id: reg.id, // Keep registration ID as the main ID for the tab
@@ -661,10 +693,10 @@ export default function SearchClientPage() {
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {filteredContracts.filter((c: any) => getContractTypeInfo(c.tipo).category === "EMPRESTIMO").length > 0 ? (
-                                      filteredContracts
-                                        .filter((c: any) => getContractTypeInfo(c.tipo).category === "EMPRESTIMO")
-                                        .map((loan: any, lIdx: number) => (
+                                    {(filteredContracts as Contract[]).filter((c) => getContractTypeInfo(c.tipo).category === "EMPRESTIMO").length > 0 ? (
+                                      (filteredContracts as Contract[])
+                                        .filter((c) => getContractTypeInfo(c.tipo).category === "EMPRESTIMO")
+                                        .map((loan, lIdx) => (
                                           <LoanRow key={lIdx} loan={{
                                             banco: loan.banco,
                                             orgao: loan.orgao,
@@ -691,10 +723,10 @@ export default function SearchClientPage() {
                         {/* Cartões Section */}
                         {(() => {
                           const currentReg = allRegs[activeRegIndex];
-                          const filteredContracts = currentReg.itens_credito || [];
+                          const filteredContracts = (currentReg.itens_credito || []) as Contract[];
 
-                          const consignadoCards = filteredContracts.filter((c: any) => getContractTypeInfo(c.tipo).category === "CARTAO_CONSIGNADO");
-                          const beneficioCards = filteredContracts.filter((c: any) => getContractTypeInfo(c.tipo).category === "CARTAO_BENEFICIO");
+                          const consignadoCards = filteredContracts.filter((c) => getContractTypeInfo(c.tipo).category === "CARTAO_CONSIGNADO");
+                          const beneficioCards = filteredContracts.filter((c) => getContractTypeInfo(c.tipo).category === "CARTAO_BENEFICIO");
 
                           return (
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
@@ -705,7 +737,7 @@ export default function SearchClientPage() {
                                 </div>
                                 <div className="grid grid-cols-1 gap-3">
                                   {consignadoCards.length > 0 ? (
-                                    consignadoCards.map((card: any, cIdx: number) => {
+                                    consignadoCards.map((card, cIdx) => {
                                       const info = getContractTypeInfo(card.tipo);
                                       return (
                                         <div key={cIdx} className="p-5 bg-blue-50/30 border border-blue-100 rounded-2xl flex items-center justify-between group hover:border-emerald-200 transition-colors">
@@ -741,7 +773,7 @@ export default function SearchClientPage() {
                                 </div>
                                 <div className="grid grid-cols-1 gap-3">
                                   {beneficioCards.length > 0 ? (
-                                    beneficioCards.map((card: any, bIdx: number) => {
+                                    beneficioCards.map((card, bIdx) => {
                                       const info = getContractTypeInfo(card.tipo);
                                       return (
                                         <div key={bIdx} className="p-5 bg-blue-50/30 border border-blue-100 rounded-2xl flex items-center justify-between group hover:border-purple-200 transition-colors">

@@ -1861,12 +1861,12 @@ export default function SettingsPage() {
                     toast.error("Selecione um convênio")
                     return
                   }
-                  // Check if already exists
-                  const exists = produtosConfig.find(p => p.banco_id === selectedBancoForProd?.id && p.convenio_id === selectedConvenioForProd.id)
-                  if (exists) {
-                    toast.error("Este convênio já está vinculado a este banco")
-                    return
-                  }
+                  // Check if already exists - Removido a pedido do usuário para permitir múltiplas tabelas
+                  // const exists = produtosConfig.find(p => p.banco_id === selectedBancoForProd?.id && p.convenio_id === selectedConvenioForProd.id)
+                  // if (exists) {
+                  //   toast.error("Este convênio já está vinculado a este banco")
+                  //   return
+                  // }
                   setSelectedProductConfig(null)
                   setTempNomeTabela("")
                   setTempOperacoes([])
