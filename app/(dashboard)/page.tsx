@@ -69,7 +69,7 @@ export default function DashboardPage() {
     return count || 22
   }
 
-  // Calculate remaining business days excluding today
+  // Calculate remaining business days including today
   const getRemainingBusinessDays = () => {
     const now = new Date()
     const year = now.getFullYear()
@@ -78,7 +78,7 @@ export default function DashboardPage() {
     const lastDay = new Date(year, month + 1, 0).getDate()
     
     let count = 0
-    for (let d = today + 1; d <= lastDay; d++) {
+    for (let d = today; d <= lastDay; d++) {
       const day = new Date(year, month, d).getDay()
       if (day !== 0 && day !== 6) count++
     }
