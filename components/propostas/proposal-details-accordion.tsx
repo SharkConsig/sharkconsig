@@ -59,6 +59,7 @@ interface Proposal {
   tel_residencial_1?: string
   tel_residencial_2?: string
   tel_comercial?: string
+  email?: string
   cep?: string
   endereco?: string
   numero?: string
@@ -199,6 +200,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     tel_1: proposal.tel_residencial_1 || "",
     tel_2: proposal.tel_residencial_2 || "",
     tel_3: proposal.tel_comercial || "",
+    email: proposal.email || "",
     cep: proposal.cep || "",
     endereco: proposal.endereco || "",
     numero: proposal.numero || "",
@@ -523,6 +525,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           tel_residencial_1: formData.tel_1,
           tel_residencial_2: formData.tel_2,
           tel_comercial: formData.tel_3,
+          email: formData.email,
           cep: formData.cep,
           endereco: formData.endereco,
           numero: formData.numero,
@@ -842,6 +845,16 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   <Input 
                     value={formData.tel_3}
                     onChange={(e) => handleFormChange("tel_3", e.target.value)}
+                    disabled={!canEditFields}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">E-MAIL</label>
+                  <Input 
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleFormChange("email", e.target.value)}
                     disabled={!canEditFields}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />

@@ -82,6 +82,35 @@ interface Proposal {
   valor_operacao?: number
   valor_cliente?: number
   valor_parcela?: number
+  email?: string
+  tel_residencial_1?: string
+  tel_residencial_2?: string
+  tel_comercial?: string
+  matricula?: string
+  data_nascimento?: string
+  naturalidade?: string
+  uf_naturalidade?: string
+  identidade?: string
+  orgao_emissor?: string
+  uf_emissao?: string
+  data_emissao?: string
+  nome_pai?: string
+  nome_mae?: string
+  endereco?: string
+  numero?: string
+  complemento?: string
+  bairro?: string
+  cidade?: string
+  uf?: string
+  cep?: string
+  banco_cliente?: string
+  chave_pix?: string
+  conta?: string
+  agencia?: string
+  dv?: string
+  tipo_conta?: string
+  valor_operacao_operacional?: number
+  coeficiente_prazo?: string
   updated_at?: string
   created_at: string
 }

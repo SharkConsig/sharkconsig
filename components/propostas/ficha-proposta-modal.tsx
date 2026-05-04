@@ -130,7 +130,7 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
                   <Field label="CPF" value={proposal.cliente_cpf} id="cpf" onCopy={copyToClipboard} isCopied={copiedField === "cpf"} />
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
-                  <Field label="Email" value="-" id="email" onCopy={copyToClipboard} isCopied={copiedField === "email"} />
+                  <Field label="Email" value={proposal.email} id="email" onCopy={copyToClipboard} isCopied={copiedField === "email"} />
                   <Field label="Data Nascimento" value={proposal.data_nascimento ? format(new Date(proposal.data_nascimento), "dd/MM/yyyy") : "-"} id="data_nascimento" onCopy={copyToClipboard} isCopied={copiedField === "data_nascimento"} />
                 </div>
                 <div className="grid grid-cols-4 divide-x divide-slate-300">

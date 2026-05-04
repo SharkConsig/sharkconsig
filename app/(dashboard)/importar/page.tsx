@@ -284,6 +284,7 @@ export default function ImportBatchPage() {
         telefone_1: (currentClientInMap?.telefone_1 as string) ?? (existingClient?.telefone_1 as string) ?? null,
         telefone_2: (currentClientInMap?.telefone_2 as string) ?? (existingClient?.telefone_2 as string) ?? null,
         telefone_3: (currentClientInMap?.telefone_3 as string) ?? (existingClient?.telefone_3 as string) ?? null,
+        email: (currentClientInMap?.email as string) ?? (existingClient?.email as string) ?? null,
         updated_at: new Date().toISOString()
       };
       
@@ -301,6 +302,9 @@ export default function ImportBatchPage() {
 
       const p3 = normalizePhone(row.telefone_3 || "");
       if (p3) clientUpdate.telefone_3 = p3;
+
+      const newEmail = row.email?.trim().toLowerCase() || "";
+      if (newEmail) clientUpdate.email = newEmail;
       
       clientsToUpsertMap.set(cpf, clientUpdate);
 
@@ -441,6 +445,7 @@ export default function ImportBatchPage() {
       const newP1 = normalizePhone(row.telefone_1);
       const newP2 = normalizePhone(row.telefone_2);
       const newP3 = normalizePhone(row.telefone_3);
+      const newEmail = row.email?.trim().toLowerCase();
       
       const currentClientInMap = clientsToUpsertMap.get(cpf);
       
@@ -454,6 +459,7 @@ export default function ImportBatchPage() {
             telefone_1: newP1 || null,
             telefone_2: newP2 || null,
             telefone_3: newP3 || null,
+            email: newEmail || null,
             updated_at: new Date().toISOString()
           });
         }
@@ -492,6 +498,12 @@ export default function ImportBatchPage() {
         const currentP3 = currentClientInMap?.telefone_3 ?? existingClient.telefone_3;
         if (newP3 && !currentP3) {
           clientUpdate.telefone_3 = newP3;
+          hasUpdate = true;
+        }
+
+        const currentEmail = currentClientInMap?.email ?? existingClient.email;
+        if (newEmail && !currentEmail) {
+          clientUpdate.email = newEmail;
           hasUpdate = true;
         }
 

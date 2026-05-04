@@ -84,40 +84,6 @@ function NewProposalForm() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  // Auto-fill supervisor info
-  useEffect(() => {
-    const fillSupervisor = async () => {
-      // Se o usuário logado é um SUPERVISOR, ele é a própria equipe comercial
-      if (perfil?.role === 'Supervisor' && !formData.equipe) {
-        setFormData(prev => ({ ...prev, equipe: perfil.nome || "" }));
-        return;
-      }
-
-      // Se já temos o nome no perfil e o campo está vazio, preenchemos
-      if (perfil?.supervisor_nome && !formData.equipe) {
-        setFormData(prev => ({ ...prev, equipe: perfil.supervisor_nome }));
-        return;
-      }
-
-      // Se temos o ID mas não o nome no perfil, buscamos via API
-      if (perfil?.supervisor_id && !formData.equipe) {
-        try {
-          const res = await fetch(`/api/usuarios?id=${perfil.supervisor_id}`);
-          if (res.ok) {
-            const supervisorData = await res.json();
-            if (supervisorData.nome) {
-              setFormData(prev => ({ ...prev, equipe: supervisorData.nome }));
-            }
-          }
-        } catch (err) {
-          console.error("Erro ao buscar supervisor:", err);
-        }
-      }
-    };
-
-    fillSupervisor();
-  }, [perfil, formData.equipe])
-
   useEffect(() => {
     async function fetchData() {
       setIsLoading(true)
@@ -244,6 +210,7 @@ function NewProposalForm() {
     tel_1: searchParams.get("tel1") || "",
     tel_2: searchParams.get("tel2") || "",
     tel_3: searchParams.get("tel3") || "",
+    email: "",
     equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
     cep: "",
     endereco: "",
@@ -267,6 +234,40 @@ function NewProposalForm() {
     valor_producao_corretor: "",
     observacoes: ""
   })
+
+  // Auto-fill supervisor info
+  useEffect(() => {
+    const fillSupervisor = async () => {
+      // Se o usuário logado é um SUPERVISOR, ele é a própria equipe comercial
+      if (perfil?.role === 'Supervisor' && !formData.equipe) {
+        setFormData(prev => ({ ...prev, equipe: perfil.nome || "" }));
+        return;
+      }
+
+      // Se já temos o nome no perfil e o campo está vazio, preenchemos
+      if (perfil?.supervisor_nome && !formData.equipe) {
+        setFormData(prev => ({ ...prev, equipe: perfil.supervisor_nome }));
+        return;
+      }
+
+      // Se temos o ID mas não o nome no perfil, buscamos via API
+      if (perfil?.supervisor_id && !formData.equipe) {
+        try {
+          const res = await fetch(`/api/usuarios?id=${perfil.supervisor_id}`);
+          if (res.ok) {
+            const supervisorData = await res.json();
+            if (supervisorData.nome) {
+              setFormData(prev => ({ ...prev, equipe: supervisorData.nome }));
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao buscar supervisor:", err);
+        }
+      }
+    };
+
+    fillSupervisor();
+  }, [perfil, formData.equipe])
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSearchingCEP, setIsSearchingCEP] = useState(false)
@@ -557,6 +558,7 @@ function NewProposalForm() {
         tel_residencial_1: formData.tel_1,
         tel_residencial_2: formData.tel_2,
         tel_comercial: formData.tel_3,
+        email: formData.email,
         cep: formData.cep,
         endereco: formData.endereco,
         numero: formData.numero,
@@ -613,7 +615,7 @@ function NewProposalForm() {
       try {
         const { data, error } = await supabase
           .from('base_consulta_rapida')
-          .select('numero_matricula, data_nascimento, nome, telefone_1, telefone_2, telefone_3')
+          .select('numero_matricula, data_nascimento, nome, telefone_1, telefone_2, telefone_3, email')
           .eq('cpf', formData.cpf.replace(/\D/g, ""))
           .order('created_at', { ascending: false })
           .limit(1)
@@ -627,7 +629,8 @@ function NewProposalForm() {
             nome: prev.nome || data.nome || "",
             tel_1: prev.tel_1 || data.telefone_1 || "",
             tel_2: prev.tel_2 || data.telefone_2 || "",
-            tel_3: prev.tel_3 || data.telefone_3 || ""
+            tel_3: prev.tel_3 || data.telefone_3 || "",
+            email: prev.email || data.email || ""
           }))
         }
       } catch (error) {
@@ -958,6 +961,7 @@ function NewProposalForm() {
                 <option value="indicação">INDICAÇÃO</option>
                 <option value="cliente da casa">CLIENTE DA CASA</option>
                 <option value="3c - discador">3C - DISCADOR</option>
+                <option value="lista manual">LISTA MANUAL</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -1106,6 +1110,16 @@ function NewProposalForm() {
                 <Input 
                   value={formData.tel_3}
                   onChange={(e) => handleFormChange("tel_3", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">E-MAIL</label>
+                <Input 
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => handleFormChange("email", e.target.value)}
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
