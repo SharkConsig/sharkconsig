@@ -610,9 +610,9 @@ export default function ProposalsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {isLoading ? (
+                {isLoading && proposals.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
+                    <td colSpan={12} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
                       Carregando propostas...
                     </td>
                   </tr>
@@ -624,11 +624,19 @@ export default function ProposalsPage() {
                         <tr 
                           onClick={() => toggleProposalExpansion(proposal.id_lead)}
                           className={cn(
-                            "hover:bg-slate-50 transition-colors group cursor-pointer",
-                            expandedProposalId === proposal.id_lead ? "bg-slate-50 border-l-2 border-primary border-b-0" : (index % 2 === 0 ? "bg-slate-100" : "bg-white")
+                            "hover:bg-slate-50 transition-colors group cursor-pointer relative",
+                            expandedProposalId === proposal.id_lead ? "bg-slate-50 border-l-2 border-primary border-b-0" : (index % 2 === 0 ? "bg-slate-100" : "bg-white"),
+                            isLoading && "opacity-60 pointer-events-none"
                           )}
                         >
-                          <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">{proposal.id_lead}</td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">
+                            {proposal.id_lead}
+                            {isLoading && index === 0 && (
+                              <div className="absolute top-0 left-0 w-full h-1 bg-primary/20 overflow-hidden">
+                                <div className="h-full bg-primary animate-progress w-full origin-left" />
+                              </div>
+                            )}
+                          </td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.ade || '-'}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-blue-50/20">{proposal.nome_corretor || '-'}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-indigo-50/20">{proposal.equipe || '-'}</td>

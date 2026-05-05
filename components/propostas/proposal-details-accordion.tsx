@@ -970,19 +970,19 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Conta</label>
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Agência</label>
                   <Input 
-                    value={formData.conta}
-                    onChange={(e) => handleFormChange("conta", e.target.value)}
+                    value={formData.agencia}
+                    onChange={(e) => handleFormChange("agencia", e.target.value)}
                     disabled={!canEditFields}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Agência</label>
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Conta</label>
                   <Input 
-                    value={formData.agencia}
-                    onChange={(e) => handleFormChange("agencia", e.target.value)}
+                    value={formData.conta}
+                    onChange={(e) => handleFormChange("conta", e.target.value)}
                     disabled={!canEditFields}
                     className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                   />

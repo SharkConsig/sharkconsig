@@ -289,6 +289,33 @@ function NewProposalForm() {
   })
   const [pastedImages, setPastedImages] = useState<File[]>([])
 
+  const isFormValid = (() => {
+    // Campos obrigatórios conforme regras de negócio solicitadas
+    // Observação: 'observacoes' não é obrigatório.
+    const requiredFields = [
+      'nome', 'cpf', 'nascimento', 'matricula', 'origem', 
+      'naturalidade', 'uf_naturalidade', 'identidade', 'orgao_emissor', 'uf_emissao', 'data_emissao',
+      'nome_mae', 'nome_pai', 'tel_1', 'email', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'uf',
+      'banco_cliente', 'agencia', 'conta', 'dv', 'tipo_conta', 'valor_parcela', 'valor_producao_corretor',
+      'coeficiente_prazo'
+    ];
+
+    // Verifica se todos os campos obrigatórios estão preenchidos
+    const hasAllFields = requiredFields.every(field => {
+      const val = formData[field as keyof typeof formData];
+      return typeof val === 'string' ? val.trim() !== "" : !!val;
+    });
+
+    // Verifica seleção de convênio, banco e operação (essenciais para a proposta)
+    const hasSelection = !!selection.convenio && !!selection.banco && !!selection.operacao;
+    
+    // Verifica anexos obrigatórios (pode ser arquivo novo ou já existente vindo do lead/chamado)
+    const hasRgFrente = !!selectedFiles.frente || !!existingAttachments.frente;
+    const hasContraCheque = !!selectedFiles.contracheque || !!existingAttachments.contracheque;
+
+    return hasAllFields && hasSelection && hasRgFrente && hasContraCheque;
+  })();
+
   const fileRefs = {
     frente: useRef<HTMLInputElement>(null),
     verso: useRef<HTMLInputElement>(null),
@@ -1644,8 +1671,8 @@ function NewProposalForm() {
           <div className="flex justify-center gap-4 pt-12">
             <Button 
               onClick={() => handleSubmit()}
-              disabled={isSubmitting}
-              className="w-full max-w-xs h-12 bg-primary text-white text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              disabled={isSubmitting || !isFormValid}
+              className="w-full max-w-xs h-12 bg-primary text-white text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               {isSubmitting ? (
                 <>
@@ -1659,8 +1686,8 @@ function NewProposalForm() {
 
             <Button 
               onClick={() => handleSubmit('AGUARDANDO DIGITAÇÃO OPERACIONAL')}
-              disabled={isSubmitting}
-              className="w-full max-w-xs h-12 bg-[#00C853] hover:bg-[#00B248] text-white text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-[#00C853]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              disabled={isSubmitting || !isFormValid}
+              className="w-full max-w-xs h-12 bg-[#00C853] hover:bg-[#00B248] text-white text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-[#00C853]/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               {isSubmitting ? (
                 <>

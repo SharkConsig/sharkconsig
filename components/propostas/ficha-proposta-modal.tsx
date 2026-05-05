@@ -70,6 +70,30 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
     setTimeout(() => setCopiedField(null), 2000)
   }
 
+  const extractPrazo = (label: string | null | undefined) => {
+    if (!label) return "-";
+    // Pattern: Nx (e.g., 96x)
+    const match = label.match(/(\d+)x/);
+    if (match) return match[1];
+    return "-";
+  }
+
+  const extractCoeficiente = (label: string | null | undefined) => {
+    if (!label) return "-";
+    // Pattern: Nx followed by a number with dots or just a decimal number at the end
+    // Example: "Tabela - 96x 0.02145" -> 0.02145
+    const match = label.match(/x\s+([0-9.]+)/);
+    if (match) return match[1];
+    
+    // Fallback: if there's no "x", just show the whole label or try to find a number
+    if (!label.includes('x')) {
+      const numMatch = label.match(/([0-9]\.[0-9]+)/);
+      if (numMatch) return numMatch[0];
+    }
+    
+    return label;
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 print:static print:bg-white print:p-0">
       <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-xl shadow-2xl flex flex-col print-content print:shadow-none print:max-h-none print:rounded-none print:w-full print:h-auto print:overflow-visible">
@@ -111,9 +135,8 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
               <div className="bg-slate-100 px-4 py-1.5 rounded-t-md border-x border-t border-slate-300">
                 <h3 className="text-[11px] font-black text-slate-700 uppercase tracking-widest text-center">Tipo de contrato</h3>
               </div>
-              <div className="grid grid-cols-4 border-x border-b border-slate-300 divide-x divide-slate-300">
+              <div className="grid grid-cols-3 border-x border-b border-slate-300 divide-x divide-slate-300">
                 <Field label="Operação" value={proposal.tipo_operacao} id="operacao" onCopy={copyToClipboard} isCopied={copiedField === "operacao"} />
-                <Field label="Tabela" value="-" id="tabela" onCopy={copyToClipboard} isCopied={copiedField === "tabela"} />
                 <Field label="Convênio" value={proposal.convenio} id="convenio" onCopy={copyToClipboard} isCopied={copiedField === "convenio"} />
                 <Field label="Matrícula" value={proposal.matricula} id="matricula" onCopy={copyToClipboard} isCopied={copiedField === "matricula"} />
               </div>
@@ -169,10 +192,9 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
               <div className="bg-slate-100 px-4 py-1.5 rounded-t-md border-x border-t border-slate-300">
                 <h3 className="text-[11px] font-black text-slate-700 uppercase tracking-widest text-center">Dados bancários</h3>
               </div>
-              <div className="grid grid-cols-6 border-x border-b border-slate-300 divide-x divide-slate-300">
+              <div className="grid grid-cols-5 border-x border-b border-slate-300 divide-x divide-slate-300">
                 <Field label="Banco" value={proposal.banco_cliente} id="banco" className="col-span-2" onCopy={copyToClipboard} isCopied={copiedField === "banco"} />
                 <Field label="Agência" value={proposal.agencia} id="agencia" onCopy={copyToClipboard} isCopied={copiedField === "agencia"} />
-                <Field label="DV AG" value="-" id="dv_ag" onCopy={copyToClipboard} isCopied={copiedField === "dv_ag"} />
                 <Field label="Nº Conta" value={proposal.conta} id="conta" onCopy={copyToClipboard} isCopied={copiedField === "conta"} />
                 <Field label="DV" value={proposal.dv} id="dv_conta" onCopy={copyToClipboard} isCopied={copiedField === "dv_conta"} />
               </div>
@@ -189,14 +211,14 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
               <div className="border-x border-b border-slate-300 divide-y divide-slate-300">
                 <div className="grid grid-cols-5 divide-x divide-slate-300">
                   <Field label="Valor Parcela" value={proposal.valor_parcela ? `R$ ${proposal.valor_parcela.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "R$ 0,00"} id="v_parcela" onCopy={copyToClipboard} isCopied={copiedField === "v_parcela"} />
-                  <Field label="Prazo" value="-" id="prazo" onCopy={copyToClipboard} isCopied={copiedField === "prazo"} />
-                  <Field label="Coeficiente" value={proposal.coeficiente_prazo} id="coeficiente" onCopy={copyToClipboard} isCopied={copiedField === "coeficiente"} />
+                  <Field label="Prazo" value={extractPrazo(proposal.coeficiente_prazo)} id="prazo" onCopy={copyToClipboard} isCopied={copiedField === "prazo"} />
+                  <Field label="Coeficiente" value={extractCoeficiente(proposal.coeficiente_prazo)} id="coeficiente" onCopy={copyToClipboard} isCopied={copiedField === "coeficiente"} />
                   <Field label="Valor Operação" value={proposal.valor_operacao_operacional ? `R$ ${proposal.valor_operacao_operacional.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "R$ 0,00"} id="v_operacao" onCopy={copyToClipboard} isCopied={copiedField === "v_operacao"} />
                   <Field label="Valor Cliente" value={proposal.valor_cliente_operacional ? `R$ ${proposal.valor_cliente_operacional.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "R$ 0,00"} id="v_liberado" onCopy={copyToClipboard} isCopied={copiedField === "v_liberado"} />
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
-                  <Field label="Banco Empréstimo" value={proposal.banco || "-"} id="banco_emp" onCopy={copyToClipboard} isCopied={copiedField === "banco_emp"} />
-                  <Field label="PIX" value={proposal.chave_pix} id="pix" onCopy={copyToClipboard} isCopied={copiedField === "pix"} />
+                  <Field label="Banco Empréstimo" value={proposal.banco || "-"} id="bank_loan" onCopy={copyToClipboard} isCopied={copiedField === "bank_loan"} />
+                  <Field label="Chave PIX" value={proposal.chave_pix} id="pix" onCopy={copyToClipboard} isCopied={copiedField === "pix"} />
                 </div>
                 <Field label="Observações" value={proposal.observacoes || "Nenhuma observação registrada."} id="obs" onCopy={copyToClipboard} isCopied={copiedField === "obs"} />
               </div>
