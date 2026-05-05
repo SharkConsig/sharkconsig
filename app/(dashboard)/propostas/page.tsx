@@ -39,8 +39,7 @@ const TABS_CONFIG = [
     subTabs: [
       "ANDAMENTO / AGUARDANDO PAGAMENTO",
       "COM INCONSISTÊNCIA NO BANCO",
-      "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
-      "INCONSISTÊNCIA RESOLVIDA"
+      "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
     ]
   },
   {
@@ -343,7 +342,7 @@ export default function ProposalsPage() {
         if (normalizedStatus === "ANDAMENTO/AGUARDANDO PAGAMENTO") {
           normalizedStatus = "ANDAMENTO / AGUARDANDO PAGAMENTO"
         }
-        if (normalizedStatus === "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL") {
+        if (normalizedStatus === "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL" || normalizedStatus === "INCONSISTÊNCIA RESOLVIDA") {
           normalizedStatus = "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
         }
         
@@ -567,7 +566,7 @@ export default function ProposalsPage() {
                       selectedSecondaryStatus === card.label ? "bg-[#DFF0D8] ring-2 ring-primary ring-offset-2" : (
                         ['AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO', 'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO', 'COM INCONSISTÊNCIA NO BANCO', 'PAGAMENTO DEVOLVIDO'].includes(card.label) ? "bg-[#FCF8E3]" :
                         ['AGUARDANDO DIGITAÇÃO OPERACIONAL', 'COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL', 'COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL', 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA'].includes(card.label) ? "bg-[#D9EDF7]" :
-                        ['ANDAMENTO / AGUARDANDO PAGAMENTO', 'PÓS-VENDA REALIZADA', 'INCONSISTÊNCIA RESOLVIDA'].includes(card.label) ? "bg-[#DFF0D8]" :
+                        ['ANDAMENTO / AGUARDANDO PAGAMENTO', 'PÓS-VENDA REALIZADA'].includes(card.label) ? "bg-[#DFF0D8]" :
                         ['CANCELADO'].includes(card.label) ? "bg-[#F2DEDE]" :
                         "bg-white"
                       )

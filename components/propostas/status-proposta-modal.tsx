@@ -97,15 +97,15 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
       "retigitada": "ANDAMENTO / AGUARDANDO PAGAMENTO",
       "inc-banco": "COM INCONSISTÊNCIA NO BANCO",
       "inc-banco-op": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
-      "inc-resolvida-banco": "INCONSISTÊNCIA RESOLVIDA",
+      "inc-resolvida-banco": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "solicitar-cancelamento-banco": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "enviado-cip": "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA",
       "desistencia": "CANCELADO",
       "digitado-inc": "ANDAMENTO / AGUARDANDO PAGAMENTO",
       "inconsistencia-inc": "COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO",
-      "resolvida": "INCONSISTÊNCIA RESOLVIDA",
+      "resolvida": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "cancelado-inc": "CANCELADO",
-      "aguardando-inc": "INCONSISTÊNCIA RESOLVIDA",
+      "aguardando-inc": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "aguardando": "AGUARDANDO DIGITAÇÃO OPERACIONAL",
       "cancelado": "CANCELADO",
       "pendencia-banco": "COM INCONSISTÊNCIA NO BANCO",
@@ -448,15 +448,85 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                     </div>
                     {selectedStatus === "inc-resolvida-banco" && renderObservations()}
                   </div>
-                  
+
                   <div className="flex flex-col space-y-1">
                     <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="solicitar-cancelamento-banco" id="solicitar-cancelamento-banco" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="solicitar-cancelamento-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        SOLICITAR CANCELAMENTO
+                      <RadioGroupItem value="pago-cliente" id="pago-cliente-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="pago-cliente-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        PAGO AO CLIENTE
                       </Label>
                     </div>
-                    {selectedStatus === "solicitar-cancelamento-banco" && renderObservations()}
+                    {selectedStatus === "pago-cliente" && (
+                      <>
+                        {renderDateOnly()}
+                        {renderObservations()}
+                      </>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="mantem-andamento" id="mantem-andamento-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="mantem-andamento-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        ANDAMENTO / AGUARDANDO PAGAMENTO
+                      </Label>
+                    </div>
+                    {selectedStatus === "mantem-andamento" && renderObservations()}
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="retigitada" id="retigitada-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="retigitada-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        PROPOSTA RETIGITADA
+                      </Label>
+                    </div>
+                    {selectedStatus === "retigitada" && (
+                      <>
+                        {renderAdeAndDate()}
+                        {renderObservations()}
+                      </>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="inc-banco" id="inc-banco-stay" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="inc-banco-stay" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        COM INCONSISTÊNCIA NO BANCO
+                      </Label>
+                    </div>
+                    {selectedStatus === "inc-banco" && renderObservations()}
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="inc-banco-op" id="inc-banco-op-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="inc-banco-op-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL
+                      </Label>
+                    </div>
+                    {selectedStatus === "inc-banco-op" && renderObservations()}
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="devolvido-banco" id="devolvido-banco-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="devolvido-banco-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        PAGAMENTO DEVOLVIDO
+                      </Label>
+                    </div>
+                    {selectedStatus === "devolvido-banco" && renderObservations()}
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="desistencia" id="desistencia-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="desistencia-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        CONTRATOS CANCELADOS / COM DESISTÊNCIA
+                      </Label>
+                    </div>
+                    {selectedStatus === "desistencia" && renderObservations()}
                   </div>
                 </div>
               ) : (proposal.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL" || proposal.status === "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL") ? (
