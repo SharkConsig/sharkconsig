@@ -35,7 +35,8 @@ import {
 import { useAuth } from "@/context/auth-context"
 
 function NewProposalForm() {
-  const { isCorretor, perfil } = useAuth()
+  const { isCorretor, isDeveloper, isOperational, perfil } = useAuth()
+  const canEditOperationalFields = isDeveloper || isOperational
   const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
@@ -197,7 +198,7 @@ function NewProposalForm() {
     cpf: searchParams.get("cpf") || "",
     nascimento: searchParams.get("nascimento") || "",
     idLead: searchParams.get("idLead") || "",
-    origem: searchParams.get("origem") || "",
+    origem: searchParams.get("origem")?.toUpperCase() || "",
     matricula: searchParams.get("matricula") || "",
     naturalidade: "",
     uf_naturalidade: "",
@@ -389,27 +390,38 @@ function NewProposalForm() {
   };
 
   useEffect(() => {
-    async function fetchClientData() {
+    async function fetchClientDetails() {
       if (!formData.cpf) return
       
       const cleanCPF = formData.cpf.replace(/\D/g, "")
       if (cleanCPF.length !== 11) return
 
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('base_consulta_rapida')
-          .select('numero_matricula')
+          .select('numero_matricula, data_nascimento, nome, telefone_1, telefone_2, telefone_3, email')
           .eq('cpf', cleanCPF)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .maybeSingle()
 
-        if (data?.numero_matricula) {
-          setFormData(prev => ({ ...prev, matricula: data.numero_matricula }))
+        if (!error && data) {
+          setFormData(prev => ({ 
+            ...prev, 
+            matricula: data.numero_matricula || prev.matricula || "",
+            nascimento: prev.nascimento || (data.data_nascimento ? format(new Date(data.data_nascimento), "dd/MM/yyyy") : ""),
+            nome: prev.nome || data.nome || "",
+            tel_1: prev.tel_1 || data.telefone_1 || "",
+            tel_2: prev.tel_2 || data.telefone_2 || "",
+            tel_3: prev.tel_3 || data.telefone_3 || "",
+            email: prev.email || data.email || ""
+          }))
         }
-      } catch (err) {
-        console.error("Erro ao buscar matrícula:", err)
+      } catch (error) {
+        console.error("Erro ao buscar detalhes do cliente:", error)
       }
     }
-    fetchClientData()
+    fetchClientDetails()
   }, [formData.cpf])
 
   useEffect(() => {
@@ -530,6 +542,13 @@ function NewProposalForm() {
 
       const currentStatus = targetStatus || 'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO'
 
+      // Validar Coeficiente e Prazo
+      if (!formData.coeficiente_prazo) {
+        toast.error("Por favor, selecione uma tabela no campo 'COEFICIENTE E PRAZO' antes de prosseguir.");
+        setIsSubmitting(false);
+        return;
+      }
+
       // Generate a unique ID for this proposal to prevent overwrites
       const uniqueIdLead = `${Date.now()}${Math.floor(Math.random() * 900) + 100}`
 
@@ -608,37 +627,6 @@ function NewProposalForm() {
     }
   }
 
-  useEffect(() => {
-    async function fetchClientDetails() {
-      if (!formData.cpf) return
-      
-      try {
-        const { data, error } = await supabase
-          .from('base_consulta_rapida')
-          .select('numero_matricula, data_nascimento, nome, telefone_1, telefone_2, telefone_3, email')
-          .eq('cpf', formData.cpf.replace(/\D/g, ""))
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-
-        if (!error && data) {
-          setFormData(prev => ({ 
-            ...prev, 
-            matricula: prev.matricula || data.numero_matricula || "",
-            nascimento: prev.nascimento || (data.data_nascimento ? format(new Date(data.data_nascimento), "dd/MM/yyyy") : ""),
-            nome: prev.nome || data.nome || "",
-            tel_1: prev.tel_1 || data.telefone_1 || "",
-            tel_2: prev.tel_2 || data.telefone_2 || "",
-            tel_3: prev.tel_3 || data.telefone_3 || "",
-            email: prev.email || data.email || ""
-          }))
-        }
-      } catch (error) {
-        console.error("Erro ao buscar detalhes do cliente:", error)
-      }
-    }
-    fetchClientDetails()
-  }, [formData.cpf])
 
   useEffect(() => {
     if (perfil && !formData.equipe) {
@@ -956,12 +944,12 @@ function NewProposalForm() {
                 className="w-full h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
               >
                 <option value="">Selecione</option>
-                <option value="disparo">DISPARO</option>
-                <option value="tráfego">TRÁFEGO</option>
-                <option value="indicação">INDICAÇÃO</option>
-                <option value="cliente da casa">CLIENTE DA CASA</option>
-                <option value="3c - discador">3C - DISCADOR</option>
-                <option value="lista manual">LISTA MANUAL</option>
+                <option value="DISPARO">DISPARO</option>
+                <option value="TRÁFEGO">TRÁFEGO</option>
+                <option value="INDICAÇÃO">INDICAÇÃO</option>
+                <option value="CLIENTE DA CASA">CLIENTE DA CASA</option>
+                <option value="3C - DISCADOR">3C - DISCADOR</option>
+                <option value="LISTA MANUAL">LISTA MANUAL</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -1047,7 +1035,7 @@ function NewProposalForm() {
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
-              <div className="space-y-2">
+              <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF Emissão</label>
                 <select 
                   value={formData.uf_emissao}
@@ -1061,7 +1049,7 @@ function NewProposalForm() {
                 </select>
               </div>
 
-              <div className="space-y-2">
+              <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Data de Emissão</label>
                 <div className="relative">
                   <Input 
@@ -1073,14 +1061,6 @@ function NewProposalForm() {
                 </div>
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome do Pai</label>
-                <Input 
-                  value={formData.nome_pai}
-                  onChange={(e) => handleFormChange("nome_pai", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
-                />
-              </div>
-              <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome da Mãe</label>
                 <Input 
                   value={formData.nome_mae}
@@ -1088,8 +1068,16 @@ function NewProposalForm() {
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome do Pai</label>
+                <Input 
+                  value={formData.nome_pai}
+                  onChange={(e) => handleFormChange("nome_pai", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
 
-              <div className="space-y-2">
+              <div className="md:col-span-1 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 1</label>
                 <Input 
                   value={formData.tel_1}
@@ -1097,7 +1085,7 @@ function NewProposalForm() {
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
-              <div className="space-y-2">
+              <div className="md:col-span-1 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 2</label>
                 <Input 
                   value={formData.tel_2}
@@ -1105,7 +1093,7 @@ function NewProposalForm() {
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
-              <div className="space-y-2">
+              <div className="md:col-span-1 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 3</label>
                 <Input 
                   value={formData.tel_3}
@@ -1113,8 +1101,7 @@ function NewProposalForm() {
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
-
-              <div className="space-y-2">
+              <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">E-MAIL</label>
                 <Input 
                   type="email"
@@ -1123,8 +1110,9 @@ function NewProposalForm() {
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
+              <div className="md:col-span-2 hidden md:block" />
 
-              <div className="space-y-2">
+              <div className="md:col-span-1 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">CEP</label>
                 <div className="flex gap-2">
                   <Input 
@@ -1136,7 +1124,7 @@ function NewProposalForm() {
                         handleSearchCEP();
                       }
                     }}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors flex-1" 
                     placeholder="00000-000"
                   />
                   <button 
@@ -1160,7 +1148,7 @@ function NewProposalForm() {
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
-              <div className="space-y-2">
+              <div className="md:col-span-1 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Número</label>
                 <Input 
                   value={formData.numero}
@@ -1168,7 +1156,7 @@ function NewProposalForm() {
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
-              <div className="space-y-2">
+              <div className="md:col-span-1 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Complemento</label>
                 <Input 
                   value={formData.complemento}
@@ -1184,7 +1172,7 @@ function NewProposalForm() {
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
-              <div className="md:col-span-2 space-y-2">
+              <div className="md:col-span-3 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Cidade</label>
                 <Input 
                   value={formData.cidade}
@@ -1192,7 +1180,7 @@ function NewProposalForm() {
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
                 />
               </div>
-              <div className="space-y-2">
+              <div className="md:col-span-1 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF</label>
                 <select 
                   value={formData.uf}
@@ -1283,7 +1271,7 @@ function NewProposalForm() {
                 <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
                   <span className="font-bold text-slate-900">Operacional:</span> Preencha os campos abaixo em caso de divergência nos valores informados pelo corretor do valores do banco. Salvar valor operacional atualizará somente os campos abaixo.
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
                     <Input 
@@ -1304,19 +1292,21 @@ function NewProposalForm() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Cliente</label>
-                    <Input 
-                      value={formData.valor_cliente_operacional}
-                      onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
-                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
-                      placeholder="R$ 0,00" 
-                    />
+                    <div className="flex gap-2 items-center">
+                      <Input 
+                        value={formData.valor_cliente_operacional}
+                        onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
+                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors flex-1" 
+                        placeholder="R$ 0,00" 
+                      />
+                      <Button 
+                        onClick={handleSubmit} 
+                        className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
+                      >
+                        <Save className="w-5 h-5" />
+                      </Button>
+                    </div>
                   </div>
-                  <Button 
-                    onClick={handleSubmit} 
-                    className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
-                  >
-                    <Save className="w-5 h-5" />
-                  </Button>
                 </div>
               </div>
             )}
@@ -1327,7 +1317,11 @@ function NewProposalForm() {
                 <Input 
                   value={formData.margem_utilizada}
                   onChange={(e) => handleFormChange("margem_utilizada", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  readOnly={!canEditOperationalFields}
+                  className={cn(
+                    "h-9 border-slate-100 focus:border-primary transition-colors",
+                    !canEditOperationalFields ? "bg-[#E8E8E8]" : "bg-white"
+                  )}
                   placeholder="R$ 0,00" 
                 />
               </div>
@@ -1335,8 +1329,9 @@ function NewProposalForm() {
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Coeficiente e Prazo</label>
                 <div 
                   className={cn(
-                    "h-9 px-4 rounded-md border border-slate-800 bg-[#171717] flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all",
-                    isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary"
+                    "h-9 px-4 rounded-md border border-slate-800 flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all",
+                    isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary",
+                    !canEditOperationalFields ? "bg-[#171717]/90" : "bg-[#171717]"
                   )}
                   onClick={() => setIsCoefDropdownOpen(!isCoefDropdownOpen)}
                 >
@@ -1456,7 +1451,11 @@ function NewProposalForm() {
                 <Input 
                   value={formData.valor_producao_corretor}
                   onChange={(e) => handleFormChange("valor_producao_corretor", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  readOnly={!canEditOperationalFields}
+                  className={cn(
+                    "h-9 border-slate-100 focus:border-primary transition-colors",
+                    !canEditOperationalFields ? "bg-[#E8E8E8]" : "bg-white"
+                  )}
                   placeholder="R$ 0,00" 
                 />
               </div>
@@ -1468,7 +1467,11 @@ function NewProposalForm() {
                 <Input 
                   value={formData.valor_parcela}
                   onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  readOnly={!canEditOperationalFields}
+                  className={cn(
+                    "h-9 border-slate-100 focus:border-primary transition-colors",
+                    !canEditOperationalFields ? "bg-[#E8E8E8]" : "bg-white"
+                  )}
                   placeholder="R$ 0,00" 
                 />
               </div>
@@ -1477,7 +1480,11 @@ function NewProposalForm() {
                 <Input 
                   value={formData.valor_operacao_operacional}
                   onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  readOnly={!canEditOperationalFields}
+                  className={cn(
+                    "h-9 border-slate-100 focus:border-primary transition-colors",
+                    !canEditOperationalFields ? "bg-[#E8E8E8]" : "bg-white"
+                  )}
                   placeholder="R$ 0,00" 
                 />
               </div>
@@ -1486,7 +1493,11 @@ function NewProposalForm() {
                 <Input 
                   value={formData.valor_cliente_operacional}
                   onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  readOnly={!canEditOperationalFields}
+                  className={cn(
+                    "h-9 border-slate-100 focus:border-primary transition-colors",
+                    !canEditOperationalFields ? "bg-[#E8E8E8]" : "bg-white"
+                  )}
                   placeholder="R$ 0,00" 
                 />
               </div>

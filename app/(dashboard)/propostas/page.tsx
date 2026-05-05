@@ -37,7 +37,8 @@ const TABS_CONFIG = [
     subTabs: [
       "ANDAMENTO / AGUARDANDO PAGAMENTO",
       "COM INCONSISTÊNCIA NO BANCO",
-      "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
+      "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
+      "INCONSISTÊNCIA RESOLVIDA"
     ]
   },
   {
@@ -338,6 +339,9 @@ export default function ProposalsPage() {
         if (normalizedStatus === "ANDAMENTO/AGUARDANDO PAGAMENTO") {
           normalizedStatus = "ANDAMENTO / AGUARDANDO PAGAMENTO"
         }
+        if (normalizedStatus === "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL") {
+          normalizedStatus = "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
+        }
         
         const userDetails = p.corretor_id ? usersMap.get(p.corretor_id) : null
         
@@ -559,7 +563,7 @@ export default function ProposalsPage() {
                       selectedSecondaryStatus === card.label ? "bg-[#DFF0D8] ring-2 ring-primary ring-offset-2" : (
                         ['AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO', 'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO', 'COM INCONSISTÊNCIA NO BANCO', 'PAGAMENTO DEVOLVIDO'].includes(card.label) ? "bg-[#FCF8E3]" :
                         ['AGUARDANDO DIGITAÇÃO OPERACIONAL', 'COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL', 'COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL', 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA'].includes(card.label) ? "bg-[#D9EDF7]" :
-                        ['ANDAMENTO / AGUARDANDO PAGAMENTO', 'PÓS-VENDA REALIZADA'].includes(card.label) ? "bg-[#DFF0D8]" :
+                        ['ANDAMENTO / AGUARDANDO PAGAMENTO', 'PÓS-VENDA REALIZADA', 'INCONSISTÊNCIA RESOLVIDA'].includes(card.label) ? "bg-[#DFF0D8]" :
                         ['CANCELADO'].includes(card.label) ? "bg-[#F2DEDE]" :
                         "bg-white"
                       )
@@ -630,13 +634,7 @@ export default function ProposalsPage() {
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.banco}/{proposal.convenio}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.tipo_operacao}</td>
                           <td className="px-4 py-4">
-                            <span className={cn(
-                              "px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider",
-                              proposal.status?.includes('CANCELADO') ? "bg-rose-100 text-rose-600" :
-                              (proposal.status?.includes('PAGO') || proposal.status?.includes('FORMALIZAÇÃO') || proposal.status === "PAGO AO CLIENTE E SEM PENDÊNCIAS") ? "bg-cyan-100 text-cyan-600" :
-                              (proposal.status?.includes('ANDAMENTO') || proposal.status?.includes('AGUARDANDO')) ? "bg-amber-100 text-amber-600" :
-                              "bg-slate-100 text-slate-600"
-                            )}>
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">
                               {proposal.status}
                             </span>
                           </td>

@@ -187,7 +187,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     cpf: proposal.cliente_cpf || "",
     nascimento: proposal.data_nascimento ? format(new Date(proposal.data_nascimento), "dd/MM/yyyy") : "",
     idLead: proposal.id_lead || "",
-    origem: proposal.origem || "",
+    origem: proposal.origem?.toUpperCase() || "",
     matricula: proposal.matricula || "",
     naturalidade: proposal.naturalidade || "",
     uf_naturalidade: proposal.uf_naturalidade || "",
@@ -682,10 +682,12 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   className="w-full h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors disabled:opacity-75 cursor-pointer disabled:cursor-not-allowed"
                 >
                   <option value="">Selecione</option>
-                  <option value="disparo">DISPARO</option>
-                  <option value="tráfego">TRÁFEGO</option>
-                  <option value="indicação">INDICAÇÃO</option>
-                  <option value="cliente da casa">CLIENTE DA CASA</option>
+                  <option value="DISPARO">DISPARO</option>
+                  <option value="TRÁFEGO">TRÁFEGO</option>
+                  <option value="INDICAÇÃO">INDICAÇÃO</option>
+                  <option value="CLIENTE DA CASA">CLIENTE DA CASA</option>
+                  <option value="3C - DISCADOR">3C - DISCADOR</option>
+                  <option value="LISTA MANUAL">LISTA MANUAL</option>
                 </select>
               </div>
               <div className="space-y-2">

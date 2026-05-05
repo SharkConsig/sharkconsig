@@ -843,6 +843,7 @@ export default function SearchClientPage() {
                                 nome: client.nome || "NOME NÃO INFORMADO",
                                 cpf: client.cpf,
                                 nascimento: formatDate(client.data_nascimento),
+                                matricula: allRegs[activeRegIndex].numero_matricula || "",
                                 idLead: allRegs[activeRegIndex].numero_matricula,
                                 tel1: unmaskPhone(client.telefone_1),
                                 tel2: unmaskPhone(client.telefone_2),
@@ -1085,7 +1086,7 @@ export default function SearchClientPage() {
                                   liquida5: formatCurrency(cartao.liquida_val),
                                   beneficio5: formatCurrency(beneficio.liquida_val),
                                   convenio: "GOVERNO SP",
-                                  matricula: allRegs[activeRegIndex].identificacao || ""
+                                  matricula: reg.identificacao || ""
                                 });
                                 router.push(`/chamados/novo?${params.toString()}`);
                               }}
@@ -1100,6 +1101,7 @@ export default function SearchClientPage() {
                                   nome: client.nome || "NOME NÃO INFORMADO",
                                   cpf: client.cpf,
                                   nascimento: formatDate(client.data_nascimento),
+                                  matricula: reg.identificacao || "",
                                   idLead: reg.identificacao,
                                   tel1: unmaskPhone(client.telefone_1),
                                   tel2: unmaskPhone(client.telefone_2),
@@ -1308,7 +1310,7 @@ export default function SearchClientPage() {
                                   liquida5: "R$ 0,00", // PMSP doesn't have 5% CC
                                   beneficio5: formatCurrency(beneficio.liquida_val),
                                   convenio: "PREFEITURA SP",
-                                  matricula: registrations[activeRegIndex].registro_funcional || ""
+                                  matricula: registrations[activeRegIndex].identificacao || ""
                                 });
                                 router.push(`/chamados/novo?${params.toString()}`);
                               }}
@@ -1323,6 +1325,7 @@ export default function SearchClientPage() {
                                   nome: client.nome || "NOME NÃO INFORMADO",
                                   cpf: client.cpf,
                                   nascimento: formatDate(client.data_nascimento),
+                                  matricula: reg.identificacao || "",
                                   idLead: reg.identificacao,
                                   tel1: unmaskPhone(client.telefone_1),
                                   tel2: unmaskPhone(client.telefone_2),

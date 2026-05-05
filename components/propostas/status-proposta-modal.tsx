@@ -96,21 +96,21 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
       "mantem-andamento": "ANDAMENTO / AGUARDANDO PAGAMENTO",
       "retigitada": "ANDAMENTO / AGUARDANDO PAGAMENTO",
       "inc-banco": "COM INCONSISTÊNCIA NO BANCO",
-      "inc-banco-op": "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL",
-      "inc-resolvida-banco": "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL",
-      "solicitar-cancelamento-banco": "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL",
+      "inc-banco-op": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
+      "inc-resolvida-banco": "INCONSISTÊNCIA RESOLVIDA",
+      "solicitar-cancelamento-banco": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "enviado-cip": "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA",
       "desistencia": "CANCELADO",
       "digitado-inc": "ANDAMENTO / AGUARDANDO PAGAMENTO",
       "inconsistencia-inc": "COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO",
-      "resolvida": "COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL",
+      "resolvida": "INCONSISTÊNCIA RESOLVIDA",
       "cancelado-inc": "CANCELADO",
-      "aguardando-inc": "AGUARDANDO DIGITAÇÃO OPERACIONAL",
+      "aguardando-inc": "INCONSISTÊNCIA RESOLVIDA",
       "aguardando": "AGUARDANDO DIGITAÇÃO OPERACIONAL",
       "cancelado": "CANCELADO",
       "pendencia-banco": "COM INCONSISTÊNCIA NO BANCO",
       "devolvido-banco": "PAGAMENTO DEVOLVIDO",
-      "reapresentar-pagamento": "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL",
+      "reapresentar-pagamento": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "pos-venda-realizada": "PÓS-VENDA REALIZADA"
     }
 
@@ -392,7 +392,7 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                     <div className="flex items-center space-x-3 group">
                       <RadioGroupItem value="inc-banco-op" id="inc-banco-op" className="text-[#00a6ed] border-slate-300" />
                       <Label htmlFor="inc-banco-op" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        COM INCONSISTÊNCIA NO BANCO - AGUARDANDO OPERACIONAL
+                        COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL
                       </Label>
                     </div>
                     {selectedStatus === "inc-banco-op" && renderObservations()}
@@ -459,8 +459,18 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                     {selectedStatus === "solicitar-cancelamento-banco" && renderObservations()}
                   </div>
                 </div>
-              ) : proposal.status === "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL" ? (
+              ) : (proposal.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL" || proposal.status === "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL") ? (
                 <div className="space-y-4">
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="inc-resolvida-banco" id="inc-resolvida-banco-op" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="inc-resolvida-banco-op" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        INCONSISTÊNCIA RESOLVIDA
+                      </Label>
+                    </div>
+                    {selectedStatus === "inc-resolvida-banco" && renderObservations()}
+                  </div>
+                  
                   <div className="flex flex-col space-y-1">
                     <div className="flex items-center space-x-3 group">
                       <RadioGroupItem value="pago-cliente" id="pago-cliente-op-stay" className="text-[#00a6ed] border-slate-300" />
@@ -515,7 +525,7 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                     <div className="flex items-center space-x-3 group">
                       <RadioGroupItem value="inc-banco-op" id="inc-banco-op-stay-stay" className="text-[#00a6ed] border-slate-300" />
                       <Label htmlFor="inc-banco-op-stay-stay" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        COM INCONSISTÊNCIA NO BANCO - AGUARDANDO OPERACIONAL
+                        COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL
                       </Label>
                     </div>
                     {selectedStatus === "inc-banco-op" && renderObservations()}
@@ -604,7 +614,7 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                     <div className="flex items-center space-x-3 group">
                       <RadioGroupItem value="aguardando-inc" id="aguardando-inc" className="text-[#00a6ed] border-slate-300" />
                       <Label htmlFor="aguardando-inc" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        AGUARDANDO DIGITAÇÃO
+                        INCONSISTÊNCIA RESOLVIDA
                       </Label>
                     </div>
                     {selectedStatus === "aguardando-inc" && renderObservations()}
