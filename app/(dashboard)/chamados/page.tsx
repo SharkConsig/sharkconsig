@@ -72,7 +72,7 @@ const secondaryCards = [
 
 export default function TicketsPage() {
   const router = useRouter()
-  const { perfil, user, isOperational, isAdmin } = useAuth()
+  const { perfil, user, isOperational, isAdmin, isSupervisor, isDeveloper } = useAuth()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>("TODOS")
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
@@ -446,7 +446,7 @@ export default function TicketsPage() {
                 <thead>
                   <tr className="bg-slate-50/50">
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[80px]">Número</th>
-                    {(isOperational || isAdmin) && (
+                    {(isOperational || isAdmin || isSupervisor || isDeveloper) && (
                       <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[120px]">Corretor</th>
                     )}
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[150px]">Status</th>
@@ -463,7 +463,7 @@ export default function TicketsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={isOperational || isAdmin ? 11 : 10} className="px-4 py-12 text-center">
+                      <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <Loader2 className="w-6 h-6 text-primary animate-spin" />
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando chamados...</span>
@@ -483,7 +483,7 @@ export default function TicketsPage() {
                           onClick={() => toggleTicketExpansion(ticket.id.toString())}
                         >
                           <td className="px-4 py-4 text-[12px] font-bold text-slate-400">#{ticket.id}</td>
-                          {(isOperational || isAdmin) && (
+                          {(isOperational || isAdmin || isSupervisor || isDeveloper) && (
                             <td className="px-4 py-4">
                               <div className="flex flex-col">
                                 <span className="text-[11px] font-bold text-primary uppercase tracking-tight truncate max-w-[150px]" title={ticket.user_nome}>
@@ -589,7 +589,7 @@ export default function TicketsPage() {
                         </tr>
                         {expandedTicketId === ticket.id.toString() && (
                           <tr className={cn(index % 2 === 0 ? "bg-slate-100" : "bg-white")}>
-                            <td colSpan={isOperational || isAdmin ? 11 : 10} className="p-0 border-b border-slate-200">
+                            <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
                                 <TicketAtendimento 
                                   ticket={{
@@ -633,7 +633,7 @@ export default function TicketsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={isOperational || isAdmin ? 11 : 10} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
+                      <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
                         Nenhum chamado encontrado.
                       </td>
                     </tr>

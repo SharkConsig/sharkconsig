@@ -35,8 +35,7 @@ import {
 import { useAuth } from "@/context/auth-context"
 
 function NewProposalForm() {
-  const { isCorretor, isDeveloper, isOperational, perfil } = useAuth()
-  const canEditOperationalFields = isDeveloper || isOperational
+  const { isCorretor, perfil } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
@@ -1317,11 +1316,7 @@ function NewProposalForm() {
                 <Input 
                   value={formData.margem_utilizada}
                   onChange={(e) => handleFormChange("margem_utilizada", e.target.value)}
-                  readOnly={!canEditOperationalFields}
-                  className={cn(
-                    "h-9 border-slate-100 focus:border-primary transition-colors",
-                    !canEditOperationalFields ? "bg-[#E8E8E8]" : "bg-white"
-                  )}
+                  className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
                   placeholder="R$ 0,00" 
                 />
               </div>
@@ -1329,9 +1324,8 @@ function NewProposalForm() {
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Coeficiente e Prazo</label>
                 <div 
                   className={cn(
-                    "h-9 px-4 rounded-md border border-slate-800 flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all",
-                    isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary",
-                    !canEditOperationalFields ? "bg-[#171717]/90" : "bg-[#171717]"
+                    "h-9 px-4 rounded-md border border-slate-800 flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all bg-[#171717]",
+                    isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary"
                   )}
                   onClick={() => setIsCoefDropdownOpen(!isCoefDropdownOpen)}
                 >
@@ -1451,11 +1445,7 @@ function NewProposalForm() {
                 <Input 
                   value={formData.valor_producao_corretor}
                   onChange={(e) => handleFormChange("valor_producao_corretor", e.target.value)}
-                  readOnly={!canEditOperationalFields}
-                  className={cn(
-                    "h-9 border-slate-100 focus:border-primary transition-colors",
-                    !canEditOperationalFields ? "bg-[#E8E8E8]" : "bg-white"
-                  )}
+                  className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
                   placeholder="R$ 0,00" 
                 />
               </div>
@@ -1467,11 +1457,7 @@ function NewProposalForm() {
                 <Input 
                   value={formData.valor_parcela}
                   onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
-                  readOnly={!canEditOperationalFields}
-                  className={cn(
-                    "h-9 border-slate-100 focus:border-primary transition-colors",
-                    !canEditOperationalFields ? "bg-[#E8E8E8]" : "bg-white"
-                  )}
+                  className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
                   placeholder="R$ 0,00" 
                 />
               </div>
@@ -1480,11 +1466,7 @@ function NewProposalForm() {
                 <Input 
                   value={formData.valor_operacao_operacional}
                   onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
-                  readOnly={!canEditOperationalFields}
-                  className={cn(
-                    "h-9 border-slate-100 focus:border-primary transition-colors",
-                    !canEditOperationalFields ? "bg-[#E8E8E8]" : "bg-white"
-                  )}
+                  className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
                   placeholder="R$ 0,00" 
                 />
               </div>
@@ -1493,11 +1475,7 @@ function NewProposalForm() {
                 <Input 
                   value={formData.valor_cliente_operacional}
                   onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
-                  readOnly={!canEditOperationalFields}
-                  className={cn(
-                    "h-9 border-slate-100 focus:border-primary transition-colors",
-                    !canEditOperationalFields ? "bg-[#E8E8E8]" : "bg-white"
-                  )}
+                  className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
                   placeholder="R$ 0,00" 
                 />
               </div>

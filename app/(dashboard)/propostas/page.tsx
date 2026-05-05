@@ -13,11 +13,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  Loader2
+  Loader2,
+  UserPlus
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ProposalDetailsAccordion } from "@/components/propostas/proposal-details-accordion"
 import { StatusPropostaModal } from "@/components/propostas/status-proposta-modal"
+import { TransferirPropostaModal } from "@/components/propostas/transferir-proposta-modal"
 import { toast } from "react-hot-toast"
 
 const TABS_CONFIG = [
@@ -117,7 +119,7 @@ interface Proposal {
 }
 
 export default function ProposalsPage() {
-  const { perfil, isCorretor } = useAuth()
+  const { perfil, isCorretor, isAdmin, isDeveloper, isOperational } = useAuth()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [counts, setCounts] = useState<{[key: string]: number}>({})
   const [isLoading, setIsLoading] = useState(false)
@@ -128,7 +130,9 @@ export default function ProposalsPage() {
   const [endDate, setEndDate] = useState("")
   const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null)
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false)
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
   const [selectedProposalForStatus, setSelectedProposalForStatus] = useState<Proposal | null>(null)
+  const [selectedProposalForTransfer, setSelectedProposalForTransfer] = useState<Proposal | null>(null)
 
   const handleStatusUpdate = async (idLead: string, newStatus: string, ade?: string, obsCorretor?: string, obsOperacional?: string, customDate?: string) => {
     if (!perfil) return
@@ -654,6 +658,21 @@ export default function ProposalsPage() {
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex items-center justify-center gap-1">
+                              {selectedStatus !== "CANCELADOS" && (isAdmin || isDeveloper || isOperational) && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    setSelectedProposalForTransfer(proposal)
+                                    setIsTransferModalOpen(true)
+                                  }}
+                                  className="w-8 h-8 bg-amber-500 hover:bg-amber-600 text-white rounded-md p-1 group/btn transition-all"
+                                  title="TRANSFERIR RESPONSÁVEL"
+                                >
+                                  <UserPlus className="w-4 h-4" />
+                                </Button>
+                              )}
                               {selectedStatus !== "CANCELADOS" && (
                                 (!isCorretor || [
                                   'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
@@ -781,6 +800,13 @@ export default function ProposalsPage() {
         onClose={() => setIsStatusModalOpen(false)}
         proposal={selectedProposalForStatus}
         onStatusUpdate={handleStatusUpdate}
+      />
+
+      <TransferirPropostaModal 
+        isOpen={isTransferModalOpen}
+        onClose={() => setIsTransferModalOpen(false)}
+        proposal={selectedProposalForTransfer}
+        onTransferComplete={fetchProposals}
       />
     </div>
   )
