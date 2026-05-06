@@ -60,8 +60,19 @@ export default function DashboardPage() {
       const startOfToday = new Date()
       startOfToday.setHours(0, 0, 0, 0)
 
-      const paidStatuses = ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA"]
-      const inProcessStatuses = ["ANDAMENTO / AGUARDANDO PAGAMENTO", "COM INCONSISTÊNCIA NO BANCO", "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"]
+      const paidStatuses = [
+        "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", 
+        "PÓS-VENDA REALIZADA",
+        "PAGAMENTO DEVOLVIDO"
+      ]
+      const inProcessStatuses = [
+        "ANDAMENTO / AGUARDANDO PAGAMENTO", 
+        "ANDAMENTO/AGUARDANDO PAGAMENTO",
+        "COM INCONSISTÊNCIA NO BANCO", 
+        "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
+        "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL",
+        "INCONSISTÊNCIA RESOLVIDA"
+      ]
 
       // 1. Fetch user's paid proposals
       let query = supabase
@@ -340,11 +351,24 @@ export default function DashboardPage() {
 
   const userRank = rankings.findIndex(r => r.corretor_id === perfil?.id) + 1
   
+  const greeting = useMemo(() => {
+    if (typeof window === 'undefined') return "Olá"
+    const hour = new Date().toLocaleTimeString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: 'numeric',
+      hour12: false,
+    })
+    const h = parseInt(hour)
+    if (h >= 0 && h < 12) return "Bom dia"
+    if (h >= 12 && h < 18) return "Boa tarde"
+    return "Boa noite"
+  }, [])
+
   if (!mounted) return null
 
   return (
     <div className="flex-1 flex flex-col bg-[#F8FAFC]">
-      <Header title={`Olá, ${perfil?.nome?.split(' ')[0] || 'Shark'}!`} />
+      <Header title="DASHBOARD" />
       
       <div className="p-4 lg:p-8 space-y-8 max-w-[1600px] mx-auto w-full pb-20">
         {/* Header Section */}
@@ -354,7 +378,7 @@ export default function DashboardPage() {
             animate={{ opacity: 1, x: 0 }}
           >
             <h1 className="text-4xl font-black text-[#1C2643] tracking-tighter">
-              Bom dia, {perfil?.nome?.split(' ')[0] || 'Shark'}!
+              {greeting}, {perfil?.nome?.split(' ')[0] || 'Shark'}!
             </h1>
             <p className="text-[12px] font-bold text-[#718198] uppercase tracking-[0.25em] mt-2 flex items-center gap-2">
               <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
@@ -622,9 +646,9 @@ export default function DashboardPage() {
                           <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Produção (Pagos)</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Em Andamento</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Digitadas Hoje</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -655,7 +679,10 @@ export default function DashboardPage() {
                                       </span>
                                     </div>
                                   </td>
-                                  <td className="px-4 py-4 text-right">
+                                  <td className={cn(
+                                    "px-4 py-4 text-right transition-colors",
+                                    isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
+                                  )}>
                                     <div className="flex flex-col items-end">
                                       <span className="text-[13px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
                                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
@@ -663,7 +690,10 @@ export default function DashboardPage() {
                                       </span>
                                     </div>
                                   </td>
-                                  <td className="px-4 py-4 text-right">
+                                  <td className={cn(
+                                    "px-4 py-4 text-right transition-colors",
+                                    isUser ? "bg-orange-100/70" : "bg-orange-100/25"
+                                  )}>
                                     <div className="flex flex-col items-end">
                                       <span className="text-[13px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
                                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
@@ -671,7 +701,10 @@ export default function DashboardPage() {
                                       </span>
                                     </div>
                                   </td>
-                                  <td className="px-4 py-4 text-right">
+                                  <td className={cn(
+                                    "px-4 py-4 text-right transition-colors",
+                                    isUser ? "bg-blue-100/70" : "bg-blue-100/25"
+                                  )}>
                                     <div className="flex flex-col items-end">
                                       <span className={cn(
                                         "text-[13px] font-bold",
