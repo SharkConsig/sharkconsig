@@ -15,7 +15,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {

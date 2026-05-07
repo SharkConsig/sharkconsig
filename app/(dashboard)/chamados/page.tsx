@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
+import { useSidebar } from "@/context/sidebar-context"
 import { 
   Search, 
   ChevronLeft,
@@ -73,6 +74,7 @@ const secondaryCards = [
 export default function TicketsPage() {
   const router = useRouter()
   const { perfil, user, isOperational, isAdmin, isSupervisor, isDeveloper } = useAuth()
+  const { isCollapsed } = useSidebar()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>("TODOS")
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
@@ -346,7 +348,10 @@ export default function TicketsPage() {
     <div className="flex-1 flex flex-col">
       <Header title="CHAMADOS" />
       
-      <main className="flex-1 p-4 lg:p-8 bg-slate-50/50 space-y-8 max-w-[1600px] mx-auto w-full">
+      <main className={cn(
+        "flex-1 p-4 lg:p-8 bg-slate-50/50 space-y-8 mx-auto w-full transition-all duration-300",
+        isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
+      )}>
         {/* Filters Card */}
         <Card className="card-shadow border border-slate-200">
           <CardContent className="p-4 sm:p-6">

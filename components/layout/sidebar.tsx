@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
@@ -105,6 +106,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const { isCollapsed, toggleCollapse } = useSidebar()
   const { perfil, isAdmin } = useAuth()
+  const [isHovered, setIsHovered] = useState(false)
+
+  const effectiveCollapsed = isCollapsed && !isHovered
 
   const filteredMenuItems = menuItems.map(section => ({
     ...section,
@@ -131,34 +135,38 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         />
       )}
 
-      <aside className={cn(
-        "bg-sidebar border-r border-slate-200 flex flex-col h-screen transition-all duration-300 z-[150] sidebar-shadow",
-        "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
-        isCollapsed ? "w-20" : "w-64",
-        isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-      )}>
+      <aside 
+        onMouseEnter={() => isCollapsed && setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className={cn(
+          "bg-sidebar border-r border-slate-200 flex flex-col h-screen transition-all duration-300 z-[150] sidebar-shadow",
+          "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
+          effectiveCollapsed ? "w-20" : "w-64",
+          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        )}
+      >
         <div className={cn(
           "p-6 flex items-center",
-          isCollapsed ? "justify-center" : "justify-between"
+          effectiveCollapsed ? "justify-center" : "justify-between"
         )}>
           <Link href="/" className="flex items-center justify-start">
             <div className={cn(
               "relative transition-all duration-300",
-              isCollapsed ? "w-10 h-10" : "w-[160px] h-10"
+              effectiveCollapsed ? "w-10 h-10" : "w-[160px] h-10"
             )}>
               <Image 
-                src={isCollapsed ? "/favicon.jpg" : "/logo.png"} 
+                src={effectiveCollapsed ? "/favicon.jpg" : "/logo.png"} 
                 alt="SharkConsig Logo" 
                 fill 
                 className={cn(
                   "object-contain",
-                  isCollapsed ? "object-center rounded-lg" : "object-left"
+                  effectiveCollapsed ? "object-center rounded-lg" : "object-left"
                 )}
                 referrerPolicy="no-referrer"
               />
             </div>
           </Link>
-          {!isCollapsed && (
+          {!effectiveCollapsed && (
             <button 
               onClick={toggleCollapse}
               className="hidden lg:flex w-8 h-8 items-center justify-center bg-slate-50 rounded-lg text-slate-400 hover:text-primary transition-colors"
@@ -168,7 +176,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           )}
         </div>
 
-        {isCollapsed && (
+        {effectiveCollapsed && (
           <div className="hidden lg:flex justify-center mb-4">
             <button 
               onClick={toggleCollapse}
@@ -182,7 +190,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <nav className="flex-1 px-4 py-4 overflow-y-auto no-scrollbar">
           {filteredMenuItems.map((section) => (
             <div key={section.title} className="mb-8">
-              {!isCollapsed && (
+              {!effectiveCollapsed && (
                 <h2 className="px-4 text-[10px] font-bold text-slate-400 tracking-widest mb-4">
                   {section.title}
                 </h2>
@@ -195,18 +203,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                       key={item.name}
                       href={item.href}
                       onClick={onClose}
-                      title={isCollapsed ? item.name : ""}
+                      title={effectiveCollapsed ? item.name : ""}
                       className={cn(
                         "flex items-center gap-3 rounded-lg text-[11px] font-semibold transition-all",
-                        isCollapsed ? "justify-center p-3" : "px-4 py-3",
+                        effectiveCollapsed ? "justify-center p-3" : "px-4 py-3",
                         isActive 
                           ? "bg-primary text-white shadow-lg shadow-slate-200" 
                           : "text-slate-500 hover:bg-slate-50 hover:text-primary",
-                        item.name === "CONFIGURAÇÕES" && !isCollapsed && "mt-6"
+                        item.name === "CONFIGURAÇÕES" && !effectiveCollapsed && "mt-6"
                       )}
                     >
                       <item.icon className={cn("w-[18px] h-[18px] flex-shrink-0", isActive ? "text-white" : "text-primary")} />
-                      {!isCollapsed && <span>{item.name}</span>}
+                      {!effectiveCollapsed && <span>{item.name}</span>}
                     </Link>
                   )
                 })}
@@ -215,7 +223,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        {!isCollapsed && (
+        {!effectiveCollapsed && (
           <div className="p-4 mt-auto">
             <div className="bg-slate-50 rounded-xl p-4">
               <p className="text-[11px] font-bold text-slate-400 mb-1 uppercase">Versão</p>

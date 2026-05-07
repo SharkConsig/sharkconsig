@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/header"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
 import { format } from "date-fns"
+import { useSidebar } from "@/context/sidebar-context"
 import { 
   Search, 
   ChevronLeft,
@@ -124,6 +125,7 @@ interface Proposal {
 
 export default function ProposalsPage() {
   const { perfil, isCorretor, isAdmin, isDeveloper, isOperational, isSupervisor } = useAuth()
+  const { isCollapsed } = useSidebar()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [counts, setCounts] = useState<{[key: string]: number}>({})
   const [isLoading, setIsLoading] = useState(false)
@@ -495,7 +497,10 @@ export default function ProposalsPage() {
     <div className="flex-1 flex flex-col">
       <Header title="PROPOSTAS" />
       
-      <main className="flex-1 p-4 lg:p-8 bg-slate-50/50 space-y-8 max-w-[1600px] mx-auto w-full">
+      <main className={cn(
+        "flex-1 p-4 lg:p-8 bg-slate-50/50 space-y-8 mx-auto w-full transition-all duration-300",
+        isCollapsed ? "max-w-full lg:px-10" : "max-w-[1600px]"
+      )}>
         {/* Filters Card */}
         <Card className="card-shadow border border-slate-200">
           <CardContent className="p-4 sm:p-6">
@@ -680,7 +685,7 @@ export default function ProposalsPage() {
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-right">
                             R$ {(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </td>
-                          <td className="px-4 py-4 text-[11px] text-slate-500 max-w-[200px] truncate">
+                          <td className="px-4 py-4 text-[11px] text-slate-500 max-w-[250px] whitespace-pre-wrap break-words">
                             {(() => {
                               const isAuthorized = isAdmin || isDeveloper || isOperational;
                               let obsCorr = proposal.obs_corretor || "";

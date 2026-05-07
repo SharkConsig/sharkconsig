@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
-import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { 
   ChevronLeft, 
@@ -464,29 +463,17 @@ function NewProposalForm() {
           .maybeSingle();
 
         if (!propError && proposal) {
-          // Formata as datas (Assumindo YYYY-MM-DD vindo do banco para DD/MM/YYYY)
-          const formatDateToDDMMYYYY = (dateStr: string | null) => {
-            if (!dateStr) return "";
-            try {
-              if (dateStr.includes('-')) {
-                const [y, m, d] = dateStr.split('-');
-                return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
-              }
-              return dateStr;
-            } catch { return dateStr; }
-          };
-
           setFormData(prev => ({
             ...prev,
             nome: proposal.nome_cliente || prev.nome,
-            nascimento: proposal.data_nascimento ? formatDateToDDMMYYYY(proposal.data_nascimento) : prev.nascimento,
+            nascimento: proposal.data_nascimento ? fromInputDate(proposal.data_nascimento) : prev.nascimento,
             matricula: proposal.matricula || prev.matricula,
             naturalidade: proposal.naturalidade || prev.naturalidade,
             uf_naturalidade: proposal.uf_naturalidade || prev.uf_naturalidade,
             identidade: proposal.identidade || prev.identidade,
             orgao_emissor: proposal.orgao_emissor || prev.orgao_emissor,
             uf_emissao: proposal.uf_emissao || prev.uf_emissao,
-            data_emissao: proposal.data_emissao ? formatDateToDDMMYYYY(proposal.data_emissao) : prev.data_emissao,
+            data_emissao: proposal.data_emissao ? fromInputDate(proposal.data_emissao) : prev.data_emissao,
             nome_pai: proposal.nome_pai || prev.nome_pai,
             nome_mae: proposal.nome_mae || prev.nome_mae,
             tel_1: proposal.tel_residencial_1 || prev.tel_1,
@@ -514,8 +501,8 @@ function NewProposalForm() {
             outros_2: proposal.arquivo_outros_2 || prev.outros_2
           }));
 
-          toast.success("Dados preenchidos automaticamente da ficha proposta.");
-          return; // Achou em propostas, não precisa buscar na consulta rápida
+          toast.success("Dados pessoais e anexos preenchidos automaticamente.");
+          return; 
         }
 
         const { data, error } = await supabase
@@ -530,13 +517,14 @@ function NewProposalForm() {
           setFormData(prev => ({ 
             ...prev, 
             matricula: data.numero_matricula || prev.matricula || "",
-            nascimento: prev.nascimento || (data.data_nascimento ? format(new Date(data.data_nascimento), "dd/MM/yyyy") : ""),
+            nascimento: prev.nascimento || (data.data_nascimento ? fromInputDate(data.data_nascimento) : ""),
             nome: prev.nome || data.nome || "",
             tel_1: prev.tel_1 || data.telefone_1 || "",
             tel_2: prev.tel_2 || data.telefone_2 || "",
             tel_3: prev.tel_3 || data.telefone_3 || "",
             email: prev.email || data.email || ""
           }))
+          toast.success("Dados básicos encontrados na base de consulta.");
         }
       } catch (error) {
         console.error("Erro ao buscar detalhes do cliente:", error)

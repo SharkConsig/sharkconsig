@@ -442,6 +442,9 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     const textarea = isEdit ? editContentTextareaRef.current : replyTextareaRef.current;
     if (!textarea) return;
     
+    // Garantir o foco no textarea antes de qualquer operação
+    textarea.focus();
+    
     const value = isEdit ? editContent : reply;
     const setValue = isEdit ? setEditContent : setReply;
     
@@ -455,12 +458,12 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     const newText = before + prefix + selectedText + suffix + after;
     setValue(newText);
     
-    // Restore focus and selection
+    // Restaurar a seleção após o render
     setTimeout(() => {
       textarea.focus();
       const newCursorPos = start + prefix.length + selectedText.length + suffix.length;
       textarea.setSelectionRange(newCursorPos, newCursorPos);
-    }, 0);
+    }, 10);
   };
 
   const filteredStatuses = availableStatuses.filter(s => 
@@ -511,11 +514,11 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1">
                     <Button 
                       variant="ghost" 
                       size="sm" 
-                      className="h-7 px-2 text-[10px] font-bold uppercase tracking-tight text-slate-500 hover:text-primary hover:bg-primary/5 uppercase"
+                      className="h-7 px-2 text-[10px] font-bold uppercase tracking-tight text-slate-400 hover:text-primary hover:bg-primary/5 transition-all"
                       onClick={() => {
                         setEditingMessageId(msg.id)
                         setEditContent(msg.content || "")
@@ -527,7 +530,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                     <Button 
                       variant="ghost" 
                       size="sm" 
-                      className="h-7 px-2 text-[10px] font-bold uppercase tracking-tight text-slate-500 hover:text-primary hover:bg-primary/5 uppercase"
+                      className="h-7 px-2 text-[10px] font-bold uppercase tracking-tight text-slate-400 hover:text-primary hover:bg-primary/5 transition-all"
                       onClick={() => {
                         setAttachingToMessageId(msg.id)
                         messageFileInputRef.current?.click()
@@ -836,6 +839,7 @@ function ToolbarButton({ icon, onClick }: { icon: React.ReactNode, onClick?: () 
     <button 
       type="button"
       onClick={onClick}
+      onMouseDown={(e) => e.preventDefault()} // Impede o roubo de foco do textarea
       className="p-1.5 hover:bg-white hover:shadow-sm rounded transition-all text-slate-500 hover:text-primary"
     >
       {icon}

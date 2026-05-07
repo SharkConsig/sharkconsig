@@ -17,6 +17,7 @@ import { useAuth } from "@/context/auth-context"
 import { cn, withRetry } from "@/lib/utils"
 import { motion } from "motion/react"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { useSidebar } from "@/context/sidebar-context"
 
 interface ProposalSummary {
   id_lead: string
@@ -38,6 +39,7 @@ interface RankingItem {
 
 export default function DashboardPage() {
   const { perfil, isCorretor } = useAuth()
+  const { isCollapsed } = useSidebar()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [userProposals, setUserProposals] = useState<ProposalSummary[]>([])
@@ -422,7 +424,10 @@ export default function DashboardPage() {
     <div className="flex-1 flex flex-col bg-[#F8FAFC]">
       <Header title="DASHBOARD" />
       
-      <div className="p-4 lg:p-8 space-y-8 max-w-[1600px] mx-auto w-full pb-20">
+      <div className={cn(
+        "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
+        isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
+      )}>
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <motion.div 
@@ -1020,7 +1025,7 @@ function DashboardCard({ children, className, id }: { children: React.ReactNode,
     <div 
       id={id}
       className={cn(
-        "bg-white p-5 sm:p-7 rounded-[32px] sm:rounded-[40px] border border-slate-200 transition-all duration-500",
+        "bg-white p-6 sm:p-8 rounded-[32px] sm:rounded-[40px] border border-slate-200 transition-all duration-500",
         className
       )}
     >
