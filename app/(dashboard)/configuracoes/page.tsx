@@ -46,7 +46,7 @@ import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { cn } from "@/lib/utils"
+import { cn, withRetry } from "@/lib/utils"
 
 interface GenericConfig {
   id: string
@@ -106,6 +106,14 @@ interface CampanhaBonificacao {
   created_at: string
 }
 
+interface DashboardBanner {
+  id: string
+  image_url: string
+  title: string | null
+  is_active: boolean
+  created_at: string
+}
+
 interface UsuarioAPI {
   id: string
   nome: string
@@ -131,10 +139,12 @@ export default function SettingsPage() {
   const [isOperacaoExpanded, setIsOperacaoExpanded] = useState(false)
   const [isProdutosExpanded, setIsProdutosExpanded] = useState(false)
   const [isMetasExpanded, setIsMetasExpanded] = useState(false)
+  const [isBannersExpanded, setIsBannersExpanded] = useState(false)
 
   // Metas & Bonificações State
   const [metas, setMetas] = useState<MetaConfig[]>([])
   const [campanhas, setCampanhas] = useState<CampanhaBonificacao[]>([])
+  const [banners, setBanners] = useState<DashboardBanner[]>([])
   const [corretoresList, setCorretoresList] = useState<{id: string, nome: string}[]>([])
   const [supervisoresList, setSupervisoresList] = useState<{id: string, nome: string}[]>([])
   
@@ -142,6 +152,7 @@ export default function SettingsPage() {
   const [isTeamMetaModalOpen, setIsTeamMetaModalOpen] = useState(false)
   const [isIndividualMetaModalOpen, setIsIndividualMetaModalOpen] = useState(false)
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false)
+  const [isBannerModalOpen, setIsBannerModalOpen] = useState(false)
 
   const [macroValue, setMacroValue] = useState("")
   const [selectedTeam, setSelectedTeam] = useState("")
@@ -168,6 +179,12 @@ export default function SettingsPage() {
     descricao: "",
     inicio: "",
     fim: ""
+  })
+
+  const [bannerForm, setBannerForm] = useState({
+    title: "",
+    image: null as File | null,
+    imagePreview: ""
   })
 
   // Products Management State
@@ -228,6 +245,170 @@ export default function SettingsPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  const handleBannerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!bannerForm.image && !bannerForm.imagePreview) {
+      toast.error("Selecione uma imagem primeiro")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      let imageUrl = bannerForm.imagePreview
+
+      if (bannerForm.image) {
+        console.log("Iniciando validação de imagem e upload...")
+        // Validar dimensões
+        const img = new Image()
+        const objectUrl = URL.createObjectURL(bannerForm.image)
+        
+        await new Promise((resolve, reject) => {
+          img.onload = resolve
+          img.onerror = () => reject(new Error("Erro ao carregar imagem para validação"))
+          img.src = objectUrl
+        })
+
+        if (img.width !== 2560 || img.height !== 1440) {
+          console.warn(`Dimensões inválidas: ${img.width}x${img.height}`)
+          toast.error(`Dimensões incorretas: ${img.width}x${img.height}. A imagem deve ter exatamente 2560x1440.`)
+          setIsSubmitting(false)
+          URL.revokeObjectURL(objectUrl)
+          return
+        }
+        URL.revokeObjectURL(objectUrl)
+
+        const fileExt = bannerForm.image.name.split('.').pop()
+        const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+        const filePath = `banners/${fileName}`
+
+        console.log("Fazendo upload para storage:", filePath)
+        const { error: uploadError } = await withRetry(() => 
+          supabase.storage
+            .from('dashboard-banners')
+            .upload(filePath, bannerForm.image as File)
+        )
+
+        if (uploadError) {
+          console.error("Erro no upload storage:", uploadError)
+          throw new Error(`Erro no upload: ${uploadError.message || JSON.stringify(uploadError)}`)
+        }
+
+        const { data } = supabase.storage
+          .from('dashboard-banners')
+          .getPublicUrl(filePath)
+        
+        imageUrl = data.publicUrl
+        console.log("Upload concluído. URL pública:", imageUrl)
+      }
+
+      console.log("Inserindo registro no banco de dados...")
+      
+      // Deativar outros banners se este for ser o ativo
+      await supabase
+        .from('dashboard_banners')
+        .update({ is_active: false })
+        .eq('is_active', true)
+
+      const { error: insertError } = await withRetry(() => 
+        supabase
+          .from('dashboard_banners')
+          .insert({
+            image_url: imageUrl,
+            title: bannerForm.title || null,
+            is_active: true
+          })
+      )
+
+      if (insertError) {
+        console.error("Erro na inserção do banco:", insertError)
+        throw new Error(`Erro no banco: ${insertError.message || JSON.stringify(insertError)}`)
+      }
+
+      toast.success("Banner adicionado com sucesso!")
+      setIsBannerModalOpen(false)
+      setBannerForm({ title: "", image: null, imagePreview: "" })
+      await fetchStatuses()
+    } catch (error: unknown) {
+      console.error("Erro completo ao salvar banner:", error)
+      let errorMsg = "Erro desconhecido"
+      
+      if (typeof error === 'string') {
+        errorMsg = error
+      } else if (error instanceof Error) {
+        errorMsg = error.message
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMsg = String(error.message)
+      } else if (error && typeof error === 'object' && 'error_description' in error) {
+        errorMsg = String(error.error_description)
+      } else {
+        try {
+          errorMsg = JSON.stringify(error)
+        } catch {
+          errorMsg = "Erro não serializável"
+        }
+      }
+      
+      toast.error(`Erro ao salvar banner: ${errorMsg}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleToggleBanner = async (id: string, currentStatus: boolean) => {
+    try {
+      const newStatus = !currentStatus
+
+      if (newStatus) {
+        // Se estiver ATIVANDO, primeiro desativamos todos os outros
+        await supabase
+          .from('dashboard_banners')
+          .update({ is_active: false })
+          .eq('is_active', true)
+      }
+
+      const { error: toggleError } = await supabase
+        .from('dashboard_banners')
+        .update({ is_active: newStatus })
+        .eq('id', id)
+
+      if (toggleError) throw toggleError
+      toast.success(`Banner ${newStatus ? 'ativado' : 'desativado'}`)
+      fetchStatuses()
+    } catch (err: unknown) {
+      console.error("Erro ao alterar status do banner:", err)
+      toast.error("Erro ao alterar status do banner")
+    }
+  }
+
+  const handleDeleteBanner = async (id: string, imageUrl: string) => {
+    if (!confirm("Deseja realmente excluir este banner?")) return
+
+    try {
+      const { error: deletionError } = await supabase
+        .from('dashboard_banners')
+        .delete()
+        .eq('id', id)
+      
+      if (deletionError) throw deletionError
+
+      try {
+        const urlParts = imageUrl.split('/')
+        const fileName = urlParts[urlParts.length - 1]
+        if (fileName) {
+          await supabase.storage.from('dashboard-banners').remove([`banners/${fileName}`])
+        }
+      } catch (err) {
+        console.warn("Could not delete from storage", err)
+      }
+
+      toast.success("Banner excluído")
+      fetchStatuses()
+    } catch (err: unknown) {
+      console.error("Erro ao excluir banner:", err)
+      toast.error("Erro ao excluir banner")
+    }
+  }
+
   const fetchStatuses = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -239,6 +420,7 @@ export default function SettingsPage() {
         { data: prodData },
         { data: metasData },
         { data: campanhasData },
+        { data: bannersData },
         usuariosResponse
       ] = await Promise.all([
         supabase.from('status_chamados').select('*').order('created_at', { ascending: true }),
@@ -248,6 +430,7 @@ export default function SettingsPage() {
         supabase.from('produtos_config').select('*'),
         supabase.from('metas_config').select('*'),
         supabase.from('campanhas_bonificacao').select('*'),
+        supabase.from('dashboard_banners').select('*').order('created_at', { ascending: false }),
         fetch("/api/usuarios")
       ])
 
@@ -256,6 +439,7 @@ export default function SettingsPage() {
       setBancos(bancoData || [])
       setTiposOperacao(operData || [])
       setProdutosConfig(prodData || [])
+      setBanners(bannersData || [])
 
       const perfisData: UsuarioAPI[] = usuariosResponse.ok ? await usuariosResponse.json() : []
       const brokers = perfisData?.filter((p) => p.funcao === 'Corretor').map((p) => ({ id: p.id, nome: p.nome })) || []
@@ -1629,6 +1813,97 @@ export default function SettingsPage() {
             )}
           </AnimatePresence>
         </section>
+
+        {/* GERENCIAR BANNERS DO DASHBOARD */}
+        <section className="space-y-6 pb-20">
+          <div 
+            className="flex items-center justify-between cursor-pointer group select-none"
+            onClick={() => setIsBannersExpanded(!isBannersExpanded)}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
+                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                  GERENCIAR BANNERS DO DASHBOARD (2560x1440)
+                  {isBannersExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
+                </h2>
+              </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Upload de campanhas visuais para o dashboard do corretor</p>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {isBannersExpanded && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }} 
+                animate={{ height: "auto", opacity: 1 }} 
+                exit={{ height: 0, opacity: 0 }} 
+                className="overflow-hidden space-y-4"
+              >
+                <div className="flex flex-col gap-4">
+                  <div className="flex justify-end">
+                    <Button 
+                      onClick={() => {
+                        setBannerForm({ title: "", image: null, imagePreview: "" })
+                        setIsBannerModalOpen(true)
+                      }}
+                      className="h-9 px-6 text-[10px] font-bold uppercase tracking-widest gap-2 bg-[#171717] text-white rounded-xl"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Novo Banner
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {banners.length > 0 ? (
+                      banners.map((banner) => (
+                        <Card key={banner.id} className="relative group overflow-hidden border-slate-100 rounded-2xl shadow-sm hover:shadow-xl transition-all h-[200px]">
+                           <img 
+                             src={banner.image_url} 
+                             alt={banner.title || "Banner"} 
+                             className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                           />
+                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 z-10">
+                              <p className="text-white font-bold text-[12px] uppercase tracking-tight truncate mb-3">{banner.title || "Sem título"}</p>
+                              <div className="flex items-center gap-2">
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className={cn("h-8 flex-1 text-[9px] font-black uppercase tracking-widest gap-2", banner.is_active ? "bg-emerald-500 text-white" : "bg-white text-slate-800 hover:bg-white/90")}
+                                  onClick={() => handleToggleBanner(banner.id, banner.is_active)}
+                                >
+                                  {banner.is_active ? <Check className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
+                                  {banner.is_active ? "ATIVO" : "ATIVAR"}
+                                </Button>
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost" 
+                                  className="h-8 w-8 bg-rose-500/80 hover:bg-rose-500 text-white rounded-lg"
+                                  onClick={() => handleDeleteBanner(banner.id, banner.image_url)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                           </div>
+                           {!banner.is_active && (
+                             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center pointer-events-none z-0">
+                                <span className="bg-white/90 text-slate-800 text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg">Inativo</span>
+                             </div>
+                           )}
+                        </Card>
+                      ))
+                    ) : (
+                      <div className="col-span-full py-12 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-3xl bg-slate-50/50">
+                        <Tag className="w-10 h-10 text-slate-200 mb-4" />
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum banner cadastrado</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
       </main>
 
       {/* Modal CRUD Status */}
@@ -2303,6 +2578,100 @@ export default function SettingsPage() {
               </Button>
             </DialogFooter>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Upload Banner */}
+      <Dialog open={isBannerModalOpen} onOpenChange={setIsBannerModalOpen}>
+        <DialogContent className="sm:max-w-[600px] border-none rounded-3xl shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase">
+              Upload de Novo Banner
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleBannerSubmit} className="space-y-6 pt-4">
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Título da Campanha (Opcional)</Label>
+              <Input 
+                placeholder="EX. CAMPANHA DE JUNHO - MODALIDADE INSS"
+                value={bannerForm.title}
+                onChange={(e) => setBannerForm(prev => ({ ...prev, title: e.target.value }))}
+                className="h-10 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] uppercase"
+              />
+            </div>
+
+            <div className="space-y-4">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Imagem do Banner (2560x1440)</Label>
+              
+              <div className="relative group">
+                {bannerForm.imagePreview ? (
+                  <div className="relative w-full aspect-[2560/1440] rounded-2xl overflow-hidden border-2 border-primary/20 shadow-xl">
+                    <img src={bannerForm.imagePreview} className="w-full h-full object-cover" alt="Preview" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Button 
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setBannerForm(prev => ({ ...prev, image: null, imagePreview: "" }))}
+                        className="text-white hover:text-rose-400"
+                      >
+                        <Trash2 className="w-6 h-6" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center w-full aspect-[2560/1440] border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-slate-100/50 hover:border-primary/30 transition-all cursor-pointer">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <Plus className="w-8 h-8 text-slate-300 mb-2" />
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Clique para selecionar imagem</p>
+                      <p className="text-[9px] text-slate-300 mt-1 uppercase">JPG, PNG ou WEBP (Resolução: 2560x1440)</p>
+                    </div>
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          if (file.size > 5 * 1024 * 1024) {
+                            toast.error("Imagem muito grande. Limite de 5MB.")
+                            return
+                          }
+                          const reader = new FileReader()
+                          reader.onloadend = () => {
+                            setBannerForm(prev => ({ 
+                              ...prev, 
+                              image: file, 
+                              imagePreview: reader.result as string 
+                            }))
+                          }
+                          reader.readAsDataURL(file)
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="pt-4 border-t border-slate-50 gap-3">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setIsBannerModalOpen(false)}
+                className="px-6 h-[40px] uppercase text-[10px] font-black border-slate-200 rounded-xl"
+              >
+                Cancelar
+              </Button>
+              <Button 
+                type="submit"
+                disabled={isSubmitting}
+                className="px-8 h-[40px] bg-[#171717] hover:bg-[#171717]/90 text-white font-black text-[10px] rounded-xl gap-3 transition-all uppercase tracking-widest shadow-xl shadow-slate-200 min-w-[160px]"
+              >
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4" /> Salvar Banner</>}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

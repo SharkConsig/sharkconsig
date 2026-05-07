@@ -454,6 +454,70 @@ function NewProposalForm() {
       if (cleanCPF.length !== 11) return
 
       try {
+        // Primeiro tenta buscar na tabela de propostas (mais completo)
+        const { data: proposal, error: propError } = await supabase
+          .from('propostas')
+          .select('*')
+          .eq('cliente_cpf', cleanCPF)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!propError && proposal) {
+          // Formata as datas (Assumindo YYYY-MM-DD vindo do banco para DD/MM/YYYY)
+          const formatDateToDDMMYYYY = (dateStr: string | null) => {
+            if (!dateStr) return "";
+            try {
+              if (dateStr.includes('-')) {
+                const [y, m, d] = dateStr.split('-');
+                return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+              }
+              return dateStr;
+            } catch { return dateStr; }
+          };
+
+          setFormData(prev => ({
+            ...prev,
+            nome: proposal.nome_cliente || prev.nome,
+            nascimento: proposal.data_nascimento ? formatDateToDDMMYYYY(proposal.data_nascimento) : prev.nascimento,
+            matricula: proposal.matricula || prev.matricula,
+            naturalidade: proposal.naturalidade || prev.naturalidade,
+            uf_naturalidade: proposal.uf_naturalidade || prev.uf_naturalidade,
+            identidade: proposal.identidade || prev.identidade,
+            orgao_emissor: proposal.orgao_emissor || prev.orgao_emissor,
+            uf_emissao: proposal.uf_emissao || prev.uf_emissao,
+            data_emissao: proposal.data_emissao ? formatDateToDDMMYYYY(proposal.data_emissao) : prev.data_emissao,
+            nome_pai: proposal.nome_pai || prev.nome_pai,
+            nome_mae: proposal.nome_mae || prev.nome_mae,
+            tel_1: proposal.tel_residencial_1 || prev.tel_1,
+            tel_2: proposal.tel_residencial_2 || prev.tel_2,
+            tel_3: proposal.tel_comercial || prev.tel_3,
+            email: proposal.email || prev.email,
+            cep: proposal.cep || prev.cep,
+            endereco: proposal.endereco || prev.endereco,
+            numero: proposal.numero || prev.numero,
+            complemento: proposal.complemento || prev.complemento,
+            bairro: proposal.bairro || prev.bairro,
+            cidade: proposal.cidade || prev.cidade,
+            uf: proposal.uf || prev.uf,
+            observacoes: proposal.observacoes || prev.observacoes
+          }));
+
+          // Preenche os anexos se existirem na proposta anterior
+          setExistingAttachments(prev => ({
+            ...prev,
+            frente: proposal.arquivo_rg_frente || prev.frente,
+            verso: proposal.arquivo_rg_verso || prev.verso,
+            contracheque: proposal.arquivo_contracheque || prev.contracheque,
+            extrato: proposal.arquivo_extrato || prev.extrato,
+            outros: proposal.arquivo_outros || prev.outros,
+            outros_2: proposal.arquivo_outros_2 || prev.outros_2
+          }));
+
+          toast.success("Dados preenchidos automaticamente da ficha proposta.");
+          return; // Achou em propostas, não precisa buscar na consulta rápida
+        }
+
         const { data, error } = await supabase
           .from('base_consulta_rapida')
           .select('numero_matricula, data_nascimento, nome, telefone_1, telefone_2, telefone_3, email')

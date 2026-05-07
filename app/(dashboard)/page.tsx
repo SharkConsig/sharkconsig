@@ -50,6 +50,7 @@ export default function DashboardPage() {
   const [teamInProcessValue, setTeamInProcessValue] = useState(0)
   const [teamInProcessCount, setTeamInProcessCount] = useState(0)
   const [teamPendingInconsistencyValue, setTeamPendingInconsistencyValue] = useState(0)
+  const [banners, setBanners] = useState<{image_url: string, title: string | null}[]>([])
   
   const fetchDashboardData = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -65,6 +66,17 @@ export default function DashboardPage() {
 
       const startOfToday = new Date()
       startOfToday.setHours(0, 0, 0, 0)
+
+      // Fetch Banners for everyone first
+      const { data: bannerData } = await withRetry(() => 
+        supabase
+          .from('dashboard_banners')
+          .select('image_url, title')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+      )
+      setBanners(bannerData || [])
 
       const paidStatuses = [
         "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", 
@@ -282,6 +294,26 @@ export default function DashboardPage() {
     if (perfil?.id) {
       fetchDashboardData()
     }
+
+    // Subscrever a mudanças nos banners para atualização em tempo real
+    const channel = supabase
+      .channel('banners-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'dashboard_banners'
+        },
+        () => {
+          fetchDashboardData()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [perfil?.id, fetchDashboardData])
 
   const monthlyProduced = useMemo(() => {
@@ -371,17 +403,17 @@ export default function DashboardPage() {
 
   const userRank = rankings.findIndex(r => r.corretor_id === perfil?.id) + 1
   
-  const greeting = useMemo(() => {
-    if (typeof window === 'undefined') return "Olá"
+  const headerContent = useMemo(() => {
+    if (typeof window === 'undefined') return { greeting: "Olá", phrase: "Sua jornada para o topo começa agora" }
     const hour = new Date().toLocaleTimeString('pt-BR', {
       timeZone: 'America/Sao_Paulo',
       hour: 'numeric',
       hour12: false,
     })
     const h = parseInt(hour)
-    if (h >= 0 && h < 12) return "Bom dia"
-    if (h >= 12 && h < 18) return "Boa tarde"
-    return "Boa noite"
+    if (h >= 0 && h < 12) return { greeting: "Bom dia", phrase: "Sua jornada para o topo começa agora" }
+    if (h >= 12 && h < 18) return { greeting: "Boa tarde", phrase: "Foco total para transformar a tarde em resultados" }
+    return { greeting: "Boa noite", phrase: "Dia produtivo! Organize-se para vencer amanhã" }
   }, [])
 
   if (!mounted) return null
@@ -398,11 +430,11 @@ export default function DashboardPage() {
             animate={{ opacity: 1, x: 0 }}
           >
             <h1 className="text-4xl font-black text-[#1C2643] tracking-tighter">
-              {greeting}, {perfil?.nome?.split(' ')[0] || 'Shark'}!
+              {headerContent.greeting}, {perfil?.nome?.split(' ')[0] || 'Shark'}!
             </h1>
             <p className="text-[12px] font-bold text-[#718198] uppercase tracking-[0.25em] mt-2 flex items-center gap-2">
               <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-              Sua jornada para o topo começa agora
+              {headerContent.phrase}
             </p>
           </motion.div>
           
@@ -421,7 +453,7 @@ export default function DashboardPage() {
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dias Restantes</span>
                </div>
                <p className="text-[11px] font-medium text-slate-500 mt-1 max-w-[200px] leading-tight">
-                  <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta começou!</span> Aproveite cada dia útil para transformar esforço em resultado.
+                  <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta.</span> Aproveite cada dia útil para transformar esforço em resultado.
                </p>
             </div>
           </motion.div>
@@ -435,7 +467,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* SECTION 1: O CORAÇÃO DO DASHBOARD (Meta Individual) */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-4 lg:row-span-2">
-              <DashboardCard className="h-full flex flex-col border-none shadow-2xl shadow-[#1C2643]/5 overflow-hidden group">
+              <DashboardCard className="h-full flex flex-col shadow-2xl shadow-[#1C2643]/5 overflow-hidden group">
                 <div className="relative z-10 flex flex-col h-full">
                   <div className="flex items-center justify-between mb-2">
                      <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">Sua Meta Mensal</p>
@@ -483,7 +515,7 @@ export default function DashboardPage() {
             {/* SECTION 2: O FOCO DO DIA E RECOMPENSAS */}
             <div className={cn("lg:col-span-8 grid grid-cols-1 gap-6", isSupervisor ? "md:grid-cols-2" : "md:grid-cols-2 lg:grid-cols-3")}>
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
-                <DashboardCard className="h-full border-none shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4">
+                <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4">
                   <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mb-2 shrink-0">
                     <Zap className="w-6 h-6 text-amber-500 fill-amber-500" />
                   </div>
@@ -518,7 +550,7 @@ export default function DashboardPage() {
               </motion.div>
 
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
-                <DashboardCard className="h-full border-none shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-[#1C2643] text-white">
+                <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-[#1C2643] text-white border-[#1C2643]">
                   <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-2 shrink-0">
                     {isSupervisor ? (
                       <CheckCircle2 className="w-6 h-6 text-amber-400" />
@@ -559,7 +591,7 @@ export default function DashboardPage() {
 
               {!isSupervisor && (
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
-                  <DashboardCard className="h-full border-none shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4">
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4">
                     <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mb-2 shrink-0">
                       <Users className="w-6 h-6 text-[#1C2643]" />
                     </div>
@@ -598,7 +630,7 @@ export default function DashboardPage() {
                         <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-orange-600 tracking-tighter text-center leading-none">
                           {formatCurrency(teamInProcessValue)}
                         </p>
-                        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col items-center gap-2">
+                        <div className="mt-4 pt-4 border-t border-slate-200 flex flex-col items-center gap-2">
                           <span className="text-[14px] font-bold text-[#1C2643]">
                             {teamInProcessCount} {teamInProcessCount === 1 ? 'Contrato' : 'Contratos'}
                           </span>
@@ -611,7 +643,7 @@ export default function DashboardPage() {
                       <div className="space-y-3">
                          {recentPayments.length > 0 ? (
                            recentPayments.map((p) => (
-                             <div key={p.id_lead} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                             <div key={p.id_lead} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200">
                                <div className="flex flex-col">
                                  <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tight">{p.nome_cliente}</span>
                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID: {p.id_lead}</span>
@@ -651,7 +683,7 @@ export default function DashboardPage() {
             </motion.div>
 
             <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }} className={cn(isSupervisor ? "lg:col-span-12" : "lg:col-span-4")}>
-              <DashboardCard className="h-full border-none shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white">
+              <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white">
                 <div className="flex items-center justify-between mb-6">
                    <h3 className="text-xl font-black text-[#1C2643] tracking-tight">Ranking de Vendas</h3>
                    <Trophy className="w-6 h-6 text-amber-500 fill-amber-500" />
@@ -667,7 +699,7 @@ export default function DashboardPage() {
                       {isSupervisor ? (
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-slate-50/50 border-b border-slate-100">
+                            <tr className="bg-slate-50/50 border-b border-slate-200">
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
                               <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
                               <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
@@ -750,8 +782,6 @@ export default function DashboardPage() {
                           {rankings.slice(0, 2).map((rank, idx) => {
                             const isUser = rank.corretor_id === perfil?.id
                             const position = idx + 1
-                            const currentUserTotal = rankings.find(r => r.corretor_id === perfil?.id)?.totalPaid || 0
-                            const difference = rank.totalPaid - currentUserTotal
                             
                             return (
                               <div 
@@ -760,7 +790,7 @@ export default function DashboardPage() {
                                   "flex items-center justify-between p-4 rounded-2xl border transition-all duration-300",
                                   isUser 
                                     ? "bg-[#1C2643] text-white border-[#1C2643] shadow-lg shadow-[#1C2643]/20 scale-[1.02]" 
-                                    : "bg-slate-50 border-slate-100 text-[#1C2643]"
+                                    : "bg-slate-50 border-slate-200 text-[#1C2643]"
                                 )}
                               >
                                 <div className="flex items-center gap-4">
@@ -777,11 +807,6 @@ export default function DashboardPage() {
                                     )}>
                                       {isUser ? rank.nome : `Ranking ${position}º`}
                                     </p>
-                                    {!isUser && difference > 0 && (
-                                      <p className="text-[9px] font-bold text-amber-600 uppercase tracking-tight">
-                                        Falta {formatCurrency(difference)} para chegar
-                                      </p>
-                                    )}
                                   </div>
                                 </div>
                                 {isUser && (
@@ -827,106 +852,30 @@ export default function DashboardPage() {
               </DashboardCard>
             </motion.div>
 
-            {/* SECTION 5: CAMPANHA MODO TUBARÃO */}
+            {/* SECTION 5: CAMPANHA DINÂMICA OU MODO TUBARÃO */}
             {!isSupervisor && (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="lg:col-span-8">
-                <DashboardCard className="relative overflow-hidden border-none text-white h-full bg-[#050B1C] min-h-[440px] flex flex-col p-0">
-                  {/* Visual stylings to mimic the shark background */}
-                  <div className="absolute top-0 right-0 w-full h-full opacity-20 pointer-events-none">
-                    <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3" />
-                    <div className="absolute bottom-0 left-0 w-96 h-96 bg-emerald-500 rounded-full blur-[120px] translate-y-1/2 -translate-x-1/3" />
-                  </div>
-
-                  <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-6 h-full p-6 sm:p-8 lg:p-10">
-                    {/* Left Side: Campaign Intro */}
-                    <div className="flex flex-col justify-center space-y-6">
-                      <div className="space-y-2">
-                         <motion.h2 
-                           initial={{ opacity: 0, x: -50 }}
-                           animate={{ opacity: 1, x: 0 }}
-                           transition={{ delay: 0.8 }}
-                           className="text-4xl sm:text-5xl lg:text-6xl font-black italic tracking-tighter leading-[0.8] text-white drop-shadow-2xl"
-                         >
-                           MODO<br/>
-                           <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">TUBARÃO</span>
-                         </motion.h2>
-                         <motion.div 
-                           initial={{ opacity: 0, y: 20 }}
-                           animate={{ opacity: 1, y: 0 }}
-                           transition={{ delay: 1 }}
-                           className="inline-block bg-amber-400 px-3 py-1.5 mt-4 skew-x-[-12deg]"
-                         >
-                           <p className="text-[#050B1C] font-black text-[10px] sm:text-xs uppercase tracking-tighter italic skew-x-[12deg]">
-                             ATIVE O SEU MODO E FAÇA HISTÓRIA!
-                           </p>
-                         </motion.div>
-                      </div>
-                      
-                      <p className="text-white/60 text-xs sm:text-sm font-medium max-w-[300px] leading-relaxed">
-                        Sua dedicação é o motor do SharkConsig. Superar limites é o que nos torna gigantes. Confira as premiações exclusivas.
-                      </p>
+                {banners.length > 0 ? (
+                  <DashboardCard className="relative overflow-hidden text-white w-full aspect-video flex flex-col p-3 sm:p-4 border-none bg-transparent">
+                    <div className="w-full h-full">
+                       <img 
+                         src={banners[0].image_url} 
+                         alt={banners[0].title || "Campanha SharkConsig"} 
+                         className="w-full h-full object-cover rounded-[32px] sm:rounded-[40px]"
+                       />
                     </div>
-
-                    {/* Right Side: Prize Table */}
-                    <div className="flex items-center justify-center lg:justify-end">
-                      <div className="w-full max-w-[380px] bg-[#1C2643]/50 backdrop-blur-xl border border-white/10 rounded-[24px] overflow-hidden shadow-2xl">
-                         <div className="grid grid-cols-2 bg-white/5 border-b border-white/10">
-                            <div className="p-3 text-center border-r border-white/10">
-                               <span className="text-[10px] font-black text-cyan-400 uppercase tracking-[0.2em] italic">META</span>
-                            </div>
-                            <div className="p-3 text-center">
-                               <span className="text-[10px] font-black text-amber-400 uppercase tracking-[0.2em] italic">PRÊMIO</span>
-                            </div>
-                         </div>
-                         <div className="divide-y divide-white/5">
-                            {prizeTiers.map((tier, idx) => (
-                              <motion.div 
-                                key={idx} 
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 1.2 + (idx * 0.05) }}
-                                className={cn(
-                                  "grid grid-cols-2 items-center hover:bg-white/5 transition-colors group",
-                                  monthlyProduced >= tier.goal ? "bg-emerald-500/10" : ""
-                                )}
-                              >
-                                 <div className="p-2 sm:p-2.5 pl-4 flex items-center gap-2 border-r border-white/10">
-                                    <div className={cn(
-                                      "w-5 h-5 rounded-full flex items-center justify-center shrink-0 border",
-                                      monthlyProduced >= tier.goal ? "bg-emerald-500 border-emerald-400" : "bg-white/10 border-white/20"
-                                    )}>
-                                       <Target className={cn("w-2.5 h-2.5", monthlyProduced >= tier.goal ? "text-white" : "text-white/40")} />
-                                    </div>
-                                    <span className={cn(
-                                      "text-[12px] font-black tracking-tight",
-                                      monthlyProduced >= tier.goal ? "text-emerald-400" : "text-white"
-                                    )}>
-                                      {formatCurrency(tier.goal)}
-                                    </span>
-                                 </div>
-                                 <div className="p-2 sm:p-2.5 pl-4 flex items-center gap-2">
-                                    <Gift className={cn("w-3 h-3", monthlyProduced >= tier.goal ? "text-emerald-400" : "text-amber-400")} />
-                                    <span className={cn(
-                                      "text-[12px] font-black tracking-tight",
-                                      monthlyProduced >= tier.goal ? "text-emerald-400" : "text-amber-400"
-                                    )}>
-                                      {formatCurrency(tier.prize)}
-                                    </span>
-                                 </div>
-                              </motion.div>
-                            ))}
-                         </div>
-                         <div className="p-3 bg-white/5 text-center">
-                            <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">
-                              {monthlyProduced >= 200000 
-                                ? "NIVEL MÁXIMO!" 
-                                : "SUPERE SEUS LIMITES!"}
-                            </p>
-                         </div>
-                      </div>
+                  </DashboardCard>
+                ) : (
+                  <DashboardCard className="relative overflow-hidden w-full aspect-video bg-transparent flex flex-col p-3 sm:p-4 border-none">
+                    <div className="flex-1 flex items-center justify-center p-8">
+                       <img 
+                         src="/logo.png" 
+                         alt="SharkConsig" 
+                         className="w-48 opacity-5 grayscale"
+                       />
                     </div>
-                  </div>
-                </DashboardCard>
+                  </DashboardCard>
+                )}
               </motion.div>
             )}
           </div>
@@ -1071,7 +1020,7 @@ function DashboardCard({ children, className, id }: { children: React.ReactNode,
     <div 
       id={id}
       className={cn(
-        "bg-white p-5 sm:p-7 rounded-[32px] sm:rounded-[40px] border border-slate-100 transition-all duration-500",
+        "bg-white p-5 sm:p-7 rounded-[32px] sm:rounded-[40px] border border-slate-200 transition-all duration-500",
         className
       )}
     >

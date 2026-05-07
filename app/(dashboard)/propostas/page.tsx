@@ -123,7 +123,7 @@ interface Proposal {
 }
 
 export default function ProposalsPage() {
-  const { perfil, isCorretor, isAdmin, isDeveloper, isOperational } = useAuth()
+  const { perfil, isCorretor, isAdmin, isDeveloper, isOperational, isSupervisor } = useAuth()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [counts, setCounts] = useState<{[key: string]: number}>({})
   const [isLoading, setIsLoading] = useState(false)
@@ -632,6 +632,7 @@ export default function ProposalsPage() {
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">OPERAÇÃO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">STATUS</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">VALOR OPERAÇÃO</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">OBSERVAÇÃO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ÚLTIMA CONSULTA</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">AÇÕES</th>
                 </tr>
@@ -639,7 +640,7 @@ export default function ProposalsPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading && proposals.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
+                    <td colSpan={13} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
                       Carregando propostas...
                     </td>
                   </tr>
@@ -679,6 +680,28 @@ export default function ProposalsPage() {
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-right">
                             R$ {(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </td>
+                          <td className="px-4 py-4 text-[11px] text-slate-500 max-w-[200px] truncate">
+                            {(() => {
+                              const isAuthorized = isAdmin || isDeveloper || isOperational;
+                              let obsCorr = proposal.obs_corretor || "";
+                              let obsOper = proposal.obs_operacional || "";
+
+                              // Fallback extraction if columns are empty but combined field exists
+                              if (!obsCorr && !obsOper && proposal.observacoes) {
+                                const obs = proposal.observacoes;
+                                const corretorMatch = obs.match(/\[CORRETOR\]: ([\s\S]*?)(?=\n\[OPERACIONAL\]|$)/);
+                                const operacionalMatch = obs.match(/\[OPERACIONAL\]: ([\s\S]*?)$/);
+                                if (corretorMatch) obsCorr = corretorMatch[1].trim();
+                                if (operacionalMatch) obsOper = operacionalMatch[1].trim();
+                              }
+
+                              if (isAuthorized) {
+                                if (obsCorr && obsOper) return `${obsCorr} | ${obsOper}`;
+                                return obsOper || obsCorr || "-";
+                              }
+                              return obsCorr || "-";
+                            })()}
+                          </td>
                           <td className="px-4 py-4 text-[10px] font-bold text-slate-600">
                             {proposal.data_consulta || proposal.updated_at ? (
                               (() => {
@@ -699,10 +722,10 @@ export default function ProposalsPage() {
                                   event.stopPropagation()
                                   handleUpdateConsulta(proposal.id_lead)
                                 }}
-                                className="w-8 h-8 bg-slate-500 hover:bg-slate-600 text-white rounded-md p-1 group/btn transition-all"
+                                className="w-[26px] h-[26px] bg-slate-500 hover:bg-slate-600 text-white rounded-md p-1 group/btn transition-all"
                                 title="ATUALIZAR DATA DE CONSULTA"
                               >
-                                <RefreshCw className="w-4 h-4" />
+                                <RefreshCw className="w-[13px] h-[13px]" />
                               </Button>
                               {selectedStatus !== "CANCELADOS" && (isAdmin || isDeveloper || isOperational) && (
                                 <Button 
@@ -713,17 +736,18 @@ export default function ProposalsPage() {
                                     setSelectedProposalForTransfer(proposal)
                                     setIsTransferModalOpen(true)
                                   }}
-                                  className="w-8 h-8 bg-amber-500 hover:bg-amber-600 text-white rounded-md p-1 group/btn transition-all"
+                                  className="w-[26px] h-[26px] bg-amber-500 hover:bg-amber-600 text-white rounded-md p-1 group/btn transition-all"
                                   title="TRANSFERIR RESPONSÁVEL"
                                 >
-                                  <UserPlus className="w-4 h-4" />
+                                  <UserPlus className="w-[13px] h-[13px]" />
                                 </Button>
                               )}
                               {selectedStatus !== "CANCELADOS" && (
-                                (!isCorretor || [
+                                (!(isCorretor || isSupervisor) || [
                                   'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
                                   'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
-                                  'COM INCONSISTÊNCIA NO BANCO'
+                                  'COM INCONSISTÊNCIA NO BANCO',
+                                  'PAGAMENTO DEVOLVIDO'
                                 ].includes(proposal.status)) && (
                                   <Button 
                                     variant="ghost" 
@@ -733,10 +757,10 @@ export default function ProposalsPage() {
                                       setSelectedProposalForStatus(proposal)
                                       setIsStatusModalOpen(true)
                                     }}
-                                    className="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md p-1 group/btn transition-all"
+                                    className="w-[26px] h-[26px] bg-emerald-500 hover:bg-emerald-600 text-white rounded-md p-1 group/btn transition-all"
                                     title="ALTERAR STATUS DA PROPOSTA"
                                   >
-                                    <ChevronRight className="w-4 h-4" />
+                                    <ChevronRight className="w-[13px] h-[13px]" />
                                   </Button>
                                 )
                               )}
@@ -747,17 +771,17 @@ export default function ProposalsPage() {
                                   event.stopPropagation()
                                   toggleProposalExpansion(proposal.id_lead)
                                 }}
-                                className="w-8 h-8 bg-sky-500 hover:bg-sky-600 text-white rounded-md p-1 group/btn transition-all"
+                                className="w-[26px] h-[26px] bg-sky-500 hover:bg-sky-600 text-white rounded-md p-1 group/btn transition-all"
                                 title="VISUALIZAR/EDITAR PROPOSTA"
                               >
-                                <Eye className="w-4 h-4" />
+                                <Eye className="w-[13px] h-[13px]" />
                               </Button>
                             </div>
                           </td>
                         </tr>
                         {expandedProposalId === proposal.id_lead && (
                           <tr>
-                            <td colSpan={12} className="p-0 border-b border-slate-200">
+                            <td colSpan={13} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
                                 <ProposalDetailsAccordion 
                                   proposal={proposal} 
@@ -780,7 +804,7 @@ export default function ProposalsPage() {
                     ))
                 ) : (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
+                    <td colSpan={13} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
                       Nenhuma proposta encontrada com os filtros selecionados.
                     </td>
                   </tr>

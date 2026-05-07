@@ -5,17 +5,12 @@ import { Button } from "@/components/ui/button"
 import { 
   Bold, 
   Italic, 
-  Underline, 
   Quote, 
-  AlignLeft, 
-  AlignCenter, 
-  AlignRight, 
   List, 
   ListOrdered, 
   Type, 
   Link2, 
   Image as ImageIcon, 
-  Type as FontIcon,
   ArrowRight,
   FileText,
   Loader2,
@@ -23,7 +18,9 @@ import {
   X,
   ChevronDown,
   Search,
-  Plus
+  Plus,
+  Edit2,
+  Paperclip
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
@@ -97,7 +94,14 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [statusSearchTerm, setStatusSearchTerm] = useState("")
   const [currentStatusName, setCurrentStatusName] = useState<string>(ticket.status_nome || "ABERTO")
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState("")
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [attachingToMessageId, setAttachingToMessageId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const messageFileInputRef = useRef<HTMLInputElement>(null)
+  const replyTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const editContentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const statusDropdownRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -354,6 +358,111 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     }
   };
 
+  const handleUpdateMessage = async () => {
+    if (!editingMessageId) return
+    setIsUpdating(true)
+    try {
+      if (editingMessageId === "initial") {
+        const { error } = await supabase
+          .from('chamados')
+          .update({ description: editContent })
+          .eq('id', ticket.id)
+        if (error) throw error
+        toast.success("Descrição atualizada")
+      } else {
+        const { error } = await supabase
+          .from('mensagens_chamado')
+          .update({ content: editContent })
+          .eq('id', editingMessageId)
+        if (error) throw error
+        toast.success("Mensagem atualizada")
+      }
+      setEditingMessageId(null)
+      fetchMessages()
+    } catch (err) {
+      console.error("Erro ao atualizar:", err)
+      toast.error("Erro ao atualizar")
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleAddAttachmentToMessage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0 || !attachingToMessageId) return
+
+    setIsUpdating(true)
+    const toastId = toast.loading("Enviando anexo...")
+    try {
+      const file = files[0]
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+      const fullPath = `chat_messages/${ticket.id}/${Date.now()}_${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('chamados-attachments')
+        .upload(fullPath, file)
+
+      if (uploadError) throw uploadError
+
+      const { data } = supabase.storage
+        .from('chamados-attachments')
+        .getPublicUrl(fullPath)
+
+      const newAttachment = { name: file.name, url: data.publicUrl }
+
+      if (attachingToMessageId === "initial") {
+        toast.error("Edite a descrição para adicionar links de arquivos manualmente.")
+      } else {
+        const msg = messages.find(m => m.id === attachingToMessageId)
+        const currentAtts = msg?.attachments || []
+        
+        const { error: updateError } = await supabase
+          .from('mensagens_chamado')
+          .update({ 
+            attachments: [...currentAtts, newAttachment] 
+          })
+          .eq('id', attachingToMessageId)
+
+        if (updateError) throw updateError
+        toast.success("Anexo adicionado", { id: toastId })
+        fetchMessages()
+      }
+    } catch (err) {
+      console.error("Erro ao anexo:", err)
+      toast.error("Erro ao adicionar anexo", { id: toastId })
+    } finally {
+      setIsUpdating(false)
+      setAttachingToMessageId(null)
+      if (messageFileInputRef.current) messageFileInputRef.current.value = ""
+    }
+  }
+
+  const applyFormat = (prefix: string, suffix: string = '', isEdit: boolean = false) => {
+    const textarea = isEdit ? editContentTextareaRef.current : replyTextareaRef.current;
+    if (!textarea) return;
+    
+    const value = isEdit ? editContent : reply;
+    const setValue = isEdit ? setEditContent : setReply;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = value.substring(start, end);
+    
+    const before = value.substring(0, start);
+    const after = value.substring(end);
+    
+    const newText = before + prefix + selectedText + suffix + after;
+    setValue(newText);
+    
+    // Restore focus and selection
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + prefix.length + selectedText.length + suffix.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+
   const filteredStatuses = availableStatuses.filter(s => 
     s.nome.toLowerCase().includes(statusSearchTerm.toLowerCase())
   );
@@ -362,6 +471,12 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
 
   return (
     <div className="p-4 sm:p-8 space-y-8 bg-white border-t border-slate-100 max-h-[800px] flex flex-col">
+      <input 
+        type="file" 
+        ref={messageFileInputRef} 
+        className="hidden" 
+        onChange={handleAddAttachmentToMessage}
+      />
       <div className="flex-1 overflow-y-auto space-y-8 pr-2 custom-scrollbar" ref={scrollRef}>
         {isLoading && allMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 gap-2">
@@ -374,7 +489,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
           </div>
         ) : (
           allMessages.map((msg) => (
-            <div key={msg.id} className="flex flex-col sm:flex-row gap-4 text-left animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <div key={msg.id} className="flex flex-col sm:flex-row gap-4 text-left animate-in fade-in slide-in-from-bottom-2 duration-500 group">
               <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 border-white shadow-sm ring-1 ring-slate-100">
                 <Image 
                   src={msg.user_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(msg.user_nome || 'Usuário')}&background=random`} 
@@ -385,33 +500,105 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 />
               </div>
               <div className="flex-1 space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[13px] font-bold text-slate-900">{msg.user_nome}</span>
-                  <span className="text-[11px] italic text-slate-400">{msg.action}</span>
+                <div className="flex items-start justify-between">
+                  <div className="flex flex-col">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[13px] font-bold text-slate-900">{msg.user_nome}</span>
+                      <span className="text-[11px] italic text-slate-400">{msg.action}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: ptBR })}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 px-2 text-[10px] font-bold uppercase tracking-tight text-slate-500 hover:text-primary hover:bg-primary/5 uppercase"
+                      onClick={() => {
+                        setEditingMessageId(msg.id)
+                        setEditContent(msg.content || "")
+                      }}
+                    >
+                      <Edit2 className="w-3 h-3 mr-1" />
+                      Editar
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 px-2 text-[10px] font-bold uppercase tracking-tight text-slate-500 hover:text-primary hover:bg-primary/5 uppercase"
+                      onClick={() => {
+                        setAttachingToMessageId(msg.id)
+                        messageFileInputRef.current?.click()
+                      }}
+                    >
+                      <Paperclip className="w-3 h-3 mr-1" />
+                      Anexar
+                    </Button>
+                  </div>
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: ptBR })}
-                </p>
                 
                 {msg.content && (
                   <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100 group hover:border-primary/20 transition-colors">
-                    <div className="markdown-body text-sm text-slate-600 break-words leading-relaxed">
-                      <ReactMarkdown 
-                        components={{
-                          img: ({ ...props }) => (
-                            <img 
-                              {...props} 
-                              alt={props.alt || "Anexo do chamado"}
-                              className="max-w-full rounded-lg shadow-sm border border-slate-200 mt-2 mb-2 hover:scale-[1.02] transition-transform cursor-pointer" 
-                              onClick={() => props.src && window.open(props.src, '_blank')}
-                            />
-                          ),
-                          p: ({ children }) => <p className="mb-2 last:mb-0 italic">{children}</p>
-                        }}
-                      >
-                        {msg.content}
-                      </ReactMarkdown>
-                    </div>
+                    {editingMessageId === msg.id ? (
+                      <div className="space-y-3">
+                        <div className="border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 transition-all shadow-sm">
+                          <div className="bg-slate-50 border-bottom border-slate-200 p-2 flex flex-wrap gap-1">
+                            <ToolbarButton icon={<Bold className="w-3.5 h-3.5" />} onClick={() => applyFormat('**', '**', true)} />
+                            <ToolbarButton icon={<Italic className="w-3.5 h-3.5" />} onClick={() => applyFormat('*', '*', true)} />
+                            <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
+                            <ToolbarButton icon={<Quote className="w-3.5 h-3.5" />} onClick={() => applyFormat('> ', '', true)} />
+                            <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
+                            <ToolbarButton icon={<List className="w-3.5 h-3.5" />} onClick={() => applyFormat('\n- ', '', true)} />
+                            <ToolbarButton icon={<ListOrdered className="w-3.5 h-3.5" />} onClick={() => applyFormat('\n1. ', '', true)} />
+                          </div>
+                          <textarea 
+                            ref={editContentTextareaRef}
+                            className="w-full min-h-[100px] p-3 text-sm focus:outline-none bg-white"
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                           <Button 
+                             variant="ghost" 
+                             size="sm" 
+                             className="text-[10px] font-bold uppercase"
+                             onClick={() => setEditingMessageId(null)}
+                           >
+                             Cancelar
+                           </Button>
+                           <Button 
+                             size="sm" 
+                             className="text-[10px] font-bold uppercase h-8 px-4"
+                             onClick={handleUpdateMessage}
+                             disabled={isUpdating}
+                           >
+                             {isUpdating ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : null}
+                             Salvar
+                           </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="markdown-body text-sm text-slate-600 break-words leading-relaxed">
+                        <ReactMarkdown 
+                          components={{
+                            img: ({ ...props }) => (
+                              <img 
+                                {...props} 
+                                alt={props.alt || "Anexo do chamado"}
+                                className="max-w-full rounded-lg shadow-sm border border-slate-200 mt-2 mb-2 hover:scale-[1.02] transition-transform cursor-pointer" 
+                                onClick={() => props.src && window.open(props.src, '_blank')}
+                              />
+                            ),
+                            p: ({ children }) => <p className="mb-2 last:mb-0 italic">{children}</p>
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -456,25 +643,20 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
       <div className="pt-8 border-t border-slate-100 space-y-4">
         <div className="border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 transition-all shadow-sm">
           <div className="bg-slate-50 border-bottom border-slate-200 p-2 flex flex-wrap gap-1">
-            <ToolbarButton icon={<Bold className="w-3.5 h-3.5" />} />
-            <ToolbarButton icon={<Italic className="w-3.5 h-3.5" />} />
-            <ToolbarButton icon={<Underline className="w-3.5 h-3.5" />} />
+            <ToolbarButton icon={<Bold className="w-3.5 h-3.5" />} onClick={() => applyFormat('**', '**')} />
+            <ToolbarButton icon={<Italic className="w-3.5 h-3.5" />} onClick={() => applyFormat('*', '*')} />
             <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
-            <ToolbarButton icon={<Quote className="w-3.5 h-3.5" />} />
+            <ToolbarButton icon={<Quote className="w-3.5 h-3.5" />} onClick={() => applyFormat('> ')} />
             <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
-            <ToolbarButton icon={<AlignLeft className="w-3.5 h-3.5" />} />
-            <ToolbarButton icon={<AlignCenter className="w-3.5 h-3.5" />} />
-            <ToolbarButton icon={<AlignRight className="w-3.5 h-3.5" />} />
+            <ToolbarButton icon={<List className="w-3.5 h-3.5" />} onClick={() => applyFormat('\n- ')} />
+            <ToolbarButton icon={<ListOrdered className="w-3.5 h-3.5" />} onClick={() => applyFormat('\n1. ')} />
             <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
-            <ToolbarButton icon={<List className="w-3.5 h-3.5" />} />
-            <ToolbarButton icon={<ListOrdered className="w-3.5 h-3.5" />} />
-            <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
-            <ToolbarButton icon={<FontIcon className="w-3.5 h-3.5" />} />
-            <ToolbarButton icon={<Link2 className="w-3.5 h-3.5" />} />
-            <ToolbarButton icon={<ImageIcon className="w-3.5 h-3.5" />} />
-            <ToolbarButton icon={<Type className="w-3.5 h-3.5" />} />
+            <ToolbarButton icon={<Link2 className="w-3.5 h-3.5" />} onClick={() => applyFormat('[', '](url)')} />
+            <ToolbarButton icon={<ImageIcon className="w-3.5 h-3.5" />} onClick={() => applyFormat('![', '](url)')} />
+            <ToolbarButton icon={<Type className="w-3.5 h-3.5" />} onClick={() => applyFormat('### ')} />
           </div>
           <textarea 
+            ref={replyTextareaRef}
             className="w-full min-h-[100px] max-h-[300px] p-4 text-[13px] focus:outline-none resize-none bg-white font-medium text-slate-700 leading-relaxed"
             placeholder="Digite sua resposta aqui e pressione Enviar..."
             value={reply}
@@ -649,9 +831,13 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   )
 }
 
-function ToolbarButton({ icon }: { icon: React.ReactNode }) {
+function ToolbarButton({ icon, onClick }: { icon: React.ReactNode, onClick?: () => void }) {
   return (
-    <button className="p-1.5 hover:bg-white hover:shadow-sm rounded transition-all text-slate-500 hover:text-primary">
+    <button 
+      type="button"
+      onClick={onClick}
+      className="p-1.5 hover:bg-white hover:shadow-sm rounded transition-all text-slate-500 hover:text-primary"
+    >
       {icon}
     </button>
   )

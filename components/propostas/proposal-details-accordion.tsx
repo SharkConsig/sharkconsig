@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X } from "lucide-react"
+import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { FichaPropostaModal } from "./ficha-proposta-modal"
 import { supabase } from "@/lib/supabase"
@@ -112,22 +112,26 @@ interface ProdutoConfig {
 }
 
 export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
-  const { perfil: user } = useAuth()
-  const isCorretor = user?.role === 'Corretor'
-  const isFinancialEditor = ['Operacional', 'Administrativo', 'Desenvolvedor', 'Admin'].includes(user?.role || '')
+  const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor } = useAuth()
+  const [lockedBy, setLockedBy] = useState<{ id: string; nome: string; role: string } | null>(null)
   
-  const canEditFields = !isCorretor || [
+  const isFinancialEditor = ['Operacional', 'Administrativo', 'Desenvolvedor', 'Admin'].includes(user?.role || '')
+
+  // Lock logic: if someone else is operational and editing, and current user is operational
+  const isLockedByOther = !!lockedBy && lockedBy.id !== user?.id && isOperational && lockedBy.role === 'Operacional';
+  
+  const canEditFields = (!isCorretor && !isLockedByOther) || (isCorretor && [
     'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
     'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO'
-  ].includes(proposal.status);
+  ].includes(proposal.status));
 
-  const canAttach = !isCorretor || [
+  const canAttach = (!isCorretor && !isLockedByOther) || (isCorretor && [
     'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
     'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
     'COM INCONSISTÊNCIA NO BANCO'
-  ].includes(proposal.status);
+  ].includes(proposal.status));
 
-  const canSave = canEditFields || canAttach;
+  const canSave = (canEditFields || canAttach) && !isLockedByOther;
 
   const [activeTab, setActiveTab] = useState<"visualizar" | "historico">("visualizar")
   const [isFichaModalOpen, setIsFichaModalOpen] = useState(false)
@@ -135,6 +139,63 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [usersMap, setUsersMap] = useState<Map<string, string>>(new Map())
   const [isSaving, setIsSaving] = useState(false)
+
+  // Presence logic for locking
+  useEffect(() => {
+    if (!user || !proposal.id_lead) return
+
+    const channel = supabase.channel(`proposal_lock_${proposal.id_lead}`, {
+      config: {
+        presence: {
+          key: user.id,
+        },
+      },
+    })
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const newState = channel.presenceState()
+        const presences = Object.values(newState).flat() as Array<{
+          user_id: string;
+          user_name: string;
+          role: string;
+          online_at: string;
+        }>
+        
+        // Find the first operational user that is not me
+        const otherOpUser = presences.find(p => p.role === 'Operacional' && p.user_id !== user.id)
+        
+        if (otherOpUser) {
+          setLockedBy({
+            id: otherOpUser.user_id,
+            nome: otherOpUser.user_name,
+            role: otherOpUser.role
+          })
+        } else {
+          setLockedBy(null)
+        }
+      })
+      .on('presence', { event: 'join', key: user.id }, () => {
+        // Just joined
+      })
+      .on('presence', { event: 'leave', key: user.id }, () => {
+        // Just left
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            user_id: user.id,
+            user_name: user.nome || user.username || 'Usuário',
+            role: user.role,
+            online_at: new Date().toISOString(),
+          })
+        }
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user, proposal.id_lead])
   
   const [dbProdutosConfigs, setDbProdutosConfigs] = useState<ProdutoConfig[]>([])
   const [selectedCoefValue, setSelectedCoefValue] = useState<number | null>(
@@ -694,6 +755,21 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
 
   return (
     <div className="bg-slate-50/50 p-6 space-y-6 border-t border-slate-100">
+      {/* Lock Banner */}
+      {isLockedByOther && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="bg-amber-100 p-2 rounded-full">
+            <Lock className="w-5 h-5 text-amber-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-[12px] font-bold text-amber-900 uppercase tracking-tight">Proposta em Edição</p>
+            <p className="text-[11px] text-amber-700 font-medium italic">
+              Esta proposta está sendo atuada por <span className="font-bold">{lockedBy?.nome}</span> neste momento. Você pode apenas visualizar os dados.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex justify-center gap-2">
         <Button 
@@ -1159,7 +1235,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                         id="operacional-valor-parcela"
                         value={formData.valor_parcela}
                         onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
-                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                        disabled={!canEditFields || isLockedByOther}
+                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                         placeholder="R$ 0,00" 
                       />
                     </div>
@@ -1169,7 +1246,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                         id="operacional-valor-operacao"
                         value={formData.valor_operacao_operacional}
                         onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
-                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                        disabled={!canEditFields || isLockedByOther}
+                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                         placeholder="R$ 0,00" 
                       />
                     </div>
@@ -1179,7 +1257,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                         id="operacional-valor-cliente"
                         value={formData.valor_cliente_operacional}
                         onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
-                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                        disabled={!canEditFields || isLockedByOther}
+                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                         placeholder="R$ 0,00" 
                       />
                     </div>
@@ -1187,7 +1266,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                       id="save-divergencia-operacional"
                       onClick={handleUpdateProposal} 
                       className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
-                      disabled={isSaving}
+                      disabled={isSaving || isLockedByOther}
                     >
                       {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                     </Button>
@@ -1562,7 +1641,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                             <p className="text-[10px] font-medium text-slate-500">{new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                           </div>
                         ) : (
-                          <HistoryCard event={event} usersMap={usersMap} />
+                          <HistoryCard 
+                            event={event} 
+                            usersMap={usersMap} 
+                            isAuthorized={isAdmin || isDeveloper || isOperational} 
+                          />
                         )}
                       </div>
 
@@ -1584,7 +1667,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                             <p className="text-[10px] font-medium text-slate-500">{new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                           </div>
                         ) : (
-                          <HistoryCard event={event} usersMap={usersMap} />
+                          <HistoryCard 
+                            event={event} 
+                            usersMap={usersMap} 
+                            isAuthorized={isAdmin || isDeveloper || isOperational} 
+                          />
                         )}
                       </div>
                     </div>
@@ -1605,7 +1692,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   )
 }
 
-function HistoryCard({ event, usersMap }: { event: HistoryItem; usersMap: Map<string, string> }) {
+function HistoryCard({ event, usersMap, isAuthorized }: { event: HistoryItem; usersMap: Map<string, string>; isAuthorized: boolean }) {
   const userName = usersMap.get(event.usuario_id) || event.usuario_id || "SISTEMA";
   
   return (
@@ -1661,7 +1748,18 @@ function HistoryCard({ event, usersMap }: { event: HistoryItem; usersMap: Map<st
       {event.observacoes && (
         <div className="space-y-1 pt-2 border-t border-slate-50">
           <p className="text-[9px] font-black text-slate-900 uppercase tracking-tighter">Observações:</p>
-          <p className="text-[10px] font-medium text-slate-700 whitespace-pre-line leading-snug">{event.observacoes}</p>
+          <p className="text-[10px] font-medium text-slate-700 whitespace-pre-line leading-snug">
+            {(() => {
+              if (isAuthorized) return event.observacoes;
+              
+              // Filter out operational observations for unauthorized users
+              // Handles formats like "Obs Operacional: ..." and "[OPERACIONAL]: ..."
+              return event.observacoes
+                .split(' | ')
+                .filter(part => !part.toLowerCase().includes('operacional'))
+                .join(' | ') || "-";
+            })()}
+          </p>
         </div>
       )}
 

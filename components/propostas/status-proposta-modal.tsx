@@ -146,15 +146,17 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
           className="w-full bg-white border border-slate-200 rounded-sm p-3 text-[11px] font-bold text-slate-600 focus:outline-none focus:border-primary/50 min-h-[80px] resize-none"
         />
       </div>
-      <div className="space-y-1.5">
-        <label className="text-[10px] font-bold text-slate-700 uppercase">Observações ao Operacional:</label>
-        <textarea 
-          value={obsOperacional}
-          onChange={(e) => setObsOperacional(e.target.value)}
-          placeholder="Digite a nova observação para o operacional..."
-          className="w-full bg-white border border-slate-200 rounded-sm p-3 text-[11px] font-bold text-slate-600 focus:outline-none focus:border-primary/50 min-h-[80px] resize-none"
-        />
-      </div>
+      {(isOperational || isAdmin || isDeveloper) && (
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-slate-700 uppercase">Observações ao Operacional:</label>
+          <textarea 
+            value={obsOperacional}
+            onChange={(e) => setObsOperacional(e.target.value)}
+            placeholder="Digite a nova observação para o operacional..."
+            className="w-full bg-white border border-slate-200 rounded-sm p-3 text-[11px] font-bold text-slate-600 focus:outline-none focus:border-primary/50 min-h-[80px] resize-none"
+          />
+        </div>
+      )}
     </div>
   )
 
@@ -257,7 +259,7 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
               )}
               
               {/* Observações Salvas exibidas na seção de Dados Gerais */}
-              {(displayObsCorretor || displayObsOperacional) && (
+              {(displayObsCorretor || (displayObsOperacional && (isOperational || isAdmin || isDeveloper))) && (
                 <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
                   {displayObsCorretor && (
                     <div className="flex items-start">
@@ -267,7 +269,7 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                       </p>
                     </div>
                   )}
-                  {displayObsOperacional && (
+                  {displayObsOperacional && (isOperational || isAdmin || isDeveloper) && (
                     <div className="flex items-start">
                       <span className="text-[11px] font-bold text-slate-700 w-[180px] text-right mr-6 uppercase">OBS. OPERACIONAL:</span>
                       <p className="text-[11px] text-slate-600 font-medium whitespace-pre-line bg-slate-50 p-2 rounded-sm flex-1 italic border border-slate-100 text-left">
