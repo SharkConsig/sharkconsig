@@ -14,7 +14,8 @@ import {
   ChevronRight,
   Eye,
   Loader2,
-  UserPlus
+  UserPlus,
+  RefreshCw
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ProposalDetailsAccordion } from "@/components/propostas/proposal-details-accordion"
@@ -39,7 +40,8 @@ const TABS_CONFIG = [
     subTabs: [
       "ANDAMENTO / AGUARDANDO PAGAMENTO",
       "COM INCONSISTÊNCIA NO BANCO",
-      "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
+      "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
+      "PORTABILIDADE"
     ]
   },
   {
@@ -84,6 +86,8 @@ interface Proposal {
   valor_operacao?: number
   valor_cliente?: number
   valor_parcela?: number
+  prazo?: number | string
+  coeficiente?: number | string
   email?: string
   tel_residencial_1?: string
   tel_residencial_2?: string
@@ -113,6 +117,7 @@ interface Proposal {
   tipo_conta?: string
   valor_operacao_operacional?: number
   coeficiente_prazo?: string
+  data_consulta?: string
   updated_at?: string
   created_at: string
 }
@@ -286,6 +291,33 @@ export default function ProposalsPage() {
     }
   }
 
+  const handleUpdateConsulta = async (idLead: string) => {
+    if (!perfil) return
+    const loadingToast = toast.loading("Atualizando data de consulta...")
+    
+    try {
+      const now = new Date().toISOString()
+      const { error } = await supabase
+        .from('propostas')
+        .update({ 
+          data_consulta: now,
+          updated_at: now 
+        })
+        .eq('id_lead', idLead)
+
+      if (error) throw error
+
+      setProposals(prev => prev.map(p => 
+        p.id_lead === idLead ? { ...p, data_consulta: now, updated_at: now } : p
+      ))
+
+      toast.success("Data de consulta atualizada!", { id: loadingToast })
+    } catch (error: unknown) {
+      console.error("Erro ao atualizar consulta:", error)
+      toast.error("Erro ao atualizar consulta", { id: loadingToast })
+    }
+  }
+
   const fetchProposals = async () => {
     if (!perfil) return
     setIsLoading(true)
@@ -451,11 +483,7 @@ export default function ProposalsPage() {
   }
 
   const handleSecondaryClick = (status: string) => {
-    if (selectedSecondaryStatus === status) {
-      setSelectedSecondaryStatus(null)
-    } else {
-      setSelectedSecondaryStatus(status)
-    }
+    setSelectedSecondaryStatus(status)
     setCurrentPage(1)
   }
 
@@ -563,13 +591,12 @@ export default function ProposalsPage() {
                     key={card.label} 
                     className={cn(
                       "card-shadow border border-slate-200 min-w-[160px] lg:min-w-0 cursor-pointer transition-all hover:scale-[1.02]",
-                      selectedSecondaryStatus === card.label ? "bg-[#DFF0D8] ring-2 ring-primary ring-offset-2" : (
-                        ['AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO', 'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO', 'COM INCONSISTÊNCIA NO BANCO', 'PAGAMENTO DEVOLVIDO'].includes(card.label) ? "bg-[#FCF8E3]" :
-                        ['AGUARDANDO DIGITAÇÃO OPERACIONAL', 'COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL', 'COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL', 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA'].includes(card.label) ? "bg-[#D9EDF7]" :
-                        ['ANDAMENTO / AGUARDANDO PAGAMENTO', 'PÓS-VENDA REALIZADA'].includes(card.label) ? "bg-[#DFF0D8]" :
-                        ['CANCELADO'].includes(card.label) ? "bg-[#F2DEDE]" :
-                        "bg-white"
-                      )
+                      selectedSecondaryStatus === card.label && "ring-2 ring-primary ring-offset-2",
+                      ['AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO', 'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO', 'COM INCONSISTÊNCIA NO BANCO', 'PAGAMENTO DEVOLVIDO'].includes(card.label) ? "bg-[#FCF8E3]" :
+                      ['AGUARDANDO DIGITAÇÃO OPERACIONAL', 'COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL', 'COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL', 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA'].includes(card.label) ? "bg-[#D9EDF7]" :
+                      ['ANDAMENTO / AGUARDANDO PAGAMENTO', 'PÓS-VENDA REALIZADA'].includes(card.label) ? "bg-[#DFF0D8]" :
+                      ['CANCELADO'].includes(card.label) ? "bg-[#F2DEDE]" :
+                      "bg-white"
                     )}
                     onClick={() => handleSecondaryClick(card.label)}
                   >
@@ -605,7 +632,7 @@ export default function ProposalsPage() {
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">OPERAÇÃO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">STATUS</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">VALOR OPERAÇÃO</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ÚLTIMA ALTERAÇÃO</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ÚLTIMA CONSULTA</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">AÇÕES</th>
                 </tr>
               </thead>
@@ -653,10 +680,10 @@ export default function ProposalsPage() {
                             R$ {(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </td>
                           <td className="px-4 py-4 text-[10px] font-bold text-slate-600">
-                            {proposal.updated_at ? (
+                            {proposal.data_consulta || proposal.updated_at ? (
                               (() => {
                                 try {
-                                  return format(new Date(proposal.updated_at), "dd/MM/yyyy HH:mm")
+                                  return format(new Date(proposal.data_consulta || proposal.updated_at || ""), "dd/MM/yyyy HH:mm")
                                 } catch {
                                   return '-'
                                 }
@@ -665,6 +692,18 @@ export default function ProposalsPage() {
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex items-center justify-center gap-1">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleUpdateConsulta(proposal.id_lead)
+                                }}
+                                className="w-8 h-8 bg-slate-500 hover:bg-slate-600 text-white rounded-md p-1 group/btn transition-all"
+                                title="ATUALIZAR DATA DE CONSULTA"
+                              >
+                                <RefreshCw className="w-4 h-4" />
+                              </Button>
                               {selectedStatus !== "CANCELADOS" && (isAdmin || isDeveloper || isOperational) && (
                                 <Button 
                                   variant="ghost" 

@@ -36,7 +36,8 @@ import {
   ChevronDown,
   ChevronUp,
   TrendingUp,
-  Check
+  Check,
+  Zap
 } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
 import { motion, AnimatePresence } from "motion/react"
@@ -63,6 +64,12 @@ interface TicketStatus {
   created_at: string
 }
 
+interface ProdutoRegra {
+  prazo: string
+  coeficiente: string
+  percentual_producao: string
+}
+
 interface ProdutoConfig {
   id: string
   banco_id: string
@@ -72,6 +79,7 @@ interface ProdutoConfig {
   prazo?: number
   coeficiente?: number
   percentual_producao?: number
+  regras?: ProdutoRegra[]
   ativo: boolean
   created_at: string
 }
@@ -174,6 +182,7 @@ export default function SettingsPage() {
   const [tempPrazo, setTempPrazo] = useState<string>("")
   const [tempCoeficiente, setTempCoeficiente] = useState<string>("")
   const [tempPercentualProducao, setTempPercentualProducao] = useState<string>("")
+  const [tempRegras, setTempRegras] = useState<ProdutoRegra[]>([])
   
   // Generic Modal States
   const [genericType, setGenericType] = useState<'convenio' | 'banco' | 'operacao' | null>(null)
@@ -406,24 +415,40 @@ export default function SettingsPage() {
 
     setIsSubmitting(true)
     try {
+      // Validate rules values to avoid NaN
+      const validateNumber = (val: string | number | undefined, isFloat = true) => {
+        if (!val) return null
+        const strVal = val.toString().replace(',', '.')
+        const parsed = isFloat ? parseFloat(strVal) : parseInt(strVal)
+        return isNaN(parsed) ? null : parsed
+      }
+
+      const formattedRegras = tempRegras.map(r => ({
+        prazo: validateNumber(r.prazo, false)?.toString() || "",
+        coeficiente: validateNumber(r.coeficiente, true)?.toString() || "",
+        percentual_producao: validateNumber(r.percentual_producao, true)?.toString() || ""
+      }))
+
       const payload = {
         nome_tabela: tempNomeTabela || null,
         operacoes: tempOperacoes,
-        prazo: tempPrazo ? parseInt(tempPrazo) : null,
-        coeficiente: tempCoeficiente ? parseFloat(tempCoeficiente.replace(',', '.')) : null,
-        percentual_producao: tempPercentualProducao ? parseFloat(tempPercentualProducao.replace(',', '.')) : null
+        regras: formattedRegras,
+        // Mantemos os campos antigos para compatibilidade, pegando da primeira regra se houver
+        prazo: formattedRegras.length > 0 ? parseInt(formattedRegras[0].prazo) : validateNumber(tempPrazo, false),
+        coeficiente: formattedRegras.length > 0 ? parseFloat(formattedRegras[0].coeficiente) : validateNumber(tempCoeficiente, true),
+        percentual_producao: formattedRegras.length > 0 ? parseFloat(formattedRegras[0].percentual_producao) : validateNumber(tempPercentualProducao, true)
       }
 
+      let result;
       if (selectedProductConfig) {
         // Update
-        const { error } = await supabase
+        result = await supabase
           .from('produtos_config')
           .update(payload)
           .eq('id', selectedProductConfig.id)
-        if (error) throw error
       } else {
         // Insert
-        const { error } = await supabase
+        result = await supabase
           .from('produtos_config')
           .insert({
             banco_id: selectedBancoForProd.id,
@@ -431,16 +456,21 @@ export default function SettingsPage() {
             ativo: false,
             ...payload
           })
-        if (error) throw error
       }
+
+      if (result.error) {
+        console.error("Erro detalhado Supabase:", result.error)
+        throw new Error(result.error.message || "Erro desconhecido no banco de dados")
+      }
+
       toast.success("Configuração salva com sucesso")
       setIsAddConvenioModalOpen(false)
       setIsAddOperacaoModalOpen(false)
       fetchStatuses()
     } catch (error: unknown) {
-      const err = error as { message?: string }
-      console.error("Erro ao salvar configuração de produto:", err)
-      toast.error(err.message || "Erro ao salvar configuração")
+      console.error("Erro ao salvar configuração de produto:", error)
+      const errorMessage = error instanceof Error ? error.message : (typeof error === 'string' ? error : "Erro ao salvar configuração")
+      toast.error(errorMessage)
     } finally {
       setIsSubmitting(false)
     }
@@ -1321,20 +1351,46 @@ export default function SettingsPage() {
                                           )}
                                         </div>
 
-                                        <div className="flex gap-6 pt-1">
-                                          <div className="flex flex-col gap-0.5">
-                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Prazo</span>
-                                            <span className="text-[10px] font-extrabold text-slate-600">{prod.prazo ? `${prod.prazo}x` : '--'}</span>
+                                          <div className="flex flex-col gap-1.5 min-w-[200px]">
+                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Tabela de Coeficientes</span>
+                                            {prod.regras && prod.regras.length > 0 ? (
+                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {prod.regras.map((regra, idx) => (
+                                                  <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5">
+                                                    <div className="flex flex-col">
+                                                      <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prazo</span>
+                                                      <span className="text-[10px] font-bold text-slate-700">{regra.prazo}x</span>
+                                                    </div>
+                                                    <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                    <div className="flex flex-col">
+                                                      <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Coef</span>
+                                                      <span className="text-[10px] font-bold text-slate-700">{regra.coeficiente}</span>
+                                                    </div>
+                                                    <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                    <div className="flex flex-col">
+                                                      <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prod</span>
+                                                      <span className="text-[10px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <div className="flex gap-6">
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Prazo</span>
+                                                  <span className="text-[10px] font-extrabold text-slate-600">{prod.prazo ? `${prod.prazo}x` : '--'}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente</span>
+                                                  <span className="text-[10px] font-extrabold text-slate-600">{prod.coeficiente || '--'}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Produção</span>
+                                                  <span className="text-[10px] font-extrabold text-emerald-600">{prod.percentual_producao ? `${prod.percentual_producao}%` : '--'}</span>
+                                                </div>
+                                              </div>
+                                            )}
                                           </div>
-                                          <div className="flex flex-col gap-0.5">
-                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente</span>
-                                            <span className="text-[10px] font-extrabold text-slate-600">{prod.coeficiente || '--'}</span>
-                                          </div>
-                                          <div className="flex flex-col gap-0.5">
-                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Produção</span>
-                                            <span className="text-[10px] font-extrabold text-emerald-600">{prod.percentual_producao ? `${prod.percentual_producao}%` : '--'}</span>
-                                          </div>
-                                        </div>
                                       </div>
 
                                       <div className="flex items-center justify-end gap-2 border-t md:border-t-0 pt-4 md:pt-0 border-slate-100">
@@ -1363,8 +1419,9 @@ export default function SettingsPage() {
                                             setTempOperacoes(prod.operacoes || [])
                                             setTempNomeTabela(prod.nome_tabela || "")
                                             setTempPrazo(prod.prazo?.toString() || "")
-                                            setTempCoeficiente(prod.coeficiente?.toString() || "")
-                                            setTempPercentualProducao(prod.percentual_producao?.toString() || "")
+                                            setTempCoeficiente(prod.coeficiente?.toString().replace('.', ',') || "")
+                                            setTempPercentualProducao(prod.percentual_producao?.toString().replace('.', ',') || "")
+                                            setTempRegras(prod.regras || [])
                                             setIsAddOperacaoModalOpen(true)
                                           }}
                                         >
@@ -1874,6 +1931,7 @@ export default function SettingsPage() {
                   setTempPrazo("")
                   setTempCoeficiente("")
                   setTempPercentualProducao("")
+                  setTempRegras([])
                   setIsAddConvenioModalOpen(false)
                   setIsAddOperacaoModalOpen(true)
                 }}
@@ -1964,7 +2022,68 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-4 pt-4 border-t border-slate-100">
-              <Label className="text-[11px] font-bold text-sky-500 uppercase tracking-widest pl-1">REGRA/COEFICIENTE</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-[11px] font-bold text-sky-500 uppercase tracking-widest pl-1">REGRA/COEFICIENTE</Label>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    if (!tempPrazo || !tempCoeficiente || !tempPercentualProducao) {
+                      toast.error("Preencha todos os campos da regra antes de adicionar");
+                      return;
+                    }
+                    setTempRegras([...tempRegras, { 
+                      prazo: tempPrazo, 
+                      coeficiente: tempCoeficiente, 
+                      percentual_producao: tempPercentualProducao 
+                    }]);
+                    setTempPrazo("");
+                    setTempCoeficiente("");
+                    setTempPercentualProducao("");
+                  }}
+                  className="h-7 px-3 text-[9px] font-bold bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100 rounded-lg uppercase tracking-widest gap-2"
+                >
+                  <Zap className="w-3 h-3" />
+                  Adicionar Regra
+                </Button>
+              </div>
+
+              {/* Lista de Regras Adicionadas */}
+              {tempRegras.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {tempRegras.map((regra, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm group">
+                      <div className="flex items-center gap-4">
+                        <div className="flex flex-col">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase">Prazo</span>
+                          <span className="text-[11px] font-bold text-slate-700">{regra.prazo}x</span>
+                        </div>
+                        <div className="w-[1px] h-6 bg-slate-100" />
+                        <div className="flex flex-col">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase">Coeficiente</span>
+                          <span className="text-[11px] font-bold text-slate-700">{regra.coeficiente}</span>
+                        </div>
+                        <div className="w-[1px] h-6 bg-slate-100" />
+                        <div className="flex flex-col">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase">Produção</span>
+                          <span className="text-[11px] font-bold text-sky-600">{regra.percentual_producao}%</span>
+                        </div>
+                      </div>
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => setTempRegras(tempRegras.filter((_, i) => i !== index))}
+                        className="h-8 w-8 text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
                 <div className="space-y-2">
                   <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Prazo</Label>

@@ -121,7 +121,7 @@ export default function TicketsPage() {
       // Operacional e Administrador veem tudo (não aplica filtro de user_id)
 
       const { data, error } = await withRetry(() => 
-        query.order('created_at', { ascending: false })
+        query.order('updated_at', { ascending: false })
       )
 
       if (error) throw error

@@ -14,9 +14,9 @@ import {
   Loader2
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
-import { cn } from "@/lib/utils"
+import { cn, withRetry } from "@/lib/utils"
 import { motion } from "motion/react"
-import { supabase } from "@/lib/supabase"
+import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 
 interface ProposalSummary {
   id_lead: string
@@ -49,8 +49,14 @@ export default function DashboardPage() {
   const [teamDailyCreatedCount, setTeamDailyCreatedCount] = useState(0)
   const [teamInProcessValue, setTeamInProcessValue] = useState(0)
   const [teamInProcessCount, setTeamInProcessCount] = useState(0)
+  const [teamPendingInconsistencyValue, setTeamPendingInconsistencyValue] = useState(0)
   
   const fetchDashboardData = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      console.error("Dashboard: Supabase não está configurado. Verifique as chaves em Settings -> Secrets.")
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const startOfMonth = new Date()
@@ -75,23 +81,30 @@ export default function DashboardPage() {
       ]
 
       // 1. Fetch user's paid proposals
-      let query = supabase
-        .from("propostas")
-        .select("id_lead, nome_cliente, valor_producao, updated_at")
-        .in("status", paidStatuses)
-        .gte("updated_at", startOfMonth.toISOString())
-      
-      if (isCorretor) {
-        query = query.eq("corretor_id", perfil?.id)
-      }
+      const startOfMonthISO = startOfMonth.toISOString()
+      const { data: userPaid, error: userError } = await withRetry(() => {
+        let query = supabase
+          .from("propostas")
+          .select("id_lead, nome_cliente, valor_producao, updated_at")
+          .in("status", paidStatuses)
+          .gte("updated_at", startOfMonthISO)
+        
+        if (isCorretor) {
+          query = query.eq("corretor_id", perfil?.id)
+        }
+        return query
+      })
 
-      const { data: userPaid, error: userError } = await query
       if (userError) throw userError
       
       setUserProposals(userPaid || [])
 
       // 2. Fetch team and their proposals
-      const usersRes = await fetch('/api/usuarios').then(res => res.json())
+      const usersRes = await withRetry(async () => {
+        const res = await fetch('/api/usuarios')
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+        return res.json()
+      })
       const allUsers = usersRes || []
 
       // Identify target team
@@ -104,10 +117,12 @@ export default function DashboardPage() {
         const teamIds = team.map((m: { id: string }) => m.id)
 
         // Fetch proposals for the team
-        const { data: teamProposals, error: proposalsError } = await supabase
-          .from("propostas")
-          .select("corretor_id, valor_producao, status, updated_at, created_at")
-          .in("corretor_id", teamIds)
+        const { data: teamProposals, error: proposalsError } = await withRetry(() =>
+          supabase
+            .from("propostas")
+            .select("corretor_id, valor_producao, status, updated_at, created_at")
+            .in("corretor_id", teamIds)
+        )
 
         if (proposalsError) throw proposalsError
 
@@ -118,6 +133,7 @@ export default function DashboardPage() {
         let teamCreatedTodayCount = 0
         let teamInProcessValueCalc = 0
         let teamInProcessCountCalc = 0
+        let teamPendingInconsistencyValueCalc = 0
 
         const brokerMetrics: Record<string, { 
           totalPaid: number, 
@@ -171,6 +187,9 @@ export default function DashboardPage() {
           if (isInProcess) {
             teamInProcessValueCalc += numericVal
             teamInProcessCountCalc += 1
+            if (curr.status === "COM INCONSISTÊNCIA NO BANCO") {
+              teamPendingInconsistencyValueCalc += numericVal
+            }
             if (brokerMetrics[brokerId]) {
               brokerMetrics[brokerId].totalInProcess += numericVal
               brokerMetrics[brokerId].countInProcess += 1
@@ -193,6 +212,7 @@ export default function DashboardPage() {
         setTeamDailyCreatedCount(teamCreatedTodayCount)
         setTeamInProcessValue(teamInProcessValueCalc)
         setTeamInProcessCount(teamInProcessCountCalc)
+        setTeamPendingInconsistencyValue(teamPendingInconsistencyValueCalc)
 
         // Form rankings for supervisor
         const sortedRankings = team.map((m: { id: string, nome: string }) => ({
@@ -216,13 +236,13 @@ export default function DashboardPage() {
 
         setRankings(sortedRankings)
       } else {
-        const [proposalsRes] = await Promise.all([
+        const [proposalsRes] = await withRetry(() => Promise.all([
           supabase
             .from("propostas")
             .select("corretor_id, valor_producao")
             .in("status", paidStatuses)
-            .gte("updated_at", startOfMonth.toISOString())
-        ])
+            .gte("updated_at", startOfMonthISO)
+        ]))
 
         const allPaid = proposalsRes.data || []
         const aggregated = allPaid.reduce((acc: Record<string, number>, curr) => {
@@ -578,10 +598,13 @@ export default function DashboardPage() {
                         <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-orange-600 tracking-tighter text-center leading-none">
                           {formatCurrency(teamInProcessValue)}
                         </p>
-                        <div className="mt-4 pt-4 border-t border-slate-100 flex justify-center items-center gap-2">
+                        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col items-center gap-2">
                           <span className="text-[14px] font-bold text-[#1C2643]">
                             {teamInProcessCount} {teamInProcessCount === 1 ? 'Contrato' : 'Contratos'}
                           </span>
+                          <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-10 text-center shrink-0">
+                            Você tem <span className="text-[#1C2643] font-black">{formatCurrency(teamPendingInconsistencyValue)}</span> pendentes de atuação
+                          </p>
                         </div>
                       </div>
                     ) : (
@@ -773,13 +796,7 @@ export default function DashboardPage() {
                             )
                           })}
                           
-                          {userRank > 2 && (
-                            <div className="mt-2 text-center col-span-full">
-                               <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                 Sua posição atual é <span className="text-[#1C2643]">{userRank}º</span>
-                               </p>
-                            </div>
-                          )}
+                          {/* Redundant position message removed as requested */}
                         </div>
                       )}
                     </div>

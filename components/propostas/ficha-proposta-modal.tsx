@@ -72,26 +72,31 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
 
   const extractPrazo = (label: string | null | undefined) => {
     if (!label) return "-";
-    // Pattern: Nx (e.g., 96x)
-    const match = label.match(/(\d+)x/);
+    // Encontra o número que precede o 'x' (ex: 96x ou 96X ou 96 x)
+    const match = label.match(/(\d+)\s*x/i);
     if (match) return match[1];
+    
+    // Fallback: procura o primeiro número de 1 a 3 dígitos que parece um prazo
+    const genericMatch = label.match(/\((\d{1,3})\s*\|/);
+    if (genericMatch) return genericMatch[1];
+
     return "-";
   }
 
   const extractCoeficiente = (label: string | null | undefined) => {
     if (!label) return "-";
-    // Pattern: Nx followed by a number with dots or just a decimal number at the end
-    // Example: "Tabela - 96x 0.02145" -> 0.02145
-    const match = label.match(/x\s+([0-9.]+)/);
+    
+    // Tenta encontrar o valor após o 'x' seguido de um separador ('|' ou espaço)
+    // Suporta 'x | 0.021' ou 'x 0.021'
+    const match = label.match(/x\s*[| ]\s*([0-9]+[.,][0-9]+)/i);
     if (match) return match[1];
     
-    // Fallback: if there's no "x", just show the whole label or try to find a number
-    if (!label.includes('x')) {
-      const numMatch = label.match(/([0-9]\.[0-9]+)/);
-      if (numMatch) return numMatch[0];
-    }
+    // Fallback: procura qualquer sequência que pareça um coeficiente decimal (ex: 0.0214 ou 0,0214)
+    // Procuramos 0. ou 0, seguido de pelo menos 2 dígitos
+    const genericMatch = label.match(/(0[.,][0-9]{2,})/);
+    if (genericMatch) return genericMatch[0];
     
-    return label;
+    return "-";
   }
 
   return (
@@ -211,8 +216,8 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
               <div className="border-x border-b border-slate-300 divide-y divide-slate-300">
                 <div className="grid grid-cols-5 divide-x divide-slate-300">
                   <Field label="Valor Parcela" value={proposal.valor_parcela ? `R$ ${proposal.valor_parcela.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "R$ 0,00"} id="v_parcela" onCopy={copyToClipboard} isCopied={copiedField === "v_parcela"} />
-                  <Field label="Prazo" value={extractPrazo(proposal.coeficiente_prazo)} id="prazo" onCopy={copyToClipboard} isCopied={copiedField === "prazo"} />
-                  <Field label="Coeficiente" value={extractCoeficiente(proposal.coeficiente_prazo)} id="coeficiente" onCopy={copyToClipboard} isCopied={copiedField === "coeficiente"} />
+                  <Field label="Prazo" value={(proposal.prazo !== undefined && proposal.prazo !== null) ? proposal.prazo : extractPrazo(proposal.coeficiente_prazo)} id="prazo" onCopy={copyToClipboard} isCopied={copiedField === "prazo"} />
+                  <Field label="Coeficiente" value={(proposal.coeficiente !== undefined && proposal.coeficiente !== null) ? proposal.coeficiente : extractCoeficiente(proposal.coeficiente_prazo)} id="coeficiente" onCopy={copyToClipboard} isCopied={copiedField === "coeficiente"} />
                   <Field label="Valor Operação" value={proposal.valor_operacao_operacional ? `R$ ${proposal.valor_operacao_operacional.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "R$ 0,00"} id="v_operacao" onCopy={copyToClipboard} isCopied={copiedField === "v_operacao"} />
                   <Field label="Valor Cliente" value={proposal.valor_cliente_operacional ? `R$ ${proposal.valor_cliente_operacional.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "R$ 0,00"} id="v_liberado" onCopy={copyToClipboard} isCopied={copiedField === "v_liberado"} />
                 </div>
@@ -231,7 +236,7 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
         <div className="px-6 py-4 border-t border-slate-100 flex justify-end bg-slate-50/50 print-hidden">
           <Button 
             onClick={onClose}
-            className="h-9 px-8 text-[11px] font-bold uppercase tracking-widest bg-[#1A2B49] hover:bg-[#1A2B49]/90 text-white rounded-lg"
+            className="h-9 px-8 text-[11px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-[#171717]/90 text-white rounded-lg"
           >
             Fechar
           </Button>

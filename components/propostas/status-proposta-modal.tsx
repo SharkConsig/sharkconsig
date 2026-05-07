@@ -14,6 +14,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Input } from "@/components/ui/input"
 import { Check, X } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
+import { useAuth } from "@/context/auth-context"
 import { cn } from "@/lib/utils"
 // Importações removidas: Popover, Calendar, ptBR, format
 
@@ -35,6 +36,7 @@ interface StatusPropostaModalProps {
 
 export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate }: StatusPropostaModalProps) {
   const { isCollapsed } = useSidebar()
+  const { isCorretor, isSupervisor, isDeveloper, isOperational, isAdmin } = useAuth()
   const [selectedStatus, setSelectedStatus] = useState<string>("")
   const [isUpdating, setIsUpdating] = useState(false)
   
@@ -99,18 +101,27 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
       "inc-banco-op": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "inc-resolvida-banco": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "solicitar-cancelamento-banco": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
+      "aguardando-envio-cip": "PORTABILIDADE",
+      "aguardando-retorno-cip": "PORTABILIDADE",
+      "saldo-informado": "ANDAMENTO / AGUARDANDO PAGAMENTO",
+      "saldo-pago": "ANDAMENTO / AGUARDANDO PAGAMENTO",
+      "saldo-averbado": "ANDAMENTO / AGUARDANDO PAGAMENTO",
       "enviado-cip": "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA",
       "desistencia": "CANCELADO",
       "digitado-inc": "ANDAMENTO / AGUARDANDO PAGAMENTO",
+      "inc-banco-inc": "COM INCONSISTÊNCIA NO BANCO",
       "inconsistencia-inc": "COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO",
       "resolvida": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "cancelado-inc": "CANCELADO",
+      "solicitar-cancelamento-inc": "COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL",
+      "resolvida-pendencia": "COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL",
       "aguardando-inc": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "aguardando": "AGUARDANDO DIGITAÇÃO OPERACIONAL",
       "cancelado": "CANCELADO",
       "pendencia-banco": "COM INCONSISTÊNCIA NO BANCO",
       "devolvido-banco": "PAGAMENTO DEVOLVIDO",
-      "reapresentar-pagamento": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
+      "reapresentar-pagamento": "PORTABILIDADE",
+      "reapresentar-pagamento-pd": "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
       "pos-venda-realizada": "PÓS-VENDA REALIZADA"
     }
 
@@ -297,30 +308,51 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
           </div>
 
           {/* Sessão Ações */}
-          <div className="space-y-5">
-            <div className="border-b border-slate-200 pb-2">
-              <h3 className="text-[12px] font-bold text-[#00a6ed] uppercase tracking-wider">
-                AÇÕES DA ETAPA
-              </h3>
-            </div>
+          {(
+            (isOperational || isAdmin || isDeveloper || (
+              proposal.status !== "AGUARDANDO DIGITAÇÃO OPERACIONAL" &&
+              proposal.status !== "ANDAMENTO / AGUARDANDO PAGAMENTO" &&
+              proposal.status !== "COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL" &&
+              proposal.status !== "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA" &&
+              proposal.status !== "PÓS-VENDA REALIZADA" &&
+              proposal.status !== "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL" &&
+              proposal.status !== "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL" &&
+              proposal.status !== "PORTABILIDADE" &&
+              proposal.status !== "PAGAMENTO DEVOLVIDO"
+            ))
+          ) && (
+            <div className="space-y-5">
+              <div className="border-b border-slate-200 pb-2">
+                <h3 className="text-[12px] font-bold text-[#00a6ed] uppercase tracking-wider">
+                  AÇÕES DA ETAPA
+                </h3>
+              </div>
             
             <RadioGroup value={selectedStatus} onValueChange={setSelectedStatus} className="space-y-3">
               {proposal.status === "AGUARDANDO DIGITAÇÃO OPERACIONAL" ? (
                 <>
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="digitado" id="digitado" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="digitado" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        CONTRATO DIGITADO / AGUARDANDO FORMALIZAÇÃO DIGITAL
-                      </Label>
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="digitado" id="digitado" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="digitado" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          CONTRATO DIGITADO
+                        </Label>
+                      </div>
+                      
+                      {(selectedStatus === "digitado" || selectedStatus === "inc-banco") && (
+                        <>
+                          <div className="ml-7 flex items-center space-x-3 group mt-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                            <RadioGroupItem value="inc-banco" id="inc-banco-op-new" className="text-[#00a6ed] border-slate-300" />
+                            <Label htmlFor="inc-banco-op-new" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                              COM INCONSISTÊNCIA BANCO
+                            </Label>
+                          </div>
+
+                          {(selectedStatus === "digitado" || selectedStatus === "inc-banco") && renderAdeAndDate()}
+                          {renderObservations()}
+                        </>
+                      )}
                     </div>
-                    {selectedStatus === "digitado" && (
-                      <>
-                        {renderAdeAndDate()}
-                        {renderObservations()}
-                      </>
-                    )}
-                  </div>
                   <div className="flex flex-col space-y-1">
                     <div className="flex items-center space-x-3 group">
                       <RadioGroupItem value="inconsistencia" id="inconsistencia" className="text-[#00a6ed] border-slate-300" />
@@ -410,137 +442,170 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                     <div className="flex items-center space-x-3 group">
                       <RadioGroupItem value="desistencia" id="desistencia" className="text-[#00a6ed] border-slate-300" />
                       <Label htmlFor="desistencia" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        CONTRATOS CANCELADOS / COM DESISTÊNCIA
+                        CONTRATO CANCELADO
                       </Label>
                     </div>
                     {selectedStatus === "desistencia" && renderObservations()}
                   </div>
                 </>
               ) : (proposal.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA" || proposal.status === "PÓS-VENDA REALIZADA") ? (
-                <>
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="pos-venda-realizada" id="pos-venda-realizada" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="pos-venda-realizada" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        PÓS-VENDA REALIZADA
-                      </Label>
+                (isOperational || isAdmin || isDeveloper) ? (
+                  <>
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="pos-venda-realizada" id="pos-venda-realizada" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="pos-venda-realizada" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          PÓS-VENDA REALIZADA
+                        </Label>
+                      </div>
+                      {selectedStatus === "pos-venda-realizada" && renderObservations()}
                     </div>
-                    {selectedStatus === "pos-venda-realizada" && renderObservations()}
-                  </div>
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="devolvido-banco" id="devolvido-banco-2" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="devolvido-banco-2" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        PAGAMENTO DEVOLVIDO
-                      </Label>
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="devolvido-banco" id="devolvido-banco-2" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="devolvido-banco-2" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          PAGAMENTO DEVOLVIDO
+                        </Label>
+                      </div>
+                      {selectedStatus === "devolvido-banco" && renderObservations()}
                     </div>
-                    {selectedStatus === "devolvido-banco" && renderObservations()}
-                  </div>
-                </>
+                  </>
+                ) : null
               ) : proposal.status === "COM INCONSISTÊNCIA NO BANCO" ? (
                 <div className="space-y-4">
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="inc-resolvida-banco" id="inc-resolvida-banco" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="inc-resolvida-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        INCONSISTÊNCIA RESOLVIDA
-                      </Label>
-                    </div>
-                    {selectedStatus === "inc-resolvida-banco" && renderObservations()}
-                  </div>
+                  {/* Opções para Operacional, Administrador e Desenvolvedor (Fundo Azul na imagem) */}
+                  {(isOperational || isAdmin || isDeveloper) && (
+                    <>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="pago-cliente" id="pago-cliente-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="pago-cliente-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            PAGO AO CLIENTE
+                          </Label>
+                        </div>
+                        {selectedStatus === "pago-cliente" && (
+                          <>
+                            {renderDateOnly()}
+                            {renderObservations()}
+                          </>
+                        )}
+                      </div>
 
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="pago-cliente" id="pago-cliente-inc-banco" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="pago-cliente-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        PAGO AO CLIENTE
-                      </Label>
-                    </div>
-                    {selectedStatus === "pago-cliente" && (
-                      <>
-                        {renderDateOnly()}
-                        {renderObservations()}
-                      </>
-                    )}
-                  </div>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="mantem-andamento" id="mantem-andamento-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="mantem-andamento-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            ANDAMENTO / AGUARDANDO PAGAMENTO
+                          </Label>
+                        </div>
+                        {selectedStatus === "mantem-andamento" && renderObservations()}
+                      </div>
 
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="mantem-andamento" id="mantem-andamento-inc-banco" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="mantem-andamento-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        ANDAMENTO / AGUARDANDO PAGAMENTO
-                      </Label>
-                    </div>
-                    {selectedStatus === "mantem-andamento" && renderObservations()}
-                  </div>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="retigitada" id="retigitada-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="retigitada-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            PROPOSTA REDIGITADA
+                          </Label>
+                        </div>
+                        {selectedStatus === "retigitada" && (
+                          <>
+                            {renderAdeAndDate()}
+                            {renderObservations()}
+                          </>
+                        )}
+                      </div>
 
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="retigitada" id="retigitada-inc-banco" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="retigitada-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        PROPOSTA RETIGITADA
-                      </Label>
-                    </div>
-                    {selectedStatus === "retigitada" && (
-                      <>
-                        {renderAdeAndDate()}
-                        {renderObservations()}
-                      </>
-                    )}
-                  </div>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="inc-banco" id="inc-banco-stay" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="inc-banco-stay" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            COM INCONSISTÊNCIA NO BANCO
+                          </Label>
+                        </div>
+                        {selectedStatus === "inc-banco" && renderObservations()}
+                      </div>
 
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="inc-banco" id="inc-banco-stay" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="inc-banco-stay" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        COM INCONSISTÊNCIA NO BANCO
-                      </Label>
-                    </div>
-                    {selectedStatus === "inc-banco" && renderObservations()}
-                  </div>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="inc-banco-op" id="inc-banco-op-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="inc-banco-op-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            COM INCONSISTÊNCIA NO BANCO/ AGUARDANDO OPERACIONAL
+                          </Label>
+                        </div>
+                        {selectedStatus === "inc-banco-op" && renderObservations()}
+                      </div>
 
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="inc-banco-op" id="inc-banco-op-inc-banco" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="inc-banco-op-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL
-                      </Label>
-                    </div>
-                    {selectedStatus === "inc-banco-op" && renderObservations()}
-                  </div>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="devolvido-banco" id="devolvido-banco-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="devolvido-banco-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            PAGAMENTO DEVOLVIDO
+                          </Label>
+                        </div>
+                        {selectedStatus === "devolvido-banco" && renderObservations()}
+                      </div>
 
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="devolvido-banco" id="devolvido-banco-inc-banco" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="devolvido-banco-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        PAGAMENTO DEVOLVIDO
-                      </Label>
-                    </div>
-                    {selectedStatus === "devolvido-banco" && renderObservations()}
-                  </div>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="desistencia" id="desistencia-inc-banco" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="desistencia-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            CONTRATO CANCELADO
+                          </Label>
+                        </div>
+                        {selectedStatus === "desistencia" && renderObservations()}
+                      </div>
 
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="desistencia" id="desistencia-inc-banco" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="desistencia-inc-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        CONTRATOS CANCELADOS / COM DESISTÊNCIA
-                      </Label>
-                    </div>
-                    {selectedStatus === "desistencia" && renderObservations()}
-                  </div>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="aguardando-envio-cip" id="aguardando-envio-cip" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="aguardando-envio-cip" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            AGUARDANDO ENVIO CIP
+                          </Label>
+                        </div>
+                        {selectedStatus === "aguardando-envio-cip" && renderObservations()}
+                      </div>
+
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="aguardando-retorno-cip" id="aguardando-retorno-cip" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="aguardando-retorno-cip" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            AGUARDANDO RETORNO CIP
+                          </Label>
+                        </div>
+                        {selectedStatus === "aguardando-retorno-cip" && renderObservations()}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Opções para Corretor e Supervisor (Fundo Verde na imagem) */}
+                  {(isCorretor || isSupervisor || isAdmin || isDeveloper) && (
+                    <>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="inc-resolvida-banco" id="inc-resolvida-banco" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="inc-resolvida-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            INCONSISTÊNCIA BANCO RESOLVIDA
+                          </Label>
+                        </div>
+                        {selectedStatus === "inc-resolvida-banco" && renderObservations()}
+                      </div>
+
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="solicitar-cancelamento-banco" id="solicitar-cancelamento-banco" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="solicitar-cancelamento-banco" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            SOLICITAR CANCELAMENTO PROPOSTA
+                          </Label>
+                        </div>
+                        {selectedStatus === "solicitar-cancelamento-banco" && renderObservations()}
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (proposal.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL" || proposal.status === "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL") ? (
+                (isOperational || isAdmin || isDeveloper) ? (
                 <div className="space-y-4">
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="inc-resolvida-banco" id="inc-resolvida-banco-op" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="inc-resolvida-banco-op" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        INCONSISTÊNCIA RESOLVIDA
-                      </Label>
-                    </div>
-                    {selectedStatus === "inc-resolvida-banco" && renderObservations()}
-                  </div>
-                  
                   <div className="flex flex-col space-y-1">
                     <div className="flex items-center space-x-3 group">
                       <RadioGroupItem value="pago-cliente" id="pago-cliente-op-stay" className="text-[#00a6ed] border-slate-300" />
@@ -615,36 +680,249 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                     <div className="flex items-center space-x-3 group">
                       <RadioGroupItem value="desistencia" id="desistencia-op-stay" className="text-[#00a6ed] border-slate-300" />
                       <Label htmlFor="desistencia-op-stay" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        CONTRATOS CANCELADOS / COM DESISTÊNCIA
+                        CONTRATO CANCELADO
                       </Label>
                     </div>
                     {selectedStatus === "desistencia" && renderObservations()}
                   </div>
-                </div>
-              ) : proposal.status === "PAGAMENTO DEVOLVIDO" ? (
-                <div className="space-y-4">
+
                   <div className="flex flex-col space-y-1">
                     <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="reapresentar-pagamento" id="reapresentar-pagamento" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="reapresentar-pagamento" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                      <RadioGroupItem value="aguardando-envio-cip" id="aguardando-envio-cip-op" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="aguardando-envio-cip-op" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        AGUARDANDO ENVIO CIP
+                      </Label>
+                    </div>
+                    {selectedStatus === "aguardando-envio-cip" && renderObservations()}
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="aguardando-retorno-cip" id="aguardando-retorno-cip-op" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="aguardando-retorno-cip-op" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        AGUARDANDO RETORNO CIP
+                      </Label>
+                    </div>
+                    {selectedStatus === "aguardando-retorno-cip" && renderObservations()}
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="reapresentar-pagamento" id="reapresentar-pagamento-op" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="reapresentar-pagamento-op" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
                         REAPRESENTAR PAGAMENTO
                       </Label>
                     </div>
                     {selectedStatus === "reapresentar-pagamento" && renderObservations()}
                   </div>
                 </div>
-              ) : (proposal.status === "COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO" || proposal.status === "COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL") ? (
+                ) : null
+              ) : proposal.status === "PORTABILIDADE" ? (
+                (isOperational || isAdmin || isDeveloper) ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="aguardando-envio-cip" id="aguardando-envio-cip-port" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="aguardando-envio-cip-port" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          AGUARDANDO ENVIO CIP
+                        </Label>
+                      </div>
+                      {selectedStatus === "aguardando-envio-cip" && renderObservations()}
+                    </div>
+
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="aguardando-retorno-cip" id="aguardando-retorno-cip-port" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="aguardando-retorno-cip-port" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          AGUARDANDO RETORNO CIP
+                        </Label>
+                      </div>
+                      {selectedStatus === "aguardando-retorno-cip" && renderObservations()}
+                    </div>
+
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="saldo-informado" id="saldo-informado" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="saldo-informado" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          SALDO INFORMADO - AGUARDANDO PAGAMENTO
+                        </Label>
+                      </div>
+                      {selectedStatus === "saldo-informado" && renderObservations()}
+                    </div>
+
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="saldo-pago" id="saldo-pago" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="saldo-pago" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          SALDO PAGO - AGUARDANDO AVERBAÇÃO
+                        </Label>
+                      </div>
+                      {selectedStatus === "saldo-pago" && renderObservations()}
+                    </div>
+
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="saldo-averbado" id="saldo-averbado" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="saldo-averbado" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          SALDO AVERBADO - AGUARDANDO REFINANCIAMENTO
+                        </Label>
+                      </div>
+                      {selectedStatus === "saldo-averbado" && renderObservations()}
+                    </div>
+
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="desistencia" id="desistencia-port" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="desistencia-port" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          CONTRATO CANCELADO
+                        </Label>
+                      </div>
+                      {selectedStatus === "desistencia" && renderObservations()}
+                    </div>
+
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="inc-banco" id="inc-banco-port" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="inc-banco-port" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          COM INCONSISTÊNCIA NO BANCO
+                        </Label>
+                      </div>
+                      {selectedStatus === "inc-banco" && renderObservations()}
+                    </div>
+                  </div>
+                ) : null
+              ) : proposal.status === "PAGAMENTO DEVOLVIDO" ? (
+                (isOperational || isAdmin || isDeveloper) ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="reapresentar-pagamento-pd" id="reapresentar-pagamento-pd" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="reapresentar-pagamento-pd" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          REAPRESENTAR PAGAMENTO
+                        </Label>
+                      </div>
+                      {selectedStatus === "reapresentar-pagamento-pd" && renderObservations()}
+                    </div>
+
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="devolvido-banco" id="devolvido-banco-pd" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="devolvido-banco-pd" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          PAGAMENTO DEVOLVIDO
+                        </Label>
+                      </div>
+                      {selectedStatus === "devolvido-banco" && renderObservations()}
+                    </div>
+
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex items-center space-x-3 group">
+                        <RadioGroupItem value="pago-cliente" id="pago-cliente-pd" className="text-[#00a6ed] border-slate-300" />
+                        <Label htmlFor="pago-cliente-pd" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                          PAGO AO CLIENTE
+                        </Label>
+                      </div>
+                      {selectedStatus === "pago-cliente" && (
+                        <>
+                          {renderDateOnly()}
+                          {renderObservations()}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : null
+              ) : (proposal.status === "COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO") ? (
+                <div className="space-y-4">
+                  {/* Opções para Operacional, Administrador e Desenvolvedor */}
+                  {(isOperational || isAdmin || isDeveloper) && (
+                    <>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="digitado-inc" id="digitado-inc-p" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="digitado-inc-p" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            CONTRATO DIGITADO
+                          </Label>
+                        </div>
+                        {(selectedStatus === "digitado-inc" || selectedStatus === "inc-banco-inc") && (
+                          <>
+                            <div className="ml-7 flex items-center space-x-3 group mt-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                              <RadioGroupItem value="inc-banco-inc" id="inc-banco-op-inc-p" className="text-[#00a6ed] border-slate-300" />
+                              <Label htmlFor="inc-banco-op-inc-p" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                                COM INCONSISTÊNCIA BANCO
+                              </Label>
+                            </div>
+
+                            {(selectedStatus === "digitado-inc" || selectedStatus === "inc-banco-inc") && renderAdeAndDate()}
+                            {renderObservations()}
+                          </>
+                        )}
+                      </div>
+                      
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="inconsistencia-inc" id="inconsistencia-inc-p" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="inconsistencia-inc-p" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO
+                          </Label>
+                        </div>
+                        {selectedStatus === "inconsistencia-inc" && renderObservations()}
+                      </div>
+
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="cancelado-inc" id="cancelado-inc-p" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="cancelado-inc-p" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            CONTRATO CANCELADO
+                          </Label>
+                        </div>
+                        {selectedStatus === "cancelado-inc" && renderObservations()}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Opções para Corretor, Supervisor, Administrador e Desenvolvedor */}
+                  {(isCorretor || isSupervisor || isAdmin || isDeveloper) && (
+                    <>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="resolvida-pendencia" id="resolvida-pendencia" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="resolvida-pendencia" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            INCONSISTÊNCIA DIGITAÇÃO RESOLVIDA
+                          </Label>
+                        </div>
+                        {selectedStatus === "resolvida-pendencia" && renderObservations()}
+                      </div>
+
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="solicitar-cancelamento-inc" id="solicitar-cancelamento-inc" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="solicitar-cancelamento-inc" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            SOLICITAR CANCELAMENTO DIGITAÇÃO
+                          </Label>
+                        </div>
+                        {selectedStatus === "solicitar-cancelamento-inc" && renderObservations()}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (proposal.status === "COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL") ? (
                 <div className="space-y-4">
                   <div className="flex flex-col space-y-1">
                     <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="digitado-inc" id="digitado-inc" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="digitado-inc" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        CONTRATO DIGITADO / AGUARDANDO FORMALIZAÇÃO DIGITAL
+                      <RadioGroupItem value="digitado-inc" id="digitado-inc-ao" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="digitado-inc-ao" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        CONTRATO DIGITADO
                       </Label>
                     </div>
-                    {selectedStatus === "digitado-inc" && (
+                    {(selectedStatus === "digitado-inc" || selectedStatus === "inc-banco-inc") && (
                       <>
-                        {renderAdeAndDate()}
+                        <div className="ml-7 flex items-center space-x-3 group mt-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                          <RadioGroupItem value="inc-banco-inc" id="inc-banco-op-inc-ao" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="inc-banco-op-inc-ao" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            COM INCONSISTÊNCIA BANCO
+                          </Label>
+                        </div>
+
+                        {(selectedStatus === "digitado-inc" || selectedStatus === "inc-banco-inc") && renderAdeAndDate()}
                         {renderObservations()}
                       </>
                     )}
@@ -652,8 +930,8 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                   
                   <div className="flex flex-col space-y-1">
                     <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="inconsistencia-inc" id="inconsistencia-inc" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="inconsistencia-inc" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                      <RadioGroupItem value="inconsistencia-inc" id="inconsistencia-inc-ao" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="inconsistencia-inc-ao" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
                         COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO
                       </Label>
                     </div>
@@ -662,32 +940,12 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
 
                   <div className="flex flex-col space-y-1">
                     <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="resolvida" id="resolvida" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="resolvida" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        INCONSISTÊNCIA RESOLVIDA
-                      </Label>
-                    </div>
-                    {selectedStatus === "resolvida" && renderObservations()}
-                  </div>
-                  
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="cancelado-inc" id="cancelado-inc" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="cancelado-inc" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                      <RadioGroupItem value="cancelado-inc" id="cancelado-inc-ao" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="cancelado-inc-ao" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
                         CONTRATO CANCELADO
                       </Label>
                     </div>
                     {selectedStatus === "cancelado-inc" && renderObservations()}
-                  </div>
-
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-3 group">
-                      <RadioGroupItem value="aguardando-inc" id="aguardando-inc" className="text-[#00a6ed] border-slate-300" />
-                      <Label htmlFor="aguardando-inc" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                        INCONSISTÊNCIA RESOLVIDA
-                      </Label>
-                    </div>
-                    {selectedStatus === "aguardando-inc" && renderObservations()}
                   </div>
                 </div>
               ) : (
@@ -714,7 +972,7 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
               )}
             </RadioGroup>
           </div>
-
+          )}
         </div>
 
         <DialogFooter className="bg-white border-t border-slate-100 px-10 py-8 flex flex-row justify-center gap-4">

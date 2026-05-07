@@ -2,6 +2,7 @@
 
 import { useState, Suspense, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import NextImage from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,25 +39,17 @@ function NewProposalForm() {
   const { isCorretor, perfil } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+  
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSearchingCEP, setIsSearchingCEP] = useState(false)
   
   const [dbConvenios, setDbConvenios] = useState<{id: string, nome: string}[]>([])
   const [dbBancos, setDbBancos] = useState<{id: string, nome: string}[]>([])
   const [dbOperacoes, setDbOperacoes] = useState<{id: string, nome: string}[]>([])
-  interface ProdutoConfig {
-    id: string
-    nome_tabela: string | null
-    prazo: number
-    coeficiente: number
-    percentual_producao: number
-    convenio_id: string
-    banco_id: string
-    operacoes: string[]
-    convenios: { nome: string } | null
-  }
-
   const [dbProdutosConfigs, setDbProdutosConfigs] = useState<ProdutoConfig[]>([])
+  
   const [selectedCoefValue, setSelectedCoefValue] = useState<number | null>(null)
   const [selectedProdPercent, setSelectedProdPercent] = useState<number | null>(null)
 
@@ -69,9 +62,125 @@ function NewProposalForm() {
     operacaoId: ""
   })
 
+  const [formData, setFormData] = useState({
+    nome: searchParams.get("nome") || "",
+    cpf: searchParams.get("cpf") || "",
+    nascimento: searchParams.get("nascimento") || "",
+    idLead: searchParams.get("idLead") || "",
+    origem: searchParams.get("origem")?.toUpperCase() || "",
+    matricula: searchParams.get("matricula") || "",
+    naturalidade: "",
+    uf_naturalidade: "",
+    identidade: "",
+    orgao_emissor: "",
+    uf_emissao: "",
+    data_emissao: "",
+    nome_pai: "",
+    nome_mae: "",
+    tel_1: searchParams.get("tel1") || "",
+    tel_2: searchParams.get("tel2") || "",
+    tel_3: searchParams.get("tel3") || "",
+    email: "",
+    equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
+    cep: "",
+    endereco: "",
+    numero: "",
+    complemento: "",
+    bairro: "",
+    cidade: "",
+    uf: "",
+    banco_cliente: "",
+    chave_pix: "",
+    conta: "",
+    agencia: "",
+    dv: "",
+    tipo_conta: "",
+    valor_parcela: "",
+    valor_operacao_operacional: "",
+    valor_cliente_operacional: "",
+    valor_producao_operacional: "",
+    margem_utilizada: "",
+    coeficiente_prazo: "",
+    prazo: "",
+    valor_producao_corretor: "",
+    observacoes: ""
+  })
+
+  const [selectedFiles, setSelectedFiles] = useState<{ [key: string]: File | null }>({
+    frente: null,
+    verso: null,
+    contracheque: null,
+    extrato: null,
+    outros: null,
+    outros_2: null
+  })
+  const [existingAttachments, setExistingAttachments] = useState<{ [key: string]: string | null }>({
+    frente: null,
+    verso: null,
+    contracheque: null,
+    extrato: null,
+    outros: null,
+    outros_2: null
+  })
+  const [pastedImages, setPastedImages] = useState<File[]>([])
+  
   const [isCoefDropdownOpen, setIsCoefDropdownOpen] = useState(false)
   const [coefSearchTerm, setCoefSearchTerm] = useState("")
   const coefDropdownRef = useRef<HTMLDivElement>(null)
+
+  interface ProdutoConfig {
+    id: string
+    nome_tabela: string | null
+    prazo: number
+    coeficiente: number
+    percentual_producao: number
+    convenio_id: string
+    banco_id: string
+    operacoes: string[]
+    regras?: { prazo: string | number, coeficiente: string | number, percentual_producao: string | number }[]
+    ativo: boolean;
+    created_at: string;
+    convenios?: { nome: string };
+  }
+
+  // Sincronizar selectedCoefValue e selectedPrazoValue quando coeficiente_prazo mudar
+  useEffect(() => {
+    if (dbProdutosConfigs.length > 0 && formData.coeficiente_prazo) {
+      const allOptions = (dbProdutosConfigs as ProdutoConfig[]).flatMap(config => {
+        if (config.regras && config.regras.length > 0) {
+          return config.regras.map((regra) => ({
+            nome_tabela: config.nome_tabela,
+            prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+            coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+            percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
+            convenioNome: config.convenios?.nome
+          }));
+        }
+        return [{
+          nome_tabela: config.nome_tabela,
+          prazo: config.prazo || 0,
+          coeficiente: config.coeficiente || 0,
+          percentual_producao: config.percentual_producao || 0,
+          convenioNome: config.convenios?.nome
+        }];
+      });
+
+      const option = allOptions.find(opt => {
+        const labelText = opt.nome_tabela 
+          ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
+          : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente}`;
+        
+        return labelText === formData.coeficiente_prazo || 
+               (opt.nome_tabela && formData.coeficiente_prazo.startsWith(opt.nome_tabela));
+      });
+
+      if (option) {
+        setSelectedCoefValue(option.coeficiente);
+        setSelectedProdPercent(option.percentual_producao);
+        setFormData(prev => ({ ...prev, prazo: option.prazo.toString() }));
+      }
+    }
+  }, [dbProdutosConfigs, formData.coeficiente_prazo]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -161,6 +270,7 @@ function NewProposalForm() {
             convenio_id,
             banco_id,
             operacoes,
+            regras,
             convenios (nome)
           `)
           .eq('ativo', true)
@@ -168,72 +278,13 @@ function NewProposalForm() {
         if (error) throw error
 
         const filtered = data || []
-        // Optional: filter by selected operation ID if it exists in the array
-        // and bank/convention if they are set, but the request says "todas"
-        /*
-        if (selection.bancoId) {
-          filtered = filtered.filter(config => config.banco_id === selection.bancoId)
-        }
-        if (selection.operacaoId) {
-          filtered = filtered.filter(config => 
-            config.operacoes && config.operacoes.includes(selection.operacaoId)
-          )
-        }
-        if (selection.convenioId) {
-          filtered = filtered.filter(config => config.convenio_id === selection.convenioId)
-        }
-        */
-
         setDbProdutosConfigs(filtered)
       } catch (err) {
         console.error("Erro ao buscar tabelas de regras:", err)
       }
     }
     fetchConfigs()
-  }, []) // Fetch once on mount or when needed, request says "todas as regras"
-  
-  const [formData, setFormData] = useState({
-    nome: searchParams.get("nome") || "",
-    cpf: searchParams.get("cpf") || "",
-    nascimento: searchParams.get("nascimento") || "",
-    idLead: searchParams.get("idLead") || "",
-    origem: searchParams.get("origem")?.toUpperCase() || "",
-    matricula: searchParams.get("matricula") || "",
-    naturalidade: "",
-    uf_naturalidade: "",
-    identidade: "",
-    orgao_emissor: "",
-    uf_emissao: "",
-    data_emissao: "",
-    nome_pai: "",
-    nome_mae: "",
-    tel_1: searchParams.get("tel1") || "",
-    tel_2: searchParams.get("tel2") || "",
-    tel_3: searchParams.get("tel3") || "",
-    email: "",
-    equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
-    cep: "",
-    endereco: "",
-    numero: "",
-    complemento: "",
-    bairro: "",
-    cidade: "",
-    uf: "",
-    banco_cliente: "",
-    chave_pix: "",
-    conta: "",
-    agencia: "",
-    dv: "",
-    tipo_conta: "",
-    valor_parcela: "",
-    valor_operacao_operacional: "",
-    valor_cliente_operacional: "",
-    valor_producao_operacional: "",
-    margem_utilizada: "",
-    coeficiente_prazo: "",
-    valor_producao_corretor: "",
-    observacoes: ""
-  })
+  }, []) 
 
   // Auto-fill supervisor info
   useEffect(() => {
@@ -268,26 +319,6 @@ function NewProposalForm() {
 
     fillSupervisor();
   }, [perfil, formData.equipe])
-
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isSearchingCEP, setIsSearchingCEP] = useState(false)
-  const [selectedFiles, setSelectedFiles] = useState<{ [key: string]: File | null }>({
-    frente: null,
-    verso: null,
-    contracheque: null,
-    extrato: null,
-    outros: null,
-    outros_2: null
-  })
-  const [existingAttachments, setExistingAttachments] = useState<{ [key: string]: string | null }>({
-    frente: null,
-    verso: null,
-    contracheque: null,
-    extrato: null,
-    outros: null,
-    outros_2: null
-  })
-  const [pastedImages, setPastedImages] = useState<File[]>([])
 
   const isFormValid = (() => {
     // Campos obrigatórios conforme regras de negócio solicitadas
@@ -1381,19 +1412,8 @@ function NewProposalForm() {
 
                     {/* Options List */}
                     <div className="overflow-y-auto custom-scrollbar p-1">
-                      {dbProdutosConfigs
-                        .filter(config => {
-                          // Filter by selected bank, convenio and operation
-                          const matchBanco = config.banco_id === selection.bancoId;
-                          const matchConvenio = config.convenio_id === selection.convenioId;
-                          const matchOperacao = config.operacoes && config.operacoes.includes(selection.operacaoId);
-                          
-                          if (!matchBanco || !matchConvenio || !matchOperacao) return false;
-
-                          const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''}`.toLowerCase()
-                          return searchStr.includes(coefSearchTerm.toLowerCase())
-                        }).length > 0 ? (
-                        dbProdutosConfigs
+                      {(() => {
+                        const filteredConfigs = dbProdutosConfigs
                           .filter(config => {
                             const matchBanco = config.banco_id === selection.bancoId;
                             const matchConvenio = config.convenio_id === selection.convenioId;
@@ -1401,68 +1421,102 @@ function NewProposalForm() {
                             
                             if (!matchBanco || !matchConvenio || !matchOperacao) return false;
 
-                            const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''}`.toLowerCase()
+                            const rulesStr = config.regras?.map(r => `${r.prazo} ${r.coeficiente}`).join(' ') || '';
+                            const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''} ${rulesStr}`.toLowerCase()
                             return searchStr.includes(coefSearchTerm.toLowerCase())
-                          })
-                          .map((config) => {
-                            const label = config.nome_tabela || `${config.convenios?.nome || 'Tabela'} - ${config.prazo}x ${config.coeficiente}`
-                            return (
-                              <div
-                                key={config.id}
-                                onClick={() => {
-                                  handleFormChange("coeficiente_prazo", label)
-                                  setSelectedCoefValue(config.coeficiente)
-                                  setSelectedProdPercent(config.percentual_producao)
-                                  
-                                  // Auto-calculate Valor Operação (Margin / Coef)
-                                  let currentValorOp = 0
-                                  if (formData.margem_utilizada && config.coeficiente) {
-                                    const rawMargem = formData.margem_utilizada.replace(/\D/g, "")
-                                    const margemValue = parseFloat(rawMargem) / 100
-                                    currentValorOp = margemValue / config.coeficiente
-                                    const formattedOp = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentValorOp)
-                                    handleFormChange("valor_operacao_operacional", formattedOp)
-                                    handleFormChange("valor_cliente_operacional", formattedOp)
-                                  } else if (formData.valor_operacao_operacional) {
-                                    currentValorOp = parseFloat(formData.valor_operacao_operacional.replace(/\D/g, "")) / 100
-                                  }
+                          });
 
-                                  // Auto-calculate production value based on Valor Operação
-                                  if (currentValorOp && config.percentual_producao) {
-                                    const valorProducao = (currentValorOp * config.percentual_producao) / 100
-                                    const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
-                                    handleFormChange("valor_producao_operacional", formatted)
-                                    handleFormChange("valor_producao_corretor", formatted)
-                                  }
+                        // Expand rules into individual options
+                        const options = filteredConfigs.flatMap(config => {
+                          if (config.regras && config.regras.length > 0) {
+                            return config.regras.map((regra, idx) => ({
+                              id: `${config.id}-rule-${idx}`,
+                              parentConfig: config,
+                              nome_tabela: config.nome_tabela,
+                              convenioNome: config.convenios?.nome,
+                              prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+                              coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+                              percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
+                            }));
+                          }
+                          return [{
+                            id: config.id,
+                            parentConfig: config,
+                            nome_tabela: config.nome_tabela,
+                            convenioNome: config.convenios?.nome,
+                            prazo: config.prazo,
+                            coeficiente: config.coeficiente,
+                            percentual_producao: config.percentual_producao,
+                          }];
+                        });
 
-                                  setIsCoefDropdownOpen(false)
-                                  setCoefSearchTerm("")
-                                }}
-                                className={cn(
-                                  "px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase transition-all cursor-pointer flex flex-col gap-0.5",
-                                  formData.coeficiente_prazo === label 
-                                    ? "bg-primary text-white" 
-                                    : "text-slate-600 hover:bg-slate-50"
-                                )}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span>{label}</span>
-                                  {formData.coeficiente_prazo === label && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                                </div>
-                                <span className={cn(
-                                  "text-[9px] font-medium lowercase tracking-normal",
-                                  formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
-                                )}>
-                                  Prazo: {config.prazo}x | Coef: {config.coeficiente} | Prod: {config.percentual_producao}%
-                                </span>
+                        if (options.length === 0) {
+                          return (
+                            <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic font-bold uppercase tracking-widest">
+                              Nenhuma tabela encontrada
+                            </div>
+                          );
+                        }
+
+                        return options.map((option) => {
+                          const label = option.nome_tabela 
+                            ? `${option.nome_tabela} (${option.prazo}x | ${option.coeficiente})`
+                            : `${option.convenioNome || 'Tabela'} - ${option.prazo}x ${option.coeficiente}`;
+                          
+                          return (
+                            <div
+                              key={option.id}
+                              onClick={() => {
+                                handleFormChange("coeficiente_prazo", label)
+                                setSelectedCoefValue(option.coeficiente)
+                                setSelectedProdPercent(option.percentual_producao)
+                                setFormData(prev => ({ ...prev, prazo: option.prazo.toString() }))
+                                
+                                // Auto-calculate Valor Operação (Margin / Coef)
+                                let currentValorOp = 0
+                                if (formData.margem_utilizada && option.coeficiente) {
+                                  const rawMargem = formData.margem_utilizada.replace(/\D/g, "")
+                                  const margemValue = parseFloat(rawMargem) / 100
+                                  currentValorOp = margemValue / option.coeficiente
+                                  const formattedOp = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentValorOp)
+                                  handleFormChange("valor_operacao_operacional", formattedOp)
+                                  handleFormChange("valor_cliente_operacional", formattedOp)
+                                } else if (formData.valor_operacao_operacional) {
+                                  currentValorOp = parseFloat(formData.valor_operacao_operacional.replace(/\D/g, "")) / 100
+                                }
+
+                                // Auto-calculate production value based on Valor Operação
+                                if (currentValorOp && option.percentual_producao) {
+                                  const valorProducao = (currentValorOp * option.percentual_producao) / 100
+                                  const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+                                  handleFormChange("valor_producao_operacional", formatted)
+                                  handleFormChange("valor_producao_corretor", formatted)
+                                }
+
+                                setIsCoefDropdownOpen(false)
+                                setCoefSearchTerm("")
+                              }}
+                              className={cn(
+                                "px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase transition-all cursor-pointer flex flex-col gap-0.5 border-b border-slate-50 last:border-0",
+                                formData.coeficiente_prazo === label 
+                                  ? "bg-primary text-white" 
+                                  : "text-slate-600 hover:bg-slate-50"
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span>{label}</span>
+                                {formData.coeficiente_prazo === label && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                               </div>
-                            )
-                          })
-                      ) : (
-                        <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic">
-                          Nenhuma tabela encontrada
-                        </div>
-                      )}
+                              <span className={cn(
+                                "text-[9px] font-medium lowercase tracking-normal",
+                                formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
+                              )}>
+                                Prazo: {option.prazo}x | Coef: {option.coeficiente} | Prod: {option.percentual_producao}%
+                              </span>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 )}
@@ -1479,6 +1533,15 @@ function NewProposalForm() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Prazo</label>
+                <Input 
+                  readOnly
+                  value={formData.prazo}
+                  className="h-9 border-slate-100 bg-[#F8FAFC] font-bold text-[#1A2B49] focus:outline-none transition-colors cursor-default"
+                  placeholder="-"
+                />
+              </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
                 <Input 
@@ -1597,11 +1660,13 @@ function NewProposalForm() {
                 <div className="flex flex-wrap gap-3">
                   {pastedImages.map((file, idx) => (
                     <div key={idx} className="relative group">
-                      <div className="w-20 h-20 rounded-lg border-2 border-emerald-200 overflow-hidden bg-white">
-                        <img 
+                      <div className="w-20 h-20 rounded-lg border-2 border-emerald-200 overflow-hidden bg-white relative">
+                        <NextImage 
                           src={URL.createObjectURL(file)} 
                           alt="Pasted" 
-                          className="w-full h-full object-cover"
+                          fill
+                          className="object-cover"
+                          unoptimized
                         />
                       </div>
                       <button 
@@ -1668,7 +1733,7 @@ function NewProposalForm() {
             </div>
           </div>
 
-          <div className="flex justify-center gap-4 pt-12">
+          <div className="flex flex-wrap justify-center gap-4 pt-12">
             <Button 
               onClick={() => handleSubmit()}
               disabled={isSubmitting || !isFormValid}

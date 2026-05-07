@@ -24,6 +24,8 @@ import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { supabase } from "@/lib/supabase"
 import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
+import { useAuth } from "@/context/auth-context"
+
 const orgaoOptions = Array.from(new Set(Object.values(ORGAOS_MAPPING)))
   .filter(name => name && name.trim() !== "")
   .sort();
@@ -69,8 +71,6 @@ const filterSections = [
     ]
   }
 ]
-
-import { useAuth } from "@/context/auth-context"
 
 const CATEGORY_MAP: Record<string, string> = {
   "1": "orgaos",
