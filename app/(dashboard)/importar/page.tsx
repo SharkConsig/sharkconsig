@@ -45,6 +45,8 @@ export default function ImportBatchPage() {
   const [totalBaseSiape, setTotalBaseSiape] = useState(0);
   const [totalBaseGovSP, setTotalBaseGovSP] = useState(0);
   const [totalBasePMSP, setTotalBasePMSP] = useState(0);
+  const [totalBaseGovPI, setTotalBaseGovPI] = useState(0);
+  const [totalBaseGovMA, setTotalBaseGovMA] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
   
   // Pagination State
@@ -111,7 +113,7 @@ export default function ImportBatchPage() {
       console.log("Estado da Sessão (fetchTotalBase):", `Logado como ${session.user.email}`);
       console.log("Token JWT (Tamanho):", session.access_token.length);
 
-      const [siapeRes, govSPRes, pmspRes] = await Promise.all([
+      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes] = await Promise.all([
         withRetry(async () => {
           return await supabase
             .from('clientes')
@@ -126,6 +128,16 @@ export default function ImportBatchPage() {
           return await supabase
             .from('prefeitura_sp_clientes')
             .select('*', { count: 'exact', head: true });
+        }),
+        withRetry(async () => {
+          return await supabase
+            .from('governo_pi_clientes')
+            .select('*', { count: 'exact', head: true });
+        }),
+        withRetry(async () => {
+          return await supabase
+            .from('governo_ma_clientes')
+            .select('*', { count: 'exact', head: true });
         })
       ]);
       
@@ -138,10 +150,18 @@ export default function ImportBatchPage() {
       if (pmspRes.error) {
         console.warn("Aviso Supabase (Total PMSP):", pmspRes.error.message);
       }
+      if (govPIRes.error) {
+        console.warn("Aviso Supabase (Total GOV PI):", govPIRes.error.message);
+      }
+      if (govMARes.error) {
+        console.warn("Aviso Supabase (Total GOV MA):", govMARes.error.message);
+      }
 
       setTotalBaseSiape(siapeRes.count || 0);
       setTotalBaseGovSP(govSPRes.count || 0);
       setTotalBasePMSP(pmspRes.count || 0);
+      setTotalBaseGovPI(govPIRes.count || 0);
+      setTotalBaseGovMA(govMARes.count || 0);
     } catch (err: unknown) {
       const error = err as Error;
       console.warn("Aviso inesperado ao buscar total da base:", error?.message || error);
@@ -284,7 +304,6 @@ export default function ImportBatchPage() {
         telefone_1: (currentClientInMap?.telefone_1 as string) ?? (existingClient?.telefone_1 as string) ?? null,
         telefone_2: (currentClientInMap?.telefone_2 as string) ?? (existingClient?.telefone_2 as string) ?? null,
         telefone_3: (currentClientInMap?.telefone_3 as string) ?? (existingClient?.telefone_3 as string) ?? null,
-        email: (currentClientInMap?.email as string) ?? (existingClient?.email as string) ?? null,
         updated_at: new Date().toISOString()
       };
       
@@ -302,9 +321,6 @@ export default function ImportBatchPage() {
 
       const p3 = normalizePhone(row.telefone_3 || "");
       if (p3) clientUpdate.telefone_3 = p3;
-
-      const newEmail = row.email?.trim().toLowerCase() || "";
-      if (newEmail) clientUpdate.email = newEmail;
       
       clientsToUpsertMap.set(cpf, clientUpdate);
 
@@ -445,7 +461,6 @@ export default function ImportBatchPage() {
       const newP1 = normalizePhone(row.telefone_1);
       const newP2 = normalizePhone(row.telefone_2);
       const newP3 = normalizePhone(row.telefone_3);
-      const newEmail = row.email?.trim().toLowerCase();
       
       const currentClientInMap = clientsToUpsertMap.get(cpf);
       
@@ -459,7 +474,6 @@ export default function ImportBatchPage() {
             telefone_1: newP1 || null,
             telefone_2: newP2 || null,
             telefone_3: newP3 || null,
-            email: newEmail || null,
             updated_at: new Date().toISOString()
           });
         }
@@ -498,12 +512,6 @@ export default function ImportBatchPage() {
         const currentP3 = currentClientInMap?.telefone_3 ?? existingClient.telefone_3;
         if (newP3 && !currentP3) {
           clientUpdate.telefone_3 = newP3;
-          hasUpdate = true;
-        }
-
-        const currentEmail = currentClientInMap?.email ?? existingClient.email;
-        if (newEmail && !currentEmail) {
-          clientUpdate.email = newEmail;
           hasUpdate = true;
         }
 
@@ -984,6 +992,250 @@ export default function ImportBatchPage() {
     }
   };
 
+  const processGovernoPiChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
+    // 1. Normalização
+    const normalizedRows = results.map(row => ({
+      cpf: normalizeCPF(row.cpf || ""),
+      nome: normalizeText(row.nome || ""),
+      data_nascimento: normalizeDate(row.data_nascimento || ""),
+      matricula: normalizeText(row.matricula || ""),
+      vinculo: normalizeText(row.vinculo || ""),
+      telefone_1: normalizePhone(row.telefone_1 || row.telefone || ""),
+      telefone_2: normalizePhone(row.telefone_2 || ""),
+      telefone_3: normalizePhone(row.telefone_3 || ""),
+      orgao: normalizeText(row.orgao || ""),
+      margem_cartao_consignado: normalizeMoney(row.margem_cartao_consignado),
+      margem_cartao_beneficio: normalizeMoney(row.margem_cartao_beneficio)
+    })).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    // --- PASSO 1: Garantir Entidade Cliente (CPF Único) ---
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('governo_pi_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
+
+    const shouldPreserve = (val: string | number | null | undefined) => {
+      const v = String(val).trim();
+      return v === "" || v === "0" || val === null || val === undefined;
+    };
+
+    const clientMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
+      const existingInMap = clientMap.get(row.cpf);
+
+      const nome = !shouldPreserve(row.nome) ? row.nome : (existingInMap?.nome || dbClient?.nome || 'NAO INFORMADO');
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : (existingInMap?.data_nascimento || dbClient?.data_nascimento || null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : (existingInMap?.telefone_1 || dbClient?.telefone_1 || null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : (existingInMap?.telefone_2 || dbClient?.telefone_2 || null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : (existingInMap?.telefone_3 || dbClient?.telefone_3 || null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const clientRows = Array.from(clientMap.values());
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      return await supabase.from('governo_pi_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Governo Piauí: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+
+    // --- PASSO 2: Processar Identificações (Matriculas) ---
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_pi_identificacoes', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula}`, i]));
+
+    const identMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId || !row.matricula) return;
+
+      const key = `${clientId}_${row.matricula}`;
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
+      const currentInMap = identMap.get(key);
+
+      const vinculo = !shouldPreserve(row.vinculo) ? row.vinculo : (currentInMap?.vinculo || dbIdent?.vinculo || null);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        matricula: row.matricula,
+        vinculo,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const identRows = Array.from(identMap.values());
+    const { data: identsData, error: identErr } = await withRetry(async () => {
+      return await supabase.from('governo_pi_identificacoes')
+        .upsert(identRows, { onConflict: 'cliente_id, matricula' })
+        .select('id, cliente_id, matricula');
+    });
+
+    if (identErr || !identsData) throw new Error(`Erro ao salvar identificações Governo Piauí: ${identErr?.message}`);
+
+    const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, matricula: string}) => [`${id.cliente_id}_${id.matricula}`, id.id]));
+
+    // --- PASSO 3: Inserir Lotações (Margins) ---
+    const lotacaoRows = normalizedRows.map(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
+      
+      if (!identId) return null;
+
+      return {
+        identificacao_id: identId,
+        orgao: row.orgao,
+        margem_cartao_consignado: row.margem_cartao_consignado,
+        margem_cartao_beneficio: row.margem_cartao_beneficio,
+        lote_id: loteId,
+        updated_at: new Date().toISOString()
+      };
+    }).filter(Boolean);
+
+    if (lotacaoRows.length > 0) {
+      const { error: lotErr } = await withRetry(async () => {
+        return await supabase.from('governo_pi_lotacoes').insert(lotacaoRows);
+      });
+      if (lotErr) throw new Error(`Erro ao salvar lotações Governo Piauí: ${lotErr.message}`);
+    }
+  };
+
+  const processGovernoMaChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
+    // 1. Normalização
+    const normalizedRows = results.map(row => ({
+      cpf: normalizeCPF(row.cpf || ""),
+      nome: normalizeText(row.nome || ""),
+      data_nascimento: normalizeDate(row.data_nascimento || ""),
+      matricula: normalizeText(row.matricula || ""),
+      vinculo: normalizeText(row.vinculo || ""),
+      telefone_1: normalizePhone(row.telefone_1 || ""),
+      telefone_2: normalizePhone(row.telefone_2 || ""),
+      telefone_3: normalizePhone(row.telefone_3 || ""),
+      orgao: normalizeText(row.orgao || ""),
+      margem_emprestimo_consignado: normalizeMoney(row.margem_emprestimo_consignado),
+      margem_cartao_consignado: normalizeMoney(row.margem_cartao_consignado),
+      margem_cartao_beneficio: normalizeMoney(row.margem_cartao_beneficio)
+    })).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    // --- PASSO 1: Garantir Entidade Cliente (CPF Único) ---
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('governo_ma_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
+
+    const shouldPreserve = (val: string | number | null | undefined) => {
+      const v = String(val).trim();
+      return v === "" || v === "0" || val === null || val === undefined;
+    };
+
+    const clientMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
+      const existingInMap = clientMap.get(row.cpf);
+
+      const nome = !shouldPreserve(row.nome) ? row.nome : (existingInMap?.nome || dbClient?.nome || 'NAO INFORMADO');
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : (existingInMap?.data_nascimento || dbClient?.data_nascimento || null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : (existingInMap?.telefone_1 || dbClient?.telefone_1 || null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : (existingInMap?.telefone_2 || dbClient?.telefone_2 || null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : (existingInMap?.telefone_3 || dbClient?.telefone_3 || null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const clientRows = Array.from(clientMap.values());
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      return await supabase.from('governo_ma_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Governo Maranhão: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+
+    // --- PASSO 2: Processar Identificações (Matriculas) ---
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_ma_identificacoes', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula}`, i]));
+
+    const identMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId || !row.matricula) return;
+
+      const key = `${clientId}_${row.matricula}`;
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
+      const currentInMap = identMap.get(key);
+
+      const vinculo = !shouldPreserve(row.vinculo) ? row.vinculo : (currentInMap?.vinculo || dbIdent?.vinculo || null);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        matricula: row.matricula,
+        vinculo,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const identRows = Array.from(identMap.values());
+    const { data: identsData, error: identErr } = await withRetry(async () => {
+      return await supabase.from('governo_ma_identificacoes')
+        .upsert(identRows, { onConflict: 'cliente_id, matricula' })
+        .select('id, cliente_id, matricula');
+    });
+
+    if (identErr || !identsData) throw new Error(`Erro ao salvar identificações Governo Maranhão: ${identErr?.message}`);
+
+    const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, matricula: string}) => [`${id.cliente_id}_${id.matricula}`, id.id]));
+
+    // --- PASSO 3: Inserir Lotações (Margins) ---
+    const lotacaoRows = normalizedRows.map(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
+      
+      if (!identId) return null;
+
+      return {
+        identificacao_id: identId,
+        orgao: row.orgao,
+        margem_emprestimo_consignado: row.margem_emprestimo_consignado,
+        margem_cartao_consignado: row.margem_cartao_consignado,
+        margem_cartao_beneficio: row.margem_cartao_beneficio,
+        lote_id: loteId,
+        updated_at: new Date().toISOString()
+      };
+    }).filter(Boolean);
+
+    if (lotacaoRows.length > 0) {
+      const { error: lotErr } = await withRetry(async () => {
+        return await supabase.from('governo_ma_lotacoes').insert(lotacaoRows);
+      });
+      if (lotErr) throw new Error(`Erro ao salvar lotações Governo Maranhão: ${lotErr.message}`);
+    }
+  };
+
   const handleStartImport = async () => {
     console.log("Botão 'Iniciar Importação' clicado");
     setImportError(null);
@@ -1008,7 +1260,7 @@ export default function ImportBatchPage() {
       const validateHeaders = () => {
         return new Promise<boolean>((resolve) => {
           Papa.parse(selectedFile, {
-            preview: 1,
+            preview: 2, // Check a bit more for delimiter detection
             header: true,
             encoding: "ISO-8859-1",
             complete: (results) => {
@@ -1021,35 +1273,37 @@ export default function ImportBatchPage() {
 
               console.log(`[VALIDAÇÃO] Cabeçalhos encontrados para ${type}:`, headers);
               
+              const normalizedHeaders = headers.map(h => normalizeText(h));
+              
+              const checkRequired = (required: string[]) => {
+                const missing = required.filter(h => !normalizedHeaders.includes(normalizeText(h)));
+                if (missing.length > 0) {
+                  console.warn(`[VALIDAÇÃO] Faltam cabeçalhos para ${type}:`, missing);
+                  return false;
+                }
+                return true;
+              };
+
               if (type === "SIAPE") {
-                // Cabeçalhos essenciais do modelo SIAPE
-                const required = ["cpf", "matricula", "orgao", "situacao_funcional"];
-                const normalizedHeaders = headers.map(h => normalizeText(h));
-                const isValid = required.every(h => normalizedHeaders.includes(normalizeText(h)));
-                resolve(isValid);
+                resolve(checkRequired(["cpf", "matricula", "orgao", "situacao_funcional"]));
               } else if (type === "CONTRATOS") {
-                // Cabeçalhos essenciais do modelo CONTRATOS
-                const required = ["cpf", "numero_do_contrato", "banco", "parcela", "orgao"];
-                const normalizedHeaders = headers.map(h => normalizeText(h));
-                const isValid = required.every(h => normalizedHeaders.includes(normalizeText(h)));
-                resolve(isValid);
+                resolve(checkRequired(["cpf", "numero_do_contrato", "banco", "parcela", "orgao"]));
               } else if (type === "GOVERNO_SP") {
-                // Cabeçalhos essenciais do modelo GOVERNO SP
-                const required = ["cpf", "identificacao", "lotacao", "orgao", "tipo_vinculo"];
-                const normalizedHeaders = headers.map(h => normalizeText(h));
-                const isValid = required.every(h => normalizedHeaders.includes(normalizeText(h)));
-                resolve(isValid);
+                resolve(checkRequired(["cpf", "identificacao", "lotacao", "orgao", "tipo_vinculo"]));
               } else if (type === "PREFEITURA_SP") {
-                // Cabeçalhos essenciais do modelo PREFEITURA SP
-                const required = ["cpf", "identificacao", "lotacao", "orgao", "tipo_vinculo"];
-                const normalizedHeaders = headers.map(h => normalizeText(h));
-                const isValid = required.every(h => normalizedHeaders.includes(normalizeText(h)));
-                resolve(isValid);
+                resolve(checkRequired(["cpf", "identificacao", "lotacao", "orgao", "tipo_vinculo"]));
+              } else if (type === "GOVERNO_PI") {
+                resolve(checkRequired(["cpf", "matricula", "orgao", "margem_cartao_consignado"]));
+              } else if (type === "GOVERNO_MA") {
+                resolve(checkRequired(["cpf", "matricula", "orgao", "margem_emprestimo_consignado"]));
               } else {
                 resolve(false);
               }
             },
-            error: () => resolve(false)
+            error: (err) => {
+              console.error("[VALIDAÇÃO] Erro ao ler cabeçalhos:", err);
+              resolve(false);
+            }
           });
         });
       };
@@ -1123,7 +1377,7 @@ export default function ImportBatchPage() {
         header: true,
         skipEmptyLines: true,
         encoding: "ISO-8859-1", 
-        chunkSize: 1024 * 512, // Reduzido para 512KB para maior estabilidade
+        chunkSize: 1024 * 256, // Reduzido para 256KB para máxima estabilidade em conexões lentas
         chunk: async (results, parser) => {
           parser.pause();
           
@@ -1132,7 +1386,8 @@ export default function ImportBatchPage() {
             console.log("[PAPA] Exemplo da primeira linha:", results.data[0]);
           }
 
-              try {
+          try {
+            // Processamento do chunk com mecanismo de retentativa
             await withRetry(async () => {
               if (type === "SIAPE") {
                 await processSiapeChunk(results.data);
@@ -1142,6 +1397,10 @@ export default function ImportBatchPage() {
                 await processGovernoSpChunk(results.data, currentBatch.id);
               } else if (type === "PREFEITURA_SP") {
                 await processPrefeituraSpChunk(results.data, currentBatch.id);
+              } else if (type === "GOVERNO_PI") {
+                await processGovernoPiChunk(results.data, currentBatch.id);
+              } else if (type === "GOVERNO_MA") {
+                await processGovernoMaChunk(results.data, currentBatch.id);
               }
             });
             
@@ -1153,41 +1412,62 @@ export default function ImportBatchPage() {
               b.id === currentBatch.id ? { ...b, progresso: progress, total_linhas: processedCount.toLocaleString('pt-BR') } : b
             ));
 
-            // Update DB
-            await withRetry(async () => {
-              return await supabase
-                .from('lotes')
-                .update({ progresso: progress, total_linhas: processedCount.toLocaleString('pt-BR') })
-                .eq('id', currentBatch.id);
-            });
+            // Update DB (Opcional a cada chunk, podemos espaçar se for muito pesado)
+            if (processedCount % 5000 === 0 || results.data.length < 100) {
+              await withRetry(async () => {
+                return await supabase
+                  .from('lotes')
+                  .update({ progresso: progress, total_linhas: processedCount.toLocaleString('pt-BR') })
+                  .eq('id', currentBatch.id);
+              });
+            }
 
             setCleaningLog([`Processando: ${processedCount} linhas...`]);
             
-            // Pequeno delay para permitir que o navegador respire e evitar "Failed to fetch"
-            await new Promise(resolve => setTimeout(resolve, 300));
+            // Delay vital para o Main Thread e para o Nginx/Kong não "cansar" da conexão
+            await new Promise(resolve => setTimeout(resolve, 500));
 
           } catch (error: unknown) {
             const err = error as Error;
             console.error("[IMPORT] Erro fatal no chunk após retentativas:", err);
-            setCleaningLog(prev => [...prev, `ERRO FATAL: ${err.message}`]);
-            // Opcionalmente, poderíamos pausar a importação aqui
+            setCleaningLog(prev => [...prev, `ERRO NO CHUNK (Pulando): ${err.message}`]);
+            // Em caso de erro em um chunk, registramos mas continuamos para não perder o resto do arquivo
           }
           
           parser.resume();
         },
         complete: async () => {
           // Final update in DB
-          await withRetry(async () => {
-            return await supabase
-              .from('lotes')
-              .update({ 
-                status: "COMPLETED", 
-                progresso: 100, 
-                total_linhas: processedCount.toLocaleString('pt-BR'),
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', currentBatch.id);
-          });
+          try {
+            await withRetry(async () => {
+              return await supabase
+                .from('lotes')
+                .update({ 
+                  status: "COMPLETED", 
+                  progresso: 100, 
+                  total_linhas: processedCount.toLocaleString('pt-BR'),
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', currentBatch.id);
+            });
+
+            // Trigger background refresh of the search base
+            // We don't await this to avoid UI blocking if it takes too long
+            supabase.rpc('refresh_base_consulta_rapida').then(({ data, error }) => {
+              if (error) {
+                // If it's a timeout (usually error.code 504 or empty object in some contexts)
+                // we log it as a warning because the server probably keep processing
+                console.warn("A atualização da base de consulta rápida ultrapassou o tempo limite do navegador, mas deve continuar processando no servidor:", error);
+              } else {
+                console.log("Base de consulta rápida atualizada com sucesso:", data);
+              }
+            }).catch(err => {
+              console.warn("Erro ao disparar refresh da base (Catch):", err);
+            });
+
+          } catch (err) {
+            console.error("Erro ao finalizar lote:", err);
+          }
 
           setBatchList(prev => prev.map(b => 
             b.id === currentBatch.id ? { ...b, status: "COMPLETED", progresso: 100, total_linhas: processedCount.toLocaleString('pt-BR') } : b
@@ -1235,7 +1515,7 @@ export default function ImportBatchPage() {
     ));
   };
 
-  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp') => {
+  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma') => {
     let headers = "";
     let filename = "";
 
@@ -1251,6 +1531,15 @@ export default function ImportBatchPage() {
     } else if (type === 'prefeitura_sp') {
       headers = "cpf,nome,data_nascimento,identificacao,data_nomeacao,lotacao,orgao,tipo_vinculo,mb_consignacoes,md_consignacoes,mb_cartao_beneficio,md_cartao_beneficio,telefone_1,telefone_2,telefone_3";
       filename = "modelo_prefeitura_sp.csv";
+    } else if (type === 'governo_pi') {
+      headers = "cpf,nome,matricula,vinculo,data_nascimento,telefone_1,telefone_2,telefone_3,orgao,margem_cartao_consignado,margem_cartao_beneficio";
+      filename = "modelo_governo_pi.csv";
+    } else if (type === 'governo_ma') {
+      headers = "cpf,nome,matricula,vinculo,data_nascimento,telefone_1,telefone_2,telefone_3,orgao,margem_emprestimo_consignado,margem_cartao_consignado,margem_cartao_beneficio";
+      filename = "modelo_governo_ma.csv";
+    } else if (type === 'governo_ma') {
+      headers = "cpf,nome,matricula,vinculo,data_nascimento,telefone_1,telefone_2,telefone_3,orgao,margem_emprestimo_consignado,margem_cartao_consignado,margem_cartao_beneficio";
+      filename = "modelo_governo_ma.csv";
     }
     
     const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
@@ -1287,6 +1576,8 @@ export default function ImportBatchPage() {
                     <option value="CONTRATOS">CONTRATOS</option>
                     <option value="GOVERNO_SP">GOVERNO SP</option>
                     <option value="PREFEITURA_SP">PREFEITURA SP</option>
+                    <option value="GOVERNO_PI">GOVERNO PIAUÍ</option>
+                    <option value="GOVERNO_MA">GOVERNO MARANHÃO</option>
                   </select>
                   <Input 
                     value={description}
@@ -1399,6 +1690,26 @@ export default function ImportBatchPage() {
                         <p className="text-[10px] text-slate-400">Base Prefeitura São Paulo</p>
                       </div>
                     </button>
+                    <button 
+                      onClick={() => downloadCSV('governo_pi')}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
+                    >
+                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO PIAUÍ</p>
+                        <p className="text-[10px] text-slate-400">Base Governo Piauí</p>
+                      </div>
+                    </button>
+                    <button 
+                      onClick={() => downloadCSV('governo_ma')}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
+                    >
+                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO MARANHÃO</p>
+                        <p className="text-[10px] text-slate-400">Base Governo Maranhão</p>
+                      </div>
+                    </button>
                   </div>
                 </div>
 
@@ -1480,6 +1791,26 @@ export default function ImportBatchPage() {
                   </div>
                   <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
                 </div>
+
+                <div className="flex flex-col border-t border-slate-100 pt-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
+                      {totalBaseGovPI.toLocaleString('pt-BR')}
+                    </span>
+                    <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">GOV PI</span>
+                  </div>
+                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
+                </div>
+
+                <div className="flex flex-col border-t border-slate-100 pt-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
+                      {totalBaseGovMA.toLocaleString('pt-BR')}
+                    </span>
+                    <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">GOV MA</span>
+                  </div>
+                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -1524,9 +1855,11 @@ export default function ImportBatchPage() {
                             "px-2 py-1 text-[7.5px] font-bold text-white rounded uppercase tracking-tighter",
                             batch.tipo === "SIAPE" ? "bg-primary" : 
                             batch.tipo === "CONTRATOS" ? "bg-[#F59E0B]" : 
-                            batch.tipo === "GOVERNO_SP" ? "bg-emerald-600" : "bg-blue-600"
+                            batch.tipo === "GOVERNO_SP" ? "bg-emerald-600" : 
+                            batch.tipo === "PREFEITURA_SP" ? "bg-blue-600" : 
+                            batch.tipo === "GOVERNO_PI" ? "bg-purple-600" : "bg-orange-600"
                           )}>
-                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo === "PREFEITURA_SP" ? "PREFEITURA SP" : batch.tipo}
+                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo === "PREFEITURA_SP" ? "PREFEITURA SP" : batch.tipo === "GOVERNO_PI" ? "GOVERNO PI" : batch.tipo === "GOVERNO_MA" ? "GOVERNO MA" : batch.tipo}
                           </span>
                           <span className="text-[12px] font-semibold text-slate-600 uppercase">{batch.descricao}</span>
                         </div>

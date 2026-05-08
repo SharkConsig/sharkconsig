@@ -794,44 +794,48 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                   </div>
                 ) : null
               ) : proposal.status === "PAGAMENTO DEVOLVIDO" ? (
-                (isOperational || isAdmin || isDeveloper) ? (
-                  <div className="space-y-4">
-                    <div className="flex flex-col space-y-1">
-                      <div className="flex items-center space-x-3 group">
-                        <RadioGroupItem value="reapresentar-pagamento-pd" id="reapresentar-pagamento-pd" className="text-[#00a6ed] border-slate-300" />
-                        <Label htmlFor="reapresentar-pagamento-pd" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                          REAPRESENTAR PAGAMENTO
-                        </Label>
-                      </div>
-                      {selectedStatus === "reapresentar-pagamento-pd" && renderObservations()}
+                <div className="space-y-4">
+                  {/* REAPRESENTAR PAGAMENTO: Visível para todos (Corretor, Supervisor, Operacional, Adm, Dev) */}
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-3 group">
+                      <RadioGroupItem value="reapresentar-pagamento-pd" id="reapresentar-pagamento-pd" className="text-[#00a6ed] border-slate-300" />
+                      <Label htmlFor="reapresentar-pagamento-pd" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                        REAPRESENTAR PAGAMENTO
+                      </Label>
                     </div>
-
-                    <div className="flex flex-col space-y-1">
-                      <div className="flex items-center space-x-3 group">
-                        <RadioGroupItem value="devolvido-banco" id="devolvido-banco-pd" className="text-[#00a6ed] border-slate-300" />
-                        <Label htmlFor="devolvido-banco-pd" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                          PAGAMENTO DEVOLVIDO
-                        </Label>
-                      </div>
-                      {selectedStatus === "devolvido-banco" && renderObservations()}
-                    </div>
-
-                    <div className="flex flex-col space-y-1">
-                      <div className="flex items-center space-x-3 group">
-                        <RadioGroupItem value="pago-cliente" id="pago-cliente-pd" className="text-[#00a6ed] border-slate-300" />
-                        <Label htmlFor="pago-cliente-pd" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
-                          PAGO AO CLIENTE
-                        </Label>
-                      </div>
-                      {selectedStatus === "pago-cliente" && (
-                        <>
-                          {renderDateOnly()}
-                          {renderObservations()}
-                        </>
-                      )}
-                    </div>
+                    {selectedStatus === "reapresentar-pagamento-pd" && renderObservations()}
                   </div>
-                ) : null
+
+                  {/* Outras ações: Visíveis apenas para Operacional, Administrativo (isAdmin) e Desenvolvedor */}
+                  {(isOperational || isAdmin || isDeveloper) && (
+                    <>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="devolvido-banco" id="devolvido-banco-pd" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="devolvido-banco-pd" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            PAGAMENTO DEVOLVIDO
+                          </Label>
+                        </div>
+                        {selectedStatus === "devolvido-banco" && renderObservations()}
+                      </div>
+
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center space-x-3 group">
+                          <RadioGroupItem value="pago-cliente" id="pago-cliente-pd" className="text-[#00a6ed] border-slate-300" />
+                          <Label htmlFor="pago-cliente-pd" className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900 cursor-pointer uppercase">
+                            PAGO AO CLIENTE
+                          </Label>
+                        </div>
+                        {selectedStatus === "pago-cliente" && (
+                          <>
+                            {renderDateOnly()}
+                            {renderObservations()}
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               ) : (proposal.status === "COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO") ? (
                 <div className="space-y-4">
                   {/* Opções para Operacional, Administrador e Desenvolvedor */}

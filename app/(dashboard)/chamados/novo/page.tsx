@@ -30,7 +30,43 @@ function NewTicketForm() {
   const searchParams = useSearchParams()
   const { user, perfil } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [description, setDescription] = useState("")
+  const [description, setDescription] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem('new_ticket_draft') || ""
+    }
+    return ""
+  })
+
+  // Persist window scroll
+  useEffect(() => {
+    const handleWindowScroll = () => {
+      if (typeof window !== "undefined") {
+        localStorage.setItem('new_ticket_window_scroll', window.scrollY.toString())
+      }
+    }
+    window.addEventListener('scroll', handleWindowScroll)
+
+    // Restore scroll after a small delay
+    const savedScroll = localStorage.getItem('new_ticket_window_scroll')
+    if (savedScroll) {
+      setTimeout(() => {
+        window.scrollTo(0, parseInt(savedScroll, 10))
+      }, 100)
+    }
+
+    return () => window.removeEventListener('scroll', handleWindowScroll)
+  }, [])
+
+  // Persist draft
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (description) {
+        localStorage.setItem('new_ticket_draft', description)
+      } else {
+        localStorage.removeItem('new_ticket_draft')
+      }
+    }
+  }, [description])
   const [validationError, setValidationError] = useState<string | null>(null)
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -177,33 +213,52 @@ function NewTicketForm() {
     if (validationError) setValidationError(null)
   }
 
-  const updateDescription = useCallback((margins: { margem: string, liquida5: string, beneficio5: string }) => {
-    const isGovSP = formData.convenio?.toUpperCase() === "GOVERNO SP";
+  const getMarginLabel = useCallback((field: 'margem' | 'liquida5' | 'beneficio5') => {
+    const conv = formData.convenio?.toUpperCase();
     
+    if (conv === "GOVERNO MARANHÃO") {
+      if (field === 'margem') return "MARGEM EMPRÉSTIMO CONSIGNADO";
+      if (field === 'liquida5') return "MARGEM CARTÃO CONSIGNADO";
+      if (field === 'beneficio5') return "MARGEM CARTÃO BENEFÍCIO";
+    }
+    
+    if (conv === "GOVERNO PIAUÍ") {
+      if (field === 'liquida5') return "MARGEM CARTÃO CONSIGNADO";
+      if (field === 'beneficio5') return "MARGEM CARTÃO BENEFÍCIO";
+      if (field === 'margem') return ""; // Hidden for PI
+    }
+
+    if (conv === "GOVERNO SP" || conv === "PREFEITURA SP") {
+      if (field === 'margem') return "LÍQUIDA CONSIGNAÇÕES";
+      if (field === 'liquida5') return "LÍQUIDA CARTÃO CRÉDITO";
+      if (field === 'beneficio5') return "LÍQUIDA CARTÃO BENEFÍCIO";
+    }
+
+    if (field === 'margem') return "Margem 35%";
+    if (field === 'liquida5') return "Líquida 5%";
+    if (field === 'beneficio5') return "Benefício Líquida 5%";
+    return "";
+  }, [formData.convenio]);
+
+  const updateDescription = useCallback((margins: { margem: string, liquida5: string, beneficio5: string }) => {
     // Build the introductory text
     const activeLabels = [];
-    if (isGovSP) {
-      if (margins.margem) activeLabels.push(`LÍQUIDA CONSIGNAÇÕES (${margins.margem})`);
-      if (margins.liquida5) activeLabels.push(`LÍQUIDA CARTÃO CRÉDITO (${margins.liquida5})`);
-      if (margins.beneficio5) activeLabels.push(`LÍQUIDA CARTÃO BENEFÍCIO (${margins.beneficio5})`);
-    } else {
-      if (margins.margem) activeLabels.push(`35% (${margins.margem})`);
-      if (margins.liquida5) activeLabels.push(`LÍQUIDA 5% (${margins.liquida5})`);
-      if (margins.beneficio5) activeLabels.push(`BENEFÍCIO LÍQUIDA 5% (${margins.beneficio5})`);
-    }
+    if (margins.margem) activeLabels.push(`${getMarginLabel('margem')} (${margins.margem})`);
+    if (margins.liquida5) activeLabels.push(`${getMarginLabel('liquida5')} (${margins.liquida5})`);
+    if (margins.beneficio5) activeLabels.push(`${getMarginLabel('beneficio5')} (${margins.beneficio5})`);
 
     let introText = "";
     if (activeLabels.length > 0) {
       if (activeLabels.length === 1) {
-        introText = `Esse chamado é para a margem ${activeLabels[0]}.`;
+        introText = `Esse chamado é para a ${activeLabels[0]}.`;
       } else {
-        introText = `Esse chamado é para a margem ${activeLabels.join(" e margem ")}.`;
+        introText = `Esse chamado é para a ${activeLabels.join(" e ").replace(/ e ([^e]*)$/, " e $1")}.`;
       }
     }
 
     setDescription(prevDesc => {
       const lines = prevDesc.split("\n");
-      const introIndex = lines.findIndex(l => l.startsWith("Esse chamado é para a margem"));
+      const introIndex = lines.findIndex(l => l.startsWith("Esse chamado é para a "));
       
       if (introText) {
         if (introIndex >= 0) {
@@ -218,7 +273,7 @@ function NewTicketForm() {
       }
       return lines.join("\n");
     });
-  }, [formData.convenio]);
+  }, [getMarginLabel]);
 
   // Monitor convenio changes to sync description labels
   useEffect(() => {
@@ -512,6 +567,7 @@ function NewTicketForm() {
       }
 
       console.log("Chamado aberto com sucesso!");
+      localStorage.removeItem('new_ticket_draft');
       toast.dismiss(loadingToast);
       toast.success("Chamado aberto com sucesso!");
       router.push("/chamados");
@@ -546,9 +602,16 @@ function NewTicketForm() {
                 <select 
                   value={formData.convenio}
                   onChange={(e) => handleInputChange("convenio", e.target.value)}
-                  className="w-full h-[34px] px-3 rounded-lg border border-slate-100 bg-[#E8E8E8] text-[12px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none"
+                  disabled={!!searchParams.get("convenio")}
+                  className={cn(
+                    "w-full h-[34px] px-3 rounded-lg border border-slate-100 text-[12px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none",
+                    !!searchParams.get("convenio") ? "bg-slate-200 text-slate-500 cursor-not-allowed opacity-70" : "bg-[#E8E8E8] text-slate-900"
+                  )}
                 >
                   <option value="">Selecione</option>
+                  {formData.convenio && !dbConvenios.includes(formData.convenio) && (
+                    <option key="query-convenio" value={formData.convenio}>{formData.convenio}</option>
+                  )}
                   {dbConvenios.map((conv) => (
                     <option key={conv} value={conv}>{conv}</option>
                   ))}
@@ -659,38 +722,40 @@ function NewTicketForm() {
                 <div className="space-y-4">
                   <p className="text-[10px] font-bold text-primary mb-1 uppercase tracking-wider">Selecione ou digite a margem para qual você deseja abrir esse chamado.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 items-end">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      {(formData.convenio?.toUpperCase() === "GOVERNO SP" || formData.convenio?.toUpperCase() === "PREFEITURA SP") ? "LÍQUIDA CONSIGNAÇÕES" : "Margem 35%"} <span className="text-red-500">*</span>
-                    </label>
-                    {isFromClient && originalMargins.margem ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleMargin("margem", originalMargins.margem)}
-                        className={cn(
-                          "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
-                          getMarginClasses(originalMargins.margem, !!formData.margem)
+                    {getMarginLabel('margem') && (
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                          <span className="whitespace-nowrap">{getMarginLabel('margem')}</span>
+                        </label>
+                        {isFromClient && originalMargins.margem ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleMargin("margem", originalMargins.margem)}
+                            className={cn(
+                              "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
+                              getMarginClasses(originalMargins.margem, !!formData.margem)
+                            )}
+                          >
+                            {formData.margem && <Check className="w-3.5 h-3.5 shrink-0" />}
+                            <span className="truncate">{originalMargins.margem}</span>
+                          </button>
+                        ) : (
+                          <Input 
+                            value={formData.margem}
+                            onChange={(e) => handleMarginInputChange("margem", e.target.value)}
+                            placeholder="R$ 0,00" 
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.margem, !!formData.margem)
+                            )}
+                          />
                         )}
-                      >
-                        {formData.margem && <Check className="w-3.5 h-3.5 shrink-0" />}
-                        <span className="truncate">{originalMargins.margem}</span>
-                      </button>
-                    ) : (
-                      <Input 
-                        value={formData.margem}
-                        onChange={(e) => handleMarginInputChange("margem", e.target.value)}
-                        placeholder="R$ 0,00" 
-                        className={cn(
-                          "h-[34px] text-[12px] transition-all",
-                          getMarginClasses(formData.margem, !!formData.margem)
-                        )}
-                      />
+                      </div>
                     )}
-                  </div>
 
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      {(formData.convenio?.toUpperCase() === "GOVERNO SP" || formData.convenio?.toUpperCase() === "PREFEITURA SP") ? "LÍQUIDA CARTÃO CRÉDITO" : "Líquida 5%"}
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                      <span>{getMarginLabel('liquida5')}</span>
                     </label>
                     {isFromClient && originalMargins.liquida5 ? (
                       <button
@@ -718,8 +783,8 @@ function NewTicketForm() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      {(formData.convenio?.toUpperCase() === "GOVERNO SP" || formData.convenio?.toUpperCase() === "PREFEITURA SP") ? "LÍQUIDA CARTÃO BENEFÍCIO" : "Benefício Líquida 5%"}
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                      <span>{getMarginLabel('beneficio5')}</span>
                     </label>
                     {isFromClient && originalMargins.beneficio5 ? (
                       <button

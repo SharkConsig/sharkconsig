@@ -31,6 +31,7 @@ export async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 10
 export function normalizeText(text: string | null | undefined): string {
   if (!text) return "";
   return text
+    .replace(/^\ufeff/, "") // Remove BOM
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "") // Remove accents
     .toUpperCase()

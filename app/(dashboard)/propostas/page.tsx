@@ -747,14 +747,15 @@ export default function ProposalsPage() {
                                   <UserPlus className="w-[13px] h-[13px]" />
                                 </Button>
                               )}
-                              {selectedStatus !== "CANCELADOS" && (
-                                (!(isCorretor || isSupervisor) || [
+                              {(isAdmin || isDeveloper || (selectedStatus !== "CANCELADOS" && (
+                                !(isCorretor || isSupervisor) || [
                                   'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
                                   'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
                                   'COM INCONSISTÊNCIA NO BANCO',
                                   'PAGAMENTO DEVOLVIDO'
-                                ].includes(proposal.status)) && (
-                                  <Button 
+                                ].includes(proposal.status)
+                              ))) && (
+                                <Button 
                                     variant="ghost" 
                                     size="icon" 
                                     onClick={(event) => {
@@ -768,7 +769,7 @@ export default function ProposalsPage() {
                                     <ChevronRight className="w-[13px] h-[13px]" />
                                   </Button>
                                 )
-                              )}
+                              }
                               <Button 
                                 variant="ghost" 
                                 size="icon" 

@@ -86,11 +86,84 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   const { perfil, user } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [reply, setReply] = useState("")
+  const [reply, setReply] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(`ticket_draft_${ticket.id}`) || ""
+    }
+    return ""
+  })
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Load scroll from localStorage on mount and when loading finishes
+  const restoreScroll = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const savedScroll = localStorage.getItem(`ticket_scroll_${ticket.id}`)
+      if (savedScroll && scrollRef.current) {
+        // Use multiple frames/timeouts to ensure content is fully rendered and browser hasn't reset it
+        requestAnimationFrame(() => {
+          if (scrollRef.current) scrollRef.current.scrollTop = parseInt(savedScroll, 10)
+        })
+        setTimeout(() => {
+          if (scrollRef.current) scrollRef.current.scrollTop = parseInt(savedScroll, 10)
+        }, 50)
+        setTimeout(() => {
+          if (scrollRef.current) scrollRef.current.scrollTop = parseInt(savedScroll, 10)
+        }, 200)
+      }
+    }
+  }, [ticket.id])
+
+  useEffect(() => {
+    restoreScroll()
+  }, [ticket.id, restoreScroll])
+
+  useEffect(() => {
+    if (!isLoading) {
+      restoreScroll()
+    }
+  }, [isLoading, restoreScroll])
+
+  // Save scroll position whenever it changes
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (typeof window !== "undefined") {
+      const target = e.currentTarget
+      // We only save if we're not currently restoring (to avoid saving 0 if it resets briefly)
+      if (target.scrollTop > 0 || !localStorage.getItem(`ticket_scroll_${ticket.id}`)) {
+        localStorage.setItem(`ticket_scroll_${ticket.id}`, target.scrollTop.toString())
+      }
+    }
+  }
+
+  // Save draft to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (reply) {
+        localStorage.setItem(`ticket_draft_${ticket.id}`, reply)
+      } else {
+        localStorage.removeItem(`ticket_draft_${ticket.id}`)
+      }
+    }
+  }, [reply, ticket.id])
   const [isSending, setIsSending] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [availableStatuses, setAvailableStatuses] = useState<Status[]>([])
-  const [selectedStatusId, setSelectedStatusId] = useState<string | null>(ticket.status_id || null)
+  const [selectedStatusId, setSelectedStatusId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(`ticket_status_draft_${ticket.id}`) || ticket.status_id || null
+    }
+    return ticket.status_id || null
+  })
+
+  // Persist selected status
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (selectedStatusId) {
+        localStorage.setItem(`ticket_status_draft_${ticket.id}`, selectedStatusId)
+      } else {
+        localStorage.removeItem(`ticket_status_draft_${ticket.id}`)
+      }
+    }
+  }, [selectedStatusId, ticket.id])
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [statusSearchTerm, setStatusSearchTerm] = useState("")
   const [currentStatusName, setCurrentStatusName] = useState<string>(ticket.status_nome || "ABERTO")
@@ -103,7 +176,6 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   const replyTextareaRef = useRef<HTMLTextAreaElement>(null)
   const editContentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const statusDropdownRef = useRef<HTMLDivElement>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -209,10 +281,12 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   }, [ticket.id, fetchMessages])
 
   useEffect(() => {
-    if (scrollRef.current) {
+    // Only auto-scroll to bottom if no saved scroll position exists
+    const savedScroll = localStorage.getItem(`ticket_scroll_${ticket.id}`)
+    if (scrollRef.current && !savedScroll) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages])
+  }, [messages, ticket.id])
 
   const handleSendMessage = async () => {
     if (!user || !perfil) return
@@ -306,6 +380,9 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
       if (error) throw error
 
       setReply("")
+      localStorage.removeItem(`ticket_draft_${ticket.id}`)
+      localStorage.removeItem(`ticket_status_draft_${ticket.id}`)
+      localStorage.removeItem(`ticket_scroll_${ticket.id}`)
       setSelectedFiles([])
       if (onMessageSent) onMessageSent()
     } catch (error) {
@@ -480,7 +557,11 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
         className="hidden" 
         onChange={handleAddAttachmentToMessage}
       />
-      <div className="flex-1 overflow-y-auto space-y-8 pr-2 custom-scrollbar" ref={scrollRef}>
+      <div 
+        className="flex-1 overflow-y-auto space-y-8 pr-2 custom-scrollbar" 
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
         {isLoading && allMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 gap-2">
             <Loader2 className="w-6 h-6 text-primary animate-spin" />

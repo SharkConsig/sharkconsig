@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, use } from "react"
+import { useState, useRef, use, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -94,7 +94,43 @@ const tickets = [
 export default function TicketDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
-  const [reply, setReply] = useState("")
+  const [reply, setReply] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(`ticket_detail_draft_${id}`) || ""
+    }
+    return ""
+  })
+
+  // Persist window scroll
+  useEffect(() => {
+    const handleWindowScroll = () => {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`ticket_detail_window_scroll_${id}`, window.scrollY.toString())
+      }
+    }
+    window.addEventListener('scroll', handleWindowScroll)
+
+    // Restore scroll after a small delay
+    const savedScroll = localStorage.getItem(`ticket_detail_window_scroll_${id}`)
+    if (savedScroll) {
+      setTimeout(() => {
+        window.scrollTo(0, parseInt(savedScroll, 10))
+      }, 100)
+    }
+
+    return () => window.removeEventListener('scroll', handleWindowScroll)
+  }, [id])
+
+  // Persist draft
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (reply) {
+        localStorage.setItem(`ticket_detail_draft_${id}`, reply)
+      } else {
+        localStorage.removeItem(`ticket_detail_draft_${id}`)
+      }
+    }
+  }, [reply, id])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const ticket = tickets.find(t => t.id === id) || tickets[0]

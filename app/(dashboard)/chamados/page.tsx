@@ -14,15 +14,24 @@ import {
   ChevronDown,
   ChevronUp,
   FileEdit,
+  Eye,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Check
 } from "lucide-react"
-import { cn, withRetry } from "@/lib/utils"
+import { cn } from "@/lib/utils"
 import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
+import { ClientDetailsModal } from "@/components/clients/client-details-modal"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
 import { format } from "date-fns"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Badge } from "@/components/ui/badge"
 
 const statusCardsList = [
   { label: "ABERTO", count: 0, color: "border-t-amber-500", textColor: "text-amber-600" },
@@ -71,6 +80,67 @@ const secondaryCards = [
   { label: "PREF SAO PAULO - CARTÃO BENEFÍCIO APROVADO", count: 0, color: "text-slate-600" },
 ]
 
+function MultiSelect({ 
+  label, 
+  options, 
+  selected, 
+  onToggle 
+}: { 
+  label: string, 
+  options: string[], 
+  selected: string[], 
+  onToggle: (val: string) => void 
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">{label}</label>
+      <Popover>
+        <PopoverTrigger 
+          className={cn(
+            "w-full h-[38px] flex items-center justify-between bg-white border border-slate-200 text-[11px] font-normal text-slate-600 rounded-lg hover:bg-slate-50 px-3 cursor-pointer outline-none transition-all focus-within:border-primary/50"
+          )}
+        >
+          <div className="flex items-center gap-2 truncate pr-4">
+            {selected.length === 0 ? (
+              <span className="text-slate-400">Todos</span>
+            ) : (
+              <span className="font-bold text-primary flex items-center gap-1.5">
+                <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-primary/10 text-primary border-none font-black font-sans uppercase">
+                  {selected.length}
+                </Badge>
+                <span className="truncate">Selecionado(s)</span>
+              </span>
+            )}
+          </div>
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-1 shadow-2xl border-slate-200" align="start">
+          <div className="max-h-60 overflow-y-auto space-y-0.5 p-1 scrollbar-thin scrollbar-thumb-slate-200">
+            {options.map(option => (
+              <div 
+                key={option} 
+                onClick={() => onToggle(option)}
+                className={cn(
+                  "flex items-center gap-2 p-2 rounded-md cursor-pointer transition-all group",
+                  selected.includes(option) ? "bg-primary/5 text-primary" : "text-slate-600 hover:bg-slate-50"
+                )}
+              >
+                <div className={cn(
+                  "w-4 h-4 rounded border flex items-center justify-center transition-all",
+                  selected.includes(option) ? "bg-primary border-primary" : "bg-white border-slate-300 group-hover:border-primary/50"
+                )}>
+                  {selected.includes(option) && <Check className="w-2.5 h-2.5 text-white stroke-[4px]" />}
+                </div>
+                <span className="text-[11px] font-medium truncate">{option}</span>
+              </div>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
+
 export default function TicketsPage() {
   const router = useRouter()
   const { perfil, user, isOperational, isAdmin, isSupervisor, isDeveloper } = useAuth()
@@ -80,7 +150,63 @@ export default function TicketsPage() {
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
-  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null)
+
+  // Novos estados para filtros avançados
+  const [filterCorretores, setFilterCorretores] = useState<string[]>([])
+  const [filterStatusList, setFilterStatusList] = useState<string[]>([])
+  const [filterOrigens, setFilterOrigens] = useState<string[]>([])
+  const [filterCliente, setFilterCliente] = useState("")
+  const [filterConvenios, setFilterConvenios] = useState<string[]>([])
+  const [filterEquipes, setFilterEquipes] = useState<string[]>([])
+  const [filterMargemMin, setFilterMargemMin] = useState("")
+  const [filterMargemMax, setFilterMargemMax] = useState("")
+  const [showFilters, setShowFilters] = useState(false)
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false)
+  const [selectedClientCpf, setSelectedClientCpf] = useState("")
+
+  const handleViewClient = useCallback((cpf: string) => {
+    setSelectedClientCpf(cpf)
+    setIsClientModalOpen(true)
+  }, [])
+
+  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem('expanded_ticket_id')
+    }
+    return null
+  })
+
+  // Persist window scroll
+  useEffect(() => {
+    const handleWindowScroll = () => {
+      if (typeof window !== "undefined") {
+        localStorage.setItem('chamados_window_scroll', window.scrollY.toString())
+      }
+    }
+    window.addEventListener('scroll', handleWindowScroll)
+
+    // Restore scroll after a small delay to ensure content is rendered
+    const savedScroll = localStorage.getItem('chamados_window_scroll')
+    if (savedScroll) {
+      setTimeout(() => {
+        window.scrollTo(0, parseInt(savedScroll, 10))
+      }, 100)
+    }
+
+    return () => window.removeEventListener('scroll', handleWindowScroll)
+  }, [])
+
+  // Persist expanded ticket ID
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (expandedTicketId) {
+        localStorage.setItem('expanded_ticket_id', expandedTicketId)
+      } else {
+        localStorage.removeItem('expanded_ticket_id')
+        localStorage.removeItem('chamados_window_scroll')
+      }
+    }
+  }, [expandedTicketId])
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
@@ -98,14 +224,26 @@ export default function TicketsPage() {
           status_chamados:status_id (*)
         `)
 
+      // Aplicar filtros de data no servidor para melhor performance
+      if (startDate && startDate.length === 10) {
+        query = query.gte('created_at', `${startDate}T00:00:00Z`)
+      }
+      if (endDate && endDate.length === 10) {
+        query = query.lte('created_at', `${endDate}T23:59:59Z`)
+      }
+
       // Aplicar filtros de permissão baseados na Role
       if (perfil.role === 'Corretor' || perfil.role === 'Estágio') {
-        // Corretor e Estágio veem apenas os seus
         query = query.eq('user_id', user.id)
       } else if (perfil.role === 'Supervisor') {
-        // Supervisor vê os seus + os corretores sob sua supervisão
         try {
-          const response = await withRetry(() => fetch("/api/usuarios"))
+          // Usar cache ou timeout para evitar Failed to fetch
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          
+          const response = await fetch("/api/usuarios", { signal: controller.signal })
+          clearTimeout(timeoutId);
+
           if (response.ok) {
             const allUsers = await response.json()
             const subordinates = allUsers
@@ -113,33 +251,35 @@ export default function TicketsPage() {
               .map((u: { id: string }) => u.id)
             
             query = query.in('user_id', [...subordinates, user.id])
+          } else {
+            console.warn("API de usuários retornou status:", response.status)
+            query = query.eq('user_id', user.id)
           }
         } catch (err) {
           console.error("Erro ao buscar subordinados:", err)
-          // Se falhar ao buscar subordinados, mostra apenas os seus para segurança
           query = query.eq('user_id', user.id)
         }
       }
-      // Operacional e Administrador veem tudo (não aplica filtro de user_id)
 
-      const { data, error } = await withRetry(() => 
-        query.order('updated_at', { ascending: false })
-      )
+      const { data, error } = await query.order('updated_at', { ascending: false })
 
-      if (error) throw error
-      setTickets(data as Ticket[] || [])
+      if (error) {
+        console.error("Erro no Supabase:", error)
+        throw error
+      }
+      setTickets((data as Ticket[]) || [])
     } catch (error: unknown) {
-      const err = error as { message?: string; details?: string; hint?: string };
-      console.error("Erro completo ao buscar chamados (detalhado):", JSON.stringify(err, null, 2))
-      console.error("Objeto de erro bruto:", err)
-      if (err.message) console.error("Mensagem do erro:", err.message)
-      if (err.details) console.error("Detalhes do erro:", err.details)
-      if (err.hint) console.error("Dica do erro:", err.hint)
-      toast.error("Erro ao carregar a lista de chamados")
+      console.error("Erro ao carregar chamados:", error)
+      const message = error instanceof Error ? error.message : "Erro desconhecido"
+      if (message.includes("fetch")) {
+        toast.error("Erro de conexão. Verifique sua internet ou tente novamente.")
+      } else {
+        toast.error("Erro ao carregar a lista de chamados")
+      }
     } finally {
       setIsLoading(false)
     }
-  }, [user, perfil])
+  }, [user, perfil, startDate, endDate])
 
   useEffect(() => {
     if (user && perfil) {
@@ -151,16 +291,15 @@ export default function TicketsPage() {
     setExpandedTicketId(null)
   }, [selectedStatus, selectedSecondaryStatus])
 
-  const counts = useMemo(() => {
-    const res: Record<string, number> = {}
-    tickets.forEach(t => {
-      const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
-      res[s] = (res[s] || 0) + 1
-    })
-    return res
-  }, [tickets])
+  // Extração de valores únicos para os filtros
+  const uniqueCorretores = useMemo(() => Array.from(new Set(tickets.map(t => t.user_nome).filter(Boolean))).sort() as string[], [tickets])
+  const uniqueStatus = useMemo(() => Array.from(new Set(tickets.map(t => t.status_chamados?.nome || t.status).filter(Boolean))).sort() as string[], [tickets])
+  const uniqueOrigens = useMemo(() => Array.from(new Set(tickets.map(t => t.origem).filter(Boolean))).sort() as string[], [tickets])
+  const uniqueConvenios = useMemo(() => Array.from(new Set(tickets.map(t => t.convenio).filter(Boolean))).sort() as string[], [tickets])
+  const uniqueEquipes = useMemo(() => Array.from(new Set(tickets.map(t => t.equipe).filter(Boolean))).sort() as string[], [tickets])
 
-  const filteredTickets = useMemo(() => {
+  // Base tickets filtered by search and advanced filters
+  const baseFilteredTickets = useMemo(() => {
     return tickets.filter(ticket => {
       // Basic text search
       const searchLower = searchTerm.toLowerCase()
@@ -177,11 +316,43 @@ export default function TicketsPage() {
         ticketStatusName.includes(searchLower) ||
         ticket.margem?.toString().includes(searchTerm) ||
         ticket.margem_liquida_5?.toString().includes(searchTerm) ||
-        ticket.margem_beneficio_5?.toString().includes(searchTerm) ||
-        ticket.margem?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })?.includes(searchTerm) ||
-        ticket.margem_liquida_5?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })?.includes(searchTerm) ||
-        ticket.margem_beneficio_5?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })?.includes(searchTerm)
+        ticket.margem_beneficio_5?.toString().includes(searchTerm)
 
+      if (!matchesSearch) return false
+
+      // Filtros Avançados
+      if (filterCorretores.length > 0 && !filterCorretores.includes(ticket.user_nome || "")) return false
+      if (filterStatusList.length > 0) {
+        const ticketStatus = ticket.status_chamados?.nome || ticket.status || ""
+        if (!filterStatusList.includes(ticketStatus)) return false
+      }
+      if (filterOrigens.length > 0 && !filterOrigens.includes(ticket.origem)) return false
+      if (filterCliente && !ticket.cliente_nome.toLowerCase().includes(filterCliente.toLowerCase())) return false
+      if (filterConvenios.length > 0 && !filterConvenios.includes(ticket.convenio)) return false
+      if (filterEquipes.length > 0 && !filterEquipes.includes(ticket.equipe)) return false
+
+      // Filtro de Margem
+      if (filterMargemMin || filterMargemMax) {
+        const margem = ticket.margem || 0
+        if (filterMargemMin && margem < parseFloat(filterMargemMin)) return false
+        if (filterMargemMax && margem > parseFloat(filterMargemMax)) return false
+      }
+      
+      return true
+    })
+  }, [tickets, searchTerm, filterCorretores, filterStatusList, filterOrigens, filterCliente, filterConvenios, filterEquipes, filterMargemMin, filterMargemMax])
+
+  const counts = useMemo(() => {
+    const res: Record<string, number> = {}
+    baseFilteredTickets.forEach(t => {
+      const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
+      res[s] = (res[s] || 0) + 1
+    })
+    return res
+  }, [baseFilteredTickets])
+
+  const filteredTickets = useMemo(() => {
+    return baseFilteredTickets.filter(ticket => {
       // Status category filter
       let matchesStatus = true
       const ticketStatusUpper = (ticket.status_chamados?.nome || ticket.status || "").trim().toUpperCase()
@@ -197,40 +368,10 @@ export default function TicketsPage() {
           matchesStatus = ticketStatusUpper === selectedStatus.toUpperCase()
         }
       }
-
-      // Date range filter
-      let matchesDate = true
-      if (startDate && endDate) {
-        try {
-          // Detect format: yyyy-mm-dd (native date picker) or dd/mm/yyyy (manual)
-          let start: Date, end: Date
-          
-          if (startDate.includes("-")) {
-            const [y, m, d] = startDate.split("-").map(Number)
-            start = new Date(y, m - 1, d, 0, 0, 0)
-          } else {
-            const [d, m, y] = startDate.split("/").map(Number)
-            start = new Date(y, m - 1, d, 0, 0, 0)
-          }
-
-          if (endDate.includes("-")) {
-            const [y, m, d] = endDate.split("-").map(Number)
-            end = new Date(y, m - 1, d, 23, 59, 59)
-          } else {
-            const [d, m, y] = endDate.split("/").map(Number)
-            end = new Date(y, m - 1, d, 23, 59, 59)
-          }
-
-          const ticketDate = new Date(ticket.created_at)
-          matchesDate = ticketDate >= start && ticketDate <= end
-        } catch (e) {
-          console.error("Erro ao validar datas:", e)
-        }
-      }
       
-      return matchesSearch && matchesStatus && matchesDate
+      return matchesStatus
     })
-  }, [tickets, searchTerm, selectedStatus, selectedSecondaryStatus, startDate, endDate])
+  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus])
 
   const statusCards = useMemo(() => statusCardsList.map(card => {
     let count = counts[card.label] || 0
@@ -239,10 +380,10 @@ export default function TicketsPage() {
     } else if (card.label === "APROVADOS") {
       count = Object.entries(counts).reduce((acc, [k, v]) => k.includes("APROVADO") ? acc + v : acc, 0)
     } else if (card.label === "TODOS") {
-      count = tickets.length
+      count = baseFilteredTickets.length
     }
     return { ...card, count }
-  }), [counts, tickets.length])
+  }), [counts, baseFilteredTickets.length])
 
   const handleParentClick = (status: string) => {
     setCurrentPage(1)
@@ -267,10 +408,10 @@ export default function TicketsPage() {
     }
   }
 
-  // Reset page on search or date filter
+  // Reset page on search or date filter or advanced filters
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, startDate, endDate])
+  }, [searchTerm, startDate, endDate, filterCorretores, filterStatusList, filterOrigens, filterCliente, filterConvenios, filterEquipes, filterMargemMin, filterMargemMax])
 
   const totalPages = Math.ceil(filteredTickets.length / itemsPerPage)
   const paginatedTickets = filteredTickets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
@@ -355,51 +496,196 @@ export default function TicketsPage() {
         {/* Filters Card */}
         <Card className="card-shadow border border-slate-200">
           <CardContent className="p-4 sm:p-6">
-            <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-              <div className="flex-1 min-w-0">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Buscar Chamado</label>
-                <Input 
-                  placeholder="ID, Nome do Cliente ou CPF..." 
-                  className="h-[38px] bg-slate-50/50 border-slate-100 text-[12px]"
-                  icon={<Search className="w-4 h-4 text-slate-400" />}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Período</label>
-                  <div className="flex items-center gap-2">
-                    {/* Data Inicial */}
-                    <div className="relative">
-                      <Input 
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="h-[38px] w-[130px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
-                      />
-                    </div>
-
-                    <span className="text-slate-300 text-[10px] font-bold scale-x-75">A</span>
-
-                    {/* Data Final */}
-                    <div className="relative">
-                      <Input 
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="h-[38px] w-[130px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
-                      />
-                    </div>
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Buscar Chamado</label>
+                  <div className="relative group">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-primary transition-colors" />
+                    <Input 
+                      placeholder="ID, Nome do Cliente ou CPF..." 
+                      className="h-[38px] bg-slate-50/50 border-slate-100 text-[12px] pl-10"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
                   </div>
                 </div>
-                <Button 
-                  onClick={fetchTickets}
-                  disabled={isLoading}
-                  className="bg-primary hover:bg-primary/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-primary/20 cursor-pointer"
-                >
-                  {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "BUSCAR"}
-                </Button>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Período</label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <Input 
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="h-[38px] w-[130px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
+                        />
+                      </div>
+
+                      <span className="text-slate-300 text-[10px] font-bold scale-x-75">A</span>
+
+                      <div className="relative">
+                        <Input 
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="h-[38px] w-[130px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
+                        />
+                      </div>
+
+                      <Button 
+                        variant="outline"
+                        type="button"
+                        onClick={() => {
+                          const today = format(new Date(), "yyyy-MM-dd")
+                          setStartDate(today)
+                          setEndDate(today)
+                        }}
+                        className="h-[38px] px-3 bg-white border-slate-200 text-[10px] font-black text-primary hover:bg-primary hover:text-white transition-all rounded-lg cursor-pointer whitespace-nowrap"
+                      >
+                        HOJE
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      onClick={() => {
+                        console.log("Fetching tickets manually...")
+                        fetchTickets()
+                      }}
+                      disabled={isLoading}
+                      className="bg-primary hover:bg-primary/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-primary/20 cursor-pointer flex items-center gap-2"
+                    >
+                      {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-4 h-4" />}
+                      BUSCAR
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      onClick={() => {
+                        console.log("Toggle filters:", !showFilters)
+                        setShowFilters(!showFilters)
+                      }}
+                      className={cn(
+                        "h-[38px] px-4 border-slate-200 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-50 transition-all",
+                        showFilters ? "bg-slate-100 border-primary text-primary" : "text-slate-500"
+                      )}
+                    >
+                      {showFilters ? <ChevronUp className="w-3.5 h-3.5 mr-2" /> : <ChevronDown className="w-3.5 h-3.5 mr-2" />}
+                      FILTROS
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Advanced Filters Section */}
+              <div className={cn(
+                "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 overflow-hidden transition-all duration-300",
+                showFilters ? "max-h-[1000px] opacity-100 pt-4 border-t border-slate-100" : "max-h-0 opacity-0"
+              )}>
+                <MultiSelect 
+                  label="Corretor"
+                  options={uniqueCorretores}
+                  selected={filterCorretores}
+                  onToggle={(val) => {
+                    setFilterCorretores(prev => 
+                      prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                    )
+                  }}
+                />
+
+                <MultiSelect 
+                  label="Status"
+                  options={uniqueStatus}
+                  selected={filterStatusList}
+                  onToggle={(val) => {
+                    setFilterStatusList(prev => 
+                      prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                    )
+                  }}
+                />
+
+                <MultiSelect 
+                  label="Origem"
+                  options={uniqueOrigens}
+                  selected={filterOrigens}
+                  onToggle={(val) => {
+                    setFilterOrigens(prev => 
+                      prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                    )
+                  }}
+                />
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Cliente</label>
+                  <Input 
+                    placeholder="Filtrar por nome..." 
+                    className="h-[38px] bg-slate-50/50 border-slate-100 text-[11px]"
+                    value={filterCliente}
+                    onChange={(e) => setFilterCliente(e.target.value)}
+                  />
+                </div>
+
+                <MultiSelect 
+                  label="Convênio"
+                  options={uniqueConvenios}
+                  selected={filterConvenios}
+                  onToggle={(val) => {
+                    setFilterConvenios(prev => 
+                      prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                    )
+                  }}
+                />
+
+                <MultiSelect 
+                  label="Equipe"
+                  options={uniqueEquipes}
+                  selected={filterEquipes}
+                  onToggle={(val) => {
+                    setFilterEquipes(prev => 
+                      prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                    )
+                  }}
+                />
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Margem (Mín - Máx)</label>
+                  <div className="flex items-center gap-2">
+                    <Input 
+                      placeholder="Min" 
+                      type="number"
+                      className="h-[38px] bg-slate-50/50 border-slate-100 text-[11px]"
+                      value={filterMargemMin}
+                      onChange={(e) => setFilterMargemMin(e.target.value)}
+                    />
+                    <Input 
+                      placeholder="Max" 
+                      type="number"
+                      className="h-[38px] bg-slate-50/50 border-slate-100 text-[11px]"
+                      value={filterMargemMax}
+                      onChange={(e) => setFilterMargemMax(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-end pb-0.5">
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => {
+                      setFilterCorretores([]); 
+                      setFilterStatusList([]); 
+                      setFilterOrigens([]);
+                      setFilterCliente(""); 
+                      setFilterConvenios([]); 
+                      setFilterEquipes([]);
+                      setFilterMargemMin(""); 
+                      setFilterMargemMax("");
+                    }}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500"
+                  >
+                    Limpar Filtros
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -580,6 +866,18 @@ export default function TicketsPage() {
                               <Button 
                                 variant="ghost" 
                                 size="icon" 
+                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/5 rounded-full transition-all cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleViewClient(ticket.cliente_cpf)
+                                }}
+                                title="Visualizar Cliente"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
                                 className="h-10 w-10 text-amber-600 hover:bg-amber-50 rounded-full transition-all cursor-pointer"
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -707,6 +1005,12 @@ export default function TicketsPage() {
         >
           <RefreshCw className={cn("w-5 h-5", isLoading && "animate-spin")} />
         </Button>
+
+        <ClientDetailsModal 
+          isOpen={isClientModalOpen}
+          onClose={() => setIsClientModalOpen(false)}
+          cpf={selectedClientCpf}
+        />
       </main>
     </div>
   )
