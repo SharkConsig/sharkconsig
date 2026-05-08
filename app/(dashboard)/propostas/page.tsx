@@ -320,9 +320,9 @@ export default function ProposalsPage() {
     }
   }
 
-  const fetchProposals = async () => {
+  const fetchProposals = async (isSilent = false) => {
     if (!perfil) return
-    setIsLoading(true)
+    if (!isSilent) setIsLoading(true)
     try {
       let query = supabase.from('propostas').select('*')
       
@@ -335,7 +335,7 @@ export default function ProposalsPage() {
       
       if (error) {
         console.error("Erro Supabase ao buscar propostas:", error.message)
-        toast.error("Erro ao conectar com o banco de dados. Verifique sua conexão ou configuração do Supabase.")
+        if (!isSilent) toast.error("Erro ao conectar com o banco de dados.")
         setIsLoading(false)
         return
       }
@@ -406,24 +406,21 @@ export default function ProposalsPage() {
       setCounts(newCounts)
     } catch (error: unknown) {
       console.error("Erro geral ao buscar propostas:", error)
-      const err = error as { message?: string }
-      if (err?.message === 'Failed to fetch') {
-        toast.error("Falha na conexão com o Supabase. Verifique se o seu projeto está ativo ou se a URL está correta.")
-      }
+      if (!isSilent) toast.error("Falha ao carregar propostas.")
     } finally {
-      setIsLoading(false)
+      if (!isSilent) setIsLoading(false)
     }
   }
 
-  const stabilizedFetchProposals = useCallback(fetchProposals, [perfil, isCorretor])
+  const stabilizedFetchProposals = useCallback(fetchProposals, [perfil?.id, isCorretor])
 
   useEffect(() => {
-    if (perfil) {
-      stabilizedFetchProposals()
+    if (perfil?.id) {
+      stabilizedFetchProposals(proposals.length > 0)
     } else {
       setIsLoading(false)
     }
-  }, [perfil, stabilizedFetchProposals])
+  }, [perfil?.id, stabilizedFetchProposals])
 
   useEffect(() => {
     setExpandedProposalId(null)
@@ -727,10 +724,10 @@ export default function ProposalsPage() {
                                   event.stopPropagation()
                                   handleUpdateConsulta(proposal.id_lead)
                                 }}
-                                className="w-[26px] h-[26px] bg-slate-500 hover:bg-slate-600 text-white rounded-md p-1 group/btn transition-all"
+                                className="w-[28px] h-[28px] bg-slate-500 hover:bg-slate-600 text-white rounded-lg p-1.5 group/btn transition-all shadow-sm hover:shadow-md active:scale-95"
                                 title="ATUALIZAR DATA DE CONSULTA"
                               >
-                                <RefreshCw className="w-[13px] h-[13px]" />
+                                <RefreshCw className="w-3.5 h-3.5" />
                               </Button>
                               {selectedStatus !== "CANCELADOS" && (isAdmin || isDeveloper || isOperational) && (
                                 <Button 
@@ -741,14 +738,14 @@ export default function ProposalsPage() {
                                     setSelectedProposalForTransfer(proposal)
                                     setIsTransferModalOpen(true)
                                   }}
-                                  className="w-[26px] h-[26px] bg-amber-500 hover:bg-amber-600 text-white rounded-md p-1 group/btn transition-all"
+                                  className="w-[28px] h-[28px] bg-amber-500 hover:bg-amber-600 text-white rounded-lg p-1.5 group/btn transition-all shadow-sm hover:shadow-md active:scale-95"
                                   title="TRANSFERIR RESPONSÁVEL"
                                 >
-                                  <UserPlus className="w-[13px] h-[13px]" />
+                                  <UserPlus className="w-3.5 h-3.5" />
                                 </Button>
                               )}
                               {(isAdmin || isDeveloper || (selectedStatus !== "CANCELADOS" && (
-                                !(isCorretor || isSupervisor) || [
+                                (!(isCorretor || isSupervisor) && isOperational) || [
                                   'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
                                   'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
                                   'COM INCONSISTÊNCIA NO BANCO',
@@ -763,10 +760,10 @@ export default function ProposalsPage() {
                                       setSelectedProposalForStatus(proposal)
                                       setIsStatusModalOpen(true)
                                     }}
-                                    className="w-[26px] h-[26px] bg-emerald-500 hover:bg-emerald-600 text-white rounded-md p-1 group/btn transition-all"
+                                    className="w-[28px] h-[28px] bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg p-1.5 group/btn transition-all shadow-sm hover:shadow-md active:scale-95"
                                     title="ALTERAR STATUS DA PROPOSTA"
                                   >
-                                    <ChevronRight className="w-[13px] h-[13px]" />
+                                    <ChevronRight className="w-3.5 h-3.5" />
                                   </Button>
                                 )
                               }

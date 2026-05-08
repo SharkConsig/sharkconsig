@@ -99,16 +99,11 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     if (typeof window !== "undefined") {
       const savedScroll = localStorage.getItem(`ticket_scroll_${ticket.id}`)
       if (savedScroll && scrollRef.current) {
-        // Use multiple frames/timeouts to ensure content is fully rendered and browser hasn't reset it
-        requestAnimationFrame(() => {
-          if (scrollRef.current) scrollRef.current.scrollTop = parseInt(savedScroll, 10)
-        })
-        setTimeout(() => {
-          if (scrollRef.current) scrollRef.current.scrollTop = parseInt(savedScroll, 10)
-        }, 50)
-        setTimeout(() => {
-          if (scrollRef.current) scrollRef.current.scrollTop = parseInt(savedScroll, 10)
-        }, 200)
+        const targetScroll = parseInt(savedScroll, 10)
+        // Somente aplicar se a diferença for relevante para evitar micro-pulos
+        if (Math.abs(scrollRef.current.scrollTop - targetScroll) > 5) {
+          scrollRef.current.scrollTop = targetScroll
+        }
       }
     }
   }, [ticket.id])
@@ -236,8 +231,11 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     return initialMessage ? [initialMessage, ...messages] : messages;
   }, [ticket, messages, user?.id, perfil?.avatar_url]);
 
-  const fetchMessages = useCallback(async () => {
-    setIsLoading(true)
+  const fetchMessages = useCallback(async (isSilent = false) => {
+    // Só mostramos o loading se não for silencioso e não tivermos mensagens ainda
+    const shouldShowLoading = !isSilent && messages.length === 0
+    if (shouldShowLoading) setIsLoading(true)
+    
     try {
       const { data, error } = await supabase
         .from('mensagens_chamado')
@@ -246,17 +244,20 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
         .order('created_at', { ascending: true })
 
       if (error) throw error
+      
+      // Update messages state
       setMessages(data || [])
     } catch (error) {
       console.error("Erro ao carregar mensagens:", error)
-      toast.error("Erro ao carregar o histórico")
+      if (!isSilent) toast.error("Erro ao carregar o histórico")
     } finally {
-      setIsLoading(false)
+      if (shouldShowLoading) setIsLoading(false)
     }
-  }, [ticket.id])
+  }, [ticket.id, messages.length])
 
   useEffect(() => {
-    fetchMessages()
+    // Carregamento inicial (não silencioso)
+    fetchMessages(false)
 
     // Realtime subscription
     const channel = supabase

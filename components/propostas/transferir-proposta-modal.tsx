@@ -16,9 +16,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Loader2, UserPlus } from "lucide-react"
+import { Loader2, UserPlus, Lock } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { toast } from "react-hot-toast"
+import { useAuth } from "@/context/auth-context"
 
 interface User {
   id: string
@@ -47,10 +48,12 @@ export function TransferirPropostaModal({
   proposal,
   onTransferComplete,
 }: TransferirPropostaModalProps) {
+  const { perfil: user, isOperational, isAdmin } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [selectedUserId, setSelectedUserId] = useState<string>("")
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [lockedBy, setLockedBy] = useState<{ id: string; nome: string; role: string } | null>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -58,6 +61,62 @@ export function TransferirPropostaModal({
       setSelectedUserId("")
     }
   }, [isOpen])
+
+  // Presence logic for locking
+  useEffect(() => {
+    if (!isOpen || !user || !proposal?.id_lead) return
+    if (!isOperational && !isAdmin) return
+
+    const channel = supabase.channel(`proposal_lock_${proposal.id_lead}`, {
+      config: {
+        presence: {
+          key: user.id,
+        },
+      },
+    })
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const newState = channel.presenceState()
+        const presences = Object.values(newState).flat() as Array<{
+          user_id: string;
+          user_name: string;
+          role: string;
+          online_at: string;
+        }>
+        
+        const otherUser = presences.find(p => 
+          (p.role === 'Operacional' || p.role === 'Administrador' || p.role === 'Desenvolvedor') 
+          && p.user_id !== user.id
+        )
+        
+        if (otherUser) {
+          setLockedBy({
+            id: otherUser.user_id,
+            nome: otherUser.user_name,
+            role: otherUser.role
+          })
+        } else {
+          setLockedBy(null)
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            user_id: user.id,
+            user_name: user.nome || user.username || 'Usuário',
+            role: user.role,
+            online_at: new Date().toISOString(),
+          })
+        }
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [isOpen, user, proposal?.id_lead, isOperational, isAdmin])
+
+  const isLockedByOther = !!lockedBy && lockedBy.id !== user?.id && (isOperational || isAdmin);
 
   const fetchUsers = async () => {
     setIsLoading(true)
@@ -125,6 +184,21 @@ export function TransferirPropostaModal({
         </DialogHeader>
 
         <div className="py-4 space-y-4">
+          {/* Lock Banner */}
+          {isLockedByOther && (
+            <div className="bg-[#DB8E00] border border-[#2A1A01] rounded-xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="bg-[#2A1A01] p-2 rounded-full">
+                <Lock className="w-5 h-5 text-[#FAFAFA]" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[12px] font-black text-[#2A1A01] uppercase tracking-tight">Proposta em Edição</p>
+                <p className="text-[11px] text-[#2A1A01] font-bold">
+                  Esta proposta está sendo atuada por <span className="font-black underline">{lockedBy?.nome}</span> neste momento. Você não pode transferir agora.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Proposta</p>
             <p className="text-sm font-bold text-slate-700">{proposal?.nome_cliente}</p>
@@ -159,8 +233,8 @@ export function TransferirPropostaModal({
           </Button>
           <Button 
             onClick={handleTransfer} 
-            disabled={!selectedUserId || isSubmitting}
-            className="bg-primary hover:bg-primary/90 text-white font-bold"
+            disabled={!selectedUserId || isSubmitting || isLockedByOther}
+            className="bg-primary hover:bg-primary/90 text-white font-bold disabled:opacity-50"
           >
             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             CONFIRMAR TRANSFERÊNCIA

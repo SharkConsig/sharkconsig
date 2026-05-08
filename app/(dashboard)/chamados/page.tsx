@@ -164,8 +164,11 @@ export default function TicketsPage() {
   const [isClientModalOpen, setIsClientModalOpen] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState("")
 
-  const handleViewClient = useCallback((cpf: string) => {
+  const [selectedMatricula, setSelectedMatricula] = useState<string | undefined>()
+
+  const handleViewClient = useCallback((cpf: string, matricula?: string) => {
     setSelectedClientCpf(cpf)
+    setSelectedMatricula(matricula)
     setIsClientModalOpen(true)
   }, [])
 
@@ -212,10 +215,10 @@ export default function TicketsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
-  const fetchTickets = useCallback(async () => {
-    if (!user || !perfil) return
+  const fetchTickets = useCallback(async (isSilent = false) => {
+    if (!perfil || !user) return
 
-    setIsLoading(true)
+    if (!isSilent) setIsLoading(true)
     try {
       let query = supabase
         .from('chamados')
@@ -277,15 +280,16 @@ export default function TicketsPage() {
         toast.error("Erro ao carregar a lista de chamados")
       }
     } finally {
-      setIsLoading(false)
+      if (!isSilent) setIsLoading(false)
     }
-  }, [user, perfil, startDate, endDate])
+  }, [user?.id, perfil?.id, perfil?.role, startDate, endDate, user, perfil])
 
   useEffect(() => {
-    if (user && perfil) {
-      fetchTickets()
+    if (user?.id && perfil?.id) {
+      // Primeira carga é normal, subsequentes podem ser silent
+      fetchTickets(tickets.length > 0)
     }
-  }, [fetchTickets, user, perfil])
+  }, [fetchTickets, user?.id, perfil?.id, tickets.length])
 
   useEffect(() => {
     setExpandedTicketId(null)
@@ -752,7 +756,7 @@ export default function TicketsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {isLoading ? (
+                  {isLoading && tickets.length === 0 ? (
                     <tr>
                       <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
@@ -869,7 +873,7 @@ export default function TicketsPage() {
                                 className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/5 rounded-full transition-all cursor-pointer"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  handleViewClient(ticket.cliente_cpf)
+                                  handleViewClient(ticket.cliente_cpf, ticket.matricula)
                                 }}
                                 title="Visualizar Cliente"
                               >
@@ -1010,6 +1014,7 @@ export default function TicketsPage() {
           isOpen={isClientModalOpen}
           onClose={() => setIsClientModalOpen(false)}
           cpf={selectedClientCpf}
+          initialMatricula={selectedMatricula}
         />
       </main>
     </div>

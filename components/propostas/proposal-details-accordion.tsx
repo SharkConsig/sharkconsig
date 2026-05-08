@@ -115,10 +115,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor } = useAuth()
   const [lockedBy, setLockedBy] = useState<{ id: string; nome: string; role: string } | null>(null)
   
-  const isFinancialEditor = ['Operacional', 'Administrativo', 'Desenvolvedor', 'Admin'].includes(user?.role || '')
+  const isFinancialEditor = ['Operacional', 'Administrativo', 'Desenvolvedor', 'Admin', 'Administrador'].includes(user?.role || '')
 
-  // Lock logic: if someone else is operational and editing, and current user is operational
-  const isLockedByOther = !!lockedBy && lockedBy.id !== user?.id && isOperational && lockedBy.role === 'Operacional';
+  // Lock logic: if someone else is operational or admin and acting, and current user is operational/admin
+  const isLockedByOther = !!lockedBy && lockedBy.id !== user?.id && (isOperational || isAdmin);
   
   const canEditFields = (!isCorretor && !isLockedByOther) || (isCorretor && [
     'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
@@ -133,7 +133,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
 
   const canSave = (canEditFields || canAttach) && !isLockedByOther;
 
-  const [activeTab, setActiveTab] = useState<"visualizar" | "historico">("visualizar")
+  const [activeTab, setActiveTab] = useState<"visualizar" | "historico" | "anexos">("visualizar")
   const [isFichaModalOpen, setIsFichaModalOpen] = useState(false)
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
@@ -143,6 +143,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   // Presence logic for locking
   useEffect(() => {
     if (!user || !proposal.id_lead) return
+    // Somente rastrear presença para Operacional e Administrador
+    if (!isOperational && !isAdmin) return
 
     const channel = supabase.channel(`proposal_lock_${proposal.id_lead}`, {
       config: {
@@ -162,24 +164,21 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           online_at: string;
         }>
         
-        // Find the first operational user that is not me
-        const otherOpUser = presences.find(p => p.role === 'Operacional' && p.user_id !== user.id)
+        // Localizar outro usuário operacional ou administrador que não seja eu
+        const otherUser = presences.find(p => 
+          (p.role === 'Operacional' || p.role === 'Administrador' || p.role === 'Desenvolvedor') 
+          && p.user_id !== user.id
+        )
         
-        if (otherOpUser) {
+        if (otherUser) {
           setLockedBy({
-            id: otherOpUser.user_id,
-            nome: otherOpUser.user_name,
-            role: otherOpUser.role
+            id: otherUser.user_id,
+            nome: otherUser.user_name,
+            role: otherUser.role
           })
         } else {
           setLockedBy(null)
         }
-      })
-      .on('presence', { event: 'join', key: user.id }, () => {
-        // Just joined
-      })
-      .on('presence', { event: 'leave', key: user.id }, () => {
-        // Just left
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -195,7 +194,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user, proposal.id_lead])
+  }, [user, proposal.id_lead, isOperational, isAdmin])
   
   const [dbProdutosConfigs, setDbProdutosConfigs] = useState<ProdutoConfig[]>([])
   const [selectedCoefValue, setSelectedCoefValue] = useState<number | null>(
@@ -257,7 +256,19 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           console.warn("Aviso na busca de histórico:", error.message)
           setHistory([])
         } else {
-          setHistory(data || [])
+          // Remover duplicatas baseadas em status, descrição e proximidade temporal
+          // Frequentemente ocorre duplicidade entre triggers do banco e inserts do frontend
+          const uniqueData = (data || []).filter((item, index, self) => {
+            const isDuplicate = self.some((other, otherIdx) => 
+              otherIdx < index && 
+              other.status_novo === item.status_novo &&
+              other.descricao === item.descricao &&
+              other.usuario_id === item.usuario_id &&
+              Math.abs(new Date(other.created_at).getTime() - new Date(item.created_at).getTime()) < 10000
+            );
+            return !isDuplicate;
+          });
+          setHistory(uniqueData)
         }
       } catch (err) {
         console.error("Exceção ao carregar histórico:", err)
@@ -328,18 +339,6 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     outros: (proposal.arquivo_outros as string) || null,
     outros_2: (proposal.arquivo_outros_2 as string) || null
   })
-
-  const getFileName = (url: string) => {
-    try {
-      const decodedUrl = decodeURIComponent(url);
-      const parts = decodedUrl.split('/');
-      const lastPart = parts[parts.length - 1];
-      // Remove query params and possible supabase path prefixes
-      return lastPart.split('?')[0].replace(/^[a-z0-9-]+\//i, '');
-    } catch {
-      return "Documento";
-    }
-  }
 
   const [isSearchingCEP, setIsSearchingCEP] = useState(false)
   const [pastedImages, setPastedImages] = useState<File[]>([])
@@ -757,14 +756,14 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     <div className="bg-slate-50/50 p-6 space-y-6 border-t border-slate-100">
       {/* Lock Banner */}
       {isLockedByOther && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="bg-amber-100 p-2 rounded-full">
-            <Lock className="w-5 h-5 text-amber-600" />
+        <div className="bg-[#DB8E00] border border-[#2A1A01] rounded-xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="bg-[#2A1A01] p-2 rounded-full">
+            <Lock className="w-5 h-5 text-[#FAFAFA]" />
           </div>
           <div className="flex-1">
-            <p className="text-[12px] font-bold text-amber-900 uppercase tracking-tight">Proposta em Edição</p>
-            <p className="text-[11px] text-amber-700 font-medium italic">
-              Esta proposta está sendo atuada por <span className="font-bold">{lockedBy?.nome}</span> neste momento. Você pode apenas visualizar os dados.
+            <p className="text-[12px] font-black text-[#2A1A01] uppercase tracking-tight">Proposta em Edição</p>
+            <p className="text-[11px] text-[#2A1A01] font-bold">
+              Esta proposta está sendo atuada por <span className="font-black underline">{lockedBy?.nome}</span> neste momento. Você pode apenas visualizar os dados.
             </p>
           </div>
         </div>
@@ -803,6 +802,18 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         >
           <FileText className="w-3.5 h-3.5 mr-2" />
           Ficha Proposta
+        </Button>
+        <Button 
+          onClick={() => setActiveTab("anexos")}
+          className={cn(
+            "h-8 px-4 text-[10px] font-bold uppercase tracking-widest transition-all",
+            activeTab === "anexos" 
+              ? "bg-[#00C853] hover:bg-[#00C853]/90 text-white shadow-md" 
+              : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+          )}
+        >
+          <UploadCloud className="w-3.5 h-3.5 mr-2" />
+          Anexos
         </Button>
 
         {/* Botão Deletar removido a pedido do usuário */}
@@ -852,7 +863,75 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         }} 
       />
 
-      {activeTab === "visualizar" && (
+      {activeTab === "anexos" && (
+        <div 
+          id="section-anexos" 
+          className="space-y-6 animate-in fade-in duration-500 min-h-[150px] border-t-2 border-slate-200 pt-8 mt-4 bg-slate-50/30 p-4 rounded-xl"
+        >
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
+            <button 
+              onClick={() => setActiveTab("visualizar")}
+              className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-900 transition-all border border-transparent hover:border-slate-200"
+              title="Fechar Anexos"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-emerald-500/10 p-1.5 rounded-lg">
+                <UploadCloud className="w-4 h-4 text-emerald-600" />
+              </div>
+              <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">
+                Documentos em Anexo
+              </h3>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+              {Object.entries(existingAttachments).map(([key, url]) => {
+                if (!url) return null
+                const labelMap: { [key: string]: string } = {
+                  frente: "RG/CNH (Frente)",
+                  verso: "RG (Verso)",
+                  contracheque: "Contracheque",
+                  extrato: "Extrato",
+                  outros: "Outro 1",
+                  outros_2: "Outro 2"
+                }
+                const label = labelMap[key] || "Anexo"
+                const ext = url.split('.').pop()?.split('?')[0].toUpperCase() || "PDF"
+
+                return (
+                  <a
+                    key={key}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group bg-slate-50 p-2 rounded-lg border border-slate-100 hover:border-emerald-500/50 hover:bg-emerald-50/50 transition-all flex flex-col items-center text-center gap-1.5"
+                  >
+                    <div className="bg-white px-2 py-3 rounded shadow-sm group-hover:scale-105 transition-transform relative">
+                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-emerald-500 transition-colors" />
+                      <span className="absolute -bottom-1 -right-1 bg-slate-800 text-[5px] text-white px-0.5 font-black rounded">{ext}</span>
+                    </div>
+                    <div className="flex flex-col min-w-0 w-full">
+                      <span className="text-[9px] font-black text-slate-900 uppercase tracking-tighter truncate leading-tight">
+                        {label}
+                      </span>
+                    </div>
+                  </a>
+                )
+              })}
+
+              {!Object.values(existingAttachments).some(url => !!url) && (
+                <div className="col-span-full py-8 flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50">
+                  <FileText className="w-6 h-6 mb-2 opacity-20" />
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Sem anexos</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(activeTab === "visualizar" || activeTab === "anexos") && (
         <div className="space-y-12 animate-in fade-in duration-500 pb-10 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar" onPaste={handlePaste}>
           <div className="flex flex-wrap justify-center gap-2 md:gap-8 items-center bg-white py-4 px-8 rounded-2xl border border-slate-200 shadow-sm w-fit mx-auto mb-6 text-left">
             <div className="flex flex-col items-center md:items-start">
@@ -1481,44 +1560,6 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                 <p className="text-[10px] font-bold text-primary uppercase tracking-wider">Anexar RG VERSO somente se não tiver enviado um CNH.</p>
               </div>
 
-              {/* Arquivos Atuais - Estilo Chamados */}
-              {Object.entries(existingAttachments).some(([, url]) => url) && (
-                <div className="space-y-2">
-                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-left">ANEXOS</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(existingAttachments).map(([key, url]) => {
-                      if (!url) return null
-                      const fileName = getFileName(url)
-                      const labelMap: { [key: string]: string } = {
-                        frente: "RG ou CNH (FRENTE)",
-                        verso: "RG (VERSO)",
-                        contracheque: "CONTRA CHEQUE",
-                        extrato: "EXTRATO DE CONSIGNAÇÃO",
-                        outros: "OUTROS",
-                        outros_2: "OUTROS"
-                      }
-                      const label = labelMap[key] || "ANEXO"
-                      
-                      return (
-                        <a
-                          key={key}
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 bg-[#F1F1F1] hover:bg-slate-200 text-slate-900 px-4 py-2.5 rounded-full text-[11px] font-bold transition-all border border-transparent hover:border-slate-300 shadow-sm"
-                        >
-                          <FileText className="w-4 h-4 text-slate-600" />
-                          <div className="flex flex-col items-start leading-tight">
-                            <span className="text-[9px] text-primary uppercase tracking-wider">{label}</span>
-                            <span className="max-w-[200px] truncate uppercase tracking-tight">{fileName}</span>
-                          </div>
-                        </a>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
               {pastedImages.length > 0 && (
                 <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex flex-wrap gap-3">
                   {pastedImages.map((file, idx) => (
@@ -1688,6 +1729,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           )}
         </div>
       )}
+
     </div>
   )
 }
@@ -1695,6 +1737,12 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
 function HistoryCard({ event, usersMap, isAuthorized }: { event: HistoryItem; usersMap: Map<string, string>; isAuthorized: boolean }) {
   const userName = usersMap.get(event.usuario_id) || event.usuario_id || "SISTEMA";
   
+  // Verificar se a descrição é apenas uma repetição do status_novo
+  const isRedundantDescription = event.status_novo && 
+    (event.descricao === event.status_novo || 
+     event.descricao.includes(`para ${event.status_novo}`) ||
+     event.descricao.includes(`para "${event.status_novo}"`));
+
   return (
     <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-3 w-full max-w-[450px] transition-all hover:shadow-md">
       <div className="space-y-1">
@@ -1707,10 +1755,15 @@ function HistoryCard({ event, usersMap, isAuthorized }: { event: HistoryItem; us
               Status Anterior: <span className="text-slate-500 line-through">{event.status_anterior}</span>
             </p>
           )}
-          {event.status_novo && (
-            <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
-              {event.descricao}
-            </p>
+          {event.status_novo && event.descricao && !isRedundantDescription && (
+            <div className="space-y-1 mt-2 border-t border-slate-100 pt-2">
+              <p className="text-[9px] font-black text-slate-900 uppercase tracking-tight">
+                Observações:
+              </p>
+              <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
+                {event.descricao}
+              </p>
+            </div>
           )}
         </div>
       </div>
