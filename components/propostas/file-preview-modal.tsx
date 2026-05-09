@@ -8,9 +8,6 @@ import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 
-// Configurar o worker do PDF.js - Versão legada para máxima compatibilidade ambiente sandboxed
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js`
-
 interface FilePreviewModalProps {
   isOpen: boolean
   onClose: () => void
@@ -20,6 +17,11 @@ interface FilePreviewModalProps {
 }
 
 export function FilePreviewModal({ isOpen, onClose, url, label, extension }: FilePreviewModalProps) {
+  useEffect(() => {
+    // Configurar o worker do PDF.js apenas no cliente
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`
+  }, [])
+
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -106,7 +108,12 @@ export function FilePreviewModal({ isOpen, onClose, url, label, extension }: Fil
     if (!blobUrl) return
 
     const iframe = document.createElement('iframe')
-    iframe.style.display = 'none'
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = 'none'
     document.body.appendChild(iframe)
 
     if (isImage) {
@@ -128,20 +135,34 @@ export function FilePreviewModal({ isOpen, onClose, url, label, extension }: Fil
       iframe.contentWindow?.document.write(content)
       iframe.contentWindow?.document.close()
     } else if (isPdf) {
+      // Para PDF, o navegador precisa tratar o blob corretamente
       iframe.src = blobUrl
-      iframe.onload = () => {
+      
+      const checkAndPrint = () => {
         try {
-          iframe.contentWindow?.focus()
-          iframe.contentWindow?.print()
-        } catch {
-          window.open(blobUrl, "_blank")
+          if (iframe.contentWindow) {
+            iframe.contentWindow.focus()
+            iframe.contentWindow.print()
+          }
+        } catch (e) {
+          console.error("Erro ao imprimir via iframe:", e)
+          // Fallback para abrir em nova aba se o iframe for bloqueado
+          const printWindow = window.open(blobUrl, '_blank')
+          if (printWindow) {
+            printWindow.onload = () => {
+              printWindow.focus()
+              printWindow.print()
+            }
+          }
         }
       }
+
+      iframe.onload = checkAndPrint
     }
 
     setTimeout(() => {
       if (document.body.contains(iframe)) document.body.removeChild(iframe)
-    }, 5000)
+    }, 10000) // Aumentado para garantir que o print dialog abra
   }
 
   return (
