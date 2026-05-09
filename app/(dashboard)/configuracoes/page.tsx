@@ -95,14 +95,13 @@ interface MetaConfig {
   created_at: string
 }
 
-interface CampanhaBonificacao {
+interface FaixaMetaCorretor {
   id: string
-  titulo: string
-  descricao: string
-  data_inicio: string
-  data_fim: string
+  nome: string
+  valor_minimo: number
+  premio: string
   ativo: boolean
-  regras?: Record<string, unknown>
+  ano: number
   created_at: string
 }
 
@@ -138,27 +137,36 @@ export default function SettingsPage() {
   const [isBancoExpanded, setIsBancoExpanded] = useState(false)
   const [isOperacaoExpanded, setIsOperacaoExpanded] = useState(false)
   const [isProdutosExpanded, setIsProdutosExpanded] = useState(false)
-  const [isMetasExpanded, setIsMetasExpanded] = useState(false)
+  const [isMetasPremiosExpanded, setIsMetasPremiosExpanded] = useState(false)
   const [isBannersExpanded, setIsBannersExpanded] = useState(false)
 
-  // Metas & Bonificações State
+  // Metas & Prêmios State
   const [metas, setMetas] = useState<MetaConfig[]>([])
-  const [campanhas, setCampanhas] = useState<CampanhaBonificacao[]>([])
+  const [faixasMetas, setFaixasMetas] = useState<FaixaMetaCorretor[]>([])
   const [banners, setBanners] = useState<DashboardBanner[]>([])
   const [corretoresList, setCorretoresList] = useState<{id: string, nome: string}[]>([])
   const [supervisoresList, setSupervisoresList] = useState<{id: string, nome: string}[]>([])
   
-  const [isMacroMetaModalOpen, setIsMacroMetaModalOpen] = useState(false)
-  const [isTeamMetaModalOpen, setIsTeamMetaModalOpen] = useState(false)
-  const [isIndividualMetaModalOpen, setIsIndividualMetaModalOpen] = useState(false)
-  const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false)
+  const [isAnnualGoalModalOpen, setIsAnnualGoalModalOpen] = useState(false)
+  const [isSupervisorGoalModalOpen, setIsSupervisorGoalModalOpen] = useState(false)
+  const [isBrokerGoalModalOpen, setIsBrokerGoalModalOpen] = useState(false)
+  const [isFaixaMetaModalOpen, setIsFaixaMetaModalOpen] = useState(false)
   const [isBannerModalOpen, setIsBannerModalOpen] = useState(false)
 
-  const [macroValue, setMacroValue] = useState("")
+  const [annualGoalForm, setAnnualGoalForm] = useState({ ano: new Date().getFullYear(), valor: "" })
+  const [faixaMetaForm, setFaixaMetaForm] = useState({ id: "", nome: "", valor_minimo: "", premio: "", ativo: true, ano: new Date().getFullYear() })
+  
   const [selectedTeam, setSelectedTeam] = useState("")
   const [teamMetaValue, setTeamMetaValue] = useState("")
+  const [teamMetaYear, setTeamMetaYear] = useState(new Date().getFullYear())
+  const [teamMetaMonth, setTeamMetaMonth] = useState(new Date().getMonth() + 1)
+  
   const [selectedCorretor, setSelectedCorretor] = useState("")
   const [individualMetaValue, setIndividualMetaValue] = useState("")
+  const [individualMetaYear, setIndividualMetaYear] = useState(new Date().getFullYear())
+  const [individualMetaMonth, setIndividualMetaMonth] = useState(new Date().getMonth() + 1)
+
+  const [expandedYearId, setExpandedYearId] = useState<number | null>(new Date().getFullYear())
 
   const formatCurrency = (value: string) => {
     const cleanValue = value.replace(/\D/g, "")
@@ -169,18 +177,26 @@ export default function SettingsPage() {
     }).format(amount / 100)
   }
 
+  const monthsList = [
+    { id: 1, name: "Janeiro" },
+    { id: 2, name: "Fevereiro" },
+    { id: 3, name: "Março" },
+    { id: 4, name: "Abril" },
+    { id: 5, name: "Maio" },
+    { id: 6, name: "Junho" },
+    { id: 7, name: "Julho" },
+    { id: 8, name: "Agosto" },
+    { id: 9, name: "Setembro" },
+    { id: 10, name: "Outubro" },
+    { id: 11, name: "Novembro" },
+    { id: 12, name: "Dezembro" },
+  ]
+
   const parseCurrency = (formattedValue: string) => {
     const cleanValue = formattedValue.replace(/\D/g, "")
     return (parseInt(cleanValue) || 0) / 100
   }
   
-  const [campanhaForm, setCampanhaForm] = useState({
-    titulo: "",
-    descricao: "",
-    inicio: "",
-    fim: ""
-  })
-
   const [bannerForm, setBannerForm] = useState({
     title: "",
     image: null as File | null,
@@ -419,7 +435,7 @@ export default function SettingsPage() {
         { data: operData },
         { data: prodData },
         { data: metasData },
-        { data: campanhasData },
+        { data: faixasMetasData },
         { data: bannersData },
         usuariosResponse
       ] = await Promise.all([
@@ -429,7 +445,7 @@ export default function SettingsPage() {
         supabase.from('tipos_operacao').select('*').order('nome', { ascending: true }),
         supabase.from('produtos_config').select('*'),
         supabase.from('metas_config').select('*'),
-        supabase.from('campanhas_bonificacao').select('*'),
+        supabase.from('faixas_metas_corretor').select('*').order('valor_minimo', { ascending: true }),
         supabase.from('dashboard_banners').select('*').order('created_at', { ascending: false }),
         fetch("/api/usuarios")
       ])
@@ -440,6 +456,7 @@ export default function SettingsPage() {
       setTiposOperacao(operData || [])
       setProdutosConfig(prodData || [])
       setBanners(bannersData || [])
+      setFaixasMetas(faixasMetasData || [])
 
       const perfisData: UsuarioAPI[] = usuariosResponse.ok ? await usuariosResponse.json() : []
       const brokers = perfisData?.filter((p) => p.funcao === 'Corretor').map((p) => ({ id: p.id, nome: p.nome })) || []
@@ -448,13 +465,7 @@ export default function SettingsPage() {
       setSupervisoresList(supervisors)
       
       setMetas(metasData || [])
-      setCampanhas(campanhasData || [])
       
-      // Meta macro do mês atual
-      const mes = new Date().getMonth() + 1
-      const ano = new Date().getFullYear()
-      const macro = metasData?.find(m => m.tipo === 'empresa' && m.mes === mes && m.ano === ano)
-      if (macro) setMacroValue(formatCurrency((macro.valor_mensal * 100).toString()))
     } catch (error: unknown) {
       console.error("Erro ao carregar configurações:", error)
       toast.error("Erro ao carregar lista de configurações")
@@ -694,197 +705,196 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSaveMacroMeta = async () => {
-    if (!macroValue) {
-      toast.error("Informe um valor para a meta macro")
-      return
+  const handleDeleteMeta = async (id: string) => {
+    if (!confirm("Excluir esta meta?")) return
+    try {
+      const { error } = await supabase.from('metas_config').delete().eq('id', id)
+      if (error) throw error
+      toast.success("Meta excluída com sucesso")
+      fetchStatuses()
+    } catch (err: unknown) {
+      console.error("Erro ao excluir meta:", err)
+      toast.error("Erro ao excluir meta")
     }
-    const value = parseCurrency(macroValue)
-    if (isNaN(value) || value <= 0) {
-      toast.error("Valor inválido")
+  }
+
+  const handleSaveAnnualGoal = async () => {
+    const valor = parseCurrency(annualGoalForm.valor)
+    if (valor <= 0) {
+      toast.error("Informe um valor válido")
       return
     }
 
     setIsSubmitting(true)
     try {
-      const mes = new Date().getMonth() + 1
-      const ano = new Date().getFullYear()
+      const mes = 0 // 0 means annual goal
+      const ano = annualGoalForm.ano
       
       const existing = metas.find(m => m.tipo === 'empresa' && m.mes === mes && m.ano === ano)
       
       if (existing) {
-        const { error } = await supabase.from('metas_config').update({ valor_mensal: value }).eq('id', existing.id)
+        const { error } = await supabase
+          .from('metas_config')
+          .update({ valor_mensal: valor })
+          .eq('id', existing.id)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('metas_config').insert({
-          tipo: 'empresa',
-          valor_mensal: value,
-          mes,
-          ano
-        })
+        const { error } = await supabase
+          .from('metas_config')
+          .insert({
+            tipo: 'empresa',
+            valor_mensal: valor,
+            mes,
+            ano
+          })
         if (error) throw error
       }
-      
-      toast.success("Meta macro salva com sucesso")
-      setIsMacroMetaModalOpen(false)
+
+      toast.success(`Meta anual de ${ano} salva com sucesso`)
+      setIsAnnualGoalModalOpen(false)
       fetchStatuses()
     } catch (err: unknown) {
-      console.error("Erro ao salvar meta macro:", err)
-      const error = err as { message?: string; details?: string; hint?: string }
-      const errorMessage = error?.message || error?.details || error?.hint || (typeof err === 'string' ? err : JSON.stringify(err)) || "Erro desconhecido"
-      toast.error(`Erro ao salvar meta macro: ${errorMessage}`)
+      console.error("Erro ao salvar meta anual:", err)
+      const error = err as { message?: string; details?: string };
+      const msg = error.message || error.details || "Erro ao conectar ao banco de dados";
+      toast.error(`Falha: ${msg}`)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleSaveTeamMeta = async () => {
+  const handleSaveSupervisorGoal = async () => {
     if (!selectedTeam || !teamMetaValue) {
-      toast.error("Selecione um supervisor e informe o valor")
+      toast.error("Preencha todos os campos")
       return
     }
-    const value = parseCurrency(teamMetaValue)
-    if (isNaN(value) || value <= 0) {
-      toast.error("Valor inválido")
-      return
-    }
-    
-    const team = supervisoresList.find(s => s.id === selectedTeam)
+    const valor = parseCurrency(teamMetaValue)
+    const supervisor = supervisoresList.find(s => s.id === selectedTeam)
 
     setIsSubmitting(true)
     try {
-      const mes = new Date().getMonth() + 1
-      const ano = new Date().getFullYear()
-      
+      const mes = teamMetaMonth
+      const ano = teamMetaYear
       const existing = metas.find(m => m.tipo === 'time' && m.alvo_id === selectedTeam && m.mes === mes && m.ano === ano)
-      
+
       if (existing) {
-        const { error } = await supabase.from('metas_config').update({ valor_mensal: value }).eq('id', existing.id)
+        const { error } = await supabase.from('metas_config').update({ valor_mensal: valor }).eq('id', existing.id)
         if (error) throw error
       } else {
         const { error } = await supabase.from('metas_config').insert({
           tipo: 'time',
           alvo_id: selectedTeam,
-          alvo_nome: team?.nome,
-          valor_mensal: value,
+          alvo_nome: supervisor?.nome,
+          valor_mensal: valor,
           mes,
           ano
         })
         if (error) throw error
       }
-      
-      toast.success("Meta do time salva com sucesso")
-      setIsTeamMetaModalOpen(false)
-      setSelectedTeam("")
-      setTeamMetaValue("")
+
+      toast.success("Meta do supervisor salva")
+      setIsSupervisorGoalModalOpen(false)
       fetchStatuses()
     } catch (err: unknown) {
-      console.error("Erro ao salvar meta do time:", err)
-      const error = err as { message?: string; details?: string; hint?: string }
-      const errorMessage = error?.message || error?.details || error?.hint || (typeof err === 'string' ? err : JSON.stringify(err)) || "Erro desconhecido"
-      toast.error(`Erro ao salvar meta do time: ${errorMessage}`)
+      console.error("Erro ao salvar meta supervisor:", err)
+      const error = err as { message?: string };
+      toast.error(`Erro: ${error.message || "Tabela 'metas_config' não encontrada"}`)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleSaveIndividualMeta = async () => {
+  const handleSaveBrokerGoal = async () => {
     if (!selectedCorretor || !individualMetaValue) {
-      toast.error("Selecione um corretor e informe o valor")
+      toast.error("Preencha todos os campos")
       return
     }
-    const value = parseCurrency(individualMetaValue)
-    if (isNaN(value) || value <= 0) {
-      toast.error("Valor inválido")
-      return
-    }
-
+    const valor = parseCurrency(individualMetaValue)
     const corretor = corretoresList.find(c => c.id === selectedCorretor)
 
     setIsSubmitting(true)
     try {
-      const mes = new Date().getMonth() + 1
-      const ano = new Date().getFullYear()
-      
+      const mes = individualMetaMonth
+      const ano = individualMetaYear
       const existing = metas.find(m => m.tipo === 'corretor' && m.alvo_id === selectedCorretor && m.mes === mes && m.ano === ano)
-      
+
       if (existing) {
-        const { error } = await supabase.from('metas_config').update({ valor_mensal: value }).eq('id', existing.id)
+        const { error } = await supabase.from('metas_config').update({ valor_mensal: valor }).eq('id', existing.id)
         if (error) throw error
       } else {
         const { error } = await supabase.from('metas_config').insert({
           tipo: 'corretor',
           alvo_id: selectedCorretor,
           alvo_nome: corretor?.nome,
-          valor_mensal: value,
+          valor_mensal: valor,
           mes,
           ano
         })
         if (error) throw error
       }
-      
-      toast.success("Meta individual salva com sucesso")
-      setIsIndividualMetaModalOpen(false)
-      setSelectedCorretor("")
-      setIndividualMetaValue("")
+
+      toast.success("Meta do corretor salva")
+      setIsBrokerGoalModalOpen(false)
       fetchStatuses()
     } catch (err: unknown) {
-      console.error("Erro ao salvar meta individual:", err)
-      const error = err as { message?: string; details?: string; hint?: string }
-      const errorMessage = error?.message || error?.details || error?.hint || (typeof err === 'string' ? err : JSON.stringify(err)) || "Erro desconhecido"
-      toast.error(`Erro ao salvar meta individual: ${errorMessage}`)
+      console.error("Erro ao salvar meta corretor:", err)
+      const error = err as { message?: string };
+      toast.error(`Erro: ${error.message || "Tabela 'metas_config' não encontrada"}`)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleSaveCampanha = async () => {
-    if (!campanhaForm.titulo || !campanhaForm.inicio || !campanhaForm.fim) {
-      toast.error("Preencha os campos obrigatórios")
+  const handleSaveFaixaMeta = async () => {
+    if (!faixaMetaForm.nome || !faixaMetaForm.valor_minimo || !faixaMetaForm.premio) {
+      toast.error("Preencha todos os campos")
       return
     }
 
     setIsSubmitting(true)
     try {
-      const { error } = await supabase.from('campanhas_bonificacao').insert({
-        titulo: campanhaForm.titulo.toUpperCase(),
-        descricao: campanhaForm.descricao,
-        data_inicio: campanhaForm.inicio,
-        data_fim: campanhaForm.fim,
-        ativo: true
-      })
-      
-      if (error) throw error
-      
-      toast.success("Campanha criada com sucesso")
-      setIsCampaignModalOpen(false)
-      setCampanhaForm({ titulo: "", descricao: "", inicio: "", fim: "" })
+      const payload = {
+        nome: faixaMetaForm.nome.toUpperCase(),
+        valor_minimo: parseCurrency(faixaMetaForm.valor_minimo.toString()),
+        premio: faixaMetaForm.premio,
+        ativo: faixaMetaForm.ativo,
+        ano: faixaMetaForm.ano
+      }
+
+      if (faixaMetaForm.id) {
+        const { error } = await supabase
+          .from('faixas_metas_corretor')
+          .update(payload)
+          .eq('id', faixaMetaForm.id)
+        if (error) throw error
+        toast.success("Faixa atualizada")
+      } else {
+        const { error } = await supabase
+          .from('faixas_metas_corretor')
+          .insert({ ...payload })
+        if (error) throw error
+        toast.success("Faixa criada")
+      }
+      setIsFaixaMetaModalOpen(false)
       fetchStatuses()
     } catch (err: unknown) {
-      const error = err as { message?: string; details?: string }
-      console.error("Erro ao criar campanha:", error)
-      const errorMessage = error?.message || error?.details || "Erro desconhecido"
-      toast.error(`Erro ao criar campanha: ${errorMessage}`)
+      console.error("Erro ao salvar faixa:", err)
+      const error = err as { message?: string };
+      toast.error(`Erro SQL: ${error.message || "Tabela não encontrada ou falha de conexão"}`)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleToggleCampanha = async (id: string, currentStatus: boolean) => {
+  const handleDeleteFaixaMeta = async (id: string) => {
+    if (!confirm("Excluir esta faixa?")) return
     try {
-      const { error } = await supabase
-        .from('campanhas_bonificacao')
-        .update({ ativo: !currentStatus })
-        .eq('id', id)
-      
+      const { error } = await supabase.from('faixas_metas_corretor').delete().eq('id', id)
       if (error) throw error
-      toast.success("Status da campanha atualizado")
+      toast.success("Faixa excluída")
       fetchStatuses()
-    } catch (err: unknown) {
-      const error = err as { message?: string; details?: string }
-      console.error("Erro ao atualizar campanha:", error)
-      const errorMessage = error?.message || error?.details || "Erro desconhecido"
-      toast.error(`Erro ao atualizar campanha: ${errorMessage}`)
+    } catch {
+      toast.error("Erro ao excluir")
     }
   }
 
@@ -993,6 +1003,257 @@ export default function SettingsPage() {
       <Header title="CONFIGURAÇÕES DO SISTEMA" />
       
       <main className="flex-1 p-4 lg:p-8 space-y-8">
+        {/* GERENCIAR METAS E PRÊMIOS */}
+        <section className="space-y-6">
+          <div 
+            className="flex items-center justify-between cursor-pointer group select-none"
+            onClick={() => setIsMetasPremiosExpanded(!isMetasPremiosExpanded)}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
+                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                  GERENCIAR METAS E PRÊMIOS
+                  {isMetasPremiosExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
+                </h2>
+              </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Configuração de objetivos anuais, mensais e campanhas de prêmios</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button 
+                 onClick={(e) => {
+                  e.stopPropagation()
+                  setIsAnnualGoalModalOpen(true)
+                }}
+                className="bg-[#171717] hover:bg-[#171717]/90 text-white gap-2 shadow-lg h-9 rounded-lg relative z-10 px-4"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-[10.5px] font-bold uppercase tracking-widest">Nova Campanha Anual</span>
+              </Button>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {isMetasPremiosExpanded && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }} 
+                animate={{ height: "auto", opacity: 1 }} 
+                exit={{ height: 0, opacity: 0 }} 
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className="overflow-hidden space-y-4"
+              >
+                {/* Accordion by Year */}
+                {Array.from(new Set([
+                  ...metas.map(m => m.ano),
+                  ...faixasMetas.map(f => f.ano),
+                  new Date().getFullYear()
+                ])).filter(y => y > 0).sort((a, b) => b - a).map((year) => (
+                  <Card key={year} className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm overflow-visible">
+                    <div 
+                      className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => setExpandedYearId(expandedYearId === year ? null : year)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-[12px] font-mono">
+                          {year.toString().substring(2)}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">PLANO DE METAS {year}</h3>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Gestão de desempenho e bonificações</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="hidden md:flex items-center gap-4 border-r pr-4 border-slate-100">
+                           <div className="flex flex-col items-end">
+                            <span className="text-[8px] font-bold text-slate-300 uppercase">Meta Anual</span>
+                            <span className="text-[11px] font-mono font-black text-emerald-600">
+                              {formatCurrency(((metas.find(m => m.tipo === 'empresa' && m.ano === year && m.mes === 0)?.valor_mensal || 0) * 100).toString())}
+                            </span>
+                          </div>
+                        </div>
+                        {expandedYearId === year ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
+                      </div>
+                    </div>
+
+                    <AnimatePresence>
+                      {expandedYearId === year && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-slate-100">
+                          <div className="p-6 bg-slate-50/30 space-y-8">
+                            
+                            {/* Grid de Configurações do Ano */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                              {/* Meta Supervisor */}
+                              <Card className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 relative group">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <BarChart3 className="w-4 h-4 text-sky-500" />
+                                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Equipes</h4>
+                                  </div>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-6 w-6 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => {
+                                      setTeamMetaYear(year)
+                                      setIsSupervisorGoalModalOpen(true)
+                                    }}
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                                <div className="space-y-1.5 max-h-[120px] overflow-y-auto scrollbar-hide pr-1">
+                                  {metas.filter(m => m.tipo === 'time' && m.ano === year).length === 0 ? (
+                                    <p className="text-[9px] text-slate-300 font-medium italic">Nenhuma meta configurada</p>
+                                  ) : (
+                                    metas.filter(m => m.tipo === 'time' && m.ano === year).map(meta => (
+                                      <div key={meta.id} className="flex items-center justify-between py-1 border-b border-dashed border-slate-100 last:border-0 group/item">
+                                        <div className="flex flex-col">
+                                          <span className="text-[9px] font-bold text-slate-600 uppercase">{meta.alvo_nome}</span>
+                                          <span className="text-[7px] text-slate-400 font-mono font-bold">{formatCurrency((meta.valor_mensal * 100).toString())}</span>
+                                        </div>
+                                        <button onClick={() => handleDeleteMeta(meta.id)} className="opacity-0 group-hover/item:opacity-100 text-rose-300 hover:text-rose-500 transition-all">
+                                          <Trash2 className="w-2.5 h-2.5" />
+                                        </button>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              </Card>
+
+                              {/* Meta Corretor */}
+                              <Card className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 relative group">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Target className="w-4 h-4 text-amber-500" />
+                                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Corretores</h4>
+                                  </div>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-6 w-6 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => {
+                                      setIndividualMetaYear(year)
+                                      setIsBrokerGoalModalOpen(true)
+                                    }}
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                                <div className="space-y-1.5 max-h-[120px] overflow-y-auto scrollbar-hide pr-1">
+                                  {metas.filter(m => m.tipo === 'corretor' && m.ano === year).length === 0 ? (
+                                    <p className="text-[9px] text-slate-300 font-medium italic">Sem metas individuais</p>
+                                  ) : (
+                                    metas.filter(m => m.tipo === 'corretor' && m.ano === year).map(meta => (
+                                      <div key={meta.id} className="flex items-center justify-between py-1 border-b border-dashed border-slate-100 last:border-0 group/item">
+                                        <div className="flex flex-col">
+                                          <span className="text-[9px] font-bold text-slate-600 uppercase">{meta.alvo_nome}</span>
+                                          <span className="text-[7px] text-slate-400 font-mono font-bold">{formatCurrency((meta.valor_mensal * 100).toString())}</span>
+                                        </div>
+                                        <button onClick={() => handleDeleteMeta(meta.id)} className="opacity-0 group-hover/item:opacity-100 text-rose-300 hover:text-rose-500 transition-all">
+                                          <Trash2 className="w-2.5 h-2.5" />
+                                        </button>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              </Card>
+
+                              {/* Faixas e Prêmios */}
+                              <Card className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 relative group md:col-span-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Trophy className="w-4 h-4 text-emerald-500" />
+                                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Faixas de Premiação</h4>
+                                  </div>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-6 w-6 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => {
+                                      setFaixaMetaForm({ id: "", nome: "", valor_minimo: "", premio: "", ativo: true, ano: year })
+                                      setIsFaixaMetaModalOpen(true)
+                                    }}
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[120px] overflow-y-auto scrollbar-hide pr-1">
+                                  {faixasMetas.filter(f => f.ano === year).length === 0 ? (
+                                    <p className="text-[9px] text-slate-300 font-medium italic col-span-2">Nenhuma faixa cadastrada para {year}</p>
+                                  ) : (
+                                    faixasMetas.filter(f => f.ano === year).map(faixa => (
+                                      <div key={faixa.id} className="p-2 bg-slate-50 rounded-lg border border-slate-100 group/item relative">
+                                        <div className="flex flex-col gap-0.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-[9px] font-black text-slate-700 uppercase leading-none">{faixa.nome}</span>
+                                            {!faixa.ativo && <span className="bg-slate-200 text-slate-500 text-[6px] font-black px-1 rounded-sm">OFF</span>}
+                                          </div>
+                                          <span className="text-[8px] font-bold text-emerald-600 uppercase tracking-tighter">{faixa.premio}</span>
+                                          <span className="text-[7.5px] text-slate-400 font-mono">BASE: {formatCurrency((faixa.valor_minimo * 100).toString())}</span>
+                                        </div>
+                                        <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-all">
+                                          <button 
+                                            onClick={() => {
+                                              setFaixaMetaForm({
+                                                id: faixa.id,
+                                                nome: faixa.nome,
+                                                valor_minimo: (faixa.valor_minimo * 100).toString(),
+                                                premio: faixa.premio,
+                                                ativo: faixa.ativo,
+                                                ano: faixa.ano
+                                              })
+                                              setIsFaixaMetaModalOpen(true)
+                                            }}
+                                            className="text-slate-300 hover:text-primary"
+                                          >
+                                            <Pencil className="w-2.5 h-2.5" />
+                                          </button>
+                                          <button onClick={() => handleDeleteFaixaMeta(faixa.id)} className="text-slate-300 hover:text-rose-500">
+                                            <Trash2 className="w-2.5 h-2.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              </Card>
+                            </div>
+
+                            {/* Footer do Accordion com Resumo Mensal */}
+                            <div className="pt-6 border-t border-slate-100">
+                              <div className="flex items-center gap-2 mb-4">
+                                <BarChart3 className="w-3.5 h-3.5 text-slate-400" />
+                                <h5 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">RESUMO MENSAL DO ANO ({year})</h5>
+                              </div>
+                              <div className="flex overflow-x-auto pb-2 scrollbar-hide gap-3">
+                                {Array.from({ length: 12 }, (_, i) => i + 1).map(mes => {
+                                  const metaMes = metas.filter(m => m.ano === year && m.mes === mes);
+                                  const totalMes = metaMes.reduce((acc, curr) => acc + curr.valor_mensal, 0);
+                                  const mDesc = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"][mes-1];
+                                  return (
+                                    <div key={mes} className="flex-shrink-0 w-24 p-2 bg-white rounded-xl border border-slate-100 shadow-sm flex flex-col items-center">
+                                      <span className="text-[8px] font-black text-slate-300 mb-1">{mDesc}</span>
+                                      <span className="text-[9px] font-mono font-bold text-slate-600">
+                                        {totalMes > 0 ? formatCurrency((totalMes * 100).toString()) : '---'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Card>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+
         <section className="space-y-6">
           <div 
             className="flex items-center justify-between cursor-pointer group select-none"
@@ -1646,173 +1907,7 @@ export default function SettingsPage() {
           </AnimatePresence>
         </section>
 
-        {/* GERENCIAR METAS E BONIFICAÇÕES */}
-        <section className="space-y-6 pb-20">
-          <div 
-            className="flex items-center justify-between cursor-pointer group select-none"
-            onClick={() => setIsMetasExpanded(!isMetasExpanded)}
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
-                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                  GERENCIAR METAS E BONIFICAÇÕES
-                  {isMetasExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
-                </h2>
-              </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Controle de objetivos e incentivos financeiros</p>
-            </div>
-          </div>
 
-          <AnimatePresence>
-            {isMetasExpanded && (
-              <motion.div 
-                initial={{ height: 0, opacity: 0 }} 
-                animate={{ height: "auto", opacity: 1 }} 
-                exit={{ height: 0, opacity: 0 }} 
-                className="overflow-hidden space-y-4"
-              >
-                {/* 1. Meta da Empresa */}
-                <Card className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm hover:shadow-md transition-all">
-                  <div className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                        <TrendingUp className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">Meta da Empresa</h3>
-                        <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tight">Objetivo macro da organização para o mês corrente</p>
-                      </div>
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      className="h-8 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 rounded-xl"
-                      onClick={() => setIsMacroMetaModalOpen(true)}
-                    >
-                      Configurar Macro
-                    </Button>
-                  </div>
-                </Card>
-
-                {/* 2. Meta do Time */}
-                <div className="pl-8 relative">
-                  <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-200" />
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-px bg-slate-200" />
-                  <Card className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm hover:shadow-md transition-all">
-                    <div className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-sky-500/10 flex items-center justify-center text-sky-500">
-                          <BarChart3 className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">Meta do Time</h3>
-                          <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tight">Distribuição da meta global por equipes ou supervisores</p>
-                        </div>
-                      </div>
-                      <Button 
-                        variant="outline" 
-                        className="h-8 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 rounded-xl"
-                        onClick={() => setIsTeamMetaModalOpen(true)}
-                      >
-                        Gerenciar Grupos
-                      </Button>
-                    </div>
-                  </Card>
-                </div>
-
-                {/* 3. Meta do Corretor */}
-                <div className="pl-16 relative">
-                  <div className="absolute left-12 top-0 bottom-0 w-px bg-slate-200" />
-                  <div className="absolute left-12 top-1/2 -translate-y-1/2 w-4 h-px bg-slate-200" />
-                  <Card className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm hover:shadow-md transition-all">
-                    <div className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
-                          <Target className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">Meta do Corretor</h3>
-                          <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tight">Objetivos individuais baseados no perfil do vendedor</p>
-                        </div>
-                      </div>
-                      <Button 
-                        variant="outline" 
-                        className="h-8 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 rounded-xl"
-                        onClick={() => setIsIndividualMetaModalOpen(true)}
-                      >
-                        Ajustar Individuais
-                      </Button>
-                    </div>
-                  </Card>
-                </div>
-
-                {/* 4. Campanhas de Bonificação */}
-                <div className="pl-16 relative">
-                  <div className="absolute left-12 top-0 bottom-0 w-px bg-slate-200" />
-                  <div className="absolute left-12 top-[20px] w-4 h-[1px] bg-slate-200" />
-                  <Card className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm hover:shadow-md transition-all">
-                    <div className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                          <Trophy className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">Campanhas de Bonificação</h3>
-                          <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tight">
-                            Incentivos extras, prêmios e aceleradores de ganhos
-                            {campanhas.length > 0 && ` (${campanhas.filter(c => c.ativo).length} ativas)`}
-                          </p>
-                        </div>
-                      </div>
-                      <Button 
-                        variant="outline" 
-                        className="h-8 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 rounded-xl"
-                        onClick={() => setIsCampaignModalOpen(true)}
-                      >
-                        Criar Campanhas
-                      </Button>
-                    </div>
-
-                    {/* Campaign List */}
-                    {campanhas.length > 0 && (
-                      <div className="mt-4 border-t border-slate-100 pt-4 space-y-2">
-                        {campanhas.map((camp) => (
-                          <div key={camp.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                            <div className="space-y-0.5">
-                              <p className="text-[10px] font-bold text-slate-700 uppercase tracking-tight">{camp.titulo}</p>
-                              <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tight">
-                                {format(new Date(camp.data_inicio), 'dd/MM/yy')} até {format(new Date(camp.data_fim), 'dd/MM/yy')}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className={cn(
-                                "px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-widest",
-                                camp.ativo ? "bg-emerald-100 text-emerald-600" : "bg-slate-200 text-slate-500"
-                              )}>
-                                {camp.ativo ? "Ativa" : "Encerrada"}
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleToggleCampanha(camp.id, camp.ativo)}
-                                className={cn(
-                                  "h-7 w-7 rounded-lg p-0",
-                                  camp.ativo ? "text-slate-400 hover:text-amber-500" : "text-slate-400 hover:text-emerald-500"
-                                )}
-                              >
-                                {camp.ativo ? <Trash2 className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Card>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
 
         {/* GERENCIAR BANNERS DO DASHBOARD */}
         <section className="space-y-6 pb-20">
@@ -2406,49 +2501,83 @@ export default function SettingsPage() {
           </div>
         </DialogContent>
       </Dialog>
-      {/* Modal Meta Macro */}
-      <Dialog open={isMacroMetaModalOpen} onOpenChange={setIsMacroMetaModalOpen}>
+      {/* Modal Meta Anual */}
+      <Dialog open={isAnnualGoalModalOpen} onOpenChange={setIsAnnualGoalModalOpen}>
         <DialogContent className="sm:max-w-[400px] border-none rounded-3xl shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-primary" />
-              Configurar Meta Macro
+              Configurar Meta Anual
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor Produção Geral (R$)</Label>
-              <Input 
-                type="text" 
-                placeholder="R$ 0.000.000,00"
-                value={macroValue}
-                onChange={(e) => setMacroValue(formatCurrency(e.target.value))}
-                className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[14px] text-slate-800 uppercase focus:ring-primary/20"
-              />
-              <p className="text-[9px] text-slate-400 font-medium uppercase mt-1 pl-1">Este valor servirá como base para o cálculo de atingimento global.</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Ano de Vigência</Label>
+                <select
+                  className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl px-3 font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 appearance-none uppercase"
+                  value={annualGoalForm.ano}
+                  onChange={(e) => setAnnualGoalForm({...annualGoalForm, ano: parseInt(e.target.value)})}
+                >
+                  {[2024, 2025, 2026, 2027].map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor Total (R$)</Label>
+                <Input 
+                  type="text" 
+                  placeholder="R$ 0,00"
+                  value={annualGoalForm.valor}
+                  onChange={(e) => setAnnualGoalForm({...annualGoalForm, valor: formatCurrency(e.target.value)})}
+                  className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[13px] text-slate-700 uppercase"
+                />
+              </div>
             </div>
+            <p className="text-[9px] text-slate-400 font-medium uppercase mt-1 pl-1">Ao salvar, o valor será dividido igualmente entre os 12 meses do ano selecionado.</p>
             <DialogFooter className="pt-4 gap-3">
-              <Button variant="outline" onClick={() => setIsMacroMetaModalOpen(false)} className="flex-1 h-[38px] border-slate-200 bg-white text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
-              <Button onClick={handleSaveMacroMeta} disabled={isSubmitting} className="flex-1 h-[38px] bg-primary hover:bg-primary/90 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-primary/20">
-                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Salvar Alterações'}
+              <Button variant="outline" onClick={() => setIsAnnualGoalModalOpen(false)} className="flex-1 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
+              <Button onClick={handleSaveAnnualGoal} disabled={isSubmitting} className="flex-1 h-[38px] bg-primary hover:bg-primary/90 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-primary/20">
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Salvar Meta Anual'}
               </Button>
             </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Modal Meta Time */}
-      <Dialog open={isTeamMetaModalOpen} onOpenChange={setIsTeamMetaModalOpen}>
+      {/* Modal Meta Supervisor */}
+      <Dialog open={isSupervisorGoalModalOpen} onOpenChange={setIsSupervisorGoalModalOpen}>
         <DialogContent className="sm:max-w-[425px] border-none rounded-3xl shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-sky-500" />
-              Meta do Time / Supervisão
+              Meta Mensal Supervisor
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Ano</Label>
+                <div className="h-11 bg-slate-100 border border-slate-100 rounded-xl px-3 flex items-center font-bold text-[12px] text-slate-500 uppercase cursor-not-allowed">
+                  {teamMetaYear}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Mês de Vigência</Label>
+                <select
+                  className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl px-3 font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-sky-500/20 appearance-none uppercase"
+                  value={teamMetaMonth}
+                  onChange={(e) => setTeamMetaMonth(parseInt(e.target.value))}
+                >
+                  {monthsList.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="space-y-2">
-              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Selecionar Supervisor</Label>
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Selecionar Supervisor / Equipe</Label>
               <select
                 className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl px-3 font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-sky-500/20 appearance-none uppercase"
                 value={selectedTeam}
@@ -2461,7 +2590,7 @@ export default function SettingsPage() {
               </select>
             </div>
             <div className="space-y-2">
-              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor da Meta (R$)</Label>
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor da Meta Mensal (R$)</Label>
               <Input 
                 type="text" 
                 placeholder="R$ 0,00"
@@ -2470,9 +2599,10 @@ export default function SettingsPage() {
                 className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[13px] text-slate-700 uppercase"
               />
             </div>
+            <p className="text-[9px] text-slate-400 font-medium uppercase mt-1 pl-1">Meta referente ao mês selecionado.</p>
             <DialogFooter className="pt-4 gap-3">
-              <Button variant="outline" onClick={() => setIsTeamMetaModalOpen(false)} className="px-6 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
-              <Button onClick={handleSaveTeamMeta} disabled={isSubmitting} className="px-6 h-[38px] bg-sky-500 hover:bg-sky-600 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-sky-100">
+              <Button variant="outline" onClick={() => setIsSupervisorGoalModalOpen(false)} className="px-6 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
+              <Button onClick={handleSaveSupervisorGoal} disabled={isSubmitting} className="px-6 h-[38px] bg-sky-500 hover:bg-sky-600 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-sky-100">
                 {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Definir Meta'}
               </Button>
             </DialogFooter>
@@ -2481,15 +2611,35 @@ export default function SettingsPage() {
       </Dialog>
 
       {/* Modal Meta Individual */}
-      <Dialog open={isIndividualMetaModalOpen} onOpenChange={setIsIndividualMetaModalOpen}>
+      <Dialog open={isBrokerGoalModalOpen} onOpenChange={setIsBrokerGoalModalOpen}>
         <DialogContent className="sm:max-w-[425px] border-none rounded-3xl shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase flex items-center gap-2">
               <Target className="w-4 h-4 text-amber-500" />
-              Meta Individual do Corretor
+              Meta Mensal Individual
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Ano</Label>
+                <div className="h-11 bg-slate-100 border border-slate-100 rounded-xl px-3 flex items-center font-bold text-[12px] text-slate-500 uppercase cursor-not-allowed">
+                  {individualMetaYear}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Mês de Vigência</Label>
+                <select
+                  className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl px-3 font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-amber-500/20 appearance-none uppercase"
+                  value={individualMetaMonth}
+                  onChange={(e) => setIndividualMetaMonth(parseInt(e.target.value))}
+                >
+                  {monthsList.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Selecionar Corretor</Label>
               <select
@@ -2504,7 +2654,7 @@ export default function SettingsPage() {
               </select>
             </div>
             <div className="space-y-2">
-              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor da Meta Individual (R$)</Label>
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor da Meta (R$)</Label>
               <Input 
                 type="text" 
                 placeholder="R$ 0,00"
@@ -2513,9 +2663,10 @@ export default function SettingsPage() {
                 className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[13px] text-slate-700 uppercase"
               />
             </div>
+            <p className="text-[9px] text-slate-400 font-medium uppercase mt-1 pl-1">Meta referente ao mês selecionado.</p>
             <DialogFooter className="pt-4 gap-3">
-              <Button variant="outline" onClick={() => setIsIndividualMetaModalOpen(false)} className="px-6 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
-              <Button onClick={handleSaveIndividualMeta} disabled={isSubmitting} className="px-6 h-[38px] bg-amber-500 hover:bg-amber-600 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-amber-100">
+              <Button variant="outline" onClick={() => setIsBrokerGoalModalOpen(false)} className="px-6 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
+              <Button onClick={handleSaveBrokerGoal} disabled={isSubmitting} className="px-6 h-[38px] bg-amber-500 hover:bg-amber-600 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-amber-100">
                 {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Salvar Meta'}
               </Button>
             </DialogFooter>
@@ -2523,58 +2674,73 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Campanha */}
-      <Dialog open={isCampaignModalOpen} onOpenChange={setIsCampaignModalOpen}>
-        <DialogContent className="sm:max-w-[500px] border-none rounded-3xl shadow-2xl">
+      {/* Modal CRUD Faixa Meta */}
+      <Dialog open={isFaixaMetaModalOpen} onOpenChange={setIsFaixaMetaModalOpen}>
+        <DialogContent className="sm:max-w-[425px] border-none rounded-3xl shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase flex items-center gap-2">
               <Trophy className="w-4 h-4 text-emerald-500" />
-              Nova Campanha de Bonificação
+              {faixaMetaForm.id ? 'Editar' : 'Nova'} Faixa de Meta e Prêmio
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div className="space-y-2">
-              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Título da Campanha</Label>
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Nome da Faixa</Label>
               <Input 
-                placeholder="EX: ACELERADOR DE VENDAS SIAPE"
-                value={campanhaForm.titulo}
-                onChange={(e) => setCampanhaForm({...campanhaForm, titulo: e.target.value})}
+                placeholder="EX: FAIXA DIAMANTE"
+                value={faixaMetaForm.nome}
+                onChange={(e) => setFaixaMetaForm({...faixaMetaForm, nome: e.target.value})}
                 className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] text-slate-700 uppercase"
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Descrição / Regras Sugeridas</Label>
-              <textarea 
-                placeholder="Descreva as condições para a bonificação..."
-                value={campanhaForm.descricao}
-                onChange={(e) => setCampanhaForm({...campanhaForm, descricao: e.target.value})}
-                className="w-full h-24 bg-slate-50 border border-slate-100 rounded-xl p-3 font-medium text-[11px] text-slate-600 outline-none focus:ring-2 focus:ring-emerald-500/20 uppercase"
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor Mínimo de Produção (R$)</Label>
+              <Input 
+                type="text" 
+                placeholder="R$ 0,00"
+                value={formatCurrency(faixaMetaForm.valor_minimo.toString())}
+                onChange={(e) => setFaixaMetaForm({...faixaMetaForm, valor_minimo: e.target.value})}
+                className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] text-slate-700 uppercase"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Data Início</Label>
-                <Input 
-                  type="date"
-                  value={campanhaForm.inicio}
-                  onChange={(e) => setCampanhaForm({...campanhaForm, inicio: e.target.value})}
-                  className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] text-slate-700"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Data Fim</Label>
-                <Input 
-                  type="date"
-                  value={campanhaForm.fim}
-                  onChange={(e) => setCampanhaForm({...campanhaForm, fim: e.target.value})}
-                  className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] text-slate-700"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Prêmio ou Bonificação</Label>
+              <Input 
+                placeholder="EX: IPHONE 15 OU R$ 5.000,00"
+                value={faixaMetaForm.premio}
+                onChange={(e) => setFaixaMetaForm({...faixaMetaForm, premio: e.target.value})}
+                className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] text-slate-700 uppercase"
+              />
             </div>
+            
+            {faixaMetaForm.id && (
+              <div className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100">
+                <div className="space-y-0.5">
+                  <Label className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">Status da Faixa</Label>
+                  <p className="text-[9px] text-slate-400 font-medium uppercase">Ativar ou inativar para uso no sistema</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFaixaMetaForm({...faixaMetaForm, ativo: !faixaMetaForm.ativo})}
+                  className={cn(
+                    "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                    faixaMetaForm.ativo ? "bg-primary" : "bg-slate-200"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                      faixaMetaForm.ativo ? "translate-x-4" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              </div>
+            )}
+
             <DialogFooter className="pt-4 gap-3">
-              <Button variant="outline" onClick={() => setIsCampaignModalOpen(false)} className="px-6 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
-              <Button onClick={handleSaveCampanha} disabled={isSubmitting} className="px-6 h-[38px] bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-emerald-100">
-                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Ativar Campanha'}
+              <Button variant="outline" onClick={() => setIsFaixaMetaModalOpen(false)} className="px-6 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
+              <Button onClick={handleSaveFaixaMeta} disabled={isSubmitting} className="px-6 h-[38px] bg-[#171717] hover:bg-[#171717]/90 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-slate-200">
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : faixaMetaForm.id ? 'Atualizar' : 'Criar Faixa'}
               </Button>
             </DialogFooter>
           </div>

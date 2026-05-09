@@ -30,9 +30,12 @@ function LoanRow({ loan }: { loan: LoanData }) {
   // Formula: SD = P * [(1 - (1 + i)^-n) / i]
   const saldo = p * ((1 - Math.pow(1 + i, -n)) / i);
 
+  const info = getContractTypeInfo(loan.tipo);
+  const displayedBank = info.bank || loan.banco;
+
   return (
     <tr className="group bg-blue-50/30 hover:bg-blue-50/50 transition-colors">
-      <td className="py-4 pl-4 text-[12px] font-bold text-slate-700 rounded-l-xl border-y border-l border-blue-100">{loan.banco}</td>
+      <td className="py-4 pl-4 text-[12px] font-bold text-slate-700 rounded-l-xl border-y border-l border-blue-100">{displayedBank}</td>
       <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.orgao || "-"}</td>
       <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.contrato}</td>
       <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">
@@ -65,7 +68,7 @@ interface Contract {
   tipo: string;
   banco: string;
   orgao: string | null;
-  numero_contrato: string;
+  numero_do_contrato: string;
   parcela: number;
   prazo: number;
   [key: string]: unknown;
@@ -764,7 +767,7 @@ export default function SearchClientPage() {
                                           <LoanRow key={lIdx} loan={{
                                             banco: loan.banco,
                                             orgao: loan.orgao,
-                                            contrato: loan.numero_contrato,
+                                            contrato: loan.numero_do_contrato,
                                             parcela: loan.parcela,
                                             prazo: loan.prazo,
                                             tipo: loan.tipo

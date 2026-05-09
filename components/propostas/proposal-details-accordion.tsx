@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { FichaPropostaModal } from "./ficha-proposta-modal"
+import { FilePreviewModal } from "./file-preview-modal"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
-import { format } from "date-fns"
 import { useAuth } from "@/context/auth-context"
 import { useRef } from "react"
 interface HistoryItem {
@@ -135,6 +135,12 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
 
   const [activeTab, setActiveTab] = useState<"visualizar" | "historico" | "anexos">("visualizar")
   const [isFichaModalOpen, setIsFichaModalOpen] = useState(false)
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
+  const [previewData, setPreviewData] = useState<{ url: string; label: string; extension: string }>({
+    url: "",
+    label: "",
+    extension: ""
+  })
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [usersMap, setUsersMap] = useState<Map<string, string>>(new Map())
@@ -146,6 +152,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     // Somente rastrear presença para Operacional e Administrador
     if (!isOperational && !isAdmin) return
 
+    const lockerRoles = ['Operacional', 'Administrador', 'Administrativo', 'Admin', 'Desenvolvedor'];
+    const isLockerRole = (role: string) => lockerRoles.includes(role);
+
     const channel = supabase.channel(`proposal_lock_${proposal.id_lead}`, {
       config: {
         presence: {
@@ -153,6 +162,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         },
       },
     })
+
+    let timeoutId: NodeJS.Timeout;
 
     channel
       .on('presence', { event: 'sync' }, () => {
@@ -166,18 +177,22 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         
         // Localizar outro usuário operacional ou administrador que não seja eu
         const otherUser = presences.find(p => 
-          (p.role === 'Operacional' || p.role === 'Administrador' || p.role === 'Desenvolvedor') 
-          && p.user_id !== user.id
+          isLockerRole(p.role) && p.user_id !== user.id
         )
         
         if (otherUser) {
+          clearTimeout(timeoutId);
           setLockedBy({
             id: otherUser.user_id,
             nome: otherUser.user_name,
             role: otherUser.role
           })
         } else {
-          setLockedBy(null)
+          // Pequeno delay antes de remover o lock para evitar flickering
+          // causado por múltiplas abas ou trocas rápidas de canal
+          timeoutId = setTimeout(() => {
+            setLockedBy(null)
+          }, 1500);
         }
       })
       .subscribe(async (status) => {
@@ -192,6 +207,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       })
 
     return () => {
+      clearTimeout(timeoutId);
       supabase.removeChannel(channel)
     }
   }, [user, proposal.id_lead, isOperational, isAdmin])
@@ -263,8 +279,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               otherIdx < index && 
               other.status_novo === item.status_novo &&
               other.descricao === item.descricao &&
+              other.observacoes === item.observacoes &&
               other.usuario_id === item.usuario_id &&
-              Math.abs(new Date(other.created_at).getTime() - new Date(item.created_at).getTime()) < 10000
+              Math.abs(new Date(other.created_at).getTime() - new Date(item.created_at).getTime()) < 30000
             );
             return !isDuplicate;
           });
@@ -280,10 +297,22 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     fetchHistory()
   }, [activeTab, proposal.id_lead])
 
+  const formatDateDisplay = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "";
+    try {
+      if (dateStr.includes('/') && dateStr.split('/').length === 3) return dateStr;
+      const [year, month, day] = dateStr.split('T')[0].split('-');
+      if (!year || !month || !day) return "";
+      return `${day}/${month}/${year}`;
+    } catch {
+      return "";
+    }
+  }
+
   const [formData, setFormData] = useState({
     nome: proposal.nome_cliente || "",
     cpf: proposal.cliente_cpf || "",
-    nascimento: proposal.data_nascimento ? format(new Date(proposal.data_nascimento), "dd/MM/yyyy") : "",
+    nascimento: formatDateDisplay(proposal.data_nascimento),
     idLead: proposal.id_lead || "",
     origem: proposal.origem?.toUpperCase() || "",
     matricula: proposal.matricula || "",
@@ -292,7 +321,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     identidade: proposal.identidade || "",
     orgao_emissor: proposal.orgao_emissor || "",
     uf_emissao: proposal.uf_emissao || "",
-    data_emissao: proposal.data_emissao ? format(new Date(proposal.data_emissao), "dd/MM/yyyy") : "",
+    data_emissao: formatDateDisplay(proposal.data_emissao),
     nome_pai: proposal.nome_pai || "",
     nome_mae: proposal.nome_mae || "",
     tel_1: proposal.tel_residencial_1 || "",
@@ -752,10 +781,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     setSelectedFiles(prev => ({ ...prev, [field]: file }))
   }
 
-  return (
-    <div className="bg-slate-50/50 p-6 space-y-6 border-t border-slate-100">
-      {/* Lock Banner */}
-      {isLockedByOther && (
+  if (isLockedByOther) {
+    return (
+      <div className="bg-slate-50/50 p-6 space-y-6 border-t border-slate-100">
+        {/* Lock Banner */}
         <div className="bg-[#DB8E00] border border-[#2A1A01] rounded-xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="bg-[#2A1A01] p-2 rounded-full">
             <Lock className="w-5 h-5 text-[#FAFAFA]" />
@@ -763,111 +792,136 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           <div className="flex-1">
             <p className="text-[12px] font-black text-[#2A1A01] uppercase tracking-tight">Proposta em Edição</p>
             <p className="text-[11px] text-[#2A1A01] font-bold">
-              Esta proposta está sendo atuada por <span className="font-black underline">{lockedBy?.nome}</span> neste momento. Você pode apenas visualizar os dados.
+              Esta proposta está sendo atuada por <span className="font-black underline">{lockedBy?.nome}</span> neste momento. O acesso aos dados e ações está bloqueado para evitar conflitos.
             </p>
           </div>
         </div>
-      )}
 
-      {/* Tabs */}
-      <div className="flex justify-center gap-2">
-        <Button 
-          onClick={() => setActiveTab("visualizar")}
-          className={cn(
-            "h-8 px-4 text-[10px] font-bold uppercase tracking-widest transition-all",
-            activeTab === "visualizar" 
-              ? "bg-[#00C853] hover:bg-[#00C853]/90 text-white shadow-md" 
-              : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-          )}
-        >
-          <Eye className="w-3.5 h-3.5 mr-2" />
-          VISUALIZAR/EDITAR
-        </Button>
-        <Button 
-          onClick={() => setActiveTab("historico")}
-          className={cn(
-            "h-8 px-4 text-[10px] font-bold uppercase tracking-widest transition-all",
-            activeTab === "historico" 
-              ? "bg-[#00C853] hover:bg-[#00C853]/90 text-white shadow-md" 
-              : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-          )}
-        >
-          <History className="w-3.5 h-3.5 mr-2" />
-          Histórico
-        </Button>
-        <Button 
-          variant="outline"
-          onClick={() => setIsFichaModalOpen(true)}
-          className="h-8 px-4 text-[10px] font-bold uppercase tracking-widest bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-        >
-          <FileText className="w-3.5 h-3.5 mr-2" />
-          Ficha Proposta
-        </Button>
-        <Button 
-          onClick={() => setActiveTab("anexos")}
-          className={cn(
-            "h-8 px-4 text-[10px] font-bold uppercase tracking-widest transition-all",
-            activeTab === "anexos" 
-              ? "bg-[#00C853] hover:bg-[#00C853]/90 text-white shadow-md" 
-              : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-          )}
-        >
-          <UploadCloud className="w-3.5 h-3.5 mr-2" />
-          Anexos
-        </Button>
-
-        {/* Botão Deletar removido a pedido do usuário */}
+        <div className="flex flex-col items-center justify-center py-12 px-4 space-y-4 bg-white/50 rounded-xl border border-dashed border-amber-200">
+          <div className="bg-amber-100 p-4 rounded-full">
+            <Lock className="w-8 h-8 text-amber-600" />
+          </div>
+          <div className="text-center space-y-1">
+            <h3 className="text-[14px] font-bold text-slate-800 uppercase tracking-tight">Conteúdo Bloqueado</h3>
+            <p className="text-[12px] text-slate-500 max-w-xs mx-auto">
+              Esta proposta está sob a atuação de <strong>{lockedBy?.nome}</strong>. 
+              Para evitar perda de dados, a visualização e edição estão desabilitadas até que o usuário termine a operação.
+            </p>
+          </div>
+        </div>
       </div>
+    );
+  }
 
-      <FichaPropostaModal 
-        isOpen={isFichaModalOpen} 
-        onClose={() => setIsFichaModalOpen(false)} 
-        proposal={{
-          ...proposal,
-          cliente_cpf: formData.cpf,
-          nome_cliente: formData.nome,
-          data_nascimento: formData.nascimento ? formData.nascimento.split('/').reverse().join('-') : proposal.data_nascimento,
-          matricula: formData.matricula,
-          naturalidade: formData.naturalidade,
-          uf_naturalidade: formData.uf_naturalidade,
-          identidade: formData.identidade,
-          orgao_emissor: formData.orgao_emissor,
-          uf_emissao: formData.uf_emissao,
-          data_emissao: formData.data_emissao ? formData.data_emissao.split('/').reverse().join('-') : proposal.data_emissao,
-          nome_pai: formData.nome_pai,
-          nome_mae: formData.nome_mae,
-          tel_residencial_1: formData.tel_1,
-          tel_residencial_2: formData.tel_2,
-          tel_comercial: formData.tel_3,
-          email: formData.email,
-          cep: formData.cep,
-          endereco: formData.endereco,
-          numero: formData.numero,
-          complemento: formData.complemento,
-          bairro: formData.bairro,
-          cidade: formData.cidade,
-          uf: formData.uf,
-          banco_cliente: formData.banco_cliente,
-          chave_pix: formData.chave_pix,
-          conta: formData.conta,
-          agencia: formData.agencia,
-          dv: formData.dv,
-          tipo_conta: formData.tipo_conta,
-          valor_parcela: parseFloat(formData.valor_parcela.replace(/[R$\s.]/g, "").replace(",", ".")) || proposal.valor_parcela,
-          valor_operacao_operacional: parseFloat(formData.valor_operacao_operacional.replace(/[R$\s.]/g, "").replace(",", ".")) || proposal.valor_operacao_operacional,
-          valor_cliente_operacional: parseFloat(formData.valor_cliente_operacional.replace(/[R$\s.]/g, "").replace(",", ".")) || proposal.valor_cliente_operacional,
-          coeficiente_prazo: formData.coeficiente_prazo,
-          prazo: selectedPrazoValue || undefined,
-          coeficiente: selectedCoefValue || undefined,
-          observacoes: formData.observacoes
-        }} 
-      />
+  return (
+    <div className="bg-slate-50/50 p-6 space-y-6 border-t border-slate-100">
+      {/* Tabs */}
+          <div className="flex justify-center gap-2">
+            <Button 
+              onClick={() => setActiveTab("visualizar")}
+              className={cn(
+                "h-8 px-4 text-[10px] font-bold uppercase tracking-widest transition-all",
+                activeTab === "visualizar" 
+                  ? "bg-[#00C853] hover:bg-[#00C853]/90 text-white shadow-md" 
+                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+              )}
+            >
+              <Eye className="w-3.5 h-3.5 mr-2" />
+              VISUALIZAR/EDITAR
+            </Button>
+            <Button 
+              onClick={() => setActiveTab("historico")}
+              className={cn(
+                "h-8 px-4 text-[10px] font-bold uppercase tracking-widest transition-all",
+                activeTab === "historico" 
+                  ? "bg-[#00C853] hover:bg-[#00C853]/90 text-white shadow-md" 
+                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+              )}
+            >
+              <History className="w-3.5 h-3.5 mr-2" />
+              Histórico
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => setIsFichaModalOpen(true)}
+              className="h-8 px-4 text-[10px] font-bold uppercase tracking-widest bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+            >
+              <FileText className="w-3.5 h-3.5 mr-2" />
+              Ficha Proposta
+            </Button>
+            <Button 
+              onClick={() => setActiveTab("anexos")}
+              className={cn(
+                "h-8 px-4 text-[10px] font-bold uppercase tracking-widest transition-all",
+                activeTab === "anexos" 
+                  ? "bg-[#00C853] hover:bg-[#00C853]/90 text-white shadow-md" 
+                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+              )}
+            >
+              <UploadCloud className="w-3.5 h-3.5 mr-2" />
+              Anexos
+            </Button>
 
-      {activeTab === "anexos" && (
-        <div 
-          id="section-anexos" 
-          className="space-y-6 animate-in fade-in duration-500 min-h-[150px] border-t-2 border-slate-200 pt-8 mt-4 bg-slate-50/30 p-4 rounded-xl"
-        >
+            {/* Botão Deletar removido a pedido do usuário */}
+          </div>
+
+          <FichaPropostaModal 
+            isOpen={isFichaModalOpen} 
+            onClose={() => setIsFichaModalOpen(false)} 
+            proposal={{
+              ...proposal,
+              cliente_cpf: formData.cpf,
+              nome_cliente: formData.nome,
+              data_nascimento: formData.nascimento ? formData.nascimento.split('/').reverse().join('-') : proposal.data_nascimento,
+              matricula: formData.matricula,
+              naturalidade: formData.naturalidade,
+              uf_naturalidade: formData.uf_naturalidade,
+              identidade: formData.identidade,
+              orgao_emissor: formData.orgao_emissor,
+              uf_emissao: formData.uf_emissao,
+              data_emissao: formData.data_emissao ? formData.data_emissao.split('/').reverse().join('-') : proposal.data_emissao,
+              nome_pai: formData.nome_pai,
+              nome_mae: formData.nome_mae,
+              tel_residencial_1: formData.tel_1,
+              tel_residencial_2: formData.tel_2,
+              tel_comercial: formData.tel_3,
+              email: formData.email,
+              cep: formData.cep,
+              endereco: formData.endereco,
+              numero: formData.numero,
+              complemento: formData.complemento,
+              bairro: formData.bairro,
+              cidade: formData.cidade,
+              uf: formData.uf,
+              banco_cliente: formData.banco_cliente,
+              chave_pix: formData.chave_pix,
+              conta: formData.conta,
+              agencia: formData.agencia,
+              dv: formData.dv,
+              tipo_conta: formData.tipo_conta,
+              valor_parcela: parseFloat(formData.valor_parcela.replace(/[R$\s.]/g, "").replace(",", ".")) || proposal.valor_parcela,
+              valor_operacao_operacional: parseFloat(formData.valor_operacao_operacional.replace(/[R$\s.]/g, "").replace(",", ".")) || proposal.valor_operacao_operacional,
+              valor_cliente_operacional: parseFloat(formData.valor_cliente_operacional.replace(/[R$\s.]/g, "").replace(",", ".")) || proposal.valor_cliente_operacional,
+              coeficiente_prazo: formData.coeficiente_prazo,
+              prazo: selectedPrazoValue || undefined,
+              coeficiente: selectedCoefValue || undefined,
+              observacoes: formData.observacoes
+            }} 
+          />
+
+          <FilePreviewModal 
+            isOpen={isPreviewModalOpen}
+            onClose={() => setIsPreviewModalOpen(false)}
+            url={previewData.url}
+            label={previewData.label}
+            extension={previewData.extension}
+          />
+
+          {activeTab === "anexos" && (
+            <div 
+              id="section-anexos" 
+              className="space-y-6 animate-in fade-in duration-500 min-h-[150px] border-t-2 border-slate-200 pt-8 mt-4 bg-slate-50/30 p-4 rounded-xl"
+            >
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
             <button 
               onClick={() => setActiveTab("visualizar")}
@@ -885,7 +939,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               </h3>
             </div>
             
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
               {Object.entries(existingAttachments).map(([key, url]) => {
                 if (!url) return null
                 const labelMap: { [key: string]: string } = {
@@ -897,26 +951,30 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   outros_2: "Outro 2"
                 }
                 const label = labelMap[key] || "Anexo"
-                const ext = url.split('.').pop()?.split('?')[0].toUpperCase() || "PDF"
+                const extension = url.split('.').pop()?.split('?')[0].toUpperCase() || "PDF"
 
                 return (
-                  <a
+                  <button
                     key={key}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group bg-slate-50 p-2 rounded-lg border border-slate-100 hover:border-emerald-500/50 hover:bg-emerald-50/50 transition-all flex flex-col items-center text-center gap-1.5"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setPreviewData({ url, label, extension })
+                      setIsPreviewModalOpen(true)
+                    }}
+                    className="group relative bg-[#FAFAFA] p-4 rounded-xl border border-slate-200 hover:border-[#00C853] hover:bg-white hover:shadow-lg hover:shadow-[#00C853]/5 transition-all flex flex-col items-center text-center gap-3 w-full h-full"
                   >
-                    <div className="bg-white px-2 py-3 rounded shadow-sm group-hover:scale-105 transition-transform relative">
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-emerald-500 transition-colors" />
-                      <span className="absolute -bottom-1 -right-1 bg-slate-800 text-[5px] text-white px-0.5 font-black rounded">{ext}</span>
+                    <div className="bg-white w-14 h-14 flex items-center justify-center rounded-xl shadow-sm border border-slate-100 group-hover:scale-110 group-hover:rotate-2 transition-all relative overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <FileText className="w-7 h-7 text-slate-400 group-hover:text-[#00C853] transition-colors relative z-10" />
+                      <span className="absolute -bottom-0.5 -right-0.5 bg-slate-900 text-[6px] text-white px-1 py-0.5 font-black rounded-tl-md uppercase tracking-tighter z-20">{extension}</span>
                     </div>
-                    <div className="flex flex-col min-w-0 w-full">
-                      <span className="text-[9px] font-black text-slate-900 uppercase tracking-tighter truncate leading-tight">
+                    <div className="flex flex-col min-w-0 w-full space-y-0.5">
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight truncate leading-tight group-hover:text-[#00C853] transition-colors">
                         {label}
                       </span>
+                      <div className="h-0.5 w-0 group-hover:w-full bg-[#00C853] transition-all duration-300 mx-auto rounded-full" />
                     </div>
-                  </a>
+                  </button>
                 )
               })}
 

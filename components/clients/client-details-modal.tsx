@@ -13,6 +13,7 @@ import { Loader2, Eye, EyeOff, MessageCircle } from "lucide-react"
 import { cn, withRetry } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { translateOrgao } from "@/lib/orgaos-mapping"
+import { getContractTypeInfo } from "@/lib/contratos-mapping"
 
 interface LoanData {
   banco: string;
@@ -30,9 +31,12 @@ function LoanRow({ loan }: { loan: LoanData }) {
   const p = loan.parcela;
   const saldo = p * ((1 - Math.pow(1 + i, -n)) / i);
 
+  const info = getContractTypeInfo(loan.tipo);
+  const displayedBank = info.bank || loan.banco;
+
   return (
     <tr className="group bg-blue-50/30 hover:bg-blue-50/50 transition-colors">
-      <td className="py-3 pl-4 text-[11px] font-bold text-slate-700 rounded-l-xl border-y border-l border-blue-100">{loan.banco}</td>
+      <td className="py-3 pl-4 text-[11px] font-bold text-slate-700 rounded-l-xl border-y border-l border-blue-100">{displayedBank}</td>
       <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.orgao || "-"}</td>
       <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.contrato}</td>
       <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">
@@ -63,7 +67,7 @@ interface Contract {
   tipo: string;
   banco: string;
   orgao: string | null;
-  numero_contrato: string;
+  numero_do_contrato: string;
   parcela: number;
   prazo: number;
   [key: string]: unknown;
@@ -540,103 +544,127 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                             </div>
 
                             {/* Margens Grid SIAPE - Layout image.png */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                              {/* Row 1 */}
-                              <div className="p-4 bg-[#eef2f6] border border-slate-200 rounded-2xl">
-                                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Saldo 70%</p>
-                                <p className="text-xl font-black text-slate-900">{formatCurrency(activeReg.saldo_70)}</p>
-                              </div>
-                              <div className={cn(
-                                "p-4 border rounded-2xl",
-                                (activeReg.margem_35 || 0) > 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                              )}>
-                                <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (activeReg.margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700")}>Margem 35%</p>
-                                <p className={cn("text-xl font-black", (activeReg.margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(activeReg.margem_35)}</p>
-                                <div className="flex items-center gap-1.5 mt-2">
-                                  <div className={cn("w-1.5 h-1.5 rounded-full", (activeReg.margem_35 || 0) > 0 ? "bg-emerald-500" : "bg-red-500")}></div>
-                                  <p className={cn("text-[8px] font-bold uppercase tracking-widest", (activeReg.margem_35 || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
-                                    {(activeReg.margem_35 || 0) > 0 ? "Disponível" : "Indisponível"}
-                                  </p>
+                            <div className="space-y-8">
+                              {/* Seção Empréstimo Consignado */}
+                              <div className="space-y-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1 h-3.5 bg-blue-500 rounded-full"></div>
+                                  <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">EMPRÉSTIMO CONSIGNADO</h4>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                  <div className="p-4 bg-[#eef2f6] border border-slate-200 rounded-2xl">
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Saldo 70%</p>
+                                    <p className="text-xl font-black text-slate-900">{formatCurrency(activeReg.saldo_70)}</p>
+                                  </div>
+                                  <div className={cn(
+                                    "p-4 border rounded-2xl",
+                                    (activeReg.margem_35 || 0) > 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                  )}>
+                                    <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (activeReg.margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700")}>Margem 35%</p>
+                                    <p className={cn("text-xl font-black", (activeReg.margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(activeReg.margem_35)}</p>
+                                    <div className="flex items-center gap-1.5 mt-2">
+                                      <div className={cn("w-1.5 h-1.5 rounded-full", (activeReg.margem_35 || 0) > 0 ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <p className={cn("text-[8px] font-bold uppercase tracking-widest", (activeReg.margem_35 || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
+                                        {(activeReg.margem_35 || 0) > 0 ? "Disponível" : "Indisponível"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="p-4 bg-[#fff7ed] border border-orange-200 rounded-2xl">
+                                    <p className="text-[9px] font-bold text-orange-700 uppercase tracking-widest mb-1">Soma Margens Líquidas</p>
+                                    <p className="text-xl font-black text-orange-700">
+                                      {formatCurrency(
+                                        (Number(activeReg.margem_35) || 0) + 
+                                        (Number(activeReg.liquida_5) || 0) + 
+                                        (Number(activeReg.beneficio_liquida_5) || 0)
+                                      )}
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
-                              <div className="p-4 bg-[#fff7ed] border border-orange-200 rounded-2xl">
-                                <p className="text-[9px] font-bold text-orange-700 uppercase tracking-widest mb-1">Soma das Margens Líquidas</p>
-                                <p className="text-xl font-black text-orange-700">
-                                  {formatCurrency(
-                                    (Number(activeReg.margem_35) || 0) + 
-                                    (Number(activeReg.liquida_5) || 0) + 
-                                    (Number(activeReg.beneficio_liquida_5) || 0)
-                                  )}
-                                </p>
+
+                              {/* Seção Cartão Consignado */}
+                              <div className="space-y-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1 h-3.5 bg-emerald-500 rounded-full"></div>
+                                  <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">CARTÃO CONSIGNADO (RMC)</h4>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                  <div className="p-4 bg-[#f1f5f9] border border-slate-100 rounded-2xl">
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Bruta 5%</p>
+                                    <p className="text-xl font-black text-slate-900">{formatCurrency(activeReg.bruta_5)}</p>
+                                  </div>
+                                  {(() => {
+                                    const utilizada = getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5);
+                                    const isSim = utilizada === "SIM";
+                                    return (
+                                      <>
+                                        <div className={cn(
+                                          "p-4 border rounded-2xl",
+                                          isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
+                                        )}>
+                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Utilizada 5%</p>
+                                          <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{utilizada}</p>
+                                        </div>
+                                        <div className={cn(
+                                          "p-4 border rounded-2xl",
+                                          isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
+                                        )}>
+                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Líquida 5%</p>
+                                          <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{formatCurrency(activeReg.liquida_5)}</p>
+                                          <div className="flex items-center gap-1.5 mt-2">
+                                            <div className={cn("w-1.5 h-1.5 rounded-full", isSim ? "bg-red-500" : "bg-emerald-500")}></div>
+                                            <p className={cn("text-[8px] font-bold uppercase tracking-widest", isSim ? "text-red-600" : "text-emerald-600")}>
+                                              {isSim ? "Indisponível" : "Disponível"}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
                               </div>
 
-                              {/* Row 2 */}
-                              <div className="p-4 bg-[#f1f5f9] border border-slate-100 rounded-2xl">
-                                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Bruta 5%</p>
-                                <p className="text-xl font-black text-slate-900">{formatCurrency(activeReg.bruta_5)}</p>
+                              {/* Seção Cartão Benefício */}
+                              <div className="space-y-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1 h-3.5 bg-purple-500 rounded-full"></div>
+                                  <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">CARTÃO BENEFÍCIO (RCC)</h4>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                  <div className="p-4 bg-[#f1f5f9] border border-slate-100 rounded-2xl">
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Benefício Bruta 5%</p>
+                                    <p className="text-xl font-black text-slate-900">{formatCurrency(activeReg.beneficio_bruta_5)}</p>
+                                  </div>
+                                  {(() => {
+                                    const utilizada = getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5);
+                                    const isSim = utilizada === "SIM";
+                                    return (
+                                      <>
+                                        <div className={cn(
+                                          "p-4 border rounded-2xl",
+                                          isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
+                                        )}>
+                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Benefício Utilizada 5%</p>
+                                          <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{utilizada}</p>
+                                        </div>
+                                        <div className={cn(
+                                          "p-4 border rounded-2xl",
+                                          isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
+                                        )}>
+                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Benefício Líquida 5%</p>
+                                          <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{formatCurrency(activeReg.beneficio_liquida_5)}</p>
+                                          <div className="flex items-center gap-1.5 mt-2">
+                                            <div className={cn("w-1.5 h-1.5 rounded-full", isSim ? "bg-red-500" : "bg-emerald-500")}></div>
+                                            <p className={cn("text-[8px] font-bold uppercase tracking-widest", isSim ? "text-red-600" : "text-emerald-600")}>
+                                              {isSim ? "Indisponível" : "Disponível"}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
                               </div>
-                              {(() => {
-                                const utilizada = getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5);
-                                const isSim = utilizada === "SIM";
-                                return (
-                                  <>
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Utilizada 5%</p>
-                                      <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{utilizada}</p>
-                                    </div>
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Líquida 5%</p>
-                                      <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{formatCurrency(activeReg.liquida_5)}</p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isSim ? "bg-red-500" : "bg-emerald-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isSim ? "text-red-600" : "text-emerald-600")}>
-                                          {isSim ? "Indisponível" : "Disponível"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </>
-                                );
-                              })()}
-
-                              {/* Row 3 */}
-                              <div className="p-4 bg-[#f1f5f9] border border-slate-100 rounded-2xl">
-                                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Benefício Bruta 5%</p>
-                                <p className="text-xl font-black text-slate-900">{formatCurrency(activeReg.beneficio_bruta_5)}</p>
-                              </div>
-                              {(() => {
-                                const utilizada = getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5);
-                                const isSim = utilizada === "SIM";
-                                return (
-                                  <>
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Benefício Utilizada 5%</p>
-                                      <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{utilizada}</p>
-                                    </div>
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Benefício Líquida 5%</p>
-                                      <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{formatCurrency(activeReg.beneficio_liquida_5)}</p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isSim ? "bg-red-500" : "bg-emerald-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isSim ? "text-red-600" : "text-emerald-600")}>
-                                          {isSim ? "Indisponível" : "Disponível"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </>
-                                );
-                              })()}
                             </div>
                           </>
                         ) : clientType === 'governo_sp' || clientType === 'prefeitura_sp' ? (
@@ -679,81 +707,107 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                 return "NÃO";
                               };
 
-                              const categories = [
+                              const sections = [
                                 { 
-                                  label: "Consignações", 
-                                  bruta: lotacao.mb_consignacoes, 
-                                  liquida: lotacao.md_consignacoes 
+                                  title: "EMPRÉSTIMO CONSIGNADO",
+                                  color: "bg-blue-500",
+                                  items: [
+                                    { label: "Bruta", value: lotacao.mb_consignacoes },
+                                    { label: "Utilizada", type: 'status', bruta: lotacao.mb_consignacoes, liquida: lotacao.md_consignacoes },
+                                    { label: "Líquida", value: lotacao.md_consignacoes, isLiquida: true }
+                                  ]
                                 },
                                 { 
-                                  label: "Cartão Crédito", 
-                                  bruta: lotacao.mb_cartao_credito, 
-                                  liquida: lotacao.md_cartao_credito,
-                                  hideIfEmpty: true
+                                  title: "CARTÃO CONSIGNADO (RMC)",
+                                  color: "bg-emerald-500",
+                                  items: [
+                                    { label: "Bruta", value: lotacao.mb_cartao_credito },
+                                    { label: "Utilizada", type: 'status', bruta: lotacao.mb_cartao_credito, liquida: lotacao.md_cartao_credito },
+                                    { label: "Líquida", value: lotacao.md_cartao_credito, isLiquida: true }
+                                  ]
                                 },
                                 { 
-                                  label: "Cartão Benefício", 
-                                  bruta: lotacao.mb_cartao_beneficio, 
-                                  liquida: lotacao.md_cartao_beneficio 
+                                  title: "CARTÃO BENEFÍCIO (RCC)",
+                                  color: "bg-purple-500",
+                                  items: [
+                                    { label: "Bruta", value: lotacao.mb_cartao_beneficio },
+                                    { label: "Utilizada", type: 'status', bruta: lotacao.mb_cartao_beneficio, liquida: lotacao.md_cartao_beneficio },
+                                    { label: "Líquida", value: lotacao.md_cartao_beneficio, isLiquida: true }
+                                  ]
                                 }
                               ];
 
                               return (
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                  {categories.map((cat, idx) => {
-                                    if (cat.hideIfEmpty && cat.bruta === undefined && cat.liquida === undefined) return null;
-                                    
-                                    const utilized = getUtilizedStatus(cat.bruta || 0, cat.liquida || 0);
-                                    const isPositive = (cat.liquida || 0) > 0;
+                                <div className="space-y-8">
+                                  {sections.map((section, sIdx) => (
+                                    <div key={sIdx} className="space-y-4">
+                                      <div className="flex items-center gap-2">
+                                        <div className={cn("w-1 h-3.5 rounded-full", section.color)}></div>
+                                        <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">{section.title}</h4>
+                                      </div>
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                        {section.items.map((item, iIdx) => {
+                                          if (item.type === 'status') {
+                                            const utilized = getUtilizedStatus(item.bruta || 0, item.liquida || 0);
+                                            return (
+                                              <div key={iIdx} className={cn(
+                                                "p-4 border rounded-2xl",
+                                                utilized === "SIM" ? "bg-red-50 border-red-200" : 
+                                                utilized === "PARCIAL" ? "bg-[#f1f5f9] border-slate-200" : 
+                                                "bg-emerald-50 border-emerald-200"
+                                              )}>
+                                                <p className={cn(
+                                                  "text-[9px] font-bold uppercase tracking-widest mb-1",
+                                                  utilized === "SIM" ? "text-red-700" : 
+                                                  utilized === "PARCIAL" ? "text-slate-500" : 
+                                                  "text-emerald-700"
+                                                )}>{item.label}</p>
+                                                <p className={cn(
+                                                  "text-xl font-black",
+                                                  utilized === "SIM" ? "text-red-700" : 
+                                                  utilized === "PARCIAL" ? "text-[#1e293b]" : 
+                                                  "text-emerald-700"
+                                                )}>{utilized}</p>
+                                              </div>
+                                            );
+                                          }
 
-                                    return (
-                                      <React.Fragment key={idx}>
-                                        {/* Bruta */}
-                                        <div className="p-4 bg-[#f8fafc] border border-slate-200 rounded-2xl">
-                                          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Bruta {cat.label}</p>
-                                          <p className="text-xl font-black text-slate-900">{formatCurrency(cat.bruta)}</p>
-                                        </div>
+                                          const isPositive = (item.value || 0) > 0;
+                                          const isLiquida = item.isLiquida;
 
-                                        {/* Utilizada */}
-                                        <div className={cn(
-                                          "p-4 border rounded-2xl",
-                                          utilized === "SIM" ? "bg-red-50 border-red-200" : 
-                                          utilized === "PARCIAL" ? "bg-[#f1f5f9] border-slate-200" : 
-                                          "bg-emerald-50 border-emerald-200"
-                                        )}>
-                                          <p className={cn(
-                                            "text-[9px] font-bold uppercase tracking-widest mb-1",
-                                            utilized === "SIM" ? "text-red-700" : 
-                                            utilized === "PARCIAL" ? "text-slate-500" : 
-                                            "text-emerald-700"
-                                          )}>Utilizada</p>
-                                          <p className={cn(
-                                            "text-xl font-black",
-                                            utilized === "SIM" ? "text-red-700" : 
-                                            utilized === "PARCIAL" ? "text-[#1e293b]" : 
-                                            "text-emerald-700"
-                                          )}>{utilized}</p>
-                                        </div>
-
-                                        {/* Líquida */}
-                                        <div className={cn(
-                                          "p-4 border rounded-2xl",
-                                          isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                        )}>
-                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Líquida</p>
-                                          <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                            {formatCurrency(cat.liquida)}
-                                          </p>
-                                          <div className="flex items-center gap-1.5 mt-2">
-                                            <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                            <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                              {isPositive ? "Disponível" : "Indisponível"}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </React.Fragment>
-                                    );
-                                  })}
+                                          return (
+                                            <div key={iIdx} className={cn(
+                                              "p-4 border rounded-2xl",
+                                              isLiquida 
+                                                ? (isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200")
+                                                : "bg-[#f8fafc] border-slate-200"
+                                            )}>
+                                              <p className={cn(
+                                                "text-[9px] font-bold uppercase tracking-widest mb-1",
+                                                isLiquida 
+                                                  ? (isPositive ? "text-emerald-700" : "text-red-700") 
+                                                  : "text-slate-500"
+                                              )}>{item.label}</p>
+                                              <p className={cn(
+                                                "text-xl font-black",
+                                                isLiquida 
+                                                  ? (isPositive ? "text-emerald-700" : "text-red-700")
+                                                  : "text-slate-900"
+                                              )}>{formatCurrency(item.value)}</p>
+                                              {isLiquida && (
+                                                <div className="flex items-center gap-1.5 mt-2">
+                                                  <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                                  <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                                    {isPositive ? "Disponível" : "Indisponível"}
+                                                  </p>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               );
                             })()}
@@ -791,64 +845,71 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                               const isCardAvailable = (lotacao.margem_cartao_consignado || 0) > 0;
                               const isBenefAvailable = (lotacao.margem_cartao_beneficio || 0) > 0;
 
+                              const sections = [
+                                {
+                                  title: "EMPRÉSTIMO CONSIGNADO",
+                                  color: "bg-blue-500",
+                                  value: lotacao.margem_emprestimo_consignado,
+                                  isAvailable: isConsigAvailable,
+                                  bgColor: "bg-[#f0f7ff]",
+                                  borderColor: "border-blue-100",
+                                  textColor: "text-blue-600",
+                                  mainTextColor: "text-blue-700",
+                                  dotColor: "bg-blue-500"
+                                },
+                                {
+                                  title: "CARTÃO CONSIGNADO (RMC)",
+                                  color: "bg-emerald-500",
+                                  value: lotacao.margem_cartao_consignado,
+                                  isAvailable: isCardAvailable,
+                                  bgColor: "bg-[#f0fff4]",
+                                  borderColor: "border-emerald-100",
+                                  textColor: "text-emerald-600",
+                                  mainTextColor: "text-emerald-700",
+                                  dotColor: "bg-emerald-500"
+                                },
+                                {
+                                  title: "CARTÃO BENEFÍCIO (RCC)",
+                                  color: "bg-purple-500",
+                                  value: lotacao.margem_cartao_beneficio,
+                                  isAvailable: isBenefAvailable,
+                                  bgColor: "bg-[#fdf4ff]",
+                                  borderColor: "border-purple-100",
+                                  textColor: "text-purple-600",
+                                  mainTextColor: "text-purple-700",
+                                  dotColor: "bg-purple-500"
+                                }
+                              ];
+
                               return (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                  {/* Margem Empréstimo */}
-                                  <div className={cn(
-                                    "p-5 border rounded-2xl transition-all",
-                                    isConsigAvailable ? "bg-[#f0f7ff] border-blue-100" : "bg-red-50 border-red-100"
-                                  )}>
-                                    <p className={cn("text-[9px] font-black uppercase tracking-widest mb-2", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
-                                      Margem Empréstimo Consignado
-                                    </p>
-                                    <p className={cn("text-2xl font-black", isConsigAvailable ? "text-blue-700" : "text-red-700")}>
-                                      {formatCurrency(lotacao.margem_emprestimo_consignado)}
-                                    </p>
-                                    <div className="flex items-center gap-1.5 mt-2">
-                                      <div className={cn("w-1.5 h-1.5 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
-                                      <p className={cn("text-[9px] font-black uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
-                                        {isConsigAvailable ? "Disponível" : "Indisponível"}
-                                      </p>
+                                <div className="space-y-8">
+                                  {sections.map((section, sIdx) => (
+                                    <div key={sIdx} className="space-y-4">
+                                      <div className="flex items-center gap-2">
+                                        <div className={cn("w-1 h-3.5 rounded-full", section.color)}></div>
+                                        <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">{section.title}</h4>
+                                      </div>
+                                      <div className="grid grid-cols-1">
+                                        <div className={cn(
+                                          "p-5 border rounded-2xl transition-all",
+                                          section.isAvailable ? `${section.bgColor} ${section.borderColor}` : "bg-red-50 border-red-100"
+                                        )}>
+                                          <p className={cn("text-[9px] font-black uppercase tracking-widest mb-2", section.isAvailable ? section.textColor : "text-red-600")}>
+                                            Margem Disponível
+                                          </p>
+                                          <p className={cn("text-2xl font-black", section.isAvailable ? section.mainTextColor : "text-red-700")}>
+                                            {formatCurrency(section.value)}
+                                          </p>
+                                          <div className="flex items-center gap-1.5 mt-2">
+                                            <div className={cn("w-1.5 h-1.5 rounded-full", section.isAvailable ? section.dotColor : "bg-red-500")}></div>
+                                            <p className={cn("text-[9px] font-black uppercase tracking-widest", section.isAvailable ? section.textColor : "text-red-600")}>
+                                              {section.isAvailable ? "Disponível" : "Indisponível"}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
-
-                                  {/* Margem Cartão Consignado */}
-                                  <div className={cn(
-                                    "p-5 border rounded-2xl transition-all",
-                                    isCardAvailable ? "bg-[#f0fff4] border-emerald-100" : "bg-red-50 border-red-100"
-                                  )}>
-                                    <p className={cn("text-[9px] font-black uppercase tracking-widest mb-2", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
-                                      Margem Cartão Consignado
-                                    </p>
-                                    <p className={cn("text-2xl font-black", isCardAvailable ? "text-emerald-700" : "text-red-700")}>
-                                      {formatCurrency(lotacao.margem_cartao_consignado)}
-                                    </p>
-                                    <div className="flex items-center gap-1.5 mt-2">
-                                      <div className={cn("w-1.5 h-1.5 rounded-full", isCardAvailable ? "bg-emerald-500" : "bg-red-500")}></div>
-                                      <p className={cn("text-[9px] font-black uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
-                                        {isCardAvailable ? "Disponível" : "Indisponível"}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {/* Margem Cartão Benefício */}
-                                  <div className={cn(
-                                    "p-5 border rounded-2xl transition-all",
-                                    isBenefAvailable ? "bg-[#fdf4ff] border-purple-100" : "bg-red-50 border-red-100"
-                                  )}>
-                                    <p className={cn("text-[9px] font-black uppercase tracking-widest mb-2", isBenefAvailable ? "text-purple-600" : "text-red-600")}>
-                                      Margem Cartão Benefício
-                                    </p>
-                                    <p className={cn("text-2xl font-black", isBenefAvailable ? "text-purple-700" : "text-red-700")}>
-                                      {formatCurrency(lotacao.margem_cartao_beneficio)}
-                                    </p>
-                                    <div className="flex items-center gap-1.5 mt-2">
-                                      <div className={cn("w-1.5 h-1.5 rounded-full", isBenefAvailable ? "bg-purple-500" : "bg-red-500")}></div>
-                                      <p className={cn("text-[9px] font-black uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600")}>
-                                        {isBenefAvailable ? "Disponível" : "Indisponível"}
-                                      </p>
-                                    </div>
-                                  </div>
+                                  ))}
                                 </div>
                               );
                             })()}
@@ -857,46 +918,159 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                       </CardContent>
                     </Card>
 
-                    {/* Contratos Table (Only for SIAPE for now) */}
+                    {/* Contratos Section (SIAPE) */}
                     {clientType === 'siape' && (
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-1 h-5 bg-primary rounded-full"></div>
-                          <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Contratos e Cartões</h3>
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left border-separate border-spacing-y-2">
-                            <thead>
-                              <tr>
-                                <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
-                                <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Tipo</th>
-                                <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Contrato</th>
-                                <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Parcela</th>
-                                <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Prazo</th>
-                                <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Saldo Est.</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(activeReg.itens_credito as Contract[] || []).length > 0 ? (
-                                (activeReg.itens_credito as Contract[]).map((contract, cIdx) => (
-                                  <LoanRow key={cIdx} loan={{
-                                    banco: contract.banco,
-                                    orgao: contract.orgao,
-                                    contrato: contract.numero_contrato,
-                                    parcela: contract.parcela,
-                                    prazo: contract.prazo,
-                                    tipo: contract.tipo
-                                  }} />
-                                ))
-                              ) : (
-                                <tr>
-                                  <td colSpan={6} className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white rounded-xl border border-dashed border-slate-200">
-                                    Nenhum contrato encontrado
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
+                      <div className="space-y-10 pt-4">
+                        {/* Contratos de Empréstimo */}
+                        {(() => {
+                          const contracts = (activeReg.itens_credito as Contract[] || []);
+                          const filtered = contracts.filter(c => getContractTypeInfo(c.tipo).category === "EMPRESTIMO");
+                          
+                          return (
+                            <div className="space-y-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Contratos de Empréstimo</h3>
+                              </div>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left border-separate border-spacing-y-2">
+                                  <thead>
+                                    <tr>
+                                      <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Órgão</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Contrato</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Parcela</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Prazo</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Taxa</th>
+                                      <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Saldo Est.</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {filtered.length > 0 ? (
+                                      filtered.map((contract, cIdx) => (
+                                        <LoanRow key={cIdx} loan={{
+                                          banco: contract.banco,
+                                          orgao: contract.orgao,
+                                          contrato: contract.numero_do_contrato,
+                                          parcela: contract.parcela,
+                                          prazo: contract.prazo,
+                                          tipo: contract.tipo
+                                        }} />
+                                      ))
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={7} className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white rounded-xl border border-dashed border-slate-200">
+                                          Nenhum contrato de empréstimo encontrado
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                          {/* Cartão Consignado Section */}
+                          {(() => {
+                            const contracts = (activeReg.itens_credito as Contract[] || []);
+                            const filtered = contracts.filter(c => getContractTypeInfo(c.tipo).category === "CARTAO_CONSIGNADO");
+                            
+                            return (
+                              <div className="space-y-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1 h-5 bg-emerald-500 rounded-full"></div>
+                                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Cartão Consignado</h3>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left border-separate border-spacing-y-2">
+                                    <thead>
+                                      <tr>
+                                        <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
+                                        <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Parcela</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {filtered.length > 0 ? (
+                                        filtered.map((card, cIdx) => {
+                                          const info = getContractTypeInfo(card.tipo);
+                                          const displayedBank = info.bank || card.banco;
+                                          
+                                          return (
+                                            <tr key={cIdx} className="bg-slate-50/50 hover:bg-slate-100/50 transition-colors">
+                                              <td className="py-3 pl-4 rounded-l-xl">
+                                                <p className="text-[11px] font-bold text-slate-700 uppercase">{displayedBank}</p>
+                                              </td>
+                                              <td className="py-3 pr-4 text-right rounded-r-xl">
+                                                <p className="text-[11px] font-black text-slate-900">{formatCurrency(card.parcela)}</p>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })
+                                      ) : (
+                                        <tr>
+                                          <td colSpan={2} className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white rounded-xl border border-dashed border-slate-200">
+                                            Nenhum cartão consignado encontrado
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Cartão Benefício Section */}
+                          {(() => {
+                            const contracts = (activeReg.itens_credito as Contract[] || []);
+                            const filtered = contracts.filter(c => getContractTypeInfo(c.tipo).category === "CARTAO_BENEFICIO");
+                            
+                            return (
+                              <div className="space-y-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1 h-5 bg-purple-500 rounded-full"></div>
+                                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Cartão Benefício</h3>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left border-separate border-spacing-y-2">
+                                    <thead>
+                                      <tr>
+                                        <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
+                                        <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Parcela</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {filtered.length > 0 ? (
+                                        filtered.map((card, cIdx) => {
+                                          const info = getContractTypeInfo(card.tipo);
+                                          const displayedBank = info.bank || card.banco;
+                                          
+                                          return (
+                                            <tr key={cIdx} className="bg-slate-50/50 hover:bg-slate-100/50 transition-colors">
+                                              <td className="py-3 pl-4 rounded-l-xl">
+                                                <p className="text-[11px] font-bold text-slate-700 uppercase">{displayedBank}</p>
+                                              </td>
+                                              <td className="py-3 pr-4 text-right rounded-r-xl">
+                                                <p className="text-[11px] font-black text-slate-900">{formatCurrency(card.parcela)}</p>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })
+                                      ) : (
+                                        <tr>
+                                          <td colSpan={2} className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white rounded-xl border border-dashed border-slate-200">
+                                            Nenhum cartão benefício encontrado
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -904,14 +1078,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                 </div>
               );
             })()}
-
-            {/* Other types of clients would go here, maybe generic cards for now */}
-            {clientType !== 'siape' && registrations.length > 0 && (
-               <div className="p-8 bg-white rounded-2xl border border-slate-200 text-center">
-                 <p className="text-slate-500 font-bold uppercase text-[11px] tracking-widest">Base de dados: {clientType?.toUpperCase()}</p>
-                 <p className="text-slate-400 text-[10px] mt-2">Os dados detalhados para esta base estão sendo implementados.</p>
-               </div>
-            )}
           </div>
         )}
       </DialogContent>

@@ -51,6 +51,10 @@ export default function DashboardPage() {
   const [teamDailyProduced, setTeamDailyProduced] = useState(0)
   const [teamDailyCreatedValue, setTeamDailyCreatedValue] = useState(0)
   const [teamDailyCreatedCount, setTeamDailyCreatedCount] = useState(0)
+  const [teamWeeklyCreatedValue, setTeamWeeklyCreatedValue] = useState(0)
+  const [teamWeeklyCreatedCount, setTeamWeeklyCreatedCount] = useState(0)
+  const [teamMonthlyCreatedValue, setTeamMonthlyCreatedValue] = useState(0)
+  const [teamMonthlyCreatedCount, setTeamMonthlyCreatedCount] = useState(0)
   const [teamInProcessValue, setTeamInProcessValue] = useState(0)
   const [teamInProcessCount, setTeamInProcessCount] = useState(0)
   const [teamPendingInconsistencyValue, setTeamPendingInconsistencyValue] = useState(0)
@@ -70,6 +74,12 @@ export default function DashboardPage() {
 
       const startOfToday = new Date()
       startOfToday.setHours(0, 0, 0, 0)
+
+      const startOfWeek = new Date()
+      startOfWeek.setHours(0, 0, 0, 0)
+      const day = startOfWeek.getDay()
+      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Munday
+      startOfWeek.setDate(diff)
 
       // Fetch Banners for everyone first
       const { data: bannerData } = await withRetry(() => 
@@ -147,6 +157,10 @@ export default function DashboardPage() {
         let teamDailyTotal = 0
         let teamCreatedTodayValue = 0
         let teamCreatedTodayCount = 0
+        let teamCreatedWeekValue = 0
+        let teamCreatedWeekCount = 0
+        let teamCreatedMonthValue = 0
+        let teamCreatedMonthCount = 0
         let teamInProcessValueCalc = 0
         let teamInProcessCountCalc = 0
         let teamPendingInconsistencyValueCalc = 0
@@ -183,6 +197,8 @@ export default function DashboardPage() {
           const updatedDate = new Date(curr.updated_at)
           
           const isTodayCreated = createdDate >= startOfToday
+          const isThisWeekCreated = createdDate >= startOfWeek
+          const isThisMonthCreated = createdDate >= startOfMonth
           const isTodayUpdated = updatedDate >= startOfToday
           
           const isPaid = paidStatuses.includes(curr.status)
@@ -220,12 +236,26 @@ export default function DashboardPage() {
               brokerMetrics[brokerId].countToday += 1
             }
           }
+
+          if (isThisWeekCreated && !isCancelled) {
+            teamCreatedWeekValue += numericVal
+            teamCreatedWeekCount += 1
+          }
+
+          if (isThisMonthCreated && !isCancelled) {
+            teamCreatedMonthValue += numericVal
+            teamCreatedMonthCount += 1
+          }
         })
 
         setTeamProduced(teamTotal)
         setTeamDailyProduced(teamDailyTotal)
         setTeamDailyCreatedValue(teamCreatedTodayValue)
         setTeamDailyCreatedCount(teamCreatedTodayCount)
+        setTeamWeeklyCreatedValue(teamCreatedWeekValue)
+        setTeamWeeklyCreatedCount(teamCreatedWeekCount)
+        setTeamMonthlyCreatedValue(teamCreatedMonthValue)
+        setTeamMonthlyCreatedCount(teamCreatedMonthCount)
         setTeamInProcessValue(teamInProcessValueCalc)
         setTeamInProcessCount(teamInProcessCountCalc)
         setTeamPendingInconsistencyValue(teamPendingInconsistencyValueCalc)
@@ -486,7 +516,7 @@ export default function DashboardPage() {
                         <Target className="w-5 h-5 text-[#1C2643]" />
                      </div>
                   </div>
-                  <p className="text-lg sm:text-xl lg:text-3xl font-black text-[#1C2643] tracking-tighter mb-6 break-words">{formatCurrency(monthlyGoal)}</p>
+                  <p className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-black text-[#1C2643] tracking-tighter mb-6 break-words">{formatCurrency(monthlyGoal)}</p>
                   
                   <div className="flex-1 flex flex-col items-center justify-center py-6 relative">
                     <div className="w-full max-w-[280px]">
@@ -532,12 +562,12 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex flex-col min-w-0 overflow-hidden">
                      <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
-                     <p className="text-lg sm:text-xl lg:text-2xl xl:text-3xl font-black text-[#1C2643] tracking-tighter mt-1 break-words leading-none">{formatCurrency(dailyGoal)}</p>
+                     <p className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-black text-[#1C2643] tracking-tighter mt-1 break-words leading-none">{formatCurrency(dailyGoal)}</p>
                   </div>
                   <div className="mt-auto pt-4">
                      <div className="flex justify-between items-center mb-2">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
-                        <p className="text-[10px] font-black text-[#1C2643]">
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
+                        <p className="text-[11px] font-black text-[#1C2643]">
                           {isLoading ? "..." : (
                             <span className="flex items-center gap-1">
                               {Math.min(100, Math.round((displayDailyProduced / dailyGoal) * 100))}%
@@ -562,26 +592,63 @@ export default function DashboardPage() {
 
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
                 <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-[#1C2643] text-white border-[#1C2643]">
-                  <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-2 shrink-0">
-                    {isSupervisor ? (
-                      <CheckCircle2 className="w-6 h-6 text-amber-400" />
-                    ) : (
-                      <Gift className="w-6 h-6 text-amber-400" />
-                    )}
-                  </div>
                   <div className="flex flex-col min-w-0 overflow-hidden">
-                     <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest leading-tight">
-                       {isSupervisor ? "TOTAL DE CONTRATOS DIGITADOS HOJE" : "PRÊMIO ALCANÇADO ATÉ AGORA:"}
-                     </p>
-                     <p className="text-lg sm:text-xl lg:text-2xl xl:text-4xl font-black text-amber-400 tracking-tighter mt-1 break-words leading-none">
-                       {isSupervisor ? formatCurrency(teamDailyCreatedValue) : formatCurrency(currentPrize)}
-                     </p>
+                     <div className="flex items-center gap-2 mb-2">
+                       {isSupervisor ? (
+                         <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                       ) : (
+                         <Gift className="w-4 h-4 text-amber-400" />
+                       )}
+                       <p className="text-[13px] font-bold text-white/60 uppercase tracking-widest leading-tight">
+                         {isSupervisor ? "CONTRATOS DIGITADOS" : "PRÊMIO ALCANÇADO ATÉ AGORA:"}
+                       </p>
+                     </div>
+                     <div className="mt-2 space-y-3">
+                       {isSupervisor ? (
+                         <>
+                           <div>
+                             <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
+                             <div className="flex items-baseline gap-2">
+                               <p className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tighter leading-none">
+                                 {formatCurrency(teamDailyCreatedValue)}
+                               </p>
+                               <span className="text-[11px] font-bold text-white/60 uppercase">{teamDailyCreatedCount} CONTRATOS</span>
+                             </div>
+                           </div>
+                           <div>
+                             <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
+                             <div className="flex items-baseline gap-2">
+                               <p className="text-xl font-black text-white tracking-tighter leading-none">
+                                 {formatCurrency(teamWeeklyCreatedValue)}
+                               </p>
+                               <span className="text-[11px] font-bold text-white/60 uppercase">{teamWeeklyCreatedCount} CONTRATOS</span>
+                             </div>
+                           </div>
+                           <div>
+                             <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
+                             <div className="flex items-baseline gap-2">
+                               <p className="text-base font-black text-white tracking-tighter leading-none">
+                                 {formatCurrency(teamMonthlyCreatedValue)}
+                               </p>
+                               <span className="text-[11px] font-bold text-white/60 uppercase">{teamMonthlyCreatedCount} CONTRATOS</span>
+                             </div>
+                           </div>
+                         </>
+                       ) : (
+                         <p className="text-xl sm:text-2xl lg:text-3xl xl:text-5xl font-black text-amber-400 tracking-tighter mt-1 break-words leading-none">
+                           {formatCurrency(currentPrize)}
+                         </p>
+                       )}
+                     </div>
                   </div>
                   <div className="mt-auto pt-3 border-t border-white/5">
                      {isSupervisor ? (
-                       <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest leading-tight">
-                         {teamDailyCreatedCount} {teamDailyCreatedCount === 1 ? 'Contrato' : 'Contratos'}
-                       </p>
+                       <div className="flex items-center gap-2">
+                         <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                         <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest leading-tight">
+                           Atualizado em Tempo Real
+                         </p>
+                       </div>
                      ) : nextPrizeTier ? (
                        <>
                          <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest leading-tight">

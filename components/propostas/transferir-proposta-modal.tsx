@@ -67,6 +67,9 @@ export function TransferirPropostaModal({
     if (!isOpen || !user || !proposal?.id_lead) return
     if (!isOperational && !isAdmin) return
 
+    const lockerRoles = ['Operacional', 'Administrador', 'Administrativo', 'Admin', 'Desenvolvedor'];
+    const isLockerRole = (role: string) => lockerRoles.includes(role);
+
     const channel = supabase.channel(`proposal_lock_${proposal.id_lead}`, {
       config: {
         presence: {
@@ -74,6 +77,8 @@ export function TransferirPropostaModal({
         },
       },
     })
+
+    let timeoutId: NodeJS.Timeout;
 
     channel
       .on('presence', { event: 'sync' }, () => {
@@ -86,18 +91,21 @@ export function TransferirPropostaModal({
         }>
         
         const otherUser = presences.find(p => 
-          (p.role === 'Operacional' || p.role === 'Administrador' || p.role === 'Desenvolvedor') 
-          && p.user_id !== user.id
+          isLockerRole(p.role) && p.user_id !== user.id
         )
         
         if (otherUser) {
+          clearTimeout(timeoutId);
           setLockedBy({
             id: otherUser.user_id,
             nome: otherUser.user_name,
             role: otherUser.role
           })
         } else {
-          setLockedBy(null)
+          // Delay para evitar flickering
+          timeoutId = setTimeout(() => {
+            setLockedBy(null)
+          }, 1500);
         }
       })
       .subscribe(async (status) => {
@@ -112,6 +120,7 @@ export function TransferirPropostaModal({
       })
 
     return () => {
+      clearTimeout(timeoutId);
       supabase.removeChannel(channel)
     }
   }, [isOpen, user, proposal?.id_lead, isOperational, isAdmin])

@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
-import { format } from "date-fns"
 import { Proposal } from "@/app/(dashboard)/propostas/page"
 
 interface FichaPropostaModalProps {
@@ -68,6 +67,20 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
     navigator.clipboard.writeText(text)
     setCopiedField(fieldId)
     setTimeout(() => setCopiedField(null), 2000)
+  }
+
+  const formatDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "-";
+    try {
+      // Se já estiver no formato dd/mm/yyyy, ignora
+      if (dateStr.includes('/') && dateStr.split('/').length === 3) return dateStr;
+      
+      const [year, month, day] = dateStr.split('T')[0].split('-');
+      if (!year || !month || !day) return "-";
+      return `${day}/${month}/${year}`;
+    } catch {
+      return "-";
+    }
   }
 
   const extractPrazo = (label: string | null | undefined) => {
@@ -159,13 +172,13 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
                   <Field label="Email" value={proposal.email} id="email" onCopy={copyToClipboard} isCopied={copiedField === "email"} />
-                  <Field label="Data Nascimento" value={proposal.data_nascimento ? format(new Date(proposal.data_nascimento), "dd/MM/yyyy") : "-"} id="data_nascimento" onCopy={copyToClipboard} isCopied={copiedField === "data_nascimento"} />
+                  <Field label="Data Nascimento" value={formatDate(proposal.data_nascimento)} id="data_nascimento" onCopy={copyToClipboard} isCopied={copiedField === "data_nascimento"} />
                 </div>
                 <div className="grid grid-cols-4 divide-x divide-slate-300">
                   <Field label="Identidade" value={proposal.identidade} id="identidade" onCopy={copyToClipboard} isCopied={copiedField === "identidade"} />
                   <Field label="Orgão Emissor" value={proposal.orgao_emissor} id="orgao_emissor" onCopy={copyToClipboard} isCopied={copiedField === "orgao_emissor"} />
                   <Field label="UF Emissão" value={proposal.uf_emissao} id="uf_emissao" onCopy={copyToClipboard} isCopied={copiedField === "uf_emissao"} />
-                  <Field label="Emissão" value={proposal.data_emissao ? format(new Date(proposal.data_emissao), "dd/MM/yyyy") : "-"} id="emissao" onCopy={copyToClipboard} isCopied={copiedField === "emissao"} />
+                  <Field label="Emissão" value={formatDate(proposal.data_emissao)} id="emissao" onCopy={copyToClipboard} isCopied={copiedField === "emissao"} />
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
                   <Field label="Naturalidade" value={proposal.naturalidade} id="naturalidade" onCopy={copyToClipboard} isCopied={copiedField === "naturalidade"} />

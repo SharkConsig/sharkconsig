@@ -86,6 +86,9 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
     // Somente rastrear presença para Operacional e Administrador
     if (!isOperational && !isAdmin) return
 
+    const lockerRoles = ['Operacional', 'Administrador', 'Administrativo', 'Admin', 'Desenvolvedor'];
+    const isLockerRole = (role: string) => lockerRoles.includes(role);
+
     const channel = supabase.channel(`proposal_lock_${proposal.id_lead}`, {
       config: {
         presence: {
@@ -93,6 +96,8 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
         },
       },
     })
+
+    let timeoutId: NodeJS.Timeout;
 
     channel
       .on('presence', { event: 'sync' }, () => {
@@ -106,18 +111,21 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
         
         // Localizar outro usuário operacional ou administrador que não seja eu
         const otherUser = presences.find(p => 
-          (p.role === 'Operacional' || p.role === 'Administrador' || p.role === 'Desenvolvedor') 
-          && p.user_id !== user.id
+          isLockerRole(p.role) && p.user_id !== user.id
         )
         
         if (otherUser) {
+          clearTimeout(timeoutId);
           setLockedBy({
             id: otherUser.user_id,
             nome: otherUser.user_name,
             role: otherUser.role
           })
         } else {
-          setLockedBy(null)
+          // Delay para evitar flickering ao abrir/fechar componentes que rastreiam o mesmo canal
+          timeoutId = setTimeout(() => {
+            setLockedBy(null)
+          }, 1500);
         }
       })
       .subscribe(async (status) => {
@@ -132,6 +140,7 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
       })
 
     return () => {
+      clearTimeout(timeoutId);
       supabase.removeChannel(channel)
     }
   }, [isOpen, user, proposal?.id_lead, isOperational, isAdmin])

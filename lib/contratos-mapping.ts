@@ -42,12 +42,25 @@ export function getContractTypeInfo(codigo: string): ContractTypeInfo {
     };
   }
 
-  // Pega apenas os 5 primeiros dígitos para identificar se é cartão
-  const prefixo = codigo.toString().trim().substring(0, 5);
+  const t = codigo.toString().trim().toUpperCase();
+
+  // 1. Tenta identificar por código de prefixo (5 dígitos)
+  const prefixo = t.substring(0, 5);
   const info = CONTRATOS_TIPO_MAPPING[prefixo];
-  
   if (info) return info;
-  
+
+  // 2. Tenta identificar por palavras-chave (Fallback para labels em texto)
+  if (t.includes("EMPRÉSTIMO") || t.includes("EMPRESTIMO") || t === "70" || t === "35") {
+    return { label: "Empréstimo", category: "EMPRESTIMO" };
+  }
+  if (t.includes("CARTÃO CONSIGNADO") || t.includes("CARTAO CONSIGNADO") || t.includes("RMC") || t === "5" || t === "RMC") {
+    return { label: "RMC", category: "CARTAO_CONSIGNADO" };
+  }
+  if (t.includes("CARTÃO BENEFÍCIO") || t.includes("CARTAO BENEFICIO") || t.includes("RCC") || t === "RCC") {
+    return { label: "RCC", category: "CARTAO_BENEFICIO" };
+  }
+
+  // 3. Padrão: Empréstimo
   return {
     category: "EMPRESTIMO",
     label: "CONTRATO DE EMPRÉSTIMO",

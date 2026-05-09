@@ -8,7 +8,6 @@ import {
   Clock, 
   TrendingUp, 
   CheckCircle2, 
-  Users, 
   Trophy,
   Loader2,
   ArrowUpRight
@@ -40,27 +39,22 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
   const companyDailyAtingido = 48500
   const dailyProgressPercent = Math.round((companyDailyAtingido / companyDailyGoal) * 100)
 
-  const teamMonthlyGoal = 400000
-  const teamMonthlyAtingido = 260000
-  const teamProgressPercent = Math.round((teamMonthlyAtingido / teamMonthlyGoal) * 100)
+  const companyAnnualGoal = 18000000
+  const companyAnnualAtingido = 5400000
+  const annualProgressPercent = Math.round((companyAnnualAtingido / companyAnnualGoal) * 100)
+  const annualRemainingValue = Math.max(0, companyAnnualGoal - companyAnnualAtingido)
 
   const inProcessValue = 3250000
   const inProcessCount = 142
   const pendingActionsValue = 425000
   const pendingActionsCount = 18
 
-  const teamRankings = [
-    { name: "Time Shark Alpha", leader: "Carlos", total: 420000, count: 28 },
-    { name: "Time Shark Beta", leader: "Sandra", total: 380000, count: 24 },
-    { name: "Time Shark Gamma", leader: "Roberto", total: 310000, count: 19 },
-  ]
-
   const brokerRankings = [
-    { name: "Juliana Silva", team: "Alpha", total: 125000, count: 8 },
-    { name: "Marcos Reus", team: "Alpha", total: 112000, count: 7 },
-    { name: "Fabio Lopes", team: "Beta", total: 98000, count: 6 },
-    { name: "Lucia Santos", team: "Gamma", total: 92000, count: 6 },
-    { name: "Pedro Mendes", team: "Beta", total: 85000, count: 5 },
+    { name: "Juliana Silva", team: "Alpha", supervisor: "Ricardo Santos", total: 125000, count: 8 },
+    { name: "Marcos Reus", team: "Alpha", supervisor: "Ricardo Santos", total: 112000, count: 7 },
+    { name: "Fabio Lopes", team: "Beta", supervisor: "Carla Oliveira", total: 98000, count: 6 },
+    { name: "Lucia Santos", team: "Gamma", supervisor: "Marcos Viana", total: 92000, count: 6 },
+    { name: "Pedro Mendes", team: "Beta", supervisor: "Carla Oliveira", total: 85000, count: 5 },
   ]
 
   return (
@@ -112,7 +106,7 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
                     <Target className="w-5 h-5 text-[#1C2643]" />
                  </div>
               </div>
-              <p className="text-lg sm:text-xl lg:text-3xl font-black text-[#1C2643] tracking-tighter mb-6 break-words">{formatCurrency(companyMonthlyGoal)}</p>
+              <p className="text-lg sm:text-xl lg:text-2xl font-black text-[#1C2643] tracking-tighter mb-6 break-words">{formatCurrency(companyMonthlyGoal)}</p>
               
               <div className="flex-1 flex flex-col items-center justify-center py-6 relative">
                 <div className="w-full max-w-[280px]">
@@ -159,12 +153,11 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
                   <Zap className="w-6 h-6 text-amber-500 fill-amber-500" />
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-md uppercase border border-amber-100">Live</span>
                 </div>
               </div>
               <div>
                  <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
-                 <p className="text-lg sm:text-xl lg:text-3xl font-black text-[#1C2643] tracking-tighter mt-1 leading-none">{formatCurrency(companyDailyGoal)}</p>
+                 <p className="text-xl lg:text-2xl font-black text-[#1C2643] tracking-tighter mt-1 leading-none">{formatCurrency(companyDailyGoal)}</p>
               </div>
               <div className="mt-auto pt-4">
                  <div className="flex justify-between items-center mb-2">
@@ -183,28 +176,37 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
             </DashboardCard>
           </motion.div>
 
-          {/* Meta Mensal do Time */}
+          {/* Meta Anual da Empresa */}
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
             <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col justify-between bg-[#1C2643] text-white border-[#1C2643]">
               <div>
                 <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-4">
-                   <Users className="w-6 h-6 text-amber-400" />
+                   <Target className="w-6 h-6 text-emerald-400" />
                 </div>
-                <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest">Média Mês por Time</p>
-                <p className="text-2xl font-black text-amber-400 tracking-tighter mt-1">{formatCurrency(teamMonthlyGoal)}</p>
+                <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest leading-tight">Meta Anual da Empresa</p>
+                <div className="flex flex-col mt-2">
+                  <p className="text-xl lg:text-2xl font-black text-emerald-400 tracking-tighter leading-none">{formatCurrency(companyAnnualGoal)}</p>
+                  <p className="text-[10px] font-bold text-white/30 uppercase mt-1">Total acumulado: {formatCurrency(companyAnnualAtingido)}</p>
+                </div>
               </div>
               
               <div className="mt-8">
                 <div className="flex justify-between items-end mb-2">
-                  <p className="text-4xl font-black tracking-tighter">{teamProgressPercent}%</p>
-                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest pb-1">Atingido</p>
+                  <div className="flex flex-col">
+                    <p className="text-xl lg:text-2xl font-black tracking-tighter leading-none text-white">{annualProgressPercent}%</p>
+                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mt-1">Atingido</p>
+                  </div>
+                  <div className="text-right pb-1">
+                    <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Faltam para bater:</p>
+                    <p className="text-[11px] font-black text-white/90 uppercase tracking-tight">{formatCurrency(annualRemainingValue)}</p>
+                  </div>
                 </div>
-                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden border border-white/5">
                   <motion.div 
                     initial={{ width: 0 }}
-                    animate={{ width: `${teamProgressPercent}%` }}
+                    animate={{ width: `${annualProgressPercent}%` }}
                     transition={{ duration: 1, delay: 0.3 }}
-                    className="h-full bg-amber-400" 
+                    className="h-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)]" 
                   />
                 </div>
               </div>
@@ -228,7 +230,7 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
                      </div>
                   </div>
                   <div className="mt-4">
-                    <p className="text-3xl lg:text-5xl font-black text-[#1C2643] tracking-tighter leading-none">
+                    <p className="text-xl lg:text-2xl font-black text-[#1C2643] tracking-tighter leading-none">
                       {formatCurrency(inProcessValue)}
                     </p>
                     <div className="flex items-center gap-2 mt-4">
@@ -259,7 +261,7 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
                      </div>
                   </div>
                   <div className="mt-4">
-                    <p className="text-3xl lg:text-5xl font-black text-amber-900 tracking-tighter leading-none">
+                    <p className="text-xl lg:text-2xl font-black text-amber-900 tracking-tighter leading-none">
                       {formatCurrency(pendingActionsValue)}
                     </p>
                     <div className="flex items-center gap-2 mt-4">
@@ -278,69 +280,37 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
           </div>
         </motion.div>
 
-        {/* 6. Ranking de Vendas dos times e corretores */}
+        {/* 6. Ranking de Vendas dos corretores */}
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }} className="lg:col-span-4">
           <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white border-slate-100">
             <div className="flex items-center justify-between mb-8">
-               <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Elite Ranking</h3>
+               <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Ranking de Vendas</h3>
                <Trophy className="w-6 h-6 text-amber-500 fill-amber-500" />
             </div>
 
-            <div className="space-y-10">
-              {/* Ranking de Times */}
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">🏆 Melhores Equipes</p>
-                <div className="space-y-4">
-                  {teamRankings.map((team, idx) => (
-                    <div key={idx} className="flex items-center justify-between group">
-                      <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black border",
-                          idx === 0 ? "bg-amber-100 text-amber-600 border-amber-200" : "bg-slate-50 text-slate-400 border-slate-100"
-                        )}>
-                          {idx + 1}º
-                        </div>
-                        <div>
-                          <p className="text-[13px] font-black text-[#1C2643] leading-none uppercase">{team.name}</p>
-                          <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">Líder: {team.leader}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[12px] font-black text-[#1C2643]">{formatCurrency(team.total)}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{team.count} Vendas</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="h-px bg-slate-100" />
-
+            <div className="space-y-6 overflow-y-auto pr-2 custom-scrollbar max-h-[480px]">
               {/* Ranking de Corretores */}
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">⭐ Top Corretores</p>
-                <div className="space-y-4">
-                  {brokerRankings.map((broker, idx) => (
-                    <div key={idx} className="flex items-center justify-between group">
-                      <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black border",
-                          idx === 0 ? "bg-emerald-100 text-emerald-600 border-emerald-200" : "bg-slate-50 text-slate-400 border-slate-100"
-                        )}>
-                          {idx + 1}º
-                        </div>
-                        <div>
-                          <p className="text-[13px] font-black text-[#1C2643] leading-none uppercase">{broker.name}</p>
-                          <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">Equipe {broker.team}</p>
-                        </div>
+              <div className="space-y-6">
+                {brokerRankings.map((broker, idx) => (
+                  <div key={idx} className="flex items-center justify-between group">
+                    <div className="flex items-center gap-4">
+                      <div className={cn(
+                        "w-11 h-11 rounded-full flex items-center justify-center text-[13px] font-black border shrink-0",
+                        idx === 0 ? "bg-emerald-100 text-emerald-600 border-emerald-200" : "bg-slate-50 text-slate-400 border-slate-100"
+                      )}>
+                        {idx + 1}º
                       </div>
-                      <div className="text-right">
-                        <p className="text-[12px] font-black text-[#1C2643]">{formatCurrency(broker.total)}</p>
-                        <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-tighter">{broker.count} Vendas</p>
+                      <div>
+                        <p className="text-[15px] font-black text-[#1C2643] leading-none uppercase">{broker.name}</p>
+                        <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">SUP: {broker.supervisor}</p>
                       </div>
                     </div>
-                  ))}
-                </div>
+                    <div className="text-right">
+                      <p className="text-[15px] font-black text-[#1C2643]">{formatCurrency(broker.total)}</p>
+                      <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-tighter mt-1">{broker.count} Vendas</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
