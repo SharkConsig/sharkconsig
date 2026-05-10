@@ -17,8 +17,9 @@ import {
   Users,
   X
 } from "lucide-react"
+import { motion } from "motion/react"
 import { cn } from "@/lib/utils"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { supabase } from "@/lib/supabase"
@@ -79,9 +80,32 @@ const CATEGORY_MAP: Record<string, string> = {
   "4": "ufs"
 };
 
+const TABLE_MAP: Record<string, string> = {
+  'siape': 'base_consulta_siape',
+  'governo_sp': 'base_consulta_governo_sp',
+  'prefeitura_sp': 'base_consulta_prefeitura_sp',
+  'governo_pi': 'base_consulta_governo_pi',
+  'governo_ma': 'base_consulta_governo_ma',
+};
+
+const CONVENIOS = [
+  { id: 'siape', label: 'SIAPE / FEDERAL' },
+  { id: 'governo_sp', label: 'GOVERNO SP' },
+  { id: 'prefeitura_sp', label: 'PREFEITURA SP' },
+  { id: 'governo_pi', label: 'GOVERNO PIAUÍ' },
+  { id: 'governo_ma', label: 'GOVERNO MARANHÃO' },
+];
+
 export default function NewCampaignPage() {
   const router = useRouter()
-  const { canAccessAdminAreas, isLoading: authLoading } = useAuth()
+  const { user, canAccessAdminAreas, isLoading: authLoading } = useAuth()
+  const [activeConvenio, setActiveConvenio] = useState('siape')
+  const [dynamicOptions, setDynamicOptions] = useState<{
+    orgaos: string[];
+    situacoes: string[];
+    regimes: string[];
+    ufs: string[];
+  }>({ orgaos: [], situacoes: [], regimes: [], ufs: [] })
   const [filters, setFilters] = useState({
     orgaos: [] as string[],
     situacoes: [] as string[],
@@ -102,11 +126,61 @@ export default function NewCampaignPage() {
     idadeMax: "",
   })
 
+  const fetchDynamicOptions = useCallback(async () => {
+    try {
+      const tableName = TABLE_MAP[activeConvenio];
+      if (!tableName) return;
+
+      setIsCalculating(true) // Use loading state while fetching options
+
+      // Fetch distinct values for the current convenio
+      // In a real database with millions of rows, we should use a dedicated RPC for distinct values
+      const { data: orgaosData } = await supabase
+        .from(tableName)
+        .select('orgao')
+        .limit(1000) // Safety limit for dev, in production we use RPC
+      
+      const { data: situacoesData } = await supabase
+        .from(tableName)
+        .select('situacao_funcional')
+        .limit(1000)
+
+      const { data: regimesData } = await supabase
+        .from(tableName)
+        .select('regime_juridico')
+        .limit(1000)
+      
+      const { data: ufsData } = await supabase
+        .from(tableName)
+        .select('uf')
+        .limit(1000)
+
+      setDynamicOptions({
+        orgaos: Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort(),
+        situacoes: Array.from(new Set(situacoesData?.map(i => i.situacao_funcional).filter(Boolean) || [])).sort(),
+        regimes: Array.from(new Set(regimesData?.map(i => i.regime_juridico).filter(Boolean) || [])).sort(),
+        ufs: Array.from(new Set(ufsData?.map(i => i.uf).filter(Boolean) || [])).sort()
+      })
+    } catch (err) {
+      console.error("Erro ao buscar opções dinâmicas:", err)
+    } finally {
+      setIsCalculating(false)
+    }
+  }, [activeConvenio])
+
+  useEffect(() => {
+    fetchDynamicOptions()
+  }, [fetchDynamicOptions])
+
   useEffect(() => {
     if (!authLoading && !canAccessAdminAreas) {
       router.replace('/')
     }
   }, [authLoading, canAccessAdminAreas, router])
+
+  const translateOrgao = (id: string) => {
+    return ORGAOS_MAPPING[id as keyof typeof ORGAOS_MAPPING] || id
+  }
 
   const [isCalculating, setIsCalculating] = useState(false)
   const [estimatedAudience, setEstimatedAudience] = useState(0)
@@ -279,9 +353,11 @@ export default function NewCampaignPage() {
         idadeMin, idadeMax 
       } = filters;
 
-      // CONSULTA DIRETA NA TABELA DE SNAPSHOT (SEM JOINS)
-      // Usamos apenas o CPF para contagem de alta performance
-      let query = supabase.from('base_consulta_rapida').select('cpf', { count: 'exact', head: true });
+      // CONSULTA DIRETA NA TABELA ESPECIALIZADA (SEM JOINS)
+      const tableName = TABLE_MAP[activeConvenio] || 'base_consulta_siape';
+      let query = supabase
+        .from(tableName)
+        .select('cpf', { count: 'exact', head: true });
 
       // Filtros de Margem 35% no topo para priorizar o uso do índice
       const mMinNum = parseSafeNumber(filters.margemMin);
@@ -429,7 +505,8 @@ export default function NewCampaignPage() {
       const { error: saveError } = await supabase.from('campanhas').insert({
         nome: campaignName,
         publico_estimado: estimatedAudience,
-        filtros: filters,
+        filtros: { ...filters, convenio: activeConvenio },
+        criado_por: user?.id,
         created_at: new Date().toISOString()
       });
 
@@ -463,9 +540,58 @@ export default function NewCampaignPage() {
     <div className="flex-1 flex flex-col">
       <Header title="CRIAR CAMPANHA" />
       
-      <div className="p-4 lg:p-8 flex flex-col lg:flex-row gap-8 max-w-[1600px] mx-auto w-full">
-        {/* Filters Section */}
-        <div className="flex-1 space-y-6 order-2 lg:order-1">
+      <div className="p-4 lg:p-8 flex flex-col gap-8 max-w-[1600px] mx-auto w-full">
+        {/* Tabs Navigation - Modern Segmented Control */}
+        <div className="bg-slate-100/80 p-1 rounded-2xl flex flex-wrap gap-1 self-start shadow-sm border border-slate-200/50">
+          {CONVENIOS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => {
+                setActiveConvenio(item.id);
+                setEstimatedAudience(0);
+                setFilters(prev => ({
+                  ...prev,
+                  orgaos: [],
+                  situacoes: [],
+                  regimes: [],
+                  ufs: [],
+                  margemMin: "",
+                  margemMax: "",
+                  saldoMin: "",
+                  saldoMax: "",
+                  loanBanks: [],
+                  loanPrazoMin: "",
+                  loanPrazoMax: "",
+                  cardTypes: [],
+                  cardBanks: [],
+                  cardMargemMin: "",
+                  cardBeneficioMin: "",
+                  idadeMin: "",
+                  idadeMax: "",
+                }));
+              }}
+              className={cn(
+                "relative px-6 py-2.5 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all rounded-xl",
+                activeConvenio === item.id 
+                  ? "text-primary shadow-sm" 
+                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+              )}
+            >
+              <span className="relative z-10">{item.label}</span>
+              {activeConvenio === item.id && (
+                <motion.div
+                  layoutId="active-tab"
+                  className="absolute inset-0 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.05)] border border-slate-200"
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                />
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-8 w-full items-start">
+          {/* Filters Section */}
+          <div className="flex-1 space-y-6 order-2 lg:order-1">
           <p className="text-[13px] font-medium text-slate-400 px-1">Defina os filtros para segmentar seu público-alvo.</p>
           
           {/* 1. IDADE */}
@@ -557,63 +683,71 @@ export default function NewCampaignPage() {
                         {section.title}
                       </h3>
                     </div>
-                  <div className="flex gap-4">
-                    <button 
-                      onClick={() => {
-                        const category = CATEGORY_MAP[section.id] as keyof typeof filters;
-                        if (category) selectAll(category, section.options);
-                      }}
-                      className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:underline"
-                    >
-                      Selecionar Todos
-                    </button>
-                    <button 
-                      onClick={() => {
-                        const category = CATEGORY_MAP[section.id] as keyof typeof filters;
-                        if (category) clearAll(category, section.options);
-                      }}
-                      className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
-                    >
-                      Limpar
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <Input 
-                    placeholder="Localizar filtro..." 
-                    icon={<Search className="w-4 h-4" />}
-                    className="bg-slate-50/30 border-slate-100 h-9 text-[12px]"
-                    value={searchQueries[section.id] || ""}
-                    onChange={(e) => handleSearch(section.id, e.target.value)}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                  {getFilteredOptions(section.options, section.id).map((option) => {
-                    const category = CATEGORY_MAP[section.id] as keyof typeof filters;
-                    if (!category) return null;
-                    
-                    const isSelected = (filters[category] as string[]).includes(option);
-
-                    return (
+                    <div className="flex gap-4">
                       <button 
-                        key={option}
-                        title={option}
-                        onClick={() => toggleFilter(category, option)}
-                        className={cn(
-                          "flex items-center justify-between px-4 py-3 border rounded-lg text-[10px] font-bold transition-all uppercase tracking-tight text-left",
-                          isSelected 
-                            ? "bg-primary border-primary text-white shadow-lg shadow-primary/20" 
-                            : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary hover:text-primary"
-                        )}
+                        onClick={() => {
+                          const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+                          const options = activeConvenio === 'siape' ? section.options : (dynamicOptions[category as keyof typeof dynamicOptions] || []);
+                          if (category) selectAll(category, options);
+                        }}
+                        className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:underline"
                       >
-                        <span className="truncate mr-2">{option}</span>
-                        {isSelected && <Check className="w-3 h-3 flex-shrink-0" />}
+                        Selecionar Todos
                       </button>
-                    );
-                  })}
-                </div>
+                      <button 
+                        onClick={() => {
+                          const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+                          const options = activeConvenio === 'siape' ? section.options : (dynamicOptions[category as keyof typeof dynamicOptions] || []);
+                          if (category) clearAll(category, options);
+                        }}
+                        className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <Input 
+                      placeholder="Localizar filtro..." 
+                      icon={<Search className="w-4 h-4" />}
+                      className="bg-slate-50/30 border-slate-100 h-9 text-[12px]"
+                      value={searchQueries[section.id] || ""}
+                      onChange={(e) => handleSearch(section.id, e.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                    {getFilteredOptions(
+                      activeConvenio === 'siape' ? section.options : (dynamicOptions[CATEGORY_MAP[section.id] as keyof typeof dynamicOptions] || []), 
+                      section.id
+                    ).map((option) => {
+                      const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+                      if (!category) return null;
+                      
+                      const isSelected = (filters[category] as string[]).includes(option);
+                      const isSiapeOrgao = activeConvenio === 'siape' && section.id === "1";
+
+                      return (
+                        <button 
+                          key={option}
+                          title={isSiapeOrgao ? translateOrgao(option) : option}
+                          onClick={() => toggleFilter(category, option)}
+                          className={cn(
+                            "flex items-center justify-between px-4 py-3 border rounded-lg text-[10px] font-bold transition-all uppercase tracking-tight text-left",
+                            isSelected 
+                              ? "bg-primary border-primary text-white shadow-lg shadow-primary/20" 
+                              : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary hover:text-primary"
+                          )}
+                        >
+                          <span className="truncate mr-2">
+                            {isSiapeOrgao ? translateOrgao(option) : option}
+                          </span>
+                          {isSelected && <Check className="w-3 h-3 flex-shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
               </CardContent>
             </Card>
           );
@@ -1080,5 +1214,6 @@ export default function NewCampaignPage() {
         </div>
       </div>
     </div>
+  </div>
   )
 }

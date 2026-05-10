@@ -505,13 +505,45 @@ function NewProposalForm() {
           return; 
         }
 
+        // Busca inteligente nas tabelas de consulta rápida (Split Tables Optimization)
+        let targetTable = 'base_consulta_rapida'
+        const conv = selection.convenio?.toUpperCase()
+        
+        if (conv === 'SIAPE') targetTable = 'base_consulta_siape'
+        else if (conv?.includes('GOVERNO SP')) targetTable = 'base_consulta_governo_sp'
+        else if (conv?.includes('PREFEITURA SP')) targetTable = 'base_consulta_prefeitura_sp'
+        else if (conv?.includes('GOVERNO PI')) targetTable = 'base_consulta_governo_pi'
+        else if (conv?.includes('GOVERNO MA')) targetTable = 'base_consulta_governo_ma'
+
         const { data, error } = await supabase
-          .from('base_consulta_rapida')
-          .select('numero_matricula, data_nascimento, nome, telefone_1, telefone_2, telefone_3, email')
+          .from(targetTable)
+          .select('*')
           .eq('cpf', cleanCPF)
-          .order('created_at', { ascending: false })
-          .limit(1)
           .maybeSingle()
+
+        // Se não encontrou na tabela especializada (ou se ela ainda não existe), tenta na global
+        if ((!data || error) && targetTable !== 'base_consulta_rapida') {
+          const { data: globalData, error: globalErr } = await supabase
+            .from('base_consulta_rapida')
+            .select('*')
+            .eq('cpf', cleanCPF)
+            .maybeSingle()
+          
+          if (!globalErr && globalData) {
+            setFormData(prev => ({ 
+              ...prev, 
+              matricula: globalData.numero_matricula || prev.matricula || "",
+              nascimento: prev.nascimento || (globalData.data_nascimento ? fromInputDate(globalData.data_nascimento) : ""),
+              nome: prev.nome || globalData.nome || "",
+              tel_1: prev.tel_1 || globalData.telefone_1 || "",
+              tel_2: prev.tel_2 || globalData.telefone_2 || "",
+              tel_3: prev.tel_3 || globalData.telefone_3 || "",
+              email: prev.email || globalData.email || ""
+            }))
+            toast.success("Dados básicos encontrados.");
+            return
+          }
+        }
 
         if (!error && data) {
           setFormData(prev => ({ 
@@ -522,9 +554,9 @@ function NewProposalForm() {
             tel_1: prev.tel_1 || data.telefone_1 || "",
             tel_2: prev.tel_2 || data.telefone_2 || "",
             tel_3: prev.tel_3 || data.telefone_3 || "",
-            email: prev.email || data.email || ""
+            email: prev.email || (data as { email?: string }).email || ""
           }))
-          toast.success("Dados básicos encontrados na base de consulta.");
+          toast.success("Dados básicos encontrados.");
         }
       } catch (error) {
         console.error("Erro ao buscar detalhes do cliente:", error)

@@ -19,7 +19,7 @@ interface FilePreviewModalProps {
 export function FilePreviewModal({ isOpen, onClose, url, label, extension }: FilePreviewModalProps) {
   useEffect(() => {
     // Configurar o worker do PDF.js apenas no cliente
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs`
   }, [])
 
   const [blobUrl, setBlobUrl] = useState<string | null>(null)

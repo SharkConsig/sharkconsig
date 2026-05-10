@@ -206,8 +206,29 @@ export default function CampaignsPage() {
         const from = startRange + totalProcessed;
         const to = Math.min(from + pageSize - 1, endRange);
 
-        // CONSULTA DIRETA NA TABELA DE SNAPSHOT (SEM JOINS)
-        let query = supabase.from('base_consulta_rapida').select('*')
+        // DETERMINAR QUAL TABELA USAR BASEADO NO CONVÊNIO DA CAMPANHA (Split Tables Optimization)
+        // Isso aumenta a performance e evita timeouts em grandes exportações
+        let targetTable = 'base_consulta_rapida';
+        const campaignConvenio = campaign.nome?.toUpperCase() || "";
+        
+        // Tentamos inferir a tabela pelo convênio da campanha ou filtros
+        if (campaignConvenio.includes('SIAPE')) {
+          targetTable = 'base_consulta_siape';
+        } else if (campaignConvenio.includes('GOVERNO SP')) {
+          targetTable = 'base_consulta_governo_sp';
+        } else if (campaignConvenio.includes('PREFEITURA SP')) {
+          targetTable = 'base_consulta_prefeitura_sp';
+        } else if (campaignConvenio.includes('GOVERNO PI')) {
+          targetTable = 'base_consulta_governo_pi';
+        } else if (campaignConvenio.includes('GOVERNO MA')) {
+          targetTable = 'base_consulta_governo_ma';
+        } else if (filters.orgaos?.length > 0) {
+          const firstOrgao = filters.orgaos[0].toUpperCase();
+          if (firstOrgao.includes('SIAPE')) targetTable = 'base_consulta_siape';
+        }
+
+        // CONSULTA NA TABELA BASE CORRETA
+        let query = supabase.from(targetTable).select('*')
 
         // ... (Filtros permanecem idênticos)
         if (filters.orgaos?.length > 0) {

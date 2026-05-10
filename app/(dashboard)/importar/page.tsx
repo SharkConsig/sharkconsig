@@ -1451,15 +1451,14 @@ export default function ImportBatchPage() {
                 .eq('id', currentBatch.id);
             });
 
-            // Trigger background refresh of the search base
+            // Trigger background refresh of the search base (Optimized Split Tables)
             // We don't await this to avoid UI blocking if it takes too long
-            supabase.rpc('refresh_base_consulta_rapida').then(({ data, error }) => {
+            supabase.rpc('refresh_all_base_consultas').then(({ data, error }) => {
               if (error) {
-                // If it's a timeout (usually error.code 504 or empty object in some contexts)
-                // we log it as a warning because the server probably keep processing
-                console.warn("A atualização da base de consulta rápida ultrapassou o tempo limite do navegador, mas deve continuar processando no servidor:", error);
+                // Se der timeout, avisamos que continuará processando
+                console.warn("A atualização das tabelas de consulta rápida pode ter ultrapassado o tempo limite, mas deve continuar no servidor:", error);
               } else {
-                console.log("Base de consulta rápida atualizada com sucesso:", data);
+                console.log("Tabelas de consulta rápida atualizadas com sucesso:", data);
               }
             }).catch(err => {
               console.warn("Erro ao disparar refresh da base (Catch):", err);
@@ -1741,80 +1740,97 @@ export default function ImportBatchPage() {
         </div>
 
         {/* Summary Stats */}
-        <Card className="card-shadow">
-          <CardContent className="py-[45px] px-8 flex items-center gap-6">
-            <div className="w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center">
-              <Users className="w-[25px] h-[25px] text-slate-300" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest">Total na base</p>
-                <button 
-                  onClick={handleRefreshTotal}
-                  disabled={isRefreshingTotal}
-                  className={cn(
-                    "p-1 rounded-full hover:bg-slate-100 transition-all text-slate-400 hover:text-primary",
-                    isRefreshingTotal && "animate-spin text-primary"
-                  )}
-                  title="Atualizar total"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-                </button>
+        <div className="grid grid-cols-1 gap-6 mb-8 mt-4">
+          <Card className="card-shadow bg-white overflow-hidden border border-slate-100/50">
+            <CardContent className="p-0">
+              <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-100">
+                {/* Header/Info Section */}
+                <div className="p-8 md:w-1/4 bg-slate-50/30 flex flex-col justify-center items-center text-center">
+                  <div className="w-14 h-14 bg-white shadow-sm border border-slate-100 rounded-2xl flex items-center justify-center mb-4 group transition-all hover:scale-110">
+                    <Users className="w-7 h-7 text-primary/40 transition-colors group-hover:text-primary" />
+                  </div>
+                  <div className="flex items-center gap-2 mb-1 justify-center">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Clientes na Base</p>
+                    <button 
+                      onClick={handleRefreshTotal}
+                      disabled={isRefreshingTotal}
+                      className={cn(
+                        "p-1 rounded-full hover:bg-white transition-all text-slate-400 hover:text-primary border border-transparent hover:border-slate-100 shadow-none hover:shadow-sm",
+                        isRefreshingTotal && "animate-spin text-primary"
+                      )}
+                      title="Atualizar total"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                    </button>
+                  </div>
+                  <p className="text-[14px] font-black text-slate-900 tracking-tighter">
+                    {(totalBaseSiape + totalBaseGovSP + totalBasePMSP + totalBaseGovPI + totalBaseGovMA).toLocaleString('pt-BR')}
+                  </p>
+                </div>
+
+                {/* Metrics Grid */}
+                <div className="flex-1 p-8 bg-white">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+                    {/* SIAPE */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">SIAPE</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-primary transition-colors">
+                        {totalBaseSiape.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+
+                    {/* GOV SP */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">GOV SP</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-emerald-600 transition-colors">
+                        {totalBaseGovSP.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+
+                    {/* PMSP */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">PREF SP</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-blue-600 transition-colors">
+                        {totalBasePMSP.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+
+                    {/* GOV PI */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">GOV PI</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-purple-600 transition-colors">
+                        {totalBaseGovPI.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+
+                    {/* GOV MA */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">GOV MA</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-orange-600 transition-colors">
+                        {totalBaseGovMA.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
-                      {totalBaseSiape.toLocaleString('pt-BR')}
-                    </span>
-                    <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">SIAPE</span>
-                  </div>
-                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
-                </div>
-
-                <div className="flex flex-col border-t border-slate-100 pt-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
-                      {totalBaseGovSP.toLocaleString('pt-BR')}
-                    </span>
-                    <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">GOV SP</span>
-                  </div>
-                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
-                </div>
-
-                <div className="flex flex-col border-t border-slate-100 pt-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
-                      {totalBasePMSP.toLocaleString('pt-BR')}
-                    </span>
-                    <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">PREF SP</span>
-                  </div>
-                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
-                </div>
-
-                <div className="flex flex-col border-t border-slate-100 pt-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
-                      {totalBaseGovPI.toLocaleString('pt-BR')}
-                    </span>
-                    <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">GOV PI</span>
-                  </div>
-                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
-                </div>
-
-                <div className="flex flex-col border-t border-slate-100 pt-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
-                      {totalBaseGovMA.toLocaleString('pt-BR')}
-                    </span>
-                    <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">GOV MA</span>
-                  </div>
-                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clientes cadastrados</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Table Section */}
         <Card className="card-shadow">

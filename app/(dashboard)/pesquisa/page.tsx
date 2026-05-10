@@ -139,167 +139,114 @@ export default function SearchClientPage() {
         return
       }
       
-      // 1. Try search in SIAPE Clients
-      let siapeQuery = supabase.from('clientes').select('*')
-      if (digits.length <= 11) {
-        const paddedCpf = digits.padStart(11, '0')
-        siapeQuery = siapeQuery.or(`cpf.eq.${paddedCpf},telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
-      } else {
-        siapeQuery = siapeQuery.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
-      }
+      const cleanCPF = digits.padStart(11, '0')
 
-      const { data: siapeData } = await withRetry<ClientData | null>(async () => await siapeQuery.maybeSingle())
+      // ESTRATÉGIA DE BUSCA OTIMIZADA (Split Tables)
+      // Em vez de buscar em todas as tabelas de produção (lento), 
+      // buscamos na tabela global de consulta rápida primeiro para identificar o convênio
+      const { data: quickData, error: quickError } = await withRetry(async () => 
+        await supabase
+          .from('base_consulta_rapida')
+          .select('convenio, cpf')
+          .or(`cpf.eq.${cleanCPF},telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
+          .limit(1)
+          .maybeSingle()
+      );
 
-      if (siapeData) {
-        setClient(siapeData)
-        setClientType('siape')
+      if (quickError) console.warn("Erro na consulta rápida:", quickError);
 
-        // 2. Search SIAPE Registrations
-        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
-          await supabase
-            .from('matriculas')
-            .select(`
-              *,
-              instituidores (
-                *,
-                itens_credito (*)
-              )
-            `)
-            .eq('cliente_cpf', siapeData.cpf)
+      // Se encontramos na consulta rápida, já sabemos qual tabela de produção atacar
+      const targetConvenio = quickData?.convenio;
+      const finalCpf = quickData?.cpf || cleanCPF;
+
+      // 1. SIAPE
+      if (!targetConvenio || targetConvenio === 'siape') {
+        const { data: siapeData } = await withRetry<ClientData | null>(async () => 
+          await supabase.from('clientes').select('*').eq('cpf', finalCpf).maybeSingle()
         )
 
-        if (regError) console.error("Erro ao buscar matrículas SIAPE:", regError)
-        setRegistrations(regData || [])
-        setShowProfile(true)
-        return
+        if (siapeData) {
+          setClient(siapeData)
+          setClientType('siape')
+          const { data: regData } = await withRetry(async () => 
+            await supabase.from('matriculas').select('*, instituidores(*, itens_credito(*))').eq('cliente_cpf', siapeData.cpf)
+          )
+          setRegistrations(regData || [])
+          setShowProfile(true)
+          return
+        }
       }
 
-      // 2. Try search in Governo SP Clients
-      let govSpQuery = supabase.from('governo_sp_clientes').select('*')
-      if (digits.length <= 11) {
-        const paddedCpf = digits.padStart(11, '0')
-        govSpQuery = govSpQuery.or(`cpf.eq.${paddedCpf},telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
-      } else {
-        govSpQuery = govSpQuery.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
-      }
-
-      const { data: govSpData } = await withRetry<ClientData | null>(async () => await govSpQuery.maybeSingle())
-
-      if (govSpData) {
-        setClient(govSpData)
-        setClientType('governo_sp')
-
-        // Search Governo SP Identificações and Lotações
-        const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
-          await supabase
-            .from('governo_sp_identificacoes')
-            .select(`
-              *,
-              governo_sp_lotacoes (*)
-            `)
-            .eq('cliente_id', govSpData.id)
+      // 2. GOVERNO SP
+      if (!targetConvenio || targetConvenio === 'governo_sp') {
+        const { data: govSpData } = await withRetry<ClientData | null>(async () => 
+          await supabase.from('governo_sp_clientes').select('*').eq('cpf', finalCpf).maybeSingle()
         )
 
-        if (idError) console.error("Erro ao buscar identificações Governo SP:", idError)
-        setRegistrations(idData || [])
-        setShowProfile(true)
-        return
+        if (govSpData) {
+          setClient(govSpData)
+          setClientType('governo_sp')
+          const { data: idData } = await withRetry<Record<string, unknown>[] | null>(async () =>
+            await supabase.from('governo_sp_identificacoes').select('*, governo_sp_lotacoes(*)').eq('cliente_id', govSpData.id)
+          )
+          setRegistrations(idData || [])
+          setShowProfile(true)
+          return
+        }
       }
 
-      // 3. Try search in Prefeitura SP Clients
-      let pmspQuery = supabase.from('prefeitura_sp_clientes').select('*')
-      if (digits.length <= 11) {
-        const paddedCpf = digits.padStart(11, '0')
-        pmspQuery = pmspQuery.or(`cpf.eq.${paddedCpf},telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
-      } else {
-        pmspQuery = pmspQuery.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
-      }
-
-      const { data: pmspData } = await withRetry<ClientData | null>(async () => await pmspQuery.maybeSingle())
-
-      if (pmspData) {
-        setClient(pmspData)
-        setClientType('prefeitura_sp')
-
-        // Search Prefeitura SP Identificações and Lotações
-        const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
-          await supabase
-            .from('prefeitura_sp_identificacoes')
-            .select(`
-              *,
-              prefeitura_sp_lotacoes (*)
-            `)
-            .eq('cliente_id', pmspData.id)
+      // 3. PREFEITURA SP
+      if (!targetConvenio || targetConvenio === 'prefeitura_sp') {
+        const { data: pmspData } = await withRetry<ClientData | null>(async () => 
+          await supabase.from('prefeitura_sp_clientes').select('*').eq('cpf', finalCpf).maybeSingle()
         )
 
-        if (idError) console.error("Erro ao buscar identificações Prefeitura SP:", idError)
-        setRegistrations(idData || [])
-        setShowProfile(true)
-        return
+        if (pmspData) {
+          setClient(pmspData)
+          setClientType('prefeitura_sp')
+          const { data: idData } = await withRetry<Record<string, unknown>[] | null>(async () =>
+            await supabase.from('prefeitura_sp_identificacoes').select('*, prefeitura_sp_lotacoes(*)').eq('cliente_id', pmspData.id)
+          )
+          setRegistrations(idData || [])
+          setShowProfile(true)
+          return
+        }
       }
 
-      // 4. Try search in Governo PI Clients
-      let govPiQuery = supabase.from('governo_pi_clientes').select('*')
-      if (digits.length <= 11) {
-        const paddedCpf = digits.padStart(11, '0')
-        govPiQuery = govPiQuery.or(`cpf.eq.${paddedCpf},telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
-      } else {
-        govPiQuery = govPiQuery.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
-      }
-
-      const { data: govPiData } = await withRetry<ClientData | null>(async () => await govPiQuery.maybeSingle())
-
-      if (govPiData) {
-        setClient(govPiData)
-        setClientType('governo_pi')
-
-        // Search Governo PI Identificações and Lotações
-        const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
-          await supabase
-            .from('governo_pi_identificacoes')
-            .select(`
-              *,
-              governo_pi_lotacoes (*)
-            `)
-            .eq('cliente_id', govPiData.id)
+      // 4. GOVERNO PI
+      if (!targetConvenio || targetConvenio === 'governo_pi') {
+        const { data: govPiData } = await withRetry<ClientData | null>(async () => 
+          await supabase.from('governo_pi_clientes').select('*').eq('cpf', finalCpf).maybeSingle()
         )
 
-        if (idError) console.error("Erro ao buscar identificações Governo PI:", idError)
-        setRegistrations(idData || [])
-        setShowProfile(true)
-        return
+        if (govPiData) {
+          setClient(govPiData)
+          setClientType('governo_pi')
+          const { data: idData } = await withRetry<Record<string, unknown>[] | null>(async () =>
+            await supabase.from('governo_pi_identificacoes').select('*, governo_pi_lotacoes(*)').eq('cliente_id', govPiData.id)
+          )
+          setRegistrations(idData || [])
+          setShowProfile(true)
+          return
+        }
       }
 
-      // 5. Try search in Governo MA Clients
-      let govMaQuery = supabase.from('governo_ma_clientes').select('*')
-      if (digits.length <= 11) {
-        const paddedCpf = digits.padStart(11, '0')
-        govMaQuery = govMaQuery.or(`cpf.eq.${paddedCpf},telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
-      } else {
-        govMaQuery = govMaQuery.or(`telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
-      }
-
-      const { data: govMaData } = await withRetry<ClientData | null>(async () => await govMaQuery.maybeSingle())
-
-      if (govMaData) {
-        setClient(govMaData)
-        setClientType('governo_ma')
-
-        // Search Governo MA Identificações and Lotações
-        const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
-          await supabase
-            .from('governo_ma_identificacoes')
-            .select(`
-              *,
-              governo_ma_lotacoes (*)
-            `)
-            .eq('cliente_id', govMaData.id)
+      // 5. GOVERNO MA
+      if (!targetConvenio || targetConvenio === 'governo_ma') {
+        const { data: govMaData } = await withRetry<ClientData | null>(async () => 
+          await supabase.from('governo_ma_clientes').select('*').eq('cpf', finalCpf).maybeSingle()
         )
 
-        if (idError) console.error("Erro ao buscar identificações Governo MA:", idError)
-        setRegistrations(idData || [])
-        setShowProfile(true)
-        return
+        if (govMaData) {
+          setClient(govMaData)
+          setClientType('governo_ma')
+          const { data: idData } = await withRetry<Record<string, unknown>[] | null>(async () =>
+            await supabase.from('governo_ma_identificacoes').select('*, governo_ma_lotacoes(*)').eq('cliente_id', govMaData.id)
+          )
+          setRegistrations(idData || [])
+          setShowProfile(true)
+          return
+        }
       }
 
       setError("Cliente não encontrado.")
