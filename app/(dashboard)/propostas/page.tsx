@@ -143,7 +143,8 @@ export default function ProposalsPage() {
   const [lockedProposals, setLockedProposals] = useState<Record<string, { user_id: string, user_name: string, role: string }>>({})
 
   // Helper para funções que bloqueiam/travam propostas
-  const lockerRoles = ['Operacional', 'Administrador', 'Administrativo', 'Admin', 'Desenvolvedor'];
+  // Apenas Operacional e Administrativo (Administrador) devem travar
+  const lockerRoles = ['Operacional', 'Administrador', 'Administrativo', 'Admin'];
   const isLockerRole = (role?: string) => role ? lockerRoles.includes(role) : false;
 
   // Gerenciamento de presença global para travas de propostas
@@ -709,17 +710,27 @@ export default function ProposalsPage() {
                       return (
                         <React.Fragment key={proposal.id}>
                           <tr 
-                            onClick={() => !isLockedByOther && toggleProposalExpansion(proposal.id_lead)}
+                            onClick={() => {
+                              // Desenvolvedor nunca é bloqueado
+                              if (isDeveloper) {
+                                toggleProposalExpansion(proposal.id_lead);
+                                return;
+                              }
+                              // Se já está expandida, permite fechar mesmo se houver lock (evita travar dois usuários)
+                              if (expandedProposalId === proposal.id_lead || !isLockedByOther) {
+                                toggleProposalExpansion(proposal.id_lead);
+                              }
+                            }}
                             className={cn(
                               "hover:bg-slate-50 transition-colors group cursor-pointer relative",
                               expandedProposalId === proposal.id_lead ? "bg-slate-50 border-l-2 border-primary border-b-0" : (index % 2 === 0 ? "bg-slate-100" : "bg-white"),
-                              (isLoading || isLockedByOther) && expandedProposalId !== proposal.id_lead && "opacity-80",
+                              (isLoading || (isLockedByOther && !isDeveloper)) && expandedProposalId !== proposal.id_lead && "opacity-80",
                               isLoading && "pointer-events-none"
                             )}
                           >
                             <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">
                               {proposal.id_lead}
-                              {isLockedByOther && (
+                              {isLockedByOther && !isDeveloper && (
                                 <div className="mt-1 flex items-center gap-1 text-[9px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100 w-fit whitespace-nowrap animate-pulse">
                                   <Lock className="w-2.5 h-2.5" />
                                   BLOQUEADA POR: {lock.user_name.split(' ')[0]}

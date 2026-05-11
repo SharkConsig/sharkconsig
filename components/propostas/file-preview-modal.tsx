@@ -107,16 +107,16 @@ export function FilePreviewModal({ isOpen, onClose, url, label, extension }: Fil
   const handlePrint = () => {
     if (!blobUrl) return
 
-    const iframe = document.createElement('iframe')
-    iframe.style.position = 'fixed'
-    iframe.style.right = '0'
-    iframe.style.bottom = '0'
-    iframe.style.width = '0'
-    iframe.style.height = '0'
-    iframe.style.border = 'none'
-    document.body.appendChild(iframe)
-
     if (isImage) {
+      const iframe = document.createElement('iframe')
+      iframe.style.position = 'fixed'
+      iframe.style.right = '0'
+      iframe.style.bottom = '0'
+      iframe.style.width = '0'
+      iframe.style.height = '0'
+      iframe.style.border = 'none'
+      document.body.appendChild(iframe)
+
       const content = `
         <html>
           <head>
@@ -127,42 +127,62 @@ export function FilePreviewModal({ isOpen, onClose, url, label, extension }: Fil
             </style>
           </head>
           <body>
-            <img src="${blobUrl}" onload="window.print();" />
+            <img src="${blobUrl}" onload="setTimeout(function(){ window.print(); }, 500);" />
           </body>
         </html>
       `
-      iframe.contentWindow?.document.open()
-      iframe.contentWindow?.document.write(content)
-      iframe.contentWindow?.document.close()
-    } else if (isPdf) {
-      // Para PDF, o navegador precisa tratar o blob corretamente
-      iframe.src = blobUrl
       
-      const checkAndPrint = () => {
-        try {
-          if (iframe.contentWindow) {
-            iframe.contentWindow.focus()
-            iframe.contentWindow.print()
-          }
-        } catch (e) {
-          console.error("Erro ao imprimir via iframe:", e)
-          // Fallback para abrir em nova aba se o iframe for bloqueado
-          const printWindow = window.open(blobUrl, '_blank')
-          if (printWindow) {
-            printWindow.onload = () => {
-              printWindow.focus()
-              printWindow.print()
-            }
-          }
+      try {
+        const doc = iframe.contentWindow?.document || iframe.contentDocument
+        if (doc) {
+          doc.open()
+          doc.write(content)
+          doc.close()
         }
+      } catch (e) {
+        console.error("Erro ao preparar impressão de imagem:", e)
+        window.open(blobUrl, '_blank')
       }
 
-      iframe.onload = checkAndPrint
-    }
+      setTimeout(() => {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe)
+      }, 5000)
+    } else if (isPdf) {
+      // Para PDF, abrir em nova aba é o método mais robusto e seguro contra erros de cross-origin
+      // Especialmente em ambientes de iframe como o preview do AI Studio
+      const printWindow = window.open(blobUrl, '_blank')
+      if (printWindow) {
+        printWindow.focus()
+      } else {
+        // Se o popup for bloqueado, tentamos o método do iframe com tratamento de erro rigoroso
+        const iframe = document.createElement('iframe')
+        iframe.style.position = 'fixed'
+        iframe.style.right = '0'
+        iframe.style.bottom = '0'
+        iframe.style.width = '0'
+        iframe.style.height = '0'
+        iframe.style.border = 'none'
+        iframe.src = blobUrl
+        document.body.appendChild(iframe)
+        
+        iframe.onload = () => {
+          try {
+            if (iframe.contentWindow) {
+              iframe.contentWindow.focus()
+              iframe.contentWindow.print()
+            }
+          } catch (e) {
+            console.error("Erro ao imprimir PDF via iframe:", e)
+            // Se tudo falhar, informamos ao usuário para baixar o arquivo
+            setError("O bloqueador de pop-ups ou restrições do navegador impediram a impressão automática. Por favor, baixe o arquivo ou tente abrir em uma nova aba.")
+          }
+        }
 
-    setTimeout(() => {
-      if (document.body.contains(iframe)) document.body.removeChild(iframe)
-    }, 10000) // Aumentado para garantir que o print dialog abra
+        setTimeout(() => {
+          if (document.body.contains(iframe)) document.body.removeChild(iframe)
+        }, 5000)
+      }
+    }
   }
 
   return (
