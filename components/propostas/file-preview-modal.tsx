@@ -3,10 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Download, Printer, X, FileText, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
+import { Download, X, FileText, Loader2, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react"
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
+
+// Configurar o worker do PDF.js
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
 interface FilePreviewModalProps {
   isOpen: boolean
@@ -17,44 +20,40 @@ interface FilePreviewModalProps {
 }
 
 export function FilePreviewModal({ isOpen, onClose, url, label, extension }: FilePreviewModalProps) {
-  useEffect(() => {
-    // Configurar o worker do PDF.js apenas no cliente
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs`
-  }, [])
-
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [numPages, setNumPages] = useState<number>(0)
   const [pageNumber, setPageNumber] = useState<number>(1)
   const [scale, setScale] = useState(1.0)
+  const [containerWidth, setContainerWidth] = useState<number>(0)
   
   const isImage = ["JPG", "JPEG", "PNG", "GIF", "WEBP"].includes(extension.toUpperCase())
   const isPdf = extension.toUpperCase() === "PDF"
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const updateScale = useCallback(() => {
-    if (containerRef.current) {
-      const containerWidth = containerRef.current.clientWidth - 64 // padding
-      // Assumindo uma largura padrão de PDF (A4 ~600-800px em 1.0)
-      const targetScale = Math.min(containerWidth / 650, 1.5)
-      setScale(Math.max(targetScale, 0.5))
-    }
-  }, [])
-
+  // Observer para largura do container para scaling automático
   useEffect(() => {
-    if (isPdf && !isLoading && !error) {
-      updateScale()
-      window.addEventListener('resize', updateScale)
-      return () => window.removeEventListener('resize', updateScale)
-    }
-  }, [isPdf, isLoading, error, updateScale])
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      if (entries[0]) {
+        // Reduzimos um pouco para dar margem lateral
+        setContainerWidth(entries[0].contentRect.width - 40);
+      }
+    });
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [isOpen]);
 
   const loadFileData = useCallback(async () => {
     if (!url) return
     setIsLoading(true)
     setError(null)
     try {
+      // Usamos fetch para pegar os dados e criar um blob
+      // Isso ajuda a evitar problemas de CORS em alguns casos e permite download mais limpo
       const response = await fetch(url)
       if (!response.ok) throw new Error("Falha ao carregar arquivo")
       const blob = await response.blob()
@@ -76,9 +75,6 @@ export function FilePreviewModal({ isOpen, onClose, url, label, extension }: Fil
     if (isOpen && url) {
       loadFileData()
     }
-    return () => {
-      // Cleanup is handled by the clearBlob reference or dependencies if needed.
-    }
   }, [isOpen, url, loadFileData])
 
   useEffect(() => {
@@ -92,6 +88,7 @@ export function FilePreviewModal({ isOpen, onClose, url, label, extension }: Fil
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages)
     setPageNumber(1)
+    setIsLoading(false)
   }
 
   const handleDownload = () => {
@@ -104,159 +101,99 @@ export function FilePreviewModal({ isOpen, onClose, url, label, extension }: Fil
     document.body.removeChild(link)
   }
 
-  const handlePrint = () => {
-    if (!blobUrl) return
-
-    if (isImage) {
-      const iframe = document.createElement('iframe')
-      iframe.style.position = 'fixed'
-      iframe.style.right = '0'
-      iframe.style.bottom = '0'
-      iframe.style.width = '0'
-      iframe.style.height = '0'
-      iframe.style.border = 'none'
-      document.body.appendChild(iframe)
-
-      const content = `
-        <html>
-          <head>
-            <style>
-              @page { size: auto; margin: 0; }
-              body { margin: 0; display: flex; align-items: center; justify-content: center; }
-              img { max-width: 100%; max-height: 100%; object-fit: contain; }
-            </style>
-          </head>
-          <body>
-            <img src="${blobUrl}" onload="setTimeout(function(){ window.print(); }, 500);" />
-          </body>
-        </html>
-      `
-      
-      try {
-        const doc = iframe.contentWindow?.document || iframe.contentDocument
-        if (doc) {
-          doc.open()
-          doc.write(content)
-          doc.close()
-        }
-      } catch (e) {
-        console.error("Erro ao preparar impressão de imagem:", e)
-        window.open(blobUrl, '_blank')
-      }
-
-      setTimeout(() => {
-        if (document.body.contains(iframe)) document.body.removeChild(iframe)
-      }, 5000)
-    } else if (isPdf) {
-      // Para PDF, abrir em nova aba é o método mais robusto e seguro contra erros de cross-origin
-      // Especialmente em ambientes de iframe como o preview do AI Studio
-      const printWindow = window.open(blobUrl, '_blank')
-      if (printWindow) {
-        printWindow.focus()
-      } else {
-        // Se o popup for bloqueado, tentamos o método do iframe com tratamento de erro rigoroso
-        const iframe = document.createElement('iframe')
-        iframe.style.position = 'fixed'
-        iframe.style.right = '0'
-        iframe.style.bottom = '0'
-        iframe.style.width = '0'
-        iframe.style.height = '0'
-        iframe.style.border = 'none'
-        iframe.src = blobUrl
-        document.body.appendChild(iframe)
-        
-        iframe.onload = () => {
-          try {
-            if (iframe.contentWindow) {
-              iframe.contentWindow.focus()
-              iframe.contentWindow.print()
-            }
-          } catch (e) {
-            console.error("Erro ao imprimir PDF via iframe:", e)
-            // Se tudo falhar, informamos ao usuário para baixar o arquivo
-            setError("O bloqueador de pop-ups ou restrições do navegador impediram a impressão automática. Por favor, baixe o arquivo ou tente abrir em uma nova aba.")
-          }
-        }
-
-        setTimeout(() => {
-          if (document.body.contains(iframe)) document.body.removeChild(iframe)
-        }, 5000)
-      }
-    }
-  }
-
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent showCloseButton={false} className="sm:max-w-5xl h-[90vh] flex flex-col p-0 overflow-hidden bg-[#F8FAFC]">
-        <DialogHeader className="p-4 bg-white border-b flex flex-row items-center justify-between space-y-0 shadow-sm z-10 px-6">
-          <div className="flex items-center gap-2">
-            <div className="bg-emerald-500/10 p-2 rounded-lg">
+      <DialogContent showCloseButton={false} className="sm:max-w-[95vw] lg:max-w-[90vw] h-[90vh] flex flex-col p-0 overflow-hidden bg-[#F8FAFC] border-none shadow-2xl">
+        <DialogHeader className="p-4 bg-white border-b flex flex-row items-center justify-between space-y-0 shadow-sm z-50 px-6">
+          <div className="flex items-center gap-3">
+            <div className="bg-emerald-500/10 p-2.5 rounded-xl">
               <FileText className="w-5 h-5 text-emerald-600" />
             </div>
             <div>
-              <DialogTitle className="text-[14px] font-black text-slate-800 uppercase tracking-tight">
+              <DialogTitle className="text-[14px] font-black text-slate-800 uppercase tracking-tight leading-none mb-1">
                 {label}
               </DialogTitle>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{extension}</p>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none">{extension}</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
-            {isPdf && numPages > 1 && (
-              <div className="flex items-center bg-slate-100 rounded-lg p-1 gap-1">
+          <div className="flex items-center gap-3">
+            {isPdf && numPages > 0 && (
+              <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-1 border border-slate-200">
                 <Button 
                   variant="ghost" 
                   size="sm" 
                   disabled={pageNumber <= 1}
                   onClick={() => setPageNumber(prev => Math.max(1, prev - 1))}
-                  className="h-7 w-7 p-0"
+                  className="h-8 w-8 p-0 rounded-lg"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
-                <span className="text-[10px] font-black tabular-nums px-2 border-x border-slate-200">
-                  {pageNumber} / {numPages}
-                </span>
+                <div className="flex items-center gap-1.5 px-3">
+                  <span className="text-[11px] font-black text-slate-700 tabular-nums">
+                    {pageNumber}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400">/</span>
+                  <span className="text-[11px] font-black text-slate-700 tabular-nums">
+                    {numPages}
+                  </span>
+                </div>
                 <Button 
                   variant="ghost" 
                   size="sm" 
                   disabled={pageNumber >= numPages}
                   onClick={() => setPageNumber(prev => Math.min(numPages, prev + 1))}
-                  className="h-7 w-7 p-0"
+                  className="h-8 w-8 p-0 rounded-lg"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
             )}
 
-            <div className="flex items-center gap-2">
+            {isPdf && (
+              <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-1 border border-slate-200">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setScale(prev => Math.max(0.5, prev - 0.2))}
+                  className="h-8 w-8 p-0 rounded-lg"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setScale(1.0)}
+                  className="px-2 text-[10px] font-black h-8 rounded-lg"
+                >
+                  {Math.round(scale * 100)}%
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setScale(prev => Math.min(3, prev + 0.2))}
+                  className="h-8 w-8 p-0 rounded-lg"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 ml-2">
               {!isLoading && !error && (
-                <>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={handlePrint}
-                    className="h-9 px-4 text-[10px] font-black uppercase tracking-widest gap-2 bg-white border-slate-200 hover:bg-slate-50 text-slate-700 shadow-sm transition-all active:scale-95"
-                  >
-                    <Printer className="w-4 h-4" />
-                    Imprimir
-                  </Button>
-                  <Button 
-                    variant="default" 
-                    size="sm" 
-                    onClick={handleDownload}
-                    className="h-9 px-4 text-[10px] font-black uppercase tracking-widest gap-2 bg-[#00C853] hover:bg-[#00C853]/90 text-white shadow-md active:scale-95 transition-all"
-                  >
-                    <Download className="w-4 h-4" />
-                    Baixar
-                  </Button>
-                  <div className="w-[1px] h-6 bg-slate-200 mx-1" />
-                </>
+                <Button 
+                  onClick={handleDownload}
+                  className="h-10 px-5 text-[10px] font-black uppercase tracking-widest gap-2 bg-[#00C853] hover:bg-[#00C854] text-white shadow-lg shadow-emerald-500/20 active:scale-95 transition-all rounded-xl"
+                >
+                  <Download className="w-4 h-4" />
+                  Baixar
+                </Button>
               )}
               <Button 
                 variant="ghost" 
                 size="sm" 
                 onClick={onClose}
-                className="h-9 w-9 p-0 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                className="h-10 w-10 p-0 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </Button>
@@ -264,70 +201,80 @@ export function FilePreviewModal({ isOpen, onClose, url, label, extension }: Fil
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden p-0 flex items-center justify-center bg-[#F1F5F9]" ref={containerRef}>
+        <div 
+          className="flex-1 overflow-auto p-4 md:p-8 flex flex-col items-center bg-[#f0f2f5] custom-scrollbar min-h-0" 
+          ref={containerRef}
+        >
           {isLoading ? (
-            <div className="flex flex-col items-center gap-4">
-              <Loader2 className="w-10 h-10 text-emerald-500 animate-spin" />
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Preparando visualização...</p>
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <div className="relative">
+                <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
+              </div>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest animate-pulse">Carregando documento...</p>
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center justify-center text-slate-400 space-y-4">
-              <div className="bg-red-50 p-4 rounded-full">
-                <X className="w-8 h-8 text-red-400" />
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 max-w-md text-center space-y-6">
+              <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center border-4 border-white shadow-xl">
+                <X className="w-10 h-10 text-red-400" />
               </div>
-              <p className="text-[12px] font-bold uppercase tracking-widest text-red-500">
-                {error}
-              </p>
-              <Button onClick={() => window.open(url, "_blank")} variant="outline" className="bg-white">
+              <div>
+                <p className="text-[13px] font-black uppercase tracking-tight text-slate-700 mb-2">
+                  Não foi possível visualizar
+                </p>
+                <p className="text-[11px] font-bold text-slate-400">
+                  {error} Tente baixar o arquivo clicando no botão acima.
+                </p>
+              </div>
+              <Button 
+                onClick={() => window.open(url, "_blank")} 
+                variant="outline" 
+                className="rounded-xl border-slate-200 text-[11px] font-black uppercase tracking-widest px-6"
+              >
                 Abrir em nova aba
               </Button>
             </div>
           ) : (
-            <div className="w-full h-full flex items-center justify-center overflow-auto p-4 md:p-8">
+            <div className="w-full flex flex-col items-center pb-8">
               {isImage ? (
-                <img 
-                  src={blobUrl || url} 
-                  alt={label} 
-                  className="max-w-full max-h-full object-contain shadow-2xl rounded-lg bg-white ring-1 ring-slate-200" 
-                />
+                <div className="relative group max-w-full">
+                  <img 
+                    src={blobUrl || url} 
+                    alt={label} 
+                    className="max-w-full h-auto object-contain shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-xl bg-white ring-1 ring-slate-200/50" 
+                  />
+                </div>
               ) : isPdf && blobUrl ? (
-                <div className="shadow-2xl rounded-lg overflow-hidden bg-white max-w-full relative min-h-[400px] flex items-center justify-center">
+                <div className="shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-xl bg-white ring-1 ring-slate-200/50">
                   <Document
                     file={blobUrl}
                     onLoadSuccess={onDocumentLoadSuccess}
                     onLoadError={(err) => {
                       console.error("Erro no PDF:", err)
-                      setError("O visualizador de PDF encontrou um problema. Você pode baixar o arquivo para visualizá-lo.")
+                      setError("Detectamos uma falha ao renderizar o PDF.")
                     }}
-                    loading={
-                      <div className="p-12 flex flex-col items-center gap-3">
-                        <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Carregando PDF...</p>
-                      </div>
-                    }
+                    loading={null}
+                    className="flex flex-col items-center"
                   >
                     <Page 
                       pageNumber={pageNumber} 
                       scale={scale}
-                      className="max-w-full h-auto"
-                      loading={
-                        <div className="p-12 flex flex-col items-center gap-3">
-                          <Loader2 className="w-6 h-6 animate-spin text-emerald-500/50" />
-                          <p className="text-[9px] font-bold text-slate-400 uppercase">Processando página...</p>
-                        </div>
-                      }
+                      width={containerWidth > 0 ? containerWidth : undefined}
+                      className="max-w-full"
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
                     />
                   </Document>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center text-slate-400 space-y-4">
-                  <FileText className="w-16 h-16 opacity-20" />
-                  <p className="text-[12px] font-bold uppercase tracking-[0.2em] opacity-40">
-                    Visualização não disponível
-                  </p>
-                  <Button onClick={handleDownload} variant="outline" className="bg-white font-bold uppercase tracking-widest text-[10px]">
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-300 space-y-6 py-20">
+                  <FileText className="w-16 h-16 opacity-30" />
+                  <div className="text-center">
+                    <p className="text-[12px] font-black uppercase tracking-[0.2em]">
+                      Visualização Indisponível
+                    </p>
+                    <p className="text-[10px] font-bold mt-1">O formato {extension} não possui visualizador nativo.</p>
+                  </div>
+                  <Button onClick={handleDownload} variant="outline" className="rounded-xl border-slate-200 h-10 px-6 font-black uppercase tracking-widest text-[10px]">
                     Fazer Download
                   </Button>
                 </div>

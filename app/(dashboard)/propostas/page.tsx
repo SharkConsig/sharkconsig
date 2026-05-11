@@ -16,8 +16,7 @@ import {
   Eye,
   Loader2,
   UserPlus,
-  RefreshCw,
-  Lock
+  RefreshCw
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ProposalDetailsAccordion } from "@/components/propostas/proposal-details-accordion"
@@ -140,59 +139,6 @@ export default function ProposalsPage() {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
   const [selectedProposalForStatus, setSelectedProposalForStatus] = useState<Proposal | null>(null)
   const [selectedProposalForTransfer, setSelectedProposalForTransfer] = useState<Proposal | null>(null)
-  const [lockedProposals, setLockedProposals] = useState<Record<string, { user_id: string, user_name: string, role: string }>>({})
-
-  // Helper para funções que bloqueiam/travam propostas
-  // Apenas Operacional e Administrativo (Administrador) devem travar
-  const lockerRoles = ['Operacional', 'Administrador', 'Administrativo', 'Admin'];
-  const isLockerRole = (role?: string) => role ? lockerRoles.includes(role) : false;
-
-  // Gerenciamento de presença global para travas de propostas
-  useEffect(() => {
-    if (!perfil) return
-
-    const channel = supabase.channel('global_proposals_presence', {
-      config: {
-        presence: {
-          key: perfil.id,
-        },
-      },
-    })
-
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const newState = channel.presenceState()
-        const locks: Record<string, { user_id: string, user_name: string, role: string }> = {}
-        
-        Object.values(newState).flat().forEach((pres: unknown) => {
-          const p = pres as { user_id: string, user_name: string, role: string, expanded_id?: string };
-          // Se o usuário está com uma proposta aberta e é uma função que trava
-          if (p.expanded_id && isLockerRole(p.role) && p.user_id !== perfil.id) {
-            locks[p.expanded_id] = {
-              user_id: p.user_id,
-              user_name: p.user_name,
-              role: p.role
-            }
-          }
-        })
-        
-        setLockedProposals(locks)
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({
-            user_id: perfil.id,
-            user_name: perfil.nome,
-            role: perfil.role,
-            expanded_id: expandedProposalId
-          })
-        }
-      })
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [perfil, expandedProposalId])
 
   const handleStatusUpdate = async (idLead: string, newStatus: string, ade?: string, obsCorretor?: string, obsOperacional?: string, customDate?: string) => {
     if (!perfil) return
@@ -704,38 +650,21 @@ export default function ProposalsPage() {
                   paginatedProposals
                     .filter(p => !expandedProposalId || p.id_lead === expandedProposalId)
                     .map((proposal, index) => {
-                      const lock = lockedProposals[proposal.id_lead];
-                      const isLockedByOther = lock && lock.user_id !== perfil?.id && (isOperational || isAdmin);
-
                       return (
                         <React.Fragment key={proposal.id}>
                           <tr 
                             onClick={() => {
-                              // Desenvolvedor nunca é bloqueado
-                              if (isDeveloper) {
-                                toggleProposalExpansion(proposal.id_lead);
-                                return;
-                              }
-                              // Se já está expandida, permite fechar mesmo se houver lock (evita travar dois usuários)
-                              if (expandedProposalId === proposal.id_lead || !isLockedByOther) {
-                                toggleProposalExpansion(proposal.id_lead);
-                              }
+                              toggleProposalExpansion(proposal.id_lead);
                             }}
                             className={cn(
                               "hover:bg-slate-50 transition-colors group cursor-pointer relative",
                               expandedProposalId === proposal.id_lead ? "bg-slate-50 border-l-2 border-primary border-b-0" : (index % 2 === 0 ? "bg-slate-100" : "bg-white"),
-                              (isLoading || (isLockedByOther && !isDeveloper)) && expandedProposalId !== proposal.id_lead && "opacity-80",
+                              isLoading && expandedProposalId !== proposal.id_lead && "opacity-80",
                               isLoading && "pointer-events-none"
                             )}
                           >
                             <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">
                               {proposal.id_lead}
-                              {isLockedByOther && !isDeveloper && (
-                                <div className="mt-1 flex items-center gap-1 text-[9px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100 w-fit whitespace-nowrap animate-pulse">
-                                  <Lock className="w-2.5 h-2.5" />
-                                  BLOQUEADA POR: {lock.user_name.split(' ')[0]}
-                                </div>
-                              )}
                               {isLoading && index === 0 && (
                               <div className="absolute top-0 left-0 w-full h-1 bg-primary/20 overflow-hidden">
                                 <div className="h-full bg-primary animate-progress w-full origin-left" />
@@ -815,17 +744,13 @@ export default function ProposalsPage() {
                                 <Button 
                                     variant="ghost" 
                                     size="icon" 
-                                    disabled={isLockedByOther}
                                     onClick={(event) => {
                                       event.stopPropagation()
                                       setSelectedProposalForStatus(proposal)
                                       setIsStatusModalOpen(true)
                                     }}
-                                    className={cn(
-                                      "w-[28px] h-[28px] bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg p-1.5 group/btn transition-all shadow-sm hover:shadow-md active:scale-95",
-                                      isLockedByOther && "opacity-50 cursor-not-allowed filter grayscale"
-                                    )}
-                                    title={isLockedByOther ? `BLOQUEADO POR ${lock.user_name}` : "ALTERAR STATUS DA PROPOSTA"}
+                                    className="w-[28px] h-[28px] bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg p-1.5 group/btn transition-all shadow-sm hover:shadow-md active:scale-95"
+                                    title="ALTERAR STATUS DA PROPOSTA"
                                   >
                                     <ChevronRight className="w-3.5 h-3.5" />
                                   </Button>
@@ -834,16 +759,12 @@ export default function ProposalsPage() {
                               <Button 
                                 variant="ghost" 
                                 size="icon" 
-                                disabled={isLockedByOther}
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   toggleProposalExpansion(proposal.id_lead)
                                 }}
-                                className={cn(
-                                  "w-[26px] h-[26px] bg-sky-500 hover:bg-sky-600 text-white rounded-md p-1 group/btn transition-all",
-                                  isLockedByOther && "opacity-50 cursor-not-allowed filter grayscale"
-                                )}
-                                title={isLockedByOther ? `BLOQUEADO POR ${lock.user_name}` : "VISUALIZAR/EDITAR PROPOSTA"}
+                                className="w-[26px] h-[26px] bg-sky-500 hover:bg-sky-600 text-white rounded-md p-1 group/btn transition-all"
+                                title="VISUALIZAR/EDITAR PROPOSTA"
                               >
                                 <Eye className="w-[13px] h-[13px]" />
                               </Button>
@@ -851,17 +772,13 @@ export default function ProposalsPage() {
                                 <Button 
                                   variant="ghost" 
                                   size="icon" 
-                                  disabled={isLockedByOther}
                                   onClick={(event) => {
                                     event.stopPropagation()
                                     setSelectedProposalForTransfer(proposal)
                                     setIsTransferModalOpen(true)
                                   }}
-                                  className={cn(
-                                    "w-[28px] h-[28px] bg-amber-500 hover:bg-amber-600 text-white rounded-lg p-1.5 group/btn transition-all shadow-sm hover:shadow-md active:scale-95",
-                                    isLockedByOther && "opacity-50 cursor-not-allowed filter grayscale"
-                                  )}
-                                  title={isLockedByOther ? `BLOQUEADO POR ${lock.user_name}` : "TRANSFERIR RESPONSÁVEL"}
+                                  className="w-[28px] h-[28px] bg-amber-500 hover:bg-amber-600 text-white rounded-lg p-1.5 group/btn transition-all shadow-sm hover:shadow-md active:scale-95"
+                                  title="TRANSFERIR RESPONSÁVEL"
                                 >
                                   <UserPlus className="w-3.5 h-3.5" />
                                 </Button>

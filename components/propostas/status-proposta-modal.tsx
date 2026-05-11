@@ -12,11 +12,10 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Input } from "@/components/ui/input"
-import { Check, X, Lock } from "lucide-react"
+import { Check, X } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 import { useAuth } from "@/context/auth-context"
 import { cn } from "@/lib/utils"
-import { supabase } from "@/lib/supabase"
 // Importações removidas: Popover, Calendar, ptBR, format
 
 interface StatusPropostaModalProps {
@@ -37,10 +36,9 @@ interface StatusPropostaModalProps {
 
 export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate }: StatusPropostaModalProps) {
   const { isCollapsed } = useSidebar()
-  const { isCorretor, isSupervisor, isDeveloper, isOperational, isAdmin, perfil: user } = useAuth()
+  const { isCorretor, isSupervisor, isDeveloper, isOperational, isAdmin } = useAuth()
   const [selectedStatus, setSelectedStatus] = useState<string>("")
   const [isUpdating, setIsUpdating] = useState(false)
-  const [lockedBy, setLockedBy] = useState<{ id: string; nome: string; role: string } | null>(null)
   
   // Novos estados para campos dinâmicos
   const [ade, setAde] = useState("")
@@ -80,72 +78,6 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
     }
   }, [proposal])
 
-  // Presence logic for locking
-  useEffect(() => {
-    if (!isOpen || !user || !proposal?.id_lead) return
-    // Somente rastrear presença para Operacional e Administrador
-    if (!isOperational && !isAdmin) return
-
-    const lockerRoles = ['Operacional', 'Administrador', 'Administrativo', 'Admin', 'Desenvolvedor'];
-    const isLockerRole = (role: string) => lockerRoles.includes(role);
-
-    const channel = supabase.channel(`proposal_lock_${proposal.id_lead}`, {
-      config: {
-        presence: {
-          key: user.id,
-        },
-      },
-    })
-
-    let timeoutId: NodeJS.Timeout;
-
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const newState = channel.presenceState()
-        const presences = Object.values(newState).flat() as Array<{
-          user_id: string;
-          user_name: string;
-          role: string;
-          online_at: string;
-        }>
-        
-        // Localizar outro usuário operacional ou administrador que não seja eu
-        const otherUser = presences.find(p => 
-          isLockerRole(p.role) && p.user_id !== user.id
-        )
-        
-        if (otherUser) {
-          clearTimeout(timeoutId);
-          setLockedBy({
-            id: otherUser.user_id,
-            nome: otherUser.user_name,
-            role: otherUser.role
-          })
-        } else {
-          // Delay para evitar flickering ao abrir/fechar componentes que rastreiam o mesmo canal
-          timeoutId = setTimeout(() => {
-            setLockedBy(null)
-          }, 1500);
-        }
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({
-            user_id: user.id,
-            user_name: user.nome || user.username || 'Usuário',
-            role: user.role,
-            online_at: new Date().toISOString(),
-          })
-        }
-      })
-
-    return () => {
-      clearTimeout(timeoutId);
-      supabase.removeChannel(channel)
-    }
-  }, [isOpen, user, proposal?.id_lead, isOperational, isAdmin])
-
-  const isLockedByOther = !!lockedBy && lockedBy.id !== user?.id && (isOperational || isAdmin);
 
   if (!proposal) return null
 
@@ -286,21 +218,6 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
         </DialogHeader>
 
         <div className="max-h-[calc(100vh-200px)] overflow-y-auto px-8 py-6 space-y-10 custom-scrollbar">
-          {/* Lock Banner */}
-          {isLockedByOther && (
-            <div className="bg-[#DB8E00] border border-[#2A1A01] rounded-xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300 mb-6">
-              <div className="bg-[#2A1A01] p-2 rounded-full">
-                <Lock className="w-5 h-5 text-[#FAFAFA]" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[12px] font-black text-[#2A1A01] uppercase tracking-tight">Proposta em Edição</p>
-                <p className="text-[11px] text-[#2A1A01] font-bold">
-                  Esta proposta está sendo atuada por <span className="font-black underline">{lockedBy?.nome}</span> neste momento. Você não pode alterar o status.
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* Sessão Dados Gerais */}
           <div className="space-y-5">
             <div className="border-b border-slate-200 pb-2">
@@ -1068,7 +985,7 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
         <DialogFooter className="bg-white border-t border-slate-100 px-10 py-8 flex flex-row justify-center gap-4">
           <Button 
             onClick={handleUpdate}
-            disabled={!selectedStatus || isUpdating || isLockedByOther}
+            disabled={!selectedStatus || isUpdating}
             className="h-9 bg-[#171717] hover:bg-[#262626] text-white text-[12px] font-bold px-5 gap-2 rounded-sm border-0 shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Check className="w-4 h-4" />

@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X, Lock } from "lucide-react"
+import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { FichaPropostaModal } from "./ficha-proposta-modal"
 import { FilePreviewModal } from "./file-preview-modal"
@@ -113,25 +113,21 @@ interface ProdutoConfig {
 
 export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
   const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor } = useAuth()
-  const [lockedBy, setLockedBy] = useState<{ id: string; nome: string; role: string } | null>(null)
   
   const isFinancialEditor = ['Operacional', 'Administrativo', 'Desenvolvedor', 'Admin', 'Administrador'].includes(user?.role || '')
-
-  // Lock logic: if someone else is operational or admin and acting, and current user is operational/admin
-  const isLockedByOther = !!lockedBy && lockedBy.id !== user?.id && (isOperational || isAdmin);
   
-  const canEditFields = (!isCorretor && !isLockedByOther) || (isCorretor && [
+  const canEditFields = (!isCorretor) || (isCorretor && [
     'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
     'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO'
   ].includes(proposal.status));
 
-  const canAttach = (!isCorretor && !isLockedByOther) || (isCorretor && [
+  const canAttach = (!isCorretor) || (isCorretor && [
     'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
     'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
     'COM INCONSISTÊNCIA NO BANCO'
   ].includes(proposal.status));
 
-  const canSave = (canEditFields || canAttach) && !isLockedByOther;
+  const canSave = (canEditFields || canAttach);
 
   const [activeTab, setActiveTab] = useState<"visualizar" | "historico" | "anexos">("visualizar")
   const [isFichaModalOpen, setIsFichaModalOpen] = useState(false)
@@ -146,71 +142,6 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   const [usersMap, setUsersMap] = useState<Map<string, string>>(new Map())
   const [isSaving, setIsSaving] = useState(false)
 
-  // Presence logic for locking
-  useEffect(() => {
-    if (!user || !proposal.id_lead) return
-    // Somente rastrear presença para Operacional e Administrador
-    if (!isOperational && !isAdmin) return
-
-    const lockerRoles = ['Operacional', 'Administrador', 'Administrativo', 'Admin', 'Desenvolvedor'];
-    const isLockerRole = (role: string) => lockerRoles.includes(role);
-
-    const channel = supabase.channel(`proposal_lock_${proposal.id_lead}`, {
-      config: {
-        presence: {
-          key: user.id,
-        },
-      },
-    })
-
-    let timeoutId: NodeJS.Timeout;
-
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const newState = channel.presenceState()
-        const presences = Object.values(newState).flat() as Array<{
-          user_id: string;
-          user_name: string;
-          role: string;
-          online_at: string;
-        }>
-        
-        // Localizar outro usuário operacional ou administrador que não seja eu
-        const otherUser = presences.find(p => 
-          isLockerRole(p.role) && p.user_id !== user.id
-        )
-        
-        if (otherUser) {
-          clearTimeout(timeoutId);
-          setLockedBy({
-            id: otherUser.user_id,
-            nome: otherUser.user_name,
-            role: otherUser.role
-          })
-        } else {
-          // Pequeno delay antes de remover o lock para evitar flickering
-          // causado por múltiplas abas ou trocas rápidas de canal
-          timeoutId = setTimeout(() => {
-            setLockedBy(null)
-          }, 1500);
-        }
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({
-            user_id: user.id,
-            user_name: user.nome || user.username || 'Usuário',
-            role: user.role,
-            online_at: new Date().toISOString(),
-          })
-        }
-      })
-
-    return () => {
-      clearTimeout(timeoutId);
-      supabase.removeChannel(channel)
-    }
-  }, [user, proposal.id_lead, isOperational, isAdmin])
   
   const [dbProdutosConfigs, setDbProdutosConfigs] = useState<ProdutoConfig[]>([])
   const [selectedCoefValue, setSelectedCoefValue] = useState<number | null>(
@@ -781,38 +712,6 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     setSelectedFiles(prev => ({ ...prev, [field]: file }))
   }
 
-  if (isLockedByOther) {
-    return (
-      <div className="bg-slate-50/50 p-6 space-y-6 border-t border-slate-100">
-        {/* Lock Banner */}
-        <div className="bg-[#DB8E00] border border-[#2A1A01] rounded-xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="bg-[#2A1A01] p-2 rounded-full">
-            <Lock className="w-5 h-5 text-[#FAFAFA]" />
-          </div>
-          <div className="flex-1">
-            <p className="text-[12px] font-black text-[#2A1A01] uppercase tracking-tight">Proposta em Edição</p>
-            <p className="text-[11px] text-[#2A1A01] font-bold">
-              Esta proposta está sendo atuada por <span className="font-black underline">{lockedBy?.nome}</span> neste momento. O acesso aos dados e ações está bloqueado para evitar conflitos.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-col items-center justify-center py-12 px-4 space-y-4 bg-white/50 rounded-xl border border-dashed border-amber-200">
-          <div className="bg-amber-100 p-4 rounded-full">
-            <Lock className="w-8 h-8 text-amber-600" />
-          </div>
-          <div className="text-center space-y-1">
-            <h3 className="text-[14px] font-bold text-slate-800 uppercase tracking-tight">Conteúdo Bloqueado</h3>
-            <p className="text-[12px] text-slate-500 max-w-xs mx-auto">
-              Esta proposta está sob a atuação de <strong>{lockedBy?.nome}</strong>. 
-              Para evitar perda de dados, a visualização e edição estão desabilitadas até que o usuário termine a operação.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="bg-slate-50/50 p-6 space-y-6 border-t border-slate-100">
       {/* Tabs */}
@@ -1372,7 +1271,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                         id="operacional-valor-parcela"
                         value={formData.valor_parcela}
                         onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
-                        disabled={!canEditFields || isLockedByOther}
+                        disabled={!canEditFields}
                         className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                         placeholder="R$ 0,00" 
                       />
@@ -1383,7 +1282,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                         id="operacional-valor-operacao"
                         value={formData.valor_operacao_operacional}
                         onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
-                        disabled={!canEditFields || isLockedByOther}
+                        disabled={!canEditFields}
                         className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                         placeholder="R$ 0,00" 
                       />
@@ -1394,7 +1293,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                         id="operacional-valor-cliente"
                         value={formData.valor_cliente_operacional}
                         onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
-                        disabled={!canEditFields || isLockedByOther}
+                        disabled={!canEditFields}
                         className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                         placeholder="R$ 0,00" 
                       />
@@ -1403,7 +1302,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                       id="save-divergencia-operacional"
                       onClick={handleUpdateProposal} 
                       className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
-                      disabled={isSaving || isLockedByOther}
+                      disabled={isSaving}
                     >
                       {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                     </Button>
