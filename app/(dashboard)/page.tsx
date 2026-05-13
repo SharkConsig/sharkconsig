@@ -39,6 +39,38 @@ interface RankingItem {
   countToday: number
 }
 
+interface AdminStats {
+  monthlyGoal: number
+  monthlyProduced: number
+  annualGoal: number
+  annualProduced: number
+  dailyGoal: number
+  dailyProduced: number
+  inProcessValue: number
+  inProcessCount: number
+  pendingActionsValue: number
+  pendingActionsCount: number
+  brokerRankings: {
+    name: string
+    team: string
+    supervisor: string
+    total: number
+    count: number
+  }[]
+}
+
+const parseCurrency = (val: string | number | null | undefined) => {
+  if (!val) return 0
+  const valStr = val.toString()
+  const clean = valStr.replace(/[^\d,.-]/g, '')
+  if (clean.includes('.') && clean.includes(',')) {
+    return parseFloat(clean.replace(/\./g, '').replace(',', '.'))
+  } else if (clean.includes(',')) {
+    return parseFloat(clean.replace(',', '.'))
+  }
+  return parseFloat(clean)
+}
+
 export default function DashboardPage() {
   const { perfil, isCorretor, isAdmin } = useAuth()
   const { isCollapsed } = useSidebar()
@@ -59,6 +91,11 @@ export default function DashboardPage() {
   const [teamInProcessCount, setTeamInProcessCount] = useState(0)
   const [teamPendingInconsistencyValue, setTeamPendingInconsistencyValue] = useState(0)
   const [banners, setBanners] = useState<{image_url: string, title: string | null}[]>([])
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
+  const [startDate, setStartDate] = useState<string>("")
+  const [endDate, setEndDate] = useState<string>("")
+  const [tempStartDate, setTempStartDate] = useState<string>("")
+  const [tempEndDate, setTempEndDate] = useState<string>("")
   
   const fetchDashboardData = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -67,13 +104,48 @@ export default function DashboardPage() {
       return
     }
     setIsLoading(true)
+
+    // Helper to fetch all records beyond the 1000 limit
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // Helper to fetch all records beyond the 1000 limit
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fetchAll = async (baseQuery: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let all: any[] = []
+      let from = 0
+      const step = 1000
+      let finished = false
+      
+      while (!finished) {
+        // PostgrestFilterBuilder doesn't have .clone(), but .range() returns a new instance
+        // so we can use baseQuery as a template for each iteration.
+        const { data, error } = await withRetry(() => baseQuery.range(from, from + step - 1))
+        if (error) throw error
+        if (!data || data.length === 0) {
+          finished = true
+        } else {
+          all = [...all, ...data]
+          if (data.length < step) {
+            finished = true
+          } else {
+            from += step
+          }
+        }
+      }
+      return all
+    }
+
     try {
+      const startOfToday = new Date()
+      startOfToday.setHours(0, 0, 0, 0)
+
       const startOfMonth = new Date()
       startOfMonth.setHours(0, 0, 0, 0)
       startOfMonth.setDate(1)
 
-      const startOfToday = new Date()
-      startOfToday.setHours(0, 0, 0, 0)
+      // Custom range for Supervisor
+      const customStart = perfil?.role === 'Supervisor' && startDate ? new Date(startDate + 'T00:00:00') : null
+      const customEnd = perfil?.role === 'Supervisor' && endDate ? new Date(endDate + 'T23:59:59') : null
 
       const startOfWeek = new Date()
       startOfWeek.setHours(0, 0, 0, 0)
@@ -94,35 +166,32 @@ export default function DashboardPage() {
 
       const paidStatuses = [
         "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", 
-        "PÓS-VENDA REALIZADA",
-        "PAGAMENTO DEVOLVIDO"
+        "PÓS-VENDA REALIZADA"
       ]
       const inProcessStatuses = [
         "ANDAMENTO / AGUARDANDO PAGAMENTO", 
-        "ANDAMENTO/AGUARDANDO PAGAMENTO",
         "COM INCONSISTÊNCIA NO BANCO", 
-        "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL",
-        "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL",
-        "INCONSISTÊNCIA RESOLVIDA"
+        "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
       ]
 
       // 1. Fetch user's paid proposals
-      const startOfMonthISO = startOfMonth.toISOString()
-      const { data: userPaid, error: userError } = await withRetry(() => {
-        let query = supabase
-          .from("propostas")
-          .select("id_lead, nome_cliente, valor_producao, updated_at")
-          .in("status", paidStatuses)
-          .gte("updated_at", startOfMonthISO)
-        
-        if (isCorretor) {
-          query = query.eq("corretor_id", perfil?.id)
-        }
-        return query
-      })
-
-      if (userError) throw userError
+      const filterStartISO = customStart ? customStart.toISOString() : startOfMonth.toISOString()
       
+      let userPaidQuery = supabase
+        .from("propostas")
+        .select("id_lead, nome_cliente, valor_producao, updated_at")
+        .in("status", paidStatuses)
+        .gte("updated_at", filterStartISO)
+      
+      if (customEnd) {
+        userPaidQuery = userPaidQuery.lte("updated_at", customEnd.toISOString())
+      }
+
+      if (isCorretor) {
+        userPaidQuery = userPaidQuery.eq("corretor_id", perfil?.id)
+      }
+
+      const userPaid = await fetchAll(userPaidQuery)
       setUserProposals(userPaid || [])
 
       // 2. Fetch team and their proposals
@@ -136,6 +205,8 @@ export default function DashboardPage() {
       // Identify target team
       const targetSupervisorId = perfil?.role === 'Supervisor' ? perfil?.id : perfil?.supervisor_id
       
+      let sortedRankings: RankingItem[] = []
+
       if (targetSupervisorId) {
         const team = allUsers.filter((u: { id: string, supervisor_id: string }) => 
           u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId
@@ -143,14 +214,12 @@ export default function DashboardPage() {
         const teamIds = team.map((m: { id: string }) => m.id)
 
         // Fetch proposals for the team
-        const { data: teamProposals, error: proposalsError } = await withRetry(() =>
-          supabase
-            .from("propostas")
-            .select("corretor_id, valor_producao, status, updated_at, created_at")
-            .in("corretor_id", teamIds)
-        )
+        const teamProposalsQuery = supabase
+          .from("propostas")
+          .select("corretor_id, valor_producao, status, updated_at, created_at")
+          .in("corretor_id", teamIds)
 
-        if (proposalsError) throw proposalsError
+        const teamProposals = await fetchAll(teamProposalsQuery)
 
         // Aggregates
         let teamTotal = 0
@@ -187,10 +256,7 @@ export default function DashboardPage() {
         })
 
         teamProposals?.forEach((curr: { corretor_id: string, valor_producao: string | number, updated_at: string, created_at: string, status: string }) => {
-          const val = typeof curr.valor_producao === "string" 
-            ? parseFloat(curr.valor_producao.replace(/[^\d.,]/g, '').replace(',', '.')) 
-            : (curr.valor_producao || 0)
-          const numericVal = isNaN(val) ? 0 : val
+          const numericVal = isNaN(parseCurrency(curr.valor_producao)) ? 0 : parseCurrency(curr.valor_producao)
           const brokerId = curr.corretor_id || ""
           
           const createdDate = new Date(curr.created_at)
@@ -204,9 +270,12 @@ export default function DashboardPage() {
           const isPaid = paidStatuses.includes(curr.status)
           const isInProcess = inProcessStatuses.includes(curr.status)
           const isCancelled = curr.status === "CANCELADO"
-          const isCurrentMonth = updatedDate >= startOfMonth
+          
+          const isPaidInRange = (customStart && customEnd)
+            ? (updatedDate >= customStart && updatedDate <= customEnd)
+            : (updatedDate >= startOfMonth)
 
-          if (isPaid && isCurrentMonth) {
+          if (isPaid && isPaidInRange) {
             teamTotal += numericVal
             if (isTodayUpdated) teamDailyTotal += numericVal
             
@@ -219,7 +288,7 @@ export default function DashboardPage() {
           if (isInProcess) {
             teamInProcessValueCalc += numericVal
             teamInProcessCountCalc += 1
-            if (curr.status === "COM INCONSISTÊNCIA NO BANCO") {
+            if (curr.status === "COM INCONSISTÊNCIA NO BANCO" || curr.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL") {
               teamPendingInconsistencyValueCalc += numericVal
             }
             if (brokerMetrics[brokerId]) {
@@ -228,7 +297,11 @@ export default function DashboardPage() {
             }
           }
 
-          if (isTodayCreated && !isCancelled) {
+          const isCreatedInRange = (customStart && customEnd)
+            ? (createdDate >= customStart && createdDate <= customEnd)
+            : isTodayCreated
+
+          if (isCreatedInRange && !isCancelled) {
             teamCreatedTodayValue += numericVal
             teamCreatedTodayCount += 1
             if (brokerMetrics[brokerId]) {
@@ -261,7 +334,7 @@ export default function DashboardPage() {
         setTeamPendingInconsistencyValue(teamPendingInconsistencyValueCalc)
 
         // Form rankings for supervisor
-        const sortedRankings = team.map((m: { id: string, nome: string }) => ({
+        sortedRankings = team.map((m: { id: string, nome: string }) => ({
           corretor_id: m.id,
           nome: m.nome,
           totalPaid: brokerMetrics[m.id]?.totalPaid || 0,
@@ -282,25 +355,21 @@ export default function DashboardPage() {
 
         setRankings(sortedRankings)
       } else {
-        const [proposalsRes] = await withRetry(() => Promise.all([
-          supabase
-            .from("propostas")
-            .select("corretor_id, valor_producao")
-            .in("status", paidStatuses)
-            .gte("updated_at", startOfMonthISO)
-        ]))
+        const rankingQuery = supabase
+          .from("propostas")
+          .select("corretor_id, valor_producao")
+          .in("status", paidStatuses)
+          .gte("updated_at", filterStartISO)
 
-        const allPaid = proposalsRes.data || []
+        const allPaid = await fetchAll(rankingQuery)
         const aggregated = allPaid.reduce((acc: Record<string, number>, curr) => {
-          const val = typeof curr.valor_producao === "string" 
-            ? parseFloat(curr.valor_producao.replace(/[^\d.,]/g, '').replace(',', '.')) 
-            : (curr.valor_producao || 0)
+          const val = parseCurrency(curr.valor_producao)
           const id = curr.corretor_id || "unknown"
           acc[id] = (acc[id] || 0) + (isNaN(val) ? 0 : val)
           return acc
         }, {})
 
-        const sortedRankings = Object.entries(aggregated)
+        sortedRankings = Object.entries(aggregated)
           .map(([corretor_id, total]) => ({ 
             corretor_id, 
             nome: `Ranking ${corretor_id.substring(0, 4)}`, 
@@ -316,12 +385,129 @@ export default function DashboardPage() {
         setRankings(sortedRankings)
       }
 
+      // 3. Fetch Admin specific stats if admin
+      if (isAdmin) {
+        const now = new Date()
+        const currentYear = now.getFullYear()
+        const currentMonth = now.getMonth() + 1
+        
+        // Fetch goals
+        const { data: goalsData } = await withRetry(() => 
+          supabase
+            .from('metas_config')
+            .select('*')
+            .eq('tipo', 'empresa')
+            .eq('ano', currentYear)
+        )
+
+        const annualGoalConfig = goalsData?.find(g => g.mes === 0)
+        const annualGoal = annualGoalConfig?.valor_mensal || 0
+        const monthlyGoal = annualGoal / 12
+
+        // Fetch annual produced (ONLY the specific folder requested)
+        const startOfYear = new Date(currentYear, 0, 1).toISOString()
+        const annualQuery = supabase
+          .from('propostas')
+          .select('valor_producao')
+          .in('status', ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA'])
+          .gte('updated_at', startOfYear)
+        
+        const annualProposals = await fetchAll(annualQuery)
+
+        const annualProduced = (annualProposals || []).reduce((acc, p) => {
+          const val = parseCurrency(p.valor_producao)
+          return acc + (isNaN(val) ? 0 : val)
+        }, 0)
+
+        // Fetch monthly produced
+        const startOfCurrentMonth = new Date(currentYear, currentMonth - 1, 1).toISOString()
+        const monthlyQuery = supabase
+          .from('propostas')
+          .select('valor_producao')
+          .in('status', ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA'])
+          .gte('updated_at', startOfCurrentMonth)
+        
+        const monthlyProposals = await fetchAll(monthlyQuery)
+
+        const monthlyProduced = (monthlyProposals || []).reduce((acc, p) => {
+          const val = parseCurrency(p.valor_producao)
+          return acc + (isNaN(val) ? 0 : val)
+        }, 0)
+
+        // Fetch daily produced
+        const startOfTodayISO = new Date().setHours(0, 0, 0, 0)
+        const dailyQuery = supabase
+          .from('propostas')
+          .select('valor_producao')
+          .in('status', ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA'])
+          .gte('updated_at', new Date(startOfTodayISO).toISOString())
+        
+        const dailyProposals = await fetchAll(dailyQuery)
+
+        const dailyProduced = (dailyProposals || []).reduce((acc, p) => {
+          const val = parseCurrency(p.valor_producao)
+          return acc + (isNaN(val) ? 0 : val)
+        }, 0)
+
+        // In process (Combined as requested)
+        const inProcessQuery = supabase
+          .from('propostas')
+          .select('valor_producao')
+          .in('status', [
+            "ANDAMENTO / AGUARDANDO PAGAMENTO", 
+            "COM INCONSISTÊNCIA NO BANCO",
+            "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
+          ])
+        
+        const inProcessProposals = await fetchAll(inProcessQuery)
+
+        const inProcessValue = (inProcessProposals || []).reduce((acc, p) => {
+          const val = parseCurrency(p.valor_producao)
+          return acc + (isNaN(val) ? 0 : val)
+        }, 0)
+
+        const pendingQuery = supabase
+          .from('propostas')
+          .select('valor_producao')
+          .in('status', [
+            "COM INCONSISTÊNCIA NO BANCO", 
+            "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
+          ])
+        
+        const pendingProposals = await fetchAll(pendingQuery)
+
+        const pendingValue = (pendingProposals || []).reduce((acc, p) => {
+          const val = parseCurrency(p.valor_producao)
+          return acc + (isNaN(val) ? 0 : val)
+        }, 0)
+
+        setAdminStats({
+          monthlyGoal,
+          monthlyProduced,
+          annualGoal,
+          annualProduced,
+          dailyGoal: monthlyGoal / 22,
+          dailyProduced,
+          inProcessValue,
+          inProcessCount: inProcessProposals?.length || 0,
+          pendingActionsValue: pendingValue,
+          pendingActionsCount: pendingProposals?.length || 0,
+          brokerRankings: sortedRankings.slice(0, 5).map(r => ({
+            name: r.nome,
+            team: "Shark", // Idealmente buscar o time real
+            supervisor: "Supervisor", // Idealmente buscar o supervisor real
+            total: r.totalPaid,
+            count: r.countPaid || 0
+          }))
+        })
+      }
+
     } catch (error) {
       console.error("Erro dashboard:", error)
     } finally {
       setIsLoading(false)
     }
-  }, [perfil?.id, perfil?.role, perfil?.supervisor_id, isCorretor])
+  }, [perfil?.id, perfil?.role, perfil?.supervisor_id, isCorretor, isAdmin, startDate, endDate])
 
   useEffect(() => {
     setMounted(true)
@@ -352,9 +538,7 @@ export default function DashboardPage() {
 
   const monthlyProduced = useMemo(() => {
     return userProposals.reduce((acc, p) => {
-      const val = typeof p.valor_producao === "string" 
-        ? parseFloat(p.valor_producao.replace(/[^\d.,]/g, '').replace(',', '.')) 
-        : (p.valor_producao || 0)
+      const val = parseCurrency(p.valor_producao)
       return acc + (isNaN(val) ? 0 : val)
     }, 0)
   }, [userProposals])
@@ -366,9 +550,7 @@ export default function DashboardPage() {
     return userProposals
       .filter(p => new Date(p.updated_at) >= startOfToday)
       .reduce((acc, p) => {
-        const val = typeof p.valor_producao === "string" 
-          ? parseFloat(p.valor_producao.replace(/[^\d.,]/g, '').replace(',', '.')) 
-          : (p.valor_producao || 0)
+        const val = parseCurrency(p.valor_producao)
         return acc + (isNaN(val) ? 0 : val)
       }, 0)
   }, [userProposals])
@@ -460,7 +642,7 @@ export default function DashboardPage() {
         "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
         isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
       )}>
-        {isAdmin && <AdminDashboard perfil={perfil} isLoading={isLoading} remainingBusinessDays={remainingBusinessDays} headerContent={headerContent} />}
+        {isAdmin && adminStats && <AdminDashboard perfil={perfil} isLoading={isLoading} remainingBusinessDays={remainingBusinessDays} headerContent={headerContent} stats={adminStats} />}
         
         {(!isAdmin) && (
           <>
@@ -570,7 +752,7 @@ export default function DashboardPage() {
                         <p className="text-[11px] font-black text-[#1C2643]">
                           {isLoading ? "..." : (
                             <span className="flex items-center gap-1">
-                              {Math.min(100, Math.round((displayDailyProduced / dailyGoal) * 100))}%
+                              {Math.round((displayDailyProduced / dailyGoal) * 100)}%
                               {isSupervisor && (
                                 <span className="text-slate-400 font-bold">({formatCurrency(displayDailyProduced)})</span>
                               )}
@@ -726,8 +908,10 @@ export default function DashboardPage() {
                                  <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tight">{p.nome_cliente}</span>
                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID: {p.id_lead}</span>
                                </div>
-                               <div className="text-right">
-                                 <p className="text-[11px] font-black text-emerald-600">{formatCurrency(typeof p.valor_producao === 'string' ? parseFloat(p.valor_producao.replace(/[^\d.,]/g, '').replace(',', '.')) : p.valor_producao)}</p>
+                                 <div className="text-right">
+                                 <p className="text-[11px] font-black text-emerald-600">
+                                   {formatCurrency(parseCurrency(p.valor_producao))}
+                                 </p>
                                  <p className="text-[9px] font-bold text-slate-400">{new Date(p.updated_at).toLocaleDateString()} {new Date(p.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                                </div>
                              </div>
@@ -764,7 +948,54 @@ export default function DashboardPage() {
               <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white">
                 <div className="flex items-center justify-between mb-6">
                    <h3 className="text-xl font-black text-[#1C2643] tracking-tight">Ranking de Vendas</h3>
-                   <Trophy className="w-6 h-6 text-amber-500 fill-amber-500" />
+                   <div className="flex items-center gap-4">
+                     {isSupervisor && (
+                       <div className="flex items-end gap-3 mr-4">
+                         <div className="flex flex-col">
+                           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Início</span>
+                           <input 
+                             type="date" 
+                             value={tempStartDate}
+                             onChange={(e) => setTempStartDate(e.target.value)}
+                             className="text-[13px] font-bold text-[#1C2643] bg-slate-100 border-none rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                           />
+                         </div>
+                         <div className="flex flex-col">
+                           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Fim</span>
+                           <input 
+                             type="date" 
+                             value={tempEndDate}
+                             onChange={(e) => setTempEndDate(e.target.value)}
+                             className="text-[13px] font-bold text-[#1C2643] bg-slate-100 border-none rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                           />
+                         </div>
+                         <div className="flex items-center gap-2">
+                           <button 
+                             onClick={() => {
+                               setStartDate(tempStartDate);
+                               setEndDate(tempEndDate);
+                             }}
+                             disabled={!tempStartDate && !tempEndDate}
+                             className="px-4 py-2 bg-[#1C2643] text-white text-[11px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm"
+                           >
+                             APLICAR
+                           </button>
+                           <button 
+                             onClick={() => {
+                               setTempStartDate("");
+                               setTempEndDate("");
+                               setStartDate("");
+                               setEndDate("");
+                             }}
+                             className="px-4 py-2 bg-slate-100 text-slate-500 text-[11px] font-black rounded-lg hover:bg-slate-200 transition-all active:scale-95 shadow-sm"
+                           >
+                             HOJE
+                           </button>
+                         </div>
+                       </div>
+                     )}
+                     <Trophy className="w-6 h-6 text-amber-500 fill-amber-500" />
+                   </div>
                 </div>
 
                 <div className="flex-1 flex flex-col">

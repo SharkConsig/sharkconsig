@@ -16,7 +16,8 @@ import {
   Eye,
   Loader2,
   UserPlus,
-  RefreshCw
+  RefreshCw,
+  Eraser
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ProposalDetailsAccordion } from "@/components/propostas/proposal-details-accordion"
@@ -331,7 +332,7 @@ export default function ProposalsPage() {
       }
       // Se for operacional, supervisor, administrador ou desenvolvedor, não filtra (vê tudo)
 
-      const { data, error } = await query.order('created_at', { ascending: false })
+      const { data, error } = await query.order('updated_at', { ascending: true })
       
       if (error) {
         console.error("Erro Supabase ao buscar propostas:", error.message)
@@ -457,13 +458,51 @@ export default function ProposalsPage() {
     const matchesStatus = !selectedStatus || 
       TABS_CONFIG.find(t => t.label === selectedStatus)?.subTabs.includes(proposal.status)
     const matchesSecondary = !selectedSecondaryStatus || proposal.status === selectedSecondaryStatus
+
+    const matchesDate = (() => {
+      if (!startDate && !endDate) return true;
+      
+      try {
+        // Obter a data da proposta em formato YYYY-MM-DD (local) para comparação simples
+        const pDate = new Date(proposal.created_at);
+        if (isNaN(pDate.getTime())) return true;
+        
+        const proposalDateStr = format(pDate, "yyyy-MM-dd");
+        
+        if (startDate && proposalDateStr < startDate) return false;
+        if (endDate && proposalDateStr > endDate) return false;
+      } catch (err) {
+        console.error("Erro ao validar data da proposta:", err);
+        return true;
+      }
+      
+      return true;
+    })();
     
-    return matchesSearch && matchesStatus && matchesSecondary
+    return matchesSearch && matchesStatus && matchesSecondary && matchesDate
+  }).sort((a, b) => {
+    const timeA = new Date(a.updated_at || a.created_at).getTime()
+    const timeB = new Date(b.updated_at || b.created_at).getTime()
+    
+    // Ordem inversa (mais recentes primeiro) para PAGO AO CLIENTE e CANCELADOS
+    if (selectedStatus === "PAGO AO CLIENTE" || selectedStatus === "CANCELADOS") {
+      return timeB - timeA
+    }
+    
+    // Ordem padrão (mais antigos primeiro) para CONTRATOS (Digitação) e EM ANDAMENTO
+    return timeA - timeB
   })
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredProposals.length / itemsPerPage)
   const paginatedProposals = filteredProposals.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+  const handleClearFilters = () => {
+    setSearchTerm("")
+    setStartDate("")
+    setEndDate("")
+    setCurrentPage(1)
+  }
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -539,13 +578,23 @@ export default function ProposalsPage() {
                     </div>
                   </div>
                 </div>
-                <Button 
-                  onClick={fetchProposals}
-                  disabled={isLoading}
-                  className="bg-[#171717] hover:bg-[#171717]/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-black/20 transition-all"
-                >
-                  {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "BUSCAR"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline"
+                    onClick={handleClearFilters}
+                    className="border-slate-200 text-slate-500 h-[38px] text-[11px] font-bold rounded-lg transition-all px-4 gap-2 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <Eraser className="w-3.5 h-3.5" />
+                    LIMPAR
+                  </Button>
+                  <Button 
+                    onClick={fetchProposals}
+                    disabled={isLoading}
+                    className="bg-[#171717] hover:bg-[#171717]/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-black/20 transition-all"
+                  >
+                    {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "BUSCAR"}
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -635,7 +684,7 @@ export default function ProposalsPage() {
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">STATUS</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">VALOR OPERAÇÃO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">OBSERVAÇÃO</th>
-                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ÚLTIMA CONSULTA</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ÚLTIMA ATUALIZAÇÃO</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">AÇÕES</th>
                 </tr>
               </thead>
@@ -709,10 +758,10 @@ export default function ProposalsPage() {
                             })()}
                           </td>
                           <td className="px-4 py-4 text-[10px] font-bold text-slate-600">
-                            {proposal.data_consulta || proposal.updated_at ? (
+                            {proposal.updated_at || proposal.created_at ? (
                               (() => {
                                 try {
-                                  return format(new Date(proposal.data_consulta || proposal.updated_at || ""), "dd/MM/yyyy HH:mm")
+                                  return format(new Date(proposal.updated_at || proposal.created_at), "dd/MM/yyyy HH:mm")
                                 } catch {
                                   return '-'
                                 }

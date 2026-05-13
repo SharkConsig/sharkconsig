@@ -127,6 +127,9 @@ export default function CampaignsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState("")
   const [isUpdating, setIsUpdating] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -654,9 +657,8 @@ export default function CampaignsPage() {
                                     <DropdownMenuItem 
                                       className="text-[11px] font-bold uppercase tracking-tight py-2 px-3 cursor-pointer text-red-500 hover:text-red-600 hover:bg-red-50"
                                       onClick={() => {
-                                        if (confirm("Deseja realmente excluir esta campanha?")) {
-                                          supabase.from('campanhas').delete().eq('id', campaign.id).then(() => fetchCampaigns());
-                                        }
+                                        setCampaignToDelete(campaign.id);
+                                        setIsDeleteDialogOpen(true);
                                       }}
                                     >
                                       <Trash2 className="w-3.5 h-3.5 mr-2" />
@@ -880,6 +882,52 @@ export default function CampaignsPage() {
               className="h-10 px-8 text-[11px] font-bold uppercase tracking-widest"
             >
               Fechar Visualização
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Confirmação de Exclusão */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="max-w-[400px] border-none rounded-3xl shadow-2xl p-0 overflow-hidden bg-white">
+          <div className="p-8">
+            <div className="w-16 h-16 rounded-2xl bg-rose-50 flex items-center justify-center mb-6 mx-auto">
+              <Trash2 className="w-8 h-8 text-rose-500" />
+            </div>
+            <h3 className="text-[18px] font-black text-slate-800 text-center uppercase tracking-tighter mb-2">Excluir Campanha?</h3>
+            <p className="text-[12px] font-medium text-slate-500 text-center leading-relaxed">
+              Esta ação não pode ser desfeita. Todos os dados desta campanha serão removidos permanentemente.
+            </p>
+          </div>
+          <div className="p-6 bg-slate-50 flex gap-3">
+            <Button 
+              variant="ghost" 
+              className="flex-1 h-12 text-[11px] font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-100 rounded-xl"
+              onClick={() => setIsDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              className="flex-1 h-12 text-[11px] font-bold uppercase tracking-widest bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-200 rounded-xl gap-2"
+              onClick={async () => {
+                if (!campaignToDelete) return;
+                setIsDeleting(true);
+                try {
+                  const { error } = await supabase.from('campanhas').delete().eq('id', campaignToDelete);
+                  if (error) throw error;
+                  await fetchCampaigns();
+                  setIsDeleteDialogOpen(false);
+                } catch (err) {
+                  console.error("Erro ao excluir campanha:", err);
+                  alert("Erro ao excluir campanha.");
+                } finally {
+                  setIsDeleting(false);
+                }
+              }}
+              disabled={isDeleting}
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirmar Exclusão"}
             </Button>
           </div>
         </DialogContent>

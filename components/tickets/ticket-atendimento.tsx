@@ -67,7 +67,9 @@ interface TicketAtendimentoProps {
     origin: string;
     status_id?: string | null;
     status_nome?: string;
+    descricao?: string;
     description?: string;
+    content?: string;
     createdAt?: string;
     user_nome?: string;
     user_id?: string;
@@ -85,6 +87,13 @@ interface TicketAtendimentoProps {
 export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoProps) {
   const { perfil, user } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
+  const [initialDesc, setInitialDesc] = useState(ticket.descricao || ticket.description || ticket.content || "")
+
+  // Update initialDesc if ticket prop changes
+  useEffect(() => {
+    setInitialDesc(ticket.descricao || ticket.description || ticket.content || "")
+  }, [ticket.descricao, ticket.description, ticket.content])
+
   const [isLoading, setIsLoading] = useState(true)
   const [reply, setReply] = useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -217,19 +226,19 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     if (ticket.arquivo_extrato) ticketAttachments.push({ name: "EXTRATO DE CONSIGNAÇÃO", url: ticket.arquivo_extrato });
     if (ticket.arquivo_outros) ticketAttachments.push({ name: "OUTROS", url: ticket.arquivo_outros });
 
-    const initialMessage: Message | null = ticket.description ? {
+    const initialMessage: Message | null = (initialDesc) ? {
       id: "initial",
       user_nome: ticket.user_nome || ticket.client,
       user_avatar: ticket.user_avatar || (user?.id === ticket.user_id && perfil?.avatar_url ? perfil.avatar_url : null),
       action: "solicitou",
-      content: ticket.description,
+      content: initialDesc,
       attachments: ticketAttachments,
       status_change: null,
       created_at: ticket.createdAt || new Date().toISOString()
     } : null;
 
     return initialMessage ? [initialMessage, ...messages] : messages;
-  }, [ticket, messages, user?.id, perfil?.avatar_url]);
+  }, [ticket, messages, user?.id, perfil?.avatar_url, initialDesc]);
 
   const fetchMessages = useCallback(async (isSilent = false) => {
     // Só mostramos o loading se não for silencioso e não tivermos mensagens ainda
@@ -265,13 +274,35 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // Listen to All changes (INSERT, UPDATE, DELETE)
           schema: 'public',
           table: 'mensagens_chamado',
           filter: `chamado_id=eq.${ticket.id}`
         },
         (payload) => {
-          setMessages(current => [...current, payload.new as Message])
+          if (payload.eventType === 'INSERT') {
+            setMessages(current => [...current, payload.new as Message])
+          } else if (payload.eventType === 'UPDATE') {
+            setMessages(current => current.map(m => m.id === payload.new.id ? { ...m, ...payload.new } : m))
+          } else if (payload.eventType === 'DELETE') {
+            setMessages(current => current.filter(m => m.id !== payload.old.id))
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chamados',
+          filter: `id=eq.${ticket.id}`
+        },
+        (payload) => {
+          // Se a descrição ou content do chamado mudar, atualiza initialDesc
+          const newDesc = payload.new.descricao || payload.new.description || payload.new.content
+          if (newDesc !== undefined && newDesc !== null) {
+            setInitialDesc(newDesc)
+          }
         }
       )
       .subscribe()
@@ -443,23 +474,35 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
       if (editingMessageId === "initial") {
         const { error } = await supabase
           .from('chamados')
-          .update({ description: editContent })
+          .update({ 
+            descricao: editContent
+          })
           .eq('id', ticket.id)
         if (error) throw error
+        
+        // Atualizar estado local imediatamente
+        setInitialDesc(editContent)
         toast.success("Descrição atualizada")
       } else {
         const { error } = await supabase
           .from('mensagens_chamado')
-          .update({ content: editContent })
+          .update({ 
+            content: editContent
+          })
           .eq('id', editingMessageId)
         if (error) throw error
+        
+        // Atualizar estado local imediatamente
+        setMessages(prev => prev.map(m => m.id === editingMessageId ? { ...m, content: editContent } : m))
         toast.success("Mensagem atualizada")
       }
       setEditingMessageId(null)
-      fetchMessages()
-    } catch (err) {
+      // fetchMessages recalcula a partir do banco para garantir consistência
+      fetchMessages(true)
+    } catch (err: unknown) {
       console.error("Erro ao atualizar:", err)
-      toast.error("Erro ao atualizar")
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      toast.error(`Erro ao atualizar: ${errorMsg}`)
     } finally {
       setIsUpdating(false)
     }

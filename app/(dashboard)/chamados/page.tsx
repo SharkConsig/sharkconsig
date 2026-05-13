@@ -65,6 +65,7 @@ export interface Ticket {
   created_at: string
   updated_at: string
   descricao?: string
+  content?: string
   user_id: string
   user_nome?: string
   user_avatar?: string
@@ -907,6 +908,7 @@ export default function TicketsPage() {
                                     status_id: ticket.status_id,
                                     status_nome: ticket.status_chamados?.nome || ticket.status,
                                     description: ticket.descricao,
+                                    content: ticket.content,
                                     createdAt: ticket.created_at,
                                     user_nome: ticket.user_nome,
                                     user_id: ticket.user_id,

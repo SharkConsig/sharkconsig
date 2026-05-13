@@ -21,41 +21,58 @@ interface Perfil {
   role: string
 }
 
+interface RankingItem {
+  name: string
+  team: string
+  supervisor: string
+  total: number
+  count: number
+}
+
+interface AdminStats {
+  monthlyGoal: number
+  monthlyProduced: number
+  annualGoal: number
+  annualProduced: number
+  dailyGoal: number
+  dailyProduced: number
+  inProcessValue: number
+  inProcessCount: number
+  pendingActionsValue: number
+  pendingActionsCount: number
+  brokerRankings: RankingItem[]
+}
+
 interface AdminDashboardProps {
   perfil: Perfil | null
   isLoading: boolean
   remainingBusinessDays: number
   headerContent: { greeting: string, phrase: string }
+  stats: AdminStats
 }
 
-export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, headerContent }: AdminDashboardProps) {
-  // Mock Data for Frontend Preview (As requested: "faça somente o frontend")
-  const companyMonthlyGoal = 1500000 
-  const companyMonthlyAtingido = 845000 
-  const progressPercent = Math.round((companyMonthlyAtingido / companyMonthlyGoal) * 100)
-  const remainingValue = Math.max(0, companyMonthlyGoal - companyMonthlyAtingido)
+export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, headerContent, stats }: AdminDashboardProps) {
+  const {
+    monthlyGoal,
+    monthlyProduced,
+    annualGoal,
+    annualProduced,
+    dailyGoal,
+    dailyProduced,
+    inProcessValue,
+    inProcessCount,
+    pendingActionsValue,
+    pendingActionsCount,
+    brokerRankings
+  } = stats
 
-  const companyDailyGoal = 75000
-  const companyDailyAtingido = 48500
-  const dailyProgressPercent = Math.round((companyDailyAtingido / companyDailyGoal) * 100)
+  const progressPercent = monthlyGoal > 0 ? Math.round((monthlyProduced / monthlyGoal) * 100) : 0
+  const remainingValue = Math.max(0, monthlyGoal - monthlyProduced)
 
-  const companyAnnualGoal = 18000000
-  const companyAnnualAtingido = 5400000
-  const annualProgressPercent = Math.round((companyAnnualAtingido / companyAnnualGoal) * 100)
-  const annualRemainingValue = Math.max(0, companyAnnualGoal - companyAnnualAtingido)
+  const dailyProgressPercent = dailyGoal > 0 ? Math.round((dailyProduced / dailyGoal) * 100) : 0
 
-  const inProcessValue = 3250000
-  const inProcessCount = 142
-  const pendingActionsValue = 425000
-  const pendingActionsCount = 18
-
-  const brokerRankings = [
-    { name: "Juliana Silva", team: "Alpha", supervisor: "Ricardo Santos", total: 125000, count: 8 },
-    { name: "Marcos Reus", team: "Alpha", supervisor: "Ricardo Santos", total: 112000, count: 7 },
-    { name: "Fabio Lopes", team: "Beta", supervisor: "Carla Oliveira", total: 98000, count: 6 },
-    { name: "Lucia Santos", team: "Gamma", supervisor: "Marcos Viana", total: 92000, count: 6 },
-    { name: "Pedro Mendes", team: "Beta", supervisor: "Carla Oliveira", total: 85000, count: 5 },
-  ]
+  const annualProgressPercent = annualGoal > 0 ? Math.round((annualProduced / annualGoal) * 100) : 0
+  const annualRemainingValue = Math.max(0, annualGoal - annualProduced)
 
   return (
     <div className="space-y-8">
@@ -106,11 +123,11 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
                     <Target className="w-5 h-5 text-[#1C2643]" />
                  </div>
               </div>
-              <p className="text-lg sm:text-xl lg:text-2xl font-black text-[#1C2643] tracking-tighter mb-6 break-words">{formatCurrency(companyMonthlyGoal)}</p>
+              <p className="text-lg sm:text-xl lg:text-2xl font-black text-[#1C2643] tracking-tighter mb-6 break-words">{formatCurrency(monthlyGoal)}</p>
               
               <div className="flex-1 flex flex-col items-center justify-center py-6 relative">
                 <div className="w-full max-w-[280px]">
-                  <Gauge value={progressPercent} producedValue={companyMonthlyAtingido} />
+                  <Gauge value={progressPercent} producedValue={monthlyProduced} />
                 </div>
                 <div className="mt-4 flex flex-col items-center justify-center">
                    {isLoading ? (
@@ -157,11 +174,11 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
               </div>
               <div>
                  <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
-                 <p className="text-xl lg:text-2xl font-black text-[#1C2643] tracking-tighter mt-1 leading-none">{formatCurrency(companyDailyGoal)}</p>
+                 <p className="text-2xl lg:text-3xl font-black text-[#1C2643] tracking-tighter mt-1 leading-none">{formatCurrency(dailyGoal)}</p>
               </div>
               <div className="mt-auto pt-4">
                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ATUAL: {formatCurrency(companyDailyAtingido)}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE: {formatCurrency(dailyProduced)}</p>
                     <p className="text-[10px] font-black text-[#1C2643]">{dailyProgressPercent}%</p>
                  </div>
                  <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
@@ -185,8 +202,8 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
                 </div>
                 <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest leading-tight">Meta Anual da Empresa</p>
                 <div className="flex flex-col mt-2">
-                  <p className="text-xl lg:text-2xl font-black text-emerald-400 tracking-tighter leading-none">{formatCurrency(companyAnnualGoal)}</p>
-                  <p className="text-[10px] font-bold text-white/30 uppercase mt-1">Total acumulado: {formatCurrency(companyAnnualAtingido)}</p>
+                  <p className="text-xl lg:text-2xl font-black text-emerald-400 tracking-tighter leading-none">{formatCurrency(annualGoal)}</p>
+                  <p className="text-[10px] font-bold text-white/30 uppercase mt-1">Total acumulado: {formatCurrency(annualProduced)}</p>
                 </div>
               </div>
               
@@ -218,7 +235,7 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="lg:col-span-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
              {/* Total de contratos em andamento */}
-             <div className="bg-white rounded-[40px] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+             <div className="bg-white rounded-[40px] p-8 border border-slate-200 shadow-sm flex flex-col justify-center">
                 <div>
                   <div className="flex items-center gap-3 mb-6">
                      <div className="w-12 h-12 bg-[#1C2643] rounded-2xl flex items-center justify-center">
@@ -230,7 +247,7 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
                      </div>
                   </div>
                   <div className="mt-4">
-                    <p className="text-xl lg:text-2xl font-black text-[#1C2643] tracking-tighter leading-none">
+                    <p className="text-2xl lg:text-3xl font-black text-[#1C2643] tracking-tighter leading-none">
                       {formatCurrency(inProcessValue)}
                     </p>
                     <div className="flex items-center gap-2 mt-4">
@@ -238,12 +255,6 @@ export function AdminDashboard({ perfil, isLoading, remainingBusinessDays, heade
                          {inProcessCount} Contratos
                        </span>
                     </div>
-                  </div>
-                </div>
-                <div className="mt-10 pt-6 border-t border-slate-100">
-                  <div className="flex items-center justify-between text-slate-500 text-[11px] font-black uppercase tracking-[0.15em]">
-                    <span>Conversão Estimada</span>
-                    <span className="text-emerald-600">82%</span>
                   </div>
                 </div>
              </div>

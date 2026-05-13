@@ -37,7 +37,9 @@ import {
   ChevronUp,
   TrendingUp,
   Check,
-  Zap
+  Zap,
+  CalendarDays,
+  Gift
 } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
 import { motion, AnimatePresence } from "motion/react"
@@ -92,6 +94,7 @@ interface MetaConfig {
   valor_mensal: number
   mes: number
   ano: number
+  ativo?: boolean
   created_at: string
 }
 
@@ -153,7 +156,7 @@ export default function SettingsPage() {
   const [isFaixaMetaModalOpen, setIsFaixaMetaModalOpen] = useState(false)
   const [isBannerModalOpen, setIsBannerModalOpen] = useState(false)
 
-  const [annualGoalForm, setAnnualGoalForm] = useState({ ano: new Date().getFullYear(), valor: "" })
+  const [annualGoalForm, setAnnualGoalForm] = useState({ id: "", ano: new Date().getFullYear(), valor: "", ativo: true })
   const [faixaMetaForm, setFaixaMetaForm] = useState({ id: "", nome: "", valor_minimo: "", premio: "", ativo: true, ano: new Date().getFullYear() })
   
   const [selectedTeam, setSelectedTeam] = useState("")
@@ -166,7 +169,7 @@ export default function SettingsPage() {
   const [individualMetaYear, setIndividualMetaYear] = useState(new Date().getFullYear())
   const [individualMetaMonth, setIndividualMetaMonth] = useState(new Date().getMonth() + 1)
 
-  const [expandedYearId, setExpandedYearId] = useState<number | null>(new Date().getFullYear())
+  const [expandedYearId, setExpandedYearId] = useState<number | null>(null)
 
   const formatCurrency = (value: string) => {
     const cleanValue = value.replace(/\D/g, "")
@@ -191,6 +194,10 @@ export default function SettingsPage() {
     { id: 11, name: "Novembro" },
     { id: 12, name: "Dezembro" },
   ]
+
+  const [selectedMonthForManage, setSelectedMonthForManage] = useState<number | null>(null)
+  const [selectedYearForManage, setSelectedYearForManage] = useState<number | null>(null)
+  const [isManageMonthModalOpen, setIsManageMonthModalOpen] = useState(false)
 
   const parseCurrency = (formattedValue: string) => {
     const cleanValue = formattedValue.replace(/\D/g, "")
@@ -228,8 +235,9 @@ export default function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteData, setDeleteData] = useState<{
     id: string,
-    type: 'status' | 'convenio' | 'banco' | 'operacao' | 'produto',
-    label: string
+    type: 'status' | 'convenio' | 'banco' | 'operacao' | 'produto' | 'meta_anual' | 'meta' | 'faixa_meta' | 'banner',
+    label: string,
+    year?: number
   } | null>(null)
   
   // Pagination State
@@ -396,35 +404,6 @@ export default function SettingsPage() {
     }
   }
 
-  const handleDeleteBanner = async (id: string, imageUrl: string) => {
-    if (!confirm("Deseja realmente excluir este banner?")) return
-
-    try {
-      const { error: deletionError } = await supabase
-        .from('dashboard_banners')
-        .delete()
-        .eq('id', id)
-      
-      if (deletionError) throw deletionError
-
-      try {
-        const urlParts = imageUrl.split('/')
-        const fileName = urlParts[urlParts.length - 1]
-        if (fileName) {
-          await supabase.storage.from('dashboard-banners').remove([`banners/${fileName}`])
-        }
-      } catch (err) {
-        console.warn("Could not delete from storage", err)
-      }
-
-      toast.success("Banner excluído")
-      fetchStatuses()
-    } catch (err: unknown) {
-      console.error("Erro ao excluir banner:", err)
-      toast.error("Erro ao excluir banner")
-    }
-  }
-
   const fetchStatuses = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -445,7 +424,7 @@ export default function SettingsPage() {
         supabase.from('tipos_operacao').select('*').order('nome', { ascending: true }),
         supabase.from('produtos_config').select('*'),
         supabase.from('metas_config').select('*'),
-        supabase.from('faixas_metas_corretor').select('*').order('valor_minimo', { ascending: true }),
+        supabase.from('faixa_meta').select('*').order('valor_minimo', { ascending: true }),
         supabase.from('dashboard_banners').select('*').order('created_at', { ascending: false }),
         fetch("/api/usuarios")
       ])
@@ -476,6 +455,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchStatuses()
+    // Garantir que as seções comecem recolhidas
+    setIsMetasPremiosExpanded(false)
+    setExpandedYearId(null)
   }, [fetchStatuses])
 
   // Pagination Logic
@@ -671,50 +653,93 @@ export default function SettingsPage() {
     }
   }
 
-  const handleGenericDelete = (type: 'convenio' | 'banco' | 'operacao', id: string) => {
-    const typeLabel = type === 'convenio' ? 'Convênio' : type === 'banco' ? 'Banco' : 'Tipo de Operação'
-    setDeleteData({ id, type, label: typeLabel })
+  const handleGenericDelete = (type: 'convenio' | 'banco' | 'operacao' | 'meta_anual' | 'meta' | 'faixa_meta' | 'status' | 'produto' | 'banner', id: string | number, label?: string) => {
+    let typeLabel = label || ""
+    if (!typeLabel) {
+      if (type === 'convenio') typeLabel = 'Convênio'
+      else if (type === 'banco') typeLabel = 'Banco'
+      else if (type === 'operacao') typeLabel = 'Tipo de Operação'
+      else if (type === 'meta_anual') typeLabel = 'Plano de Metas'
+      else if (type === 'meta') typeLabel = 'Meta'
+      else if (type === 'faixa_meta') typeLabel = 'Faixa de Premiação'
+      else if (type === 'status') typeLabel = 'Status'
+      else if (type === 'produto') typeLabel = 'Produto'
+      else if (type === 'banner') typeLabel = 'Banner'
+    }
+    
+    setDeleteData({ 
+      id: id.toString(), 
+      type: type as 'status' | 'convenio' | 'banco' | 'operacao' | 'meta_anual' | 'meta' | 'faixa_meta' | 'produto' | 'banner', 
+      label: typeLabel,
+      year: type === 'meta_anual' ? id as number : undefined
+    })
     setIsDeleteDialogOpen(true)
   }
 
   const confirmDelete = async () => {
     if (!deleteData) return
 
-    const { id, type, label } = deleteData
-    let table = ""
-    
-    if (type === 'status') table = 'status_chamados'
-    else if (type === 'convenio') table = 'convenios'
-    else if (type === 'banco') table = 'bancos'
-    else if (type === 'operacao') table = 'tipos_operacao'
-    else if (type === 'produto') table = 'produtos_config'
-
+    const { id, type, label, year } = deleteData
     setIsDeleting(true)
     try {
-      const { error } = await supabase.from(table).delete().eq('id', id)
-      if (error) throw error
-      toast.success(`${label} excluído com sucesso`)
+      if (type === 'meta_anual' && year) {
+        // Deletar metas_config para o ano
+        const { error: errorMetas } = await supabase.from('metas_config').delete().eq('ano', year)
+        if (errorMetas) throw errorMetas
+        const { error: errorFaixas } = await supabase.from('faixa_meta').delete().eq('ano', year)
+        if (errorFaixas) throw errorFaixas
+        toast.success(`Plano de metas ${year} excluído`)
+      } else if (type === 'meta') {
+        const { error } = await supabase.from('metas_config').delete().eq('id', id)
+        if (error) throw error
+        toast.success("Meta excluída com sucesso")
+      } else if (type === 'faixa_meta') {
+        const { error } = await supabase.from('faixa_meta').delete().eq('id', id)
+        if (error) throw error
+        toast.success("Faixa excluída com sucesso")
+      } else if (type === 'banner') {
+        const { error } = await supabase.from('dashboard_banners').delete().eq('id', id)
+        if (error) throw error
+        toast.success("Banner excluído com sucesso")
+      } else {
+        let table = ""
+        if (type === 'status') table = 'status_chamados'
+        else if (type === 'convenio') table = 'convenios'
+        else if (type === 'banco') table = 'bancos'
+        else if (type === 'operacao') table = 'tipos_operacao'
+        else if (type === 'produto') table = 'produtos_config'
+        
+        if (table) {
+          const { error } = await supabase.from(table).delete().eq('id', id)
+          if (error) throw error
+          toast.success(`${label} excluído com sucesso`)
+        }
+      }
+
       fetchStatuses()
       setIsDeleteDialogOpen(false)
     } catch (error: unknown) {
       const err = error as { message?: string }
       console.error(`Erro ao excluir ${type}:`, err)
-      toast.error(err.message || `Erro ao excluir ${label.toLowerCase()}`)
+      toast.error(err.message || `Erro ao realizar exclusão`)
     } finally {
       setIsDeleting(false)
     }
   }
 
-  const handleDeleteMeta = async (id: string) => {
-    if (!confirm("Excluir esta meta?")) return
+  const handleToggleMetaAtiva = async (id: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase.from('metas_config').delete().eq('id', id)
+      const { error } = await supabase
+        .from('metas_config')
+        .update({ ativo: !currentStatus })
+        .eq('id', id)
+      
       if (error) throw error
-      toast.success("Meta excluída com sucesso")
+      toast.success("Status da meta atualizado")
       fetchStatuses()
-    } catch (err: unknown) {
-      console.error("Erro ao excluir meta:", err)
-      toast.error("Erro ao excluir meta")
+    } catch (error) {
+      console.error("Erro ao alternar status da meta:", error)
+      toast.error("Erro ao alternar status da meta")
     }
   }
 
@@ -730,13 +755,14 @@ export default function SettingsPage() {
       const mes = 0 // 0 means annual goal
       const ano = annualGoalForm.ano
       
-      const existing = metas.find(m => m.tipo === 'empresa' && m.mes === mes && m.ano === ano)
-      
-      if (existing) {
+      if (annualGoalForm.id) {
         const { error } = await supabase
           .from('metas_config')
-          .update({ valor_mensal: valor })
-          .eq('id', existing.id)
+          .update({ 
+            valor_mensal: valor,
+            ativo: annualGoalForm.ativo
+          })
+          .eq('id', annualGoalForm.id)
         if (error) throw error
       } else {
         const { error } = await supabase
@@ -745,7 +771,8 @@ export default function SettingsPage() {
             tipo: 'empresa',
             valor_mensal: valor,
             mes,
-            ano
+            ano,
+            ativo: true
           })
         if (error) throw error
       }
@@ -863,14 +890,14 @@ export default function SettingsPage() {
 
       if (faixaMetaForm.id) {
         const { error } = await supabase
-          .from('faixas_metas_corretor')
+          .from('faixa_meta')
           .update(payload)
           .eq('id', faixaMetaForm.id)
         if (error) throw error
         toast.success("Faixa atualizada")
       } else {
         const { error } = await supabase
-          .from('faixas_metas_corretor')
+          .from('faixa_meta')
           .insert({ ...payload })
         if (error) throw error
         toast.success("Faixa criada")
@@ -883,18 +910,6 @@ export default function SettingsPage() {
       toast.error(`Erro SQL: ${error.message || "Tabela não encontrada ou falha de conexão"}`)
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  const handleDeleteFaixaMeta = async (id: string) => {
-    if (!confirm("Excluir esta faixa?")) return
-    try {
-      const { error } = await supabase.from('faixas_metas_corretor').delete().eq('id', id)
-      if (error) throw error
-      toast.success("Faixa excluída")
-      fetchStatuses()
-    } catch {
-      toast.error("Erro ao excluir")
     }
   }
 
@@ -1048,18 +1063,33 @@ export default function SettingsPage() {
                   ...metas.map(m => m.ano),
                   ...faixasMetas.map(f => f.ano),
                   new Date().getFullYear()
-                ])).filter(y => y > 0).sort((a, b) => b - a).map((year) => (
-                  <Card key={year} className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm overflow-visible">
+                ])).filter(y => y > 0).sort((a, b) => b - a).map((year) => {
+                  const annualMeta = metas.find(m => m.tipo === 'empresa' && m.ano === year && m.mes === 0);
+                  const isMetasAtiva = annualMeta?.ativo !== false;
+
+                  return (
+                  <Card key={year} className={cn(
+                    "border overflow-hidden rounded-2xl bg-white shadow-sm overflow-visible transition-all",
+                    isMetasAtiva ? "border-slate-200" : "border-slate-100 opacity-75 grayscale"
+                  )}>
                     <div 
                       className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
                       onClick={() => setExpandedYearId(expandedYearId === year ? null : year)}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-[12px] font-mono">
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center font-black text-[12px] font-mono",
+                          isMetasAtiva ? "bg-primary/10 text-primary" : "bg-slate-100 text-slate-400"
+                        )}>
                           {year.toString().substring(2)}
                         </div>
                         <div>
-                          <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">PLANO DE METAS {year}</h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest leading-none">PLANO DE METAS {year}</h3>
+                            {!isMetasAtiva && (
+                              <span className="bg-slate-100 text-slate-400 text-[8px] font-black px-1.5 py-0.5 rounded uppercase">Inativo</span>
+                            )}
+                          </div>
                           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Gestão de desempenho e bonificações</p>
                         </div>
                       </div>
@@ -1067,11 +1097,62 @@ export default function SettingsPage() {
                         <div className="hidden md:flex items-center gap-4 border-r pr-4 border-slate-100">
                            <div className="flex flex-col items-end">
                             <span className="text-[8px] font-bold text-slate-300 uppercase">Meta Anual</span>
-                            <span className="text-[11px] font-mono font-black text-emerald-600">
-                              {formatCurrency(((metas.find(m => m.tipo === 'empresa' && m.ano === year && m.mes === 0)?.valor_mensal || 0) * 100).toString())}
+                            <span className={cn(
+                              "text-[11px] font-mono font-black",
+                              isMetasAtiva ? "text-emerald-600" : "text-slate-400"
+                            )}>
+                              {formatCurrency(((annualMeta?.valor_mensal || 0) * 100).toString())}
                             </span>
                           </div>
                         </div>
+
+                        <div className="flex items-center gap-2 pr-2" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "h-7 w-7 rounded-lg transition-colors",
+                              isMetasAtiva ? "text-emerald-500 hover:bg-emerald-50" : "text-slate-300 hover:bg-slate-100"
+                            )}
+                            onClick={() => annualMeta && handleToggleMetaAtiva(annualMeta.id, isMetasAtiva)}
+                            title={isMetasAtiva ? "Desativar Plano" : "Ativar Plano"}
+                          >
+                            <Zap className={cn("w-3.5 h-3.5", isMetasAtiva && "fill-current")} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-lg text-slate-400 hover:text-primary hover:bg-primary/5"
+                            onClick={() => {
+                              if (annualMeta) {
+                                setAnnualGoalForm({
+                                  id: annualMeta.id,
+                                  ano: annualMeta.ano,
+                                  valor: (annualMeta.valor_mensal * 100).toString(),
+                                  ativo: annualMeta.ativo !== false
+                                })
+                                setIsAnnualGoalModalOpen(true)
+                              } else {
+                                setAnnualGoalForm({ id: "", ano: year, valor: "", ativo: true })
+                                setIsAnnualGoalModalOpen(true)
+                              }
+                            }}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleGenericDelete('meta_anual', year)
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+
                         {expandedYearId === year ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
                       </div>
                     </div>
@@ -1081,180 +1162,138 @@ export default function SettingsPage() {
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-slate-100">
                           <div className="p-6 bg-slate-50/30 space-y-8">
                             
-                            {/* Grid de Configurações do Ano */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                              {/* Meta Supervisor */}
-                              <Card className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 relative group">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <BarChart3 className="w-4 h-4 text-sky-500" />
-                                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Equipes</h4>
-                                  </div>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-6 w-6 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={() => {
-                                      setTeamMetaYear(year)
-                                      setIsSupervisorGoalModalOpen(true)
-                                    }}
-                                  >
-                                    <Plus className="w-3 h-3" />
-                                  </Button>
+                            {/* Resumo Estrutural */}
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                              <div className="flex items-center gap-4">
+                                <div className="bg-primary/10 p-3 rounded-2xl">
+                                  <BarChart3 className="w-6 h-6 text-primary" />
                                 </div>
-                                <div className="space-y-1.5 max-h-[120px] overflow-y-auto scrollbar-hide pr-1">
-                                  {metas.filter(m => m.tipo === 'time' && m.ano === year).length === 0 ? (
-                                    <p className="text-[9px] text-slate-300 font-medium italic">Nenhuma meta configurada</p>
-                                  ) : (
-                                    metas.filter(m => m.tipo === 'time' && m.ano === year).map(meta => (
-                                      <div key={meta.id} className="flex items-center justify-between py-1 border-b border-dashed border-slate-100 last:border-0 group/item">
-                                        <div className="flex flex-col">
-                                          <span className="text-[9px] font-bold text-slate-600 uppercase">{meta.alvo_nome}</span>
-                                          <span className="text-[7px] text-slate-400 font-mono font-bold">{formatCurrency((meta.valor_mensal * 100).toString())}</span>
-                                        </div>
-                                        <button onClick={() => handleDeleteMeta(meta.id)} className="opacity-0 group-hover/item:opacity-100 text-rose-300 hover:text-rose-500 transition-all">
-                                          <Trash2 className="w-2.5 h-2.5" />
-                                        </button>
-                                      </div>
-                                    ))
-                                  )}
+                                <div className="flex flex-col">
+                                  <h5 className="text-[12px] font-black text-slate-800 uppercase tracking-widest">RESUMO ESTRUTURAL DO ANO {year}</h5>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase">Gestão descentralizada por competência mensal</p>
                                 </div>
-                              </Card>
-
-                              {/* Meta Corretor */}
-                              <Card className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 relative group">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Target className="w-4 h-4 text-amber-500" />
-                                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Corretores</h4>
-                                  </div>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-6 w-6 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={() => {
-                                      setIndividualMetaYear(year)
-                                      setIsBrokerGoalModalOpen(true)
-                                    }}
-                                  >
-                                    <Plus className="w-3 h-3" />
-                                  </Button>
+                              </div>
+                              <div className="flex items-center gap-8">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase">Referência Mensal</span>
+                                  <span className="text-[14px] font-mono font-black text-slate-600">
+                                    {annualMeta ? formatCurrency(((annualMeta.valor_mensal / 12) * 100).toString()) : '0,00'}
+                                  </span>
                                 </div>
-                                <div className="space-y-1.5 max-h-[120px] overflow-y-auto scrollbar-hide pr-1">
-                                  {metas.filter(m => m.tipo === 'corretor' && m.ano === year).length === 0 ? (
-                                    <p className="text-[9px] text-slate-300 font-medium italic">Sem metas individuais</p>
-                                  ) : (
-                                    metas.filter(m => m.tipo === 'corretor' && m.ano === year).map(meta => (
-                                      <div key={meta.id} className="flex items-center justify-between py-1 border-b border-dashed border-slate-100 last:border-0 group/item">
-                                        <div className="flex flex-col">
-                                          <span className="text-[9px] font-bold text-slate-600 uppercase">{meta.alvo_nome}</span>
-                                          <span className="text-[7px] text-slate-400 font-mono font-bold">{formatCurrency((meta.valor_mensal * 100).toString())}</span>
-                                        </div>
-                                        <button onClick={() => handleDeleteMeta(meta.id)} className="opacity-0 group-hover/item:opacity-100 text-rose-300 hover:text-rose-500 transition-all">
-                                          <Trash2 className="w-2.5 h-2.5" />
-                                        </button>
-                                      </div>
-                                    ))
-                                  )}
+                                <div className="w-[1px] h-10 bg-slate-100 hidden md:block" />
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase">Meta Total do Plano</span>
+                                  <span className="text-[14px] font-mono font-black text-emerald-600">
+                                    {annualMeta ? formatCurrency((annualMeta.valor_mensal * 100).toString()) : '0,00'}
+                                  </span>
                                 </div>
-                              </Card>
-
-                              {/* Faixas e Prêmios */}
-                              <Card className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 relative group md:col-span-2">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Trophy className="w-4 h-4 text-emerald-500" />
-                                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Faixas de Premiação</h4>
-                                  </div>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-6 w-6 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={() => {
-                                      setFaixaMetaForm({ id: "", nome: "", valor_minimo: "", premio: "", ativo: true, ano: year })
-                                      setIsFaixaMetaModalOpen(true)
-                                    }}
-                                  >
-                                    <Plus className="w-3 h-3" />
-                                  </Button>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[120px] overflow-y-auto scrollbar-hide pr-1">
-                                  {faixasMetas.filter(f => f.ano === year).length === 0 ? (
-                                    <p className="text-[9px] text-slate-300 font-medium italic col-span-2">Nenhuma faixa cadastrada para {year}</p>
-                                  ) : (
-                                    faixasMetas.filter(f => f.ano === year).map(faixa => (
-                                      <div key={faixa.id} className="p-2 bg-slate-50 rounded-lg border border-slate-100 group/item relative">
-                                        <div className="flex flex-col gap-0.5">
-                                          <div className="flex items-center gap-1.5">
-                                            <span className="text-[9px] font-black text-slate-700 uppercase leading-none">{faixa.nome}</span>
-                                            {!faixa.ativo && <span className="bg-slate-200 text-slate-500 text-[6px] font-black px-1 rounded-sm">OFF</span>}
-                                          </div>
-                                          <span className="text-[8px] font-bold text-emerald-600 uppercase tracking-tighter">{faixa.premio}</span>
-                                          <span className="text-[7.5px] text-slate-400 font-mono">BASE: {formatCurrency((faixa.valor_minimo * 100).toString())}</span>
-                                        </div>
-                                        <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-all">
-                                          <button 
-                                            onClick={() => {
-                                              setFaixaMetaForm({
-                                                id: faixa.id,
-                                                nome: faixa.nome,
-                                                valor_minimo: (faixa.valor_minimo * 100).toString(),
-                                                premio: faixa.premio,
-                                                ativo: faixa.ativo,
-                                                ano: faixa.ano
-                                              })
-                                              setIsFaixaMetaModalOpen(true)
-                                            }}
-                                            className="text-slate-300 hover:text-primary"
-                                          >
-                                            <Pencil className="w-2.5 h-2.5" />
-                                          </button>
-                                          <button onClick={() => handleDeleteFaixaMeta(faixa.id)} className="text-slate-300 hover:text-rose-500">
-                                            <Trash2 className="w-2.5 h-2.5" />
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-                              </Card>
+                              </div>
                             </div>
 
-                            {/* Footer do Accordion com Resumo Mensal */}
-                            <div className="pt-6 border-t border-slate-100">
-                              <div className="flex items-center gap-2 mb-4">
-                                <BarChart3 className="w-3.5 h-3.5 text-slate-400" />
-                                <h5 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">RESUMO MENSAL DO ANO ({year})</h5>
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Target className="w-4 h-4 text-primary" />
+                                  <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-widest leading-none">Cronograma de Gestão Mensal</h4>
+                                </div>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase">Selecione um mês para gerenciar Supervisores, Corretores e Prêmios</p>
                               </div>
-                              <div className="flex overflow-x-auto pb-2 scrollbar-hide gap-3">
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
                                 {Array.from({ length: 12 }, (_, i) => i + 1).map(mes => {
-                                  const metaMes = metas.filter(m => m.ano === year && m.mes === mes);
-                                  const totalMes = metaMes.reduce((acc, curr) => acc + curr.valor_mensal, 0);
-                                  const mDesc = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"][mes-1];
+                                  const metasMes = metas.filter(m => m.ano === year && m.mes === mes);
+                                  const totalMes = metasMes.reduce((acc, curr) => acc + curr.valor_mensal, 0);
+                                  const metaAnualMensalizada = (annualMeta?.valor_mensal || 0) / 12;
+                                  const percAlocado = metaAnualMensalizada > 0 ? (totalMes / metaAnualMensalizada) * 100 : 0;
+                                  
+                                  const mDesc = monthsList.find(m => m.id === mes)?.name.toUpperCase();
+                                  const isCurrentMonth = new Date().getMonth() + 1 === mes && new Date().getFullYear() === year;
+                                  
                                   return (
-                                    <div key={mes} className="flex-shrink-0 w-24 p-2 bg-white rounded-xl border border-slate-100 shadow-sm flex flex-col items-center">
-                                      <span className="text-[8px] font-black text-slate-300 mb-1">{mDesc}</span>
-                                      <span className="text-[9px] font-mono font-bold text-slate-600">
-                                        {totalMes > 0 ? formatCurrency((totalMes * 100).toString()) : '---'}
-                                      </span>
+                                    <div 
+                                      key={mes} 
+                                      onClick={() => {
+                                        setSelectedMonthForManage(mes)
+                                        setSelectedYearForManage(year)
+                                        setIsManageMonthModalOpen(true)
+                                      }}
+                                      className={cn(
+                                        "relative group/mes overflow-hidden bg-white rounded-2xl border shadow-sm p-4 hover:shadow-xl transition-all cursor-pointer",
+                                        isCurrentMonth ? "border-primary ring-1 ring-primary/10" : "border-slate-100"
+                                      )}
+                                    >
+                                      {/* Indicador de Status Alocado */}
+                                      <div className={cn(
+                                        "absolute top-0 right-0 w-12 h-12 -mr-6 -mt-6 rounded-full transition-transform group-hover/mes:scale-110",
+                                        percAlocado >= 100 ? "bg-emerald-500/10" : percAlocado > 0 ? "bg-primary/10" : "bg-slate-50"
+                                      )} />
+
+                                      <div className="flex flex-col gap-4 relative">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className={cn(
+                                              "text-[10px] font-black uppercase tracking-tight",
+                                              isCurrentMonth ? "text-primary" : "text-slate-800"
+                                            )}>{mDesc}</span>
+                                            {isCurrentMonth && (
+                                              <span className="w-1 h-1 bg-primary rounded-full animate-pulse" />
+                                            )}
+                                          </div>
+                                          {percAlocado > 0 && (
+                                            <span className={cn(
+                                              "text-[8px] font-black px-1.5 py-0.5 rounded-md",
+                                              percAlocado >= 100 ? "bg-emerald-100 text-emerald-600" : "bg-primary/10 text-primary"
+                                            )}>
+                                              {Math.round(percAlocado)}%
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="space-y-1">
+                                          <div className="text-[11px] font-mono font-black text-slate-700">
+                                            {totalMes > 0 ? formatCurrency((totalMes * 100).toString()) : '---'}
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            <TrendingUp className={cn("w-2.5 h-2.5", percAlocado > 0 ? "text-primary" : "text-slate-300")} />
+                                            <span className="text-[8px] font-bold text-slate-300 uppercase">Metas Alocadas</span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-3 pt-2 border-t border-slate-50">
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="text-[8px] font-bold text-slate-400 leading-none">SUP.</span>
+                                            <span className="text-[10px] font-black text-slate-700">{metas.filter(m => m.tipo === 'time' && m.ano === year && m.mes === mes).length}</span>
+                                          </div>
+                                          <div className="w-[1px] h-4 bg-slate-100" />
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="text-[8px] font-bold text-slate-400 leading-none">COR.</span>
+                                            <span className="text-[10px] font-black text-slate-700">{metas.filter(m => m.tipo === 'corretor' && m.ano === year && m.mes === mes).length}</span>
+                                          </div>
+                                          <div className="flex-1 flex justify-end">
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full group-hover/mes:bg-primary group-hover/mes:text-white transition-all">
+                                              <Plus className="w-3 h-3" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
                                   );
                                 })}
                               </div>
                             </div>
-
                           </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
                   </Card>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
+                );
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </section>
 
-        <section className="space-y-6">
+      <section className="space-y-6">
           <div 
             className="flex items-center justify-between cursor-pointer group select-none"
             onClick={() => setIsStatusExpanded(!isStatusExpanded)}
@@ -2001,7 +2040,233 @@ export default function SettingsPage() {
         </section>
       </main>
 
-      {/* Modal CRUD Status */}
+      {/* Modal Gerenciar Mês (Central de Comandos) */}
+      <Dialog open={isManageMonthModalOpen} onOpenChange={setIsManageMonthModalOpen}>
+        <DialogContent showCloseButton={false} className="sm:max-w-[1000px] border-none rounded-3xl shadow-2xl overflow-hidden p-0 bg-slate-50">
+          <div className="flex flex-col h-[600px]">
+            {/* Header */}
+            <div className="px-8 py-6 bg-white border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <CalendarDays className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-[16px] font-black text-slate-800 uppercase tracking-tighter">
+                    Gestão de Performance - {monthsList.find(m => m.id === selectedMonthForManage)?.name} / {selectedYearForManage}
+                  </h2>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Painel de gerenciamento de metas e prêmios do período</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content Tabs */}
+            <div className="flex-1 overflow-y-auto p-8 space-y-8">
+              {/* Supervisores Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <BarChart3 className="w-5 h-5 text-sky-500" />
+                    <h3 className="text-[12px] font-extrabold text-slate-700 uppercase tracking-wider">Metas por Supervisor</h3>
+                  </div>
+                  <Button 
+                    size="sm"
+                    className="bg-sky-500 hover:bg-sky-600 text-white font-bold text-[9px] uppercase tracking-widest rounded-lg h-8 gap-2"
+                    onClick={() => {
+                      setTeamMetaYear(selectedYearForManage!)
+                      setTeamMetaMonth(selectedMonthForManage!)
+                      setSelectedTeam("")
+                      setTeamMetaValue("")
+                      setIsSupervisorGoalModalOpen(true)
+                    }}
+                  >
+                    <Plus className="w-3 h-3" />
+                    Nova Meta Manager
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {metas.filter(m => m.ano === selectedYearForManage && m.mes === selectedMonthForManage && m.tipo === 'time').length === 0 ? (
+                    <div className="col-span-full py-4 border-2 border-dashed border-slate-100 rounded-2xl flex items-center justify-center">
+                      <span className="text-[10px] font-bold text-slate-300 uppercase">Nenhuma meta de supervisor definida</span>
+                    </div>
+                  ) : (
+                    metas.filter(m => m.ano === selectedYearForManage && m.mes === selectedMonthForManage && m.tipo === 'time').map(meta => {
+                      const supervisor = supervisoresList.find(s => s.id === meta.alvo_id)
+                      return (
+                        <Card key={meta.id} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-sm group hover:shadow-md transition-all">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[9px] font-black text-slate-400 uppercase truncate pr-2">{supervisor?.nome || meta.alvo_nome || 'Não Encontrado'}</span>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-sky-500" onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedTeam(meta.alvo_id || "")
+                                setTeamMetaValue(formatCurrency((meta.valor_mensal * 100).toString()))
+                                setTeamMetaMonth(meta.mes)
+                                setTeamMetaYear(meta.ano)
+                                // Handle edit...
+                                setIsSupervisorGoalModalOpen(true)
+                              }}><Pencil className="w-3 h-3" /></Button>
+                              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-rose-500" onClick={(e) => {
+                                e.stopPropagation()
+                                handleGenericDelete('meta', meta.id)
+                              }}><Trash2 className="w-3 h-3" /></Button>
+                            </div>
+                          </div>
+                          <div className="text-[14px] font-black text-slate-800">{formatCurrency((meta.valor_mensal * 100).toString())}</div>
+                        </Card>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Corretores Section */}
+              <div className="space-y-4 pt-4 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Target className="w-5 h-5 text-amber-500" />
+                    <h3 className="text-[12px] font-extrabold text-slate-700 uppercase tracking-wider">Metas por Corretor</h3>
+                  </div>
+                  <Button 
+                    size="sm"
+                    className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-[9px] uppercase tracking-widest rounded-lg h-8 gap-2"
+                    onClick={() => {
+                      setIndividualMetaYear(selectedYearForManage!)
+                      setIndividualMetaMonth(selectedMonthForManage!)
+                      setSelectedCorretor("")
+                      setIndividualMetaValue("")
+                      setIsBrokerGoalModalOpen(true)
+                    }}
+                  >
+                    <Plus className="w-3 h-3" />
+                    Nova Meta Corretor
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {metas.filter(m => m.ano === selectedYearForManage && m.mes === selectedMonthForManage && m.tipo === 'corretor').length === 0 ? (
+                    <div className="col-span-full py-4 border-2 border-dashed border-slate-100 rounded-2xl flex items-center justify-center">
+                      <span className="text-[10px] font-bold text-slate-300 uppercase">Nenhuma meta de corretor definida</span>
+                    </div>
+                  ) : (
+                    metas.filter(m => m.ano === selectedYearForManage && m.mes === selectedMonthForManage && m.tipo === 'corretor').map(meta => {
+                      const corretor = corretoresList.find(c => c.id === meta.alvo_id)
+                      return (
+                        <Card key={meta.id} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-sm group hover:shadow-md transition-all">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[9px] font-black text-slate-400 uppercase truncate pr-2">{corretor?.nome || meta.alvo_nome || 'Não Encontrado'}</span>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-amber-500" onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedCorretor(meta.alvo_id || "")
+                                setIndividualMetaValue(formatCurrency((meta.valor_mensal * 100).toString()))
+                                setIndividualMetaMonth(meta.mes)
+                                setIndividualMetaYear(meta.ano)
+                                setIsBrokerGoalModalOpen(true)
+                              }}><Pencil className="w-3 h-3" /></Button>
+                              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-rose-500" onClick={(e) => {
+                                e.stopPropagation()
+                                handleGenericDelete('meta', meta.id)
+                              }}><Trash2 className="w-3 h-3" /></Button>
+                            </div>
+                          </div>
+                          <div className="text-[14px] font-black text-slate-800">{formatCurrency((meta.valor_mensal * 100).toString())}</div>
+                        </Card>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Faixas Section */}
+              <div className="space-y-4 pt-4 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Trophy className="w-5 h-5 text-emerald-500" />
+                    <h3 className="text-[12px] font-extrabold text-slate-700 uppercase tracking-wider">Faixas de Premiação ({selectedYearForManage})</h3>
+                  </div>
+                  <Button 
+                    size="sm"
+                    className="bg-[#171717] hover:bg-[#171717]/90 text-white font-bold text-[9px] uppercase tracking-widest rounded-lg h-8 gap-2"
+                    onClick={() => {
+                      setFaixaMetaForm({
+                        id: null,
+                        nome: "",
+                        valor_minimo: "",
+                        premio: "",
+                        ativo: true,
+                        ano: selectedYearForManage!
+                      })
+                      setIsFaixaMetaModalOpen(true)
+                    }}
+                  >
+                    <Plus className="w-3 h-3" />
+                    Nova Faixa
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {faixasMetas.filter(f => f.ano === selectedYearForManage).length === 0 ? (
+                    <div className="col-span-full py-6 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-2">
+                       <Trophy className="w-8 h-8 text-slate-100" />
+                      <span className="text-[10px] font-bold text-slate-300 uppercase">Nenhuma faixa de premiação para {selectedYearForManage}</span>
+                    </div>
+                  ) : (
+                    faixasMetas.filter(f => f.ano === selectedYearForManage).map(faixa => (
+                      <Card key={faixa.id} className="p-5 bg-white border border-slate-100 rounded-2xl shadow-sm group hover:shadow-md transition-all relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-300 hover:text-primary" onClick={(e) => {
+                            e.stopPropagation()
+                            setFaixaMetaForm({
+                              id: faixa.id,
+                              nome: faixa.nome,
+                              valor_minimo: faixa.valor_minimo.toString(),
+                              premio: faixa.premio,
+                              ativo: faixa.ativo !== false,
+                              ano: faixa.ano
+                            })
+                            setIsFaixaMetaModalOpen(true)
+                          }}><Pencil className="w-3.5 h-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-300 hover:text-rose-500" onClick={(e) => {
+                            e.stopPropagation()
+                            handleGenericDelete('faixa_meta', faixa.id)
+                          }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        </div>
+                        <div className="flex items-start gap-4">
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center",
+                            faixa.ativo !== false ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
+                          )}>
+                            <Trophy className="w-5 h-5" />
+                          </div>
+                          <div className="space-y-1">
+                            <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-tight">{faixa.nome}</h4>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[8px] font-bold text-slate-400 uppercase">A partir de:</span>
+                              <span className="text-[13px] font-black text-slate-900">{formatCurrency(faixa.valor_minimo.toString())}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2 py-1.5 px-3 bg-slate-50 rounded-lg border border-slate-100">
+                               <Gift className="w-3 h-3 text-emerald-500" />
+                               <span className="text-[10px] font-bold text-slate-600 uppercase truncate max-w-[200px]">{faixa.premio}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div className="px-8 py-4 bg-white border-t border-slate-100 flex items-center justify-end">
+              <Button 
+                onClick={() => setIsManageMonthModalOpen(false)}
+                className="bg-[#171717] hover:bg-slate-800 text-white font-bold text-[10px] uppercase tracking-widest px-8 h-10 rounded-xl"
+              >
+                Concluir Configuração
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={isModalOpen} onOpenChange={(open) => {
         setIsModalOpen(open)
         if (!open) resetForm()
@@ -2518,14 +2783,15 @@ export default function SettingsPage() {
                   className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl px-3 font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 appearance-none uppercase"
                   value={annualGoalForm.ano}
                   onChange={(e) => setAnnualGoalForm({...annualGoalForm, ano: parseInt(e.target.value)})}
+                  disabled={!!annualGoalForm.id}
                 >
-                  {[2024, 2025, 2026, 2027].map(year => (
+                  {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(year => (
                     <option key={year} value={year}>{year}</option>
                   ))}
                 </select>
               </div>
               <div className="space-y-2">
-                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor Total (R$)</Label>
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Valor Total (R$) Anual</Label>
                 <Input 
                   type="text" 
                   placeholder="R$ 0,00"
@@ -2535,11 +2801,30 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
-            <p className="text-[9px] text-slate-400 font-medium uppercase mt-1 pl-1">Ao salvar, o valor será dividido igualmente entre os 12 meses do ano selecionado.</p>
+            {annualGoalForm.id && (
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-slate-700 uppercase">Status da Campanha</span>
+                  <span className="text-[8px] text-slate-400 uppercase">Ative ou desative este plano anual</span>
+                </div>
+                <button 
+                  onClick={() => setAnnualGoalForm({...annualGoalForm, ativo: !annualGoalForm.ativo})}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[9px] font-black transition-all",
+                    annualGoalForm.ativo ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20" : "bg-slate-200 text-slate-500"
+                  )}
+                >
+                  {annualGoalForm.ativo ? "ATIVO" : "INATIVO"}
+                </button>
+              </div>
+            )}
+            <p className="text-[9px] text-slate-400 font-medium uppercase mt-1 pl-1 italic">
+              {annualGoalForm.id ? "Alterar o valor anual serve como referência para o balanço mensalizado." : "Ao salvar, o valor será usado como balizador para as metas mensais."}
+            </p>
             <DialogFooter className="pt-4 gap-3">
               <Button variant="outline" onClick={() => setIsAnnualGoalModalOpen(false)} className="flex-1 h-[38px] border-slate-200 text-slate-600 font-bold text-[9px] rounded-xl uppercase tracking-widest">Cancelar</Button>
-              <Button onClick={handleSaveAnnualGoal} disabled={isSubmitting} className="flex-1 h-[38px] bg-primary hover:bg-primary/90 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg shadow-primary/20">
-                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Salvar Meta Anual'}
+              <Button onClick={handleSaveAnnualGoal} disabled={isSubmitting} className="flex-1 h-[38px] bg-[#171717] hover:bg-[#171717]/90 text-white font-bold text-[9px] rounded-xl min-w-[120px] uppercase tracking-widest shadow-lg">
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : annualGoalForm.id ? 'Atualizar Plano' : 'Criar Plano Anual'}
               </Button>
             </DialogFooter>
           </div>
