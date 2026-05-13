@@ -106,7 +106,6 @@ export function AdminDashboard({
     monthlyProduced,
     annualGoal,
     annualProduced,
-    dailyGoal,
     dailyProduced,
     inProcessValue,
     inProcessCount,
@@ -128,7 +127,10 @@ export function AdminDashboard({
   const progressPercent = monthlyGoal > 0 ? Math.round((monthlyProduced / monthlyGoal) * 100) : 0
   const remainingValue = Math.max(0, monthlyGoal - monthlyProduced)
 
-  const dailyProgressPercent = dailyGoal > 0 ? Math.round((dailyProduced / dailyGoal) * 100) : 0
+  // Recalculate daily goal based on remaining value and remaining business days
+  const calculatedDailyGoal = remainingBusinessDays > 0 ? remainingValue / remainingBusinessDays : 0
+
+  const dailyProgressPercent = calculatedDailyGoal > 0 ? Math.round((dailyProduced / calculatedDailyGoal) * 100) : 0
 
   const annualProgressPercent = annualGoal > 0 ? Math.round((annualProduced / annualGoal) * 100) : 0
   const annualRemainingValue = Math.max(0, annualGoal - annualProduced)
@@ -212,7 +214,7 @@ export function AdminDashboard({
           <DashboardCard className="h-full flex flex-col shadow-2xl shadow-[#1C2643]/5 overflow-hidden group border-slate-100">
             <div className="relative z-10 flex flex-col h-full">
               <div className="flex items-center justify-between mb-2">
-                 <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">META MENSAL DA EMPRESA</p>
+                 <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">Meta Mensal da Empresa</p>
                  <div className="bg-[#1C2643]/5 p-2 rounded-xl">
                     <Target className="w-5 h-5 text-[#1C2643]" />
                  </div>
@@ -268,7 +270,7 @@ export function AdminDashboard({
               </div>
               <div>
                  <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
-                 <p className="text-2xl lg:text-3xl font-black text-[#1C2643] tracking-tighter mt-1 leading-none">{formatCurrency(dailyGoal)}</p>
+                 <p className="text-2xl lg:text-3xl font-black text-[#1C2643] tracking-tighter mt-1 leading-none">{formatCurrency(calculatedDailyGoal)}</p>
               </div>
               <div className="mt-auto pt-4">
                  <div className="flex justify-between items-center mb-2">
