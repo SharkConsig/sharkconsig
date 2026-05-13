@@ -2217,7 +2217,7 @@ export default function SettingsPage() {
                             setFaixaMetaForm({
                               id: faixa.id,
                               nome: faixa.nome,
-                              valor_minimo: faixa.valor_minimo.toString(),
+                              valor_minimo: formatCurrency(((faixa.valor_minimo || 0) * 100).toString()),
                               premio: faixa.premio,
                               ativo: faixa.ativo !== false,
                               ano: faixa.ano
@@ -2240,7 +2240,7 @@ export default function SettingsPage() {
                             <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-tight">{faixa.nome}</h4>
                             <div className="flex flex-col gap-0.5">
                               <span className="text-[8px] font-bold text-slate-400 uppercase">A partir de:</span>
-                              <span className="text-[13px] font-black text-slate-900">{formatCurrency(faixa.valor_minimo.toString())}</span>
+                              <span className="text-[13px] font-black text-slate-900">{formatCurrency(((faixa.valor_minimo || 0) * 100).toString())}</span>
                             </div>
                             <div className="flex items-center gap-2 mt-2 py-1.5 px-3 bg-slate-50 rounded-lg border border-slate-100">
                                <Gift className="w-3 h-3 text-emerald-500" />
@@ -2983,8 +2983,8 @@ export default function SettingsPage() {
               <Input 
                 type="text" 
                 placeholder="R$ 0,00"
-                value={formatCurrency(faixaMetaForm.valor_minimo.toString())}
-                onChange={(e) => setFaixaMetaForm({...faixaMetaForm, valor_minimo: e.target.value})}
+                value={faixaMetaForm.valor_minimo}
+                onChange={(e) => setFaixaMetaForm({...faixaMetaForm, valor_minimo: formatCurrency(e.target.value)})}
                 className="h-11 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] text-slate-700 uppercase"
               />
             </div>

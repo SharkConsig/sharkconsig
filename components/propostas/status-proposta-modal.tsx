@@ -320,8 +320,7 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
               proposal.status !== "PÓS-VENDA REALIZADA" &&
               proposal.status !== "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL" &&
               proposal.status !== "COM INCONSISTÊNCIA NO BANCO AGUARDANDO OPERACIONAL" &&
-              proposal.status !== "PORTABILIDADE" &&
-              proposal.status !== "PAGAMENTO DEVOLVIDO"
+              proposal.status !== "PORTABILIDADE"
             ))
           ) && (
             <div className="space-y-5">
@@ -807,8 +806,8 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
                     {selectedStatus === "reapresentar-pagamento-pd" && renderObservations()}
                   </div>
 
-                  {/* Outras ações: Visíveis apenas para Operacional, Administrativo (isAdmin) e Desenvolvedor */}
-                  {(isOperational || isAdmin || isDeveloper) && (
+                  {/* Outras ações: Visíveis para todos conforme solicitado */}
+                  {(isOperational || isAdmin || isDeveloper || isSupervisor || isCorretor) && (
                     <>
                       <div className="flex flex-col space-y-1">
                         <div className="flex items-center space-x-3 group">

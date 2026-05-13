@@ -11,8 +11,24 @@ import {
   Clock,
   Target,
   Zap,
-  Loader2
+  Loader2,
+  MessageSquare,
+  PieChart as PieChartIcon
 } from "lucide-react"
+
+import { 
+  PieChart, 
+  Pie, 
+  Cell, 
+  ResponsiveContainer, 
+  Tooltip, 
+  Legend,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid
+} from "recharts"
 import { useAuth } from "@/context/auth-context"
 import { cn, withRetry } from "@/lib/utils"
 import { motion } from "motion/react"
@@ -39,6 +55,14 @@ interface RankingItem {
   countToday: number
 }
 
+interface TicketStats {
+  total: number
+  notApproved: number
+  converted: number
+  byStatus: { name: string; value: number; color: string }[]
+  byOrigin: { name: string; value: number }[]
+}
+
 interface AdminStats {
   monthlyGoal: number
   monthlyProduced: number
@@ -50,13 +74,25 @@ interface AdminStats {
   inProcessCount: number
   pendingActionsValue: number
   pendingActionsCount: number
+  createdTodayValue: number
+  createdTodayCount: number
+  createdWeekValue: number
+  createdWeekCount: number
+  createdMonthValue: number
+  createdMonthCount: number
   brokerRankings: {
+    corretor_id: string
     name: string
     team: string
     supervisor: string
-    total: number
-    count: number
+    totalPaid: number
+    totalInProcess: number
+    totalToday: number
+    countPaid: number
+    countInProcess: number
+    countToday: number
   }[]
+  ticketStats?: TicketStats
 }
 
 const parseCurrency = (val: string | number | null | undefined) => {
@@ -71,8 +107,17 @@ const parseCurrency = (val: string | number | null | undefined) => {
   return parseFloat(clean)
 }
 
+interface User {
+  id: string
+  nome: string
+  funcao: string
+  supervisor_id: string
+  supervisor_nome?: string
+  equipe?: string
+}
+
 export default function DashboardPage() {
-  const { perfil, isCorretor, isAdmin } = useAuth()
+  const { perfil, isCorretor, isAdmin, isOperational } = useAuth()
   const { isCollapsed } = useSidebar()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -92,10 +137,15 @@ export default function DashboardPage() {
   const [teamPendingInconsistencyValue, setTeamPendingInconsistencyValue] = useState(0)
   const [banners, setBanners] = useState<{image_url: string, title: string | null}[]>([])
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
+  const [ticketStats, setTicketStats] = useState<TicketStats | null>(null)
   const [startDate, setStartDate] = useState<string>("")
   const [endDate, setEndDate] = useState<string>("")
   const [tempStartDate, setTempStartDate] = useState<string>("")
   const [tempEndDate, setTempEndDate] = useState<string>("")
+  const [activeTab, setActiveTab] = useState<'propostas' | 'chamados'>('propostas')
+  const [teamPendingInconsistencyCount, setTeamPendingInconsistencyCount] = useState(0)
+  const [opInProcessValue, setOpInProcessValue] = useState(0)
+  const [opInProcessCount, setOpInProcessCount] = useState(0)
   
   const fetchDashboardData = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -105,8 +155,22 @@ export default function DashboardPage() {
     }
     setIsLoading(true)
 
-    // Helper to fetch all records beyond the 1000 limit
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // Accumulators for team/admin stats
+    let teamTotal = 0
+    let teamDailyTotal = 0
+    let teamInProcessValueCalc = 0
+    let teamInProcessCountCalc = 0
+    let opInProcessValueCalc = 0
+    let opInProcessCountCalc = 0
+    let teamPendingInconsistencyValueCalc = 0
+    let teamPendingInconsistencyCountCalc = 0
+    let teamCreatedTodayValue = 0
+    let teamCreatedTodayCount = 0
+    let teamCreatedWeekValue = 0
+    let teamCreatedWeekCount = 0
+    let teamCreatedMonthValue = 0
+    let teamCreatedMonthCount = 0
+
     // Helper to fetch all records beyond the 1000 limit
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fetchAll = async (baseQuery: any) => {
@@ -143,9 +207,9 @@ export default function DashboardPage() {
       startOfMonth.setHours(0, 0, 0, 0)
       startOfMonth.setDate(1)
 
-      // Custom range for Supervisor
-      const customStart = perfil?.role === 'Supervisor' && startDate ? new Date(startDate + 'T00:00:00') : null
-      const customEnd = perfil?.role === 'Supervisor' && endDate ? new Date(endDate + 'T23:59:59') : null
+      // Custom range for Supervisor and Admin and Operational
+      const customStart = (perfil?.role === 'Supervisor' || perfil?.role === 'Admin' || perfil?.role === 'Operacional') && startDate ? new Date(startDate + 'T00:00:00') : null
+      const customEnd = (perfil?.role === 'Supervisor' || perfil?.role === 'Admin' || perfil?.role === 'Operacional') && endDate ? new Date(endDate + 'T23:59:59') : null
 
       const startOfWeek = new Date()
       startOfWeek.setHours(0, 0, 0, 0)
@@ -172,6 +236,12 @@ export default function DashboardPage() {
         "ANDAMENTO / AGUARDANDO PAGAMENTO", 
         "COM INCONSISTÊNCIA NO BANCO", 
         "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
+      ]
+
+      const opStatuses = [
+        'AGUARDANDO DIGITAÇÃO OPERACIONAL',
+        'COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL',
+        'COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL'
       ]
 
       // 1. Fetch user's paid proposals
@@ -207,32 +277,29 @@ export default function DashboardPage() {
       
       let sortedRankings: RankingItem[] = []
 
-      if (targetSupervisorId) {
-        const team = allUsers.filter((u: { id: string, supervisor_id: string }) => 
-          u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId
-        )
-        const teamIds = team.map((m: { id: string }) => m.id)
+      if (targetSupervisorId || isAdmin || isOperational) {
+        const team = (isAdmin || isOperational)
+          ? allUsers.filter((u: User) => u.funcao === 'Corretor' || u.funcao === 'Supervisor')
+          : allUsers.filter((u: User) => 
+              u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId
+            )
+        const teamIds = team.map((m: User) => m.id)
 
-        // Fetch proposals for the team
-        const teamProposalsQuery = supabase
+        // Fetch proposals for the team (or all if admin/operational)
+        let teamProposalsQuery = supabase
           .from("propostas")
           .select("corretor_id, valor_producao, status, updated_at, created_at")
-          .in("corretor_id", teamIds)
+        
+        if (!(isAdmin || isOperational)) {
+          teamProposalsQuery = teamProposalsQuery.in("corretor_id", teamIds)
+        }
+
+        // Apply global date filter to query to reduce data volume
+        // We need proposals that were either updated (for paid) or created (for daily/monthly) in the relevant range
+        const queryStart = customStart ? customStart.toISOString() : startOfMonth.toISOString()
+        teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte.${queryStart},created_at.gte.${queryStart}`)
 
         const teamProposals = await fetchAll(teamProposalsQuery)
-
-        // Aggregates
-        let teamTotal = 0
-        let teamDailyTotal = 0
-        let teamCreatedTodayValue = 0
-        let teamCreatedTodayCount = 0
-        let teamCreatedWeekValue = 0
-        let teamCreatedWeekCount = 0
-        let teamCreatedMonthValue = 0
-        let teamCreatedMonthCount = 0
-        let teamInProcessValueCalc = 0
-        let teamInProcessCountCalc = 0
-        let teamPendingInconsistencyValueCalc = 0
 
         const brokerMetrics: Record<string, { 
           totalPaid: number, 
@@ -269,6 +336,7 @@ export default function DashboardPage() {
           
           const isPaid = paidStatuses.includes(curr.status)
           const isInProcess = inProcessStatuses.includes(curr.status)
+          const isOpInProcess = opStatuses.includes(curr.status)
           const isCancelled = curr.status === "CANCELADO"
           
           const isPaidInRange = (customStart && customEnd)
@@ -290,11 +358,17 @@ export default function DashboardPage() {
             teamInProcessCountCalc += 1
             if (curr.status === "COM INCONSISTÊNCIA NO BANCO" || curr.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL") {
               teamPendingInconsistencyValueCalc += numericVal
+              teamPendingInconsistencyCountCalc += 1
             }
             if (brokerMetrics[brokerId]) {
               brokerMetrics[brokerId].totalInProcess += numericVal
               brokerMetrics[brokerId].countInProcess += 1
             }
+          }
+
+          if (isOpInProcess) {
+            opInProcessValueCalc += numericVal
+            opInProcessCountCalc += 1
           }
 
           const isCreatedInRange = (customStart && customEnd)
@@ -332,6 +406,9 @@ export default function DashboardPage() {
         setTeamInProcessValue(teamInProcessValueCalc)
         setTeamInProcessCount(teamInProcessCountCalc)
         setTeamPendingInconsistencyValue(teamPendingInconsistencyValueCalc)
+        setTeamPendingInconsistencyCount(teamPendingInconsistencyCountCalc)
+        setOpInProcessValue(opInProcessValueCalc)
+        setOpInProcessCount(opInProcessCountCalc)
 
         // Form rankings for supervisor
         sortedRankings = team.map((m: { id: string, nome: string }) => ({
@@ -385,121 +462,153 @@ export default function DashboardPage() {
         setRankings(sortedRankings)
       }
 
-      // 3. Fetch Admin specific stats if admin
+      // 3. Ticket Stats (Chamados) - ONLY FOR ADMIN DASHBOARD
       if (isAdmin) {
-        const now = new Date()
-        const currentYear = now.getFullYear()
-        const currentMonth = now.getMonth() + 1
-        
-        // Fetch goals
-        const { data: goalsData } = await withRetry(() => 
-          supabase
+        try {
+          interface Ticket {
+            status?: string
+            origem?: string
+            cliente_cpf?: string
+            corretor_id?: string
+          }
+          
+          const ticketsQuery = supabase.from('chamados').select('*')
+          const allTickets = (await fetchAll(ticketsQuery)) as Ticket[]
+          
+          const initialTicketSummary = { 
+            total: 0, 
+            notApproved: 0, 
+            byStatus: {} as Record<string, number>, 
+            byOrigin: {} as Record<string, number>, 
+            cpfs: new Set<string>() 
+          }
+          
+          const ticketSummary = allTickets.reduce((acc, ticket) => {
+            acc.total++
+            const status = ticket.status || 'ABERTO'
+            acc.byStatus[status] = (acc.byStatus[status] || 0) + 1
+            if (status === 'REPROVADO' || status === 'CANCELADO') {
+              acc.notApproved++
+            }
+            const origin = ticket.origem || 'NÃO INFORMADO'
+            acc.byOrigin[origin] = (acc.byOrigin[origin] || 0) + 1
+            if (ticket.cliente_cpf) {
+              acc.cpfs.add(ticket.cliente_cpf)
+            }
+            return acc
+          }, initialTicketSummary)
+
+          const ticketCpfs = Array.from(ticketSummary.cpfs)
+          let convertedCount = 0
+          if (ticketCpfs.length > 0) {
+            const { data: convertedData } = await supabase
+              .from('propostas')
+              .select('cliente_cpf')
+              .in('cliente_cpf', ticketCpfs)
+            const uniqueConverted = new Set(convertedData?.map(p => p.cliente_cpf))
+            convertedCount = uniqueConverted.size
+          }
+
+          const statusColors: Record<string, string> = {
+            'ABERTO': '#00aeef',
+            'EM ANÁLISE': '#3a8ee6',
+            'APROVADO': '#8ec600',
+            'REPROVADO': '#f7941d',
+            'CANCELADO': '#71797e',
+            'CONCLUÍDO': '#00aeef'
+          }
+
+          const byStatus = Object.entries(ticketSummary.byStatus).map(([name, value]) => ({
+            name,
+            value: value as number,
+            color: statusColors[name] || '#94a3b8'
+          }))
+
+          const byOrigin = Object.entries(ticketSummary.byOrigin)
+            .map(([name, value]) => ({
+              name,
+              value: value as number
+            }))
+            .sort((a, b) => b.value - a.value)
+
+          const finalTicketStats = {
+            total: ticketSummary.total,
+            notApproved: ticketSummary.notApproved,
+            converted: convertedCount,
+            byStatus,
+            byOrigin
+          }
+          
+          setTicketStats(finalTicketStats)
+
+          // 4. Fetch Admin specific stats
+          const now = new Date()
+          const currentYear = now.getFullYear()
+
+          // Fetch annual produced
+          const startOfYear = new Date(currentYear, 0, 1).toISOString()
+          const annualQuery = supabase
+            .from('propostas')
+            .select('valor_producao')
+            .in('status', ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA'])
+            .gte('updated_at', startOfYear)
+          
+          const annualProposals = await fetchAll(annualQuery)
+          const annualProducedValue = (annualProposals || []).reduce((acc, p) => {
+            const val = parseCurrency(p.valor_producao)
+            return acc + (isNaN(val) ? 0 : val)
+          }, 0)
+          
+          const { data: goalsData } = await supabase
             .from('metas_config')
             .select('*')
             .eq('tipo', 'empresa')
             .eq('ano', currentYear)
-        )
 
-        const annualGoalConfig = goalsData?.find(g => g.mes === 0)
-        const annualGoal = annualGoalConfig?.valor_mensal || 0
-        const monthlyGoal = annualGoal / 12
+          const annualGoalConfig = goalsData?.find(g => g.mes === 0)
+          const annualGoalValue = annualGoalConfig?.valor_mensal || 0
+          const monthlyGoalValue = annualGoalValue / 12
 
-        // Fetch annual produced (ONLY the specific folder requested)
-        const startOfYear = new Date(currentYear, 0, 1).toISOString()
-        const annualQuery = supabase
-          .from('propostas')
-          .select('valor_producao')
-          .in('status', ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA'])
-          .gte('updated_at', startOfYear)
-        
-        const annualProposals = await fetchAll(annualQuery)
-
-        const annualProduced = (annualProposals || []).reduce((acc, p) => {
-          const val = parseCurrency(p.valor_producao)
-          return acc + (isNaN(val) ? 0 : val)
-        }, 0)
-
-        // Fetch monthly produced
-        const startOfCurrentMonth = new Date(currentYear, currentMonth - 1, 1).toISOString()
-        const monthlyQuery = supabase
-          .from('propostas')
-          .select('valor_producao')
-          .in('status', ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA'])
-          .gte('updated_at', startOfCurrentMonth)
-        
-        const monthlyProposals = await fetchAll(monthlyQuery)
-
-        const monthlyProduced = (monthlyProposals || []).reduce((acc, p) => {
-          const val = parseCurrency(p.valor_producao)
-          return acc + (isNaN(val) ? 0 : val)
-        }, 0)
-
-        // Fetch daily produced
-        const startOfTodayISO = new Date().setHours(0, 0, 0, 0)
-        const dailyQuery = supabase
-          .from('propostas')
-          .select('valor_producao')
-          .in('status', ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA'])
-          .gte('updated_at', new Date(startOfTodayISO).toISOString())
-        
-        const dailyProposals = await fetchAll(dailyQuery)
-
-        const dailyProduced = (dailyProposals || []).reduce((acc, p) => {
-          const val = parseCurrency(p.valor_producao)
-          return acc + (isNaN(val) ? 0 : val)
-        }, 0)
-
-        // In process (Combined as requested)
-        const inProcessQuery = supabase
-          .from('propostas')
-          .select('valor_producao')
-          .in('status', [
-            "ANDAMENTO / AGUARDANDO PAGAMENTO", 
-            "COM INCONSISTÊNCIA NO BANCO",
-            "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
-          ])
-        
-        const inProcessProposals = await fetchAll(inProcessQuery)
-
-        const inProcessValue = (inProcessProposals || []).reduce((acc, p) => {
-          const val = parseCurrency(p.valor_producao)
-          return acc + (isNaN(val) ? 0 : val)
-        }, 0)
-
-        const pendingQuery = supabase
-          .from('propostas')
-          .select('valor_producao')
-          .in('status', [
-            "COM INCONSISTÊNCIA NO BANCO", 
-            "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
-          ])
-        
-        const pendingProposals = await fetchAll(pendingQuery)
-
-        const pendingValue = (pendingProposals || []).reduce((acc, p) => {
-          const val = parseCurrency(p.valor_producao)
-          return acc + (isNaN(val) ? 0 : val)
-        }, 0)
-
-        setAdminStats({
-          monthlyGoal,
-          monthlyProduced,
-          annualGoal,
-          annualProduced,
-          dailyGoal: monthlyGoal / 22,
-          dailyProduced,
-          inProcessValue,
-          inProcessCount: inProcessProposals?.length || 0,
-          pendingActionsValue: pendingValue,
-          pendingActionsCount: pendingProposals?.length || 0,
-          brokerRankings: sortedRankings.slice(0, 5).map(r => ({
-            name: r.nome,
-            team: "Shark", // Idealmente buscar o time real
-            supervisor: "Supervisor", // Idealmente buscar o supervisor real
-            total: r.totalPaid,
-            count: r.countPaid || 0
-          }))
-        })
+          setAdminStats({
+            monthlyGoal: monthlyGoalValue,
+            monthlyProduced: teamTotal,
+            annualGoal: annualGoalValue,
+            annualProduced: annualProducedValue,
+            dailyGoal: monthlyGoalValue / 22,
+            dailyProduced: teamDailyTotal,
+            inProcessValue: teamInProcessValueCalc,
+            inProcessCount: teamInProcessCountCalc,
+            pendingActionsValue: teamPendingInconsistencyValueCalc,
+            pendingActionsCount: teamPendingInconsistencyCountCalc,
+            createdTodayValue: teamCreatedTodayValue,
+            createdTodayCount: teamCreatedTodayCount,
+            createdWeekValue: teamCreatedWeekValue,
+            createdWeekCount: teamCreatedWeekCount,
+            createdMonthValue: teamCreatedMonthValue,
+            createdMonthCount: teamCreatedMonthCount,
+            brokerRankings: sortedRankings.map(r => {
+              const userData = allUsers.find((u: User) => u.id === r.corretor_id)
+              const supervisorName = userData?.supervisor_nome || 
+                                   allUsers.find((u: User) => u.id === userData?.supervisor_id)?.nome || 
+                                   "SharkConsig"
+              return {
+                corretor_id: r.corretor_id,
+                name: userData?.nome || r.nome,
+                team: userData?.equipe || "Shark",
+                supervisor: supervisorName,
+                totalPaid: r.totalPaid,
+                totalInProcess: r.totalInProcess,
+                totalToday: r.totalToday,
+                countPaid: r.countPaid,
+                countInProcess: r.countInProcess,
+                countToday: r.countToday
+              }
+            }),
+            ticketStats: finalTicketStats
+          })
+        } catch (err) {
+          console.error("Error fetching admin dashboard stats:", err instanceof Error ? err.message : err)
+        }
       }
 
     } catch (error) {
@@ -507,7 +616,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [perfil?.id, perfil?.role, perfil?.supervisor_id, isCorretor, isAdmin, startDate, endDate])
+  }, [perfil?.id, perfil?.role, perfil?.supervisor_id, isCorretor, isAdmin, isOperational, startDate, endDate])
 
   useEffect(() => {
     setMounted(true)
@@ -561,12 +670,12 @@ export default function DashboardPage() {
       .slice(0, 3)
   }, [userProposals])
 
-  const isSupervisor = perfil?.role === 'Supervisor'
-  const monthlyGoal = isSupervisor ? 448000 : 47000
+  const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional'
+  const monthlyGoal = (perfil?.role === 'Supervisor' || perfil?.role === 'Operacional') ? 448000 : 47000
   const teamGoal = 448000
   
-  const displayMonthlyProduced = isSupervisor ? teamProduced : monthlyProduced
-  const displayDailyProduced = isSupervisor ? teamDailyProduced : dailyProduced
+  const displayMonthlyProduced = (perfil?.role === 'Supervisor' || perfil?.role === 'Operacional') ? teamProduced : monthlyProduced
+  const displayDailyProduced = (perfil?.role === 'Supervisor' || perfil?.role === 'Operacional') ? teamDailyProduced : dailyProduced
 
   const prizeTiers = useMemo(() => [
     { goal: 47000, prize: 400 },
@@ -642,58 +751,104 @@ export default function DashboardPage() {
         "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
         isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
       )}>
-        {isAdmin && adminStats && <AdminDashboard perfil={perfil} isLoading={isLoading} remainingBusinessDays={remainingBusinessDays} headerContent={headerContent} stats={adminStats} />}
+        {isAdmin && adminStats && (
+          <AdminDashboard 
+            perfil={perfil} 
+            isLoading={isLoading} 
+            remainingBusinessDays={remainingBusinessDays} 
+            headerContent={headerContent} 
+            stats={adminStats}
+            startDate={startDate}
+            endDate={endDate}
+            setStartDate={setStartDate}
+            setEndDate={setEndDate}
+          />
+        )}
         
         {(!isAdmin) && (
           <>
             {/* Header Section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-          <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-          >
-            <h1 className="text-4xl font-black text-[#1C2643] tracking-tighter">
-              {headerContent.greeting}, {perfil?.nome?.split(' ')[0] || 'Shark'}!
-            </h1>
-            <p className="text-[12px] font-bold text-[#718198] uppercase tracking-[0.25em] mt-2 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-              {headerContent.phrase}
-            </p>
-          </motion.div>
-          
-          <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-5 self-start md:self-center relative group"
-          >
-            <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0">
-               <Clock className="w-7 h-7 text-amber-500" />
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+              >
+                <h1 className="text-4xl font-black text-[#1C2643] tracking-tighter">
+                  {headerContent.greeting}, {perfil?.nome?.split(' ')[0] || 'Shark'}!
+                </h1>
+                <p className="text-[12px] font-bold text-[#718198] uppercase tracking-[0.25em] mt-2 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  {headerContent.phrase}
+                </p>
+              </motion.div>
+              
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-5 self-start md:self-center relative group"
+              >
+                <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0">
+                   <Clock className="w-7 h-7 text-amber-500" />
+                </div>
+                <div className="relative z-10">
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Prazo Para Bater a Meta</p>
+                   <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-black text-[#1C2643]">{remainingBusinessDays.toString().padStart(2, '0')}</span>
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dias Restantes</span>
+                   </div>
+                   <p className="text-[11px] font-medium text-slate-500 mt-1 max-w-[200px] leading-tight">
+                      <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta.</span> Aproveite cada dia útil para transformar esforço em resultado.
+                   </p>
+                </div>
+              </motion.div>
             </div>
-            <div className="relative z-10">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Prazo Para Bater a Meta</p>
-               <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-black text-[#1C2643]">{remainingBusinessDays.toString().padStart(2, '0')}</span>
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dias Restantes</span>
-               </div>
-               <p className="text-[11px] font-medium text-slate-500 mt-1 max-w-[200px] leading-tight">
-                  <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta.</span> Aproveite cada dia útil para transformar esforço em resultado.
-               </p>
-            </div>
-          </motion.div>
-        </div>
 
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className={cn("transition-opacity duration-500", isLoading ? "opacity-50 pointer-events-none" : "opacity-100")}
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* TABS SELECTION FOR ADMIN ONLY */}
+            {isAdmin && (
+              <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl mb-8">
+                <button
+                  onClick={() => setActiveTab('propostas')}
+                  className={cn(
+                    "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2",
+                    activeTab === 'propostas' 
+                      ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                      : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  <TrendingUp className="w-4 h-4" />
+                  Propostas e Metas
+                </button>
+                <button
+                  onClick={() => setActiveTab('chamados')}
+                  className={cn(
+                    "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2",
+                    activeTab === 'chamados' 
+                      ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                      : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Gráficos de Chamados
+                </button>
+              </div>
+            )}
+
+            {activeTab === 'propostas' || !isAdmin ? (
+              <motion.div 
+                key="propostas"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={cn("transition-opacity duration-500", isLoading ? "opacity-50 pointer-events-none" : "opacity-100")}
+              >
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* SECTION 1: O CORAÇÃO DO DASHBOARD (Meta Individual) */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-4 lg:row-span-2">
               <DashboardCard className="h-full flex flex-col shadow-2xl shadow-[#1C2643]/5 overflow-hidden group">
                 <div className="relative z-10 flex flex-col h-full">
                   <div className="flex items-center justify-between mb-2">
-                     <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">Sua Meta Mensal</p>
+                     <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">
+                       {(perfil?.role?.toLowerCase() === 'operacional' || isAdmin) ? "META MENSAL DA EMPRESA" : "Sua Meta Mensal"}
+                     </p>
                      <div className="bg-[#1C2643]/5 p-2 rounded-xl">
                         <Target className="w-5 h-5 text-[#1C2643]" />
                      </div>
@@ -894,9 +1049,9 @@ export default function DashboardPage() {
                           <span className="text-[14px] font-bold text-[#1C2643]">
                             {teamInProcessCount} {teamInProcessCount === 1 ? 'Contrato' : 'Contratos'}
                           </span>
-                          <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-10 text-center shrink-0">
-                            Você tem <span className="text-[#1C2643] font-black">{formatCurrency(teamPendingInconsistencyValue)}</span> pendentes de atuação
-                          </p>
+          <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-10 text-center shrink-0">
+            Você tem <span className="text-[#1C2643] font-black">{formatCurrency(teamPendingInconsistencyValue)}</span> ({teamPendingInconsistencyCount} {teamPendingInconsistencyCount === 1 ? 'pendência' : 'pendências'}) pendentes de atuação
+          </p>
                         </div>
                       </div>
                     ) : (
@@ -925,22 +1080,38 @@ export default function DashboardPage() {
                     )}
                  </div>
 
-                 {/* Mapa de oportunidades */}
-                 <div className="bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
-                    <div className="flex items-center gap-3 mb-2">
-                       <div className="w-10 h-10 bg-[#1C2643] rounded-xl flex items-center justify-center">
-                          <Clock className="w-6 h-6 text-white" />
+                  {/* Mapa de oportunidades OR Operacional specific card */}
+                  <div className="bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
+                     <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 bg-[#1C2643] rounded-xl flex items-center justify-center">
+                           <Clock className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                           <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none">
+                             {perfil?.role === 'Operacional' ? "CONTRATOS EM ANDAMENTO (OPERACIONAL)" : "Mapa de oportunidades"}
+                           </p>
+                        </div>
+                     </div>
+                     {perfil?.role === 'Operacional' ? (
+                       <div className="flex flex-col justify-center py-8 gap-2">
+                         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">Valor Total Operacional</p>
+                         <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#1C2643] tracking-tighter text-center leading-none">
+                           {formatCurrency(opInProcessValue)}
+                         </p>
+                         <div className="mt-4 pt-4 border-t border-slate-200 flex flex-col items-center gap-2">
+                           <span className="text-[14px] font-bold text-[#1C2643]">
+                             {opInProcessCount} {opInProcessCount === 1 ? 'Contrato' : 'Contratos'}
+                           </span>
+                         </div>
                        </div>
-                       <div>
-                          <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none">Mapa de oportunidades</p>
+                     ) : (
+                       <div className="space-y-3">
+                          {[1, 2, 3].map((_, index) => (
+                             <div key={index} className="h-14 bg-slate-100/70 rounded-2xl border border-slate-200 border-dashed" />
+                          ))}
                        </div>
-                    </div>
-                    <div className="space-y-3">
-                       {[1, 2, 3].map((_, index) => (
-                          <div key={index} className="h-14 bg-slate-100/70 rounded-2xl border border-slate-200 border-dashed" />
-                       ))}
-                    </div>
-                 </div>
+                     )}
+                  </div>
               </div>
             </motion.div>
 
@@ -1187,8 +1358,144 @@ export default function DashboardPage() {
                 )}
               </motion.div>
             )}
-          </div>
-        </motion.div>
+            </div>
+          </motion.div>
+        ) : (
+          isAdmin && activeTab === 'chamados' && (
+            <motion.div 
+              key="chamados"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+            {/* Ticket Stats for Admin */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <DashboardCard className="p-6 bg-white border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Total de Chamados</p>
+                <p className="text-3xl font-black text-[#1C2643] tracking-tighter">{ticketStats?.total || 0}</p>
+                <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest">No Período</p>
+              </DashboardCard>
+              
+              <DashboardCard className="p-6 bg-white border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Não Aprovados</p>
+                <p className="text-3xl font-black text-rose-600 tracking-tighter">{ticketStats?.notApproved || 0}</p>
+                <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Recusados/Cancelados</p>
+              </DashboardCard>
+
+              <DashboardCard className="p-6 bg-white border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Convertidos em Proposta</p>
+                <p className="text-3xl font-black text-emerald-600 tracking-tighter">{ticketStats?.converted || 0}</p>
+                <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Sucesso de Conversão</p>
+              </DashboardCard>
+
+              <DashboardCard className="p-6 bg-white border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Aguardando Análise</p>
+                <p className="text-3xl font-black text-amber-500 tracking-tighter">
+                  {(ticketStats?.byStatus?.find(s => s.name === 'ABERTO')?.value || 0)}
+                </p>
+                <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Em fila</p>
+              </DashboardCard>
+            </div>
+
+            {/* Ticket Charts for Admin */}
+            {ticketStats && ticketStats.total > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Pie Chart: Status dos Chamados */}
+                <DashboardCard className="p-8 bg-white border-slate-100 h-[400px] flex flex-col">
+                  <div className="flex items-center gap-2 mb-8">
+                    <PieChartIcon className="w-5 h-5 text-[#1C2643]" />
+                    <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">Status dos Chamados</h3>
+                  </div>
+                  <div className="flex-1 w-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={ticketStats.byStatus}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={0}
+                          outerRadius={100}
+                          dataKey="value"
+                          stroke="#fff"
+                          strokeWidth={2}
+                          labelLine={false}
+                          label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                            const RADIAN = Math.PI / 180;
+                            const radius = innerRadius + (outerRadius - innerRadius) * 0.6;
+                            const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                            const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                            return (
+                              <text 
+                                x={x} 
+                                y={y} 
+                                fill="#FFFFFF" 
+                                textAnchor="middle" 
+                                dominantBaseline="central" 
+                                className="text-[12px] font-black"
+                              >
+                                {`${(percent * 100).toFixed(0)}%`}
+                              </text>
+                            );
+                          }}
+                        >
+                          {ticketStats.byStatus.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend 
+                          verticalAlign="bottom" 
+                          height={36} 
+                          iconType="circle"
+                          formatter={(value) => <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{value}</span>}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </DashboardCard>
+
+                {/* Bar Chart: Origem dos Clientes */}
+                <DashboardCard className="p-8 bg-white border-slate-100 h-[400px] flex flex-col">
+                  <div className="flex items-center gap-2 mb-8">
+                    <TrendingUp className="w-5 h-5 text-[#1C2643]" />
+                    <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">Origem dos Clientes</h3>
+                  </div>
+                  <div className="flex-1 w-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={ticketStats.byOrigin} layout="vertical" margin={{ left: 40 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                        <XAxis type="number" hide />
+                        <YAxis 
+                          dataKey="name" 
+                          type="category" 
+                          width={100} 
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }}
+                        />
+                        <Tooltip cursor={{ fill: 'transparent' }} />
+                        <Bar 
+                          dataKey="value" 
+                          fill="#1C2643" 
+                          radius={[0, 4, 4, 0]} 
+                          barSize={20}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </DashboardCard>
+              </div>
+            )}
+
+            {(!ticketStats || ticketStats.total === 0) && (
+              <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
+                <MessageSquare className="w-12 h-12 text-slate-200 mb-4" />
+                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Nenhum chamado encontrado</p>
+              </div>
+            )}
+          </motion.div>
+          )
+        )}
       </>
     )}
   </div>

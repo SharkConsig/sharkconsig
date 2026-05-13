@@ -112,19 +112,21 @@ interface ProdutoConfig {
 }
 
 export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
-  const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor } = useAuth()
+  const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor, isSupervisor } = useAuth()
   
   const isFinancialEditor = ['Operacional', 'Administrativo', 'Desenvolvedor', 'Admin', 'Administrador'].includes(user?.role || '')
   
-  const canEditFields = (!isCorretor) || (isCorretor && [
-    'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
-    'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO'
-  ].includes(proposal.status));
-
-  const canAttach = (!isCorretor) || (isCorretor && [
+  const canEditFields = (!(isCorretor || isSupervisor)) || ((isCorretor || isSupervisor) && [
     'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
     'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
-    'COM INCONSISTÊNCIA NO BANCO'
+    'PAGAMENTO DEVOLVIDO'
+  ].includes(proposal.status));
+
+  const canAttach = (!(isCorretor || isSupervisor)) || ((isCorretor || isSupervisor) && [
+    'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
+    'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
+    'COM INCONSISTÊNCIA NO BANCO',
+    'PAGAMENTO DEVOLVIDO'
   ].includes(proposal.status));
 
   const canSave = (canEditFields || canAttach);
