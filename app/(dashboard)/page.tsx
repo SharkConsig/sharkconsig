@@ -42,6 +42,7 @@ interface ProposalSummary {
   nome_cliente: string
   valor_producao: string | number
   updated_at: string
+  data_pago_cliente?: string
 }
 
 interface RankingItem {
@@ -118,6 +119,7 @@ interface User {
 
 export default function DashboardPage() {
   const { perfil, isCorretor, isAdmin, isOperational } = useAuth()
+  const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || isAdmin
   const { isCollapsed } = useSidebar()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -208,8 +210,8 @@ export default function DashboardPage() {
       startOfMonth.setDate(1)
 
       // Custom range for Supervisor and Admin and Operational
-      const customStart = (perfil?.role === 'Supervisor' || perfil?.role === 'Admin' || perfil?.role === 'Operacional') && startDate ? new Date(startDate + 'T00:00:00') : null
-      const customEnd = (perfil?.role === 'Supervisor' || perfil?.role === 'Admin' || perfil?.role === 'Operacional') && endDate ? new Date(endDate + 'T23:59:59') : null
+      const customStart = (isSupervisor || isAdmin || isOperational) && startDate ? new Date(startDate + 'T00:00:00') : null
+      const customEnd = (isSupervisor || isAdmin || isOperational) && endDate ? new Date(endDate + 'T23:59:59') : null
 
       const startOfWeek = new Date()
       startOfWeek.setHours(0, 0, 0, 0)
@@ -249,7 +251,7 @@ export default function DashboardPage() {
       
       let userPaidQuery = supabase
         .from("propostas")
-        .select("id_lead, nome_cliente, valor_producao, updated_at")
+        .select("id_lead, nome_cliente, valor_producao, updated_at, data_pago_cliente")
         .in("status", paidStatuses)
         .gte("updated_at", filterStartISO)
       
@@ -273,7 +275,7 @@ export default function DashboardPage() {
       const allUsers = usersRes || []
 
       // Identify target team
-      const targetSupervisorId = perfil?.role === 'Supervisor' ? perfil?.id : perfil?.supervisor_id
+      const targetSupervisorId = isSupervisor ? perfil?.id : perfil?.supervisor_id
       
       let sortedRankings: RankingItem[] = []
 
@@ -288,7 +290,7 @@ export default function DashboardPage() {
         // Fetch proposals for the team (or all if admin/operational)
         let teamProposalsQuery = supabase
           .from("propostas")
-          .select("corretor_id, valor_producao, status, updated_at, created_at")
+          .select("corretor_id, valor_producao, status, updated_at, created_at, data_pago_cliente")
         
         if (!(isAdmin || isOperational)) {
           teamProposalsQuery = teamProposalsQuery.in("corretor_id", teamIds)
@@ -296,8 +298,19 @@ export default function DashboardPage() {
 
         // Apply global date filter to query to reduce data volume
         // We need proposals that were either updated (for paid) or created (for daily/monthly) in the relevant range
-        const queryStart = customStart ? customStart.toISOString() : startOfMonth.toISOString()
+        // If we have customStart/customEnd, we use them.
+        let queryStart = startOfMonth.toISOString()
+        if (customStart) queryStart = customStart.toISOString()
+        
+        // We use OR because a proposal might have been created long ago but paid today (updated_at)
+        // or created today but not paid yet.
         teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte.${queryStart},created_at.gte.${queryStart}`)
+        
+        if (customEnd) {
+          // If we have an end date, we should also limit the range if possible, 
+          // but careful with OR logic as it's complex in Supabase JS client.
+          // For now, fetching everything from queryStart onwards and filtering in memory is safer for complex multi-field ranges.
+        }
 
         const teamProposals = await fetchAll(teamProposalsQuery)
 
@@ -322,30 +335,42 @@ export default function DashboardPage() {
           }
         })
 
-        teamProposals?.forEach((curr: { corretor_id: string, valor_producao: string | number, updated_at: string, created_at: string, status: string }) => {
+        teamProposals?.forEach((curr: { corretor_id: string, valor_producao: string | number, updated_at: string, created_at: string, status: string, data_pago_cliente?: string }) => {
           const numericVal = isNaN(parseCurrency(curr.valor_producao)) ? 0 : parseCurrency(curr.valor_producao)
           const brokerId = curr.corretor_id || ""
           
           const createdDate = new Date(curr.created_at)
           const updatedDate = new Date(curr.updated_at)
           
-          const isTodayCreated = createdDate >= startOfToday
-          const isThisWeekCreated = createdDate >= startOfWeek
-          const isThisMonthCreated = createdDate >= startOfMonth
-          const isTodayUpdated = updatedDate >= startOfToday
+          // Use data_pago_cliente if available, otherwise fall back to updated_at for payment date
+          const effectivePaymentDate = curr.data_pago_cliente ? new Date(curr.data_pago_cliente) : updatedDate
           
           const isPaid = paidStatuses.includes(curr.status)
           const isInProcess = inProcessStatuses.includes(curr.status)
           const isOpInProcess = opStatuses.includes(curr.status)
           const isCancelled = curr.status === "CANCELADO"
+
+          // Check if it's a retroactive payment (paid in a month prior to the current visible month)
+          // We use startOfMonth as the threshold for current month activity
+          const isRetroactivePayment = isPaid && (effectivePaymentDate < startOfMonth)
           
-          const isPaidInRange = (customStart && customEnd)
-            ? (updatedDate >= customStart && updatedDate <= customEnd)
-            : (updatedDate >= startOfMonth)
+          const isTodayCreated = createdDate >= startOfToday
+          const isThisWeekCreated = createdDate >= startOfWeek
+          const isThisMonthCreated = createdDate >= startOfMonth
+          const isTodayPaid = effectivePaymentDate >= startOfToday
+          
+          // Fix range logic: allow filtering even if only one date is provided
+          let isPaidInRange = true
+          if (customStart || customEnd) {
+            if (customStart && effectivePaymentDate < customStart) isPaidInRange = false
+            if (customEnd && effectivePaymentDate > customEnd) isPaidInRange = false
+          } else {
+            isPaidInRange = effectivePaymentDate >= startOfMonth
+          }
 
           if (isPaid && isPaidInRange) {
             teamTotal += numericVal
-            if (isTodayUpdated) teamDailyTotal += numericVal
+            if (isTodayPaid) teamDailyTotal += numericVal
             
             if (brokerMetrics[brokerId]) {
               brokerMetrics[brokerId].totalPaid += numericVal
@@ -371,11 +396,11 @@ export default function DashboardPage() {
             opInProcessCountCalc += 1
           }
 
-          const isCreatedInRange = (customStart && customEnd)
-            ? (createdDate >= customStart && createdDate <= customEnd)
+          const isCreatedInRange = (customStart || customEnd)
+            ? ((!customStart || createdDate >= customStart) && (!customEnd || createdDate <= customEnd))
             : isTodayCreated
 
-          if (isCreatedInRange && !isCancelled) {
+          if (isCreatedInRange && !isCancelled && !isRetroactivePayment) {
             teamCreatedTodayValue += numericVal
             teamCreatedTodayCount += 1
             if (brokerMetrics[brokerId]) {
@@ -384,12 +409,12 @@ export default function DashboardPage() {
             }
           }
 
-          if (isThisWeekCreated && !isCancelled) {
+          if (isThisWeekCreated && !isCancelled && !isRetroactivePayment) {
             teamCreatedWeekValue += numericVal
             teamCreatedWeekCount += 1
           }
 
-          if (isThisMonthCreated && !isCancelled) {
+          if (isThisMonthCreated && !isCancelled && !isRetroactivePayment) {
             teamCreatedMonthValue += numericVal
             teamCreatedMonthCount += 1
           }
@@ -432,17 +457,33 @@ export default function DashboardPage() {
 
         setRankings(sortedRankings)
       } else {
-        const rankingQuery = supabase
+        let rankingQuery = supabase
           .from("propostas")
-          .select("corretor_id, valor_producao")
+          .select("corretor_id, valor_producao, updated_at, data_pago_cliente")
           .in("status", paidStatuses)
           .gte("updated_at", filterStartISO)
+        
+        if (customEnd) {
+          rankingQuery = rankingQuery.lte("updated_at", customEnd.toISOString())
+        }
 
         const allPaid = await fetchAll(rankingQuery)
         const aggregated = allPaid.reduce((acc: Record<string, number>, curr) => {
           const val = parseCurrency(curr.valor_producao)
           const id = curr.corretor_id || "unknown"
-          acc[id] = (acc[id] || 0) + (isNaN(val) ? 0 : val)
+          
+          // For Corretor ranking (when not admin/supervisor), check range here too if needed
+          // but normally the query handles it. Let's respect data_pago_cliente if it ever gets used here.
+          const effectiveDate = curr.data_pago_cliente ? new Date(curr.data_pago_cliente) : new Date(curr.updated_at)
+          
+          let inRange = true
+          if (customStart && effectiveDate < customStart) inRange = false
+          if (customEnd && effectiveDate > customEnd) inRange = false
+          if (!customStart && !customEnd && effectiveDate < startOfMonth) inRange = false
+
+          if (inRange) {
+            acc[id] = (acc[id] || 0) + (isNaN(val) ? 0 : val)
+          }
           return acc
         }, {})
 
@@ -541,22 +582,29 @@ export default function DashboardPage() {
           
           setTicketStats(finalTicketStats)
 
-          // 4. Fetch Admin specific stats
+      // 4. Fetch Admin specific stats
           const now = new Date()
           const currentYear = now.getFullYear()
+          const startOfYearDate = new Date(currentYear, 0, 1)
+          const startOfYearISO = startOfYearDate.toISOString()
 
-          // Fetch annual produced
-          const startOfYear = new Date(currentYear, 0, 1).toISOString()
+          // Fetch annual produced - use same paidStatuses as above
           const annualQuery = supabase
             .from('propostas')
-            .select('valor_producao')
-            .in('status', ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA'])
-            .gte('updated_at', startOfYear)
+            .select('valor_producao, updated_at, data_pago_cliente')
+            .in('status', paidStatuses)
+            .or(`updated_at.gte.${startOfYearISO},data_pago_cliente.gte.${startOfYearISO}`)
           
           const annualProposals = await fetchAll(annualQuery)
           const annualProducedValue = (annualProposals || []).reduce((acc, p) => {
             const val = parseCurrency(p.valor_producao)
-            return acc + (isNaN(val) ? 0 : val)
+            const pDate = p.data_pago_cliente ? new Date(p.data_pago_cliente) : new Date(p.updated_at)
+            
+            // Only count if it was paid within the current year and not in a future year (edge case)
+            if (pDate >= startOfYearDate && pDate.getFullYear() === currentYear) {
+              return acc + (isNaN(val) ? 0 : val)
+            }
+            return acc
           }, 0)
           
           const { data: goalsData } = await supabase
@@ -616,7 +664,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [perfil?.id, perfil?.role, perfil?.supervisor_id, isCorretor, isAdmin, isOperational, startDate, endDate])
+  }, [perfil?.id, perfil?.role, perfil?.supervisor_id, isCorretor, isAdmin, isOperational, isSupervisor, startDate, endDate])
 
   useEffect(() => {
     setMounted(true)
@@ -646,18 +694,39 @@ export default function DashboardPage() {
   }, [perfil?.id, fetchDashboardData])
 
   const monthlyProduced = useMemo(() => {
-    return userProposals.reduce((acc, p) => {
-      const val = parseCurrency(p.valor_producao)
-      return acc + (isNaN(val) ? 0 : val)
-    }, 0)
-  }, [userProposals])
+    // Respect custom filter if applied, otherwise use current month
+    const startThreshold = (isSupervisor || isAdmin || isOperational) && startDate 
+      ? new Date(startDate + 'T00:00:00') 
+      : new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    
+    startThreshold.setHours(0, 0, 0, 0)
+
+    const endThreshold = (isSupervisor || isAdmin || isOperational) && endDate 
+      ? new Date(endDate + 'T23:59:59') 
+      : null
+
+    return userProposals
+      .filter(p => {
+        const pDate = p.data_pago_cliente ? new Date(p.data_pago_cliente) : new Date(p.updated_at)
+        let inRange = pDate >= startThreshold
+        if (endThreshold && pDate > endThreshold) inRange = false
+        return inRange
+      })
+      .reduce((acc, p) => {
+        const val = parseCurrency(p.valor_producao)
+        return acc + (isNaN(val) ? 0 : val)
+      }, 0)
+  }, [userProposals, startDate, endDate, isSupervisor, isAdmin, isOperational])
 
   const dailyProduced = useMemo(() => {
     const startOfToday = new Date()
     startOfToday.setHours(0, 0, 0, 0)
     
     return userProposals
-      .filter(p => new Date(p.updated_at) >= startOfToday)
+      .filter(p => {
+        const pDate = p.data_pago_cliente ? new Date(p.data_pago_cliente) : new Date(p.updated_at)
+        return pDate >= startOfToday
+      })
       .reduce((acc, p) => {
         const val = parseCurrency(p.valor_producao)
         return acc + (isNaN(val) ? 0 : val)
@@ -666,16 +735,19 @@ export default function DashboardPage() {
 
   const recentPayments = useMemo(() => {
     return [...userProposals]
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .sort((a, b) => {
+        const dateA = a.data_pago_cliente ? new Date(a.data_pago_cliente) : new Date(a.updated_at)
+        const dateB = b.data_pago_cliente ? new Date(b.data_pago_cliente) : new Date(b.updated_at)
+        return dateB.getTime() - dateA.getTime()
+      })
       .slice(0, 3)
   }, [userProposals])
 
-  const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional'
-  const monthlyGoal = (perfil?.role === 'Supervisor' || perfil?.role === 'Operacional') ? 448000 : 47000
+  const monthlyGoal = (isSupervisor || isOperational || isAdmin) ? 448000 : 47000
   const teamGoal = 448000
   
-  const displayMonthlyProduced = (perfil?.role === 'Supervisor' || perfil?.role === 'Operacional') ? teamProduced : monthlyProduced
-  const displayDailyProduced = (perfil?.role === 'Supervisor' || perfil?.role === 'Operacional') ? teamDailyProduced : dailyProduced
+  const displayMonthlyProduced = (isSupervisor || isOperational || isAdmin) ? teamProduced : monthlyProduced
+  const displayDailyProduced = (isSupervisor || isOperational || isAdmin) ? teamDailyProduced : dailyProduced
 
   const prizeTiers = useMemo(() => [
     { goal: 47000, prize: 400 },
@@ -1088,11 +1160,11 @@ export default function DashboardPage() {
                         </div>
                         <div>
                            <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none">
-                             {perfil?.role === 'Operacional' ? "CONTRATOS EM ANDAMENTO (OPERACIONAL)" : "Mapa de oportunidades"}
+                             {isOperational ? "CONTRATOS EM ANDAMENTO (OPERACIONAL)" : "Mapa de oportunidades"}
                            </p>
                         </div>
                      </div>
-                     {perfil?.role === 'Operacional' ? (
+                     {isOperational ? (
                        <div className="flex flex-col justify-center py-8 gap-2">
                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">Valor Total Operacional</p>
                          <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#1C2643] tracking-tighter text-center leading-none">

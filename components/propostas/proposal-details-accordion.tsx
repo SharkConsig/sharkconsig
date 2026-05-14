@@ -114,13 +114,17 @@ interface ProdutoConfig {
 export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
   const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor, isSupervisor } = useAuth()
   
-  const isFinancialEditor = ['Operacional', 'Administrativo', 'Desenvolvedor', 'Admin', 'Administrador'].includes(user?.role || '')
+  const isFinancialEditor = isAdmin || isDeveloper || isOperational || ['Administrativo', 'Admin', 'Administrador'].includes(user?.role || '')
   
-  const canEditFields = (!(isCorretor || isSupervisor)) || ((isCorretor || isSupervisor) && [
-    'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
-    'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
-    'PAGAMENTO DEVOLVIDO'
-  ].includes(proposal.status));
+  // Unrestricted roles: Admin, Developer, Operational. 
+  // Restricted roles: Corretor and Supervisor (unless the proposal is in specific statuses).
+  const canEditFields = (isAdmin || isDeveloper || isOperational) || 
+    (!(isCorretor || isSupervisor)) || 
+    ((isCorretor || isSupervisor) && [
+      'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
+      'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
+      'PAGAMENTO DEVOLVIDO'
+    ].includes(proposal.status));
 
   const canAttach = (!(isCorretor || isSupervisor)) || ((isCorretor || isSupervisor) && [
     'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
@@ -1262,19 +1266,19 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">DADOS DA OPERAÇÃO</h3>
               
               {!isCorretor && (
-                <div className="bg-[#FEFCE8] border border-amber-100 rounded-xl p-8 space-y-6">
-                  <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
-                    <span className="font-bold text-slate-900">Operacional:</span> Preencha os campos abaixo em caso de divergência nos valores informados pelo corretor do valores do banco. Salvar valor operacional atualizará somente os campos abaixo.
+                <div className="bg-[#FEFCE8] border border-amber-100 rounded-xl p-8 space-y-6 shadow-sm ring-1 ring-amber-200/50">
+                  <p className="text-[11px] font-medium text-slate-600 leading-relaxed italic">
+                    <span className="font-bold text-slate-900 not-italic">Operacional:</span> Preencha os campos abaixo em caso de divergência nos valores informados pelo corretor do valores do banco. Salvar valor operacional atualizará somente os campos abaixo.
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
+                       <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
                       <Input 
                         id="operacional-valor-parcela"
                         value={formData.valor_parcela}
                         onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
-                        disabled={!canEditFields}
-                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
+                        disabled={!isFinancialEditor && !canEditFields}
+                        className="h-9 border-amber-200/50 bg-white/50 focus:border-primary transition-colors disabled:opacity-75" 
                         placeholder="R$ 0,00" 
                       />
                     </div>
@@ -1284,8 +1288,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                         id="operacional-valor-operacao"
                         value={formData.valor_operacao_operacional}
                         onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
-                        disabled={!canEditFields}
-                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
+                        disabled={!isFinancialEditor && !canEditFields}
+                        className="h-9 border-amber-200/50 bg-white/50 focus:border-primary transition-colors disabled:opacity-75" 
                         placeholder="R$ 0,00" 
                       />
                     </div>
@@ -1295,15 +1299,15 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                         id="operacional-valor-cliente"
                         value={formData.valor_cliente_operacional}
                         onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
-                        disabled={!canEditFields}
-                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
+                        disabled={!isFinancialEditor && !canEditFields}
+                        className="h-9 border-amber-200/50 bg-white/50 focus:border-primary transition-colors disabled:opacity-75" 
                         placeholder="R$ 0,00" 
                       />
                     </div>
                     <Button 
                       id="save-divergencia-operacional"
                       onClick={handleUpdateProposal} 
-                      className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
+                      className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-full md:w-12 p-0 shadow-lg shadow-slate-200"
                       disabled={isSaving}
                     >
                       {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}

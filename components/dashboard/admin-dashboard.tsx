@@ -124,6 +124,11 @@ export function AdminDashboard({
   const [tempEndDate, setTempEndDate] = React.useState(endDate)
   const [activeTab, setActiveTab] = React.useState<'propostas' | 'chamados'>('propostas')
 
+  React.useEffect(() => {
+    setTempStartDate(startDate)
+    setTempEndDate(endDate)
+  }, [startDate, endDate])
+
   const progressPercent = monthlyGoal > 0 ? Math.round((monthlyProduced / monthlyGoal) * 100) : 0
   const remainingValue = Math.max(0, monthlyGoal - monthlyProduced)
 
@@ -342,7 +347,7 @@ export function AdminDashboard({
 
                   <div className="flex flex-col items-center gap-2">
                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">VALOR TOTAL EM ANDAMENTO</p>
-                    <p className="text-4xl lg:text-6xl font-black text-[#FF4A00] tracking-tighter leading-none">
+                    <p className="text-xl lg:text-[26px] font-black text-[#FF4A00] tracking-tighter leading-none">
                       {formatCurrency(inProcessValue)}
                     </p>
                     
@@ -472,89 +477,103 @@ export function AdminDashboard({
             </div>
 
             <div className="flex-1 overflow-x-auto custom-scrollbar">
-              <table className="w-full text-left border-collapse min-w-[800px]">
-                <thead>
-                  <tr className="bg-slate-50/50 border-b border-slate-200">
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {brokerRankings.map((rank, idx) => {
-                    const isUser = rank.corretor_id === perfil?.id
-                    const position = idx + 1
-                    return (
-                      <tr key={rank.corretor_id || idx} className={cn(
-                        "transition-colors",
-                        isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80"
-                      )}>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
-                              position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
-                              position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
-                              position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
-                              "bg-white text-slate-400 border-slate-100"
-                            )}>
-                              {position}º
-                            </div>
-                            <div>
-                              <p className={cn(
-                                "text-[14px] font-black tracking-tight uppercase",
-                                isUser ? "text-[#1C2643]" : "text-slate-700"
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                  <Loader2 className="w-12 h-12 animate-spin text-[#1C2643] opacity-20" />
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] animate-pulse">
+                    Atualizando Rankings...
+                  </p>
+                </div>
+              ) : brokerRankings && brokerRankings.length > 0 ? (
+                <table className="w-full text-left border-collapse min-w-[800px]">
+                  <thead>
+                    <tr className="bg-slate-50/50 border-b border-slate-200">
+                      <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                      <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                      <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                      <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {brokerRankings.map((rank, idx) => {
+                      const isUser = rank.corretor_id === perfil?.id
+                      const position = idx + 1
+                      return (
+                        <tr key={rank.corretor_id || idx} className={cn(
+                          "transition-colors",
+                          isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80"
+                        )}>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                                position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
+                                position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                "bg-white text-slate-400 border-slate-100"
                               )}>
-                                {rank.name} {isUser && "(Você)"}
-                              </p>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">SUP: {rank.supervisor}</p>
+                                {position}º
+                              </div>
+                              <div>
+                                <p className={cn(
+                                  "text-[14px] font-black tracking-tight uppercase",
+                                  isUser ? "text-[#1C2643]" : "text-slate-700"
+                                )}>
+                                  {rank.name} {isUser && "(Você)"}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">SUP: {rank.supervisor}</p>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className={cn(
-                          "px-4 py-4 text-right transition-colors",
-                          isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
-                        )}>
-                          <div className="flex flex-col items-end">
-                            <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                              {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className={cn(
-                          "px-4 py-4 text-right transition-colors",
-                          isUser ? "bg-orange-100/70" : "bg-orange-100/25"
-                        )}>
-                          <div className="flex flex-col items-end">
-                            <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                              {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className={cn(
-                          "px-4 py-4 text-right transition-colors",
-                          isUser ? "bg-blue-100/70" : "bg-blue-100/25"
-                        )}>
-                          <div className="flex flex-col items-end">
-                            <span className={cn(
-                              "text-[14px] font-bold",
-                              rank.totalToday > 0 ? "text-blue-600" : "text-slate-400"
-                            )}>
-                              {formatCurrency(rank.totalToday)}
-                            </span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                              {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                          <td className={cn(
+                            "px-4 py-4 text-right transition-colors",
+                            isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
+                          )}>
+                            <div className="flex flex-col items-end">
+                              <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className={cn(
+                            "px-4 py-4 text-right transition-colors",
+                            isUser ? "bg-orange-100/70" : "bg-orange-100/25"
+                          )}>
+                            <div className="flex flex-col items-end">
+                              <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className={cn(
+                            "px-4 py-4 text-right transition-colors",
+                            isUser ? "bg-blue-100/70" : "bg-blue-100/25"
+                          )}>
+                            <div className="flex flex-col items-end">
+                              <span className={cn(
+                                "text-[14px] font-bold",
+                                rank.totalToday > 0 ? "text-blue-600" : "text-slate-400"
+                              )}>
+                                {formatCurrency(rank.totalToday)}
+                              </span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-10 opacity-30">
+                  <Trophy className="w-12 h-12 mb-4" />
+                  <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-[0.2em]">Sem resultados para este período</p>
+                </div>
+              )}
             </div>
 
 

@@ -73,10 +73,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const adminEmails = ['souendrionovo@gmail.com', 'acertofacilpromotoradecredito@gmail.com']
-  const isAdmin = user?.email ? adminEmails.includes(user.email) || perfil?.role === 'Administrador' : false
+  const isAdmin = user?.email ? adminEmails.includes(user.email) || perfil?.role === 'Administrador' || perfil?.role === 'Admin' || perfil?.role === 'Administrativo' : false
   const isDeveloper = isAdmin || perfil?.role === 'Desenvolvedor'
   const isSupervisor = isAdmin || perfil?.role === 'Supervisor'
-  const isOperational = isAdmin || perfil?.role === 'Operacional'
+  const isOperational = isAdmin || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo'
   const isCorretor = perfil?.role === 'Corretor' || perfil?.role === 'Estágio' || (!isAdmin && !!user && !perfil?.role)
   const isEstagio = perfil?.role === 'Estágio'
   const canAccessAdminAreas = isAdmin || isDeveloper
