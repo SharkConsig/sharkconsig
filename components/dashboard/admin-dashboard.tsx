@@ -48,7 +48,7 @@ interface TicketStats {
   byMainStatus: { name: string; value: number; color: string }[]
   byOrigin: { name: string; value: number }[]
   byConvenio: { name: string; value: number }[]
-  byBroker: { name: string; value: number }[]
+  byBroker: { id: string; name: string; supervisor: string; value: number; approved: number; negotiation: number }[]
 }
 
 interface AdminStats {
@@ -679,13 +679,13 @@ export function AdminDashboard({
                 <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">Produção por Corretor</h3>
               </div>
               <div className="space-y-4">
-                {(ticketStats?.byBroker || []).map((item, idx) => {
-                  const percentage = ticketStats.total ? Math.round((item.value / ticketStats.total) * 100) : 0
+                {(ticketStats?.byBroker || []).map((rank, idx) => {
+                  const percentage = ticketStats.total ? Math.round((rank.value / ticketStats.total) * 100) : 0
                   return (
                     <div key={idx} className="space-y-1">
                       <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-                        <span className="text-slate-500">{item.name}</span>
-                        <span className="text-slate-700">{item.value} ({percentage}%)</span>
+                        <span className="text-slate-500">{rank.name}</span>
+                        <span className="text-slate-700">{rank.value} ({percentage}%)</span>
                       </div>
                       <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                         <motion.div 

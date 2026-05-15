@@ -46,7 +46,7 @@ const menuItems = [
         roles: ["Administrador", "Desenvolvedor"] 
       },
       { 
-        name: "MINHAS CAMPANHAS", 
+        name: "CAMPANHAS", 
         href: "/campanhas", 
         icon: Users, 
         roles: ["Administrador", "Desenvolvedor"] 
@@ -56,6 +56,12 @@ const menuItems = [
         href: "/pesquisa", 
         icon: Search, 
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+      },
+      { 
+        name: "ACESSAR CAMPANHAS", 
+        href: "/campanhas/distribuicao", 
+        icon: Users, 
+        roles: ["Administrador", "Desenvolvedor"] 
       },
       { 
         name: "ABRIR CHAMADO", 

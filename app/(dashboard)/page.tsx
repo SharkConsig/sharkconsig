@@ -667,12 +667,16 @@ export default function DashboardPage() {
           if (!acc.byBrokerRaw[bId]) {
             acc.byBrokerRaw[bId] = {
               name: bNameFromTicket || 'SEM CORRETOR',
-              count: 0
+              count: 0,
+              approved: 0,
+              negotiation: 0
             }
           } else if (bNameFromTicket && acc.byBrokerRaw[bId].name === 'SEM CORRETOR') {
             acc.byBrokerRaw[bId].name = bNameFromTicket
           }
           acc.byBrokerRaw[bId].count++
+          if (isApproved) acc.byBrokerRaw[bId].approved++
+          if (isInNegotiation) acc.byBrokerRaw[bId].negotiation++
 
           return acc
         }, { 
@@ -685,7 +689,7 @@ export default function DashboardPage() {
           byStatus: {} as Record<string, number>, 
           byOrigin: {} as Record<string, number>,
           byConvenio: {} as Record<string, number>,
-          byBrokerRaw: {} as Record<string, { name: string; count: number }>
+          byBrokerRaw: {} as Record<string, { name: string; count: number; approved: number; negotiation: number }>
         })
 
         const byBroker = Object.entries(ticketSummary.byBrokerRaw)
@@ -693,10 +697,15 @@ export default function DashboardPage() {
             // Try to find in allUsers for a more updated name
             const userInList = (allUsers as User[]).find((u) => u.id === id)
             const finalName = userInList?.nome || data.name || (id === 'NÃO ATRIBUÍDO' ? 'SEM CORRETOR' : `Cod: ${id.substring(0, 5)}`)
+            const supervisorName = userInList?.supervisor_nome || 'NÃO INFORMADO'
             
             return {
+              id,
               name: finalName,
-              value: data.count
+              supervisor: supervisorName,
+              value: data.count,
+              approved: data.approved,
+              negotiation: data.negotiation
             }
           })
           .sort((a, b) => b.value - a.value)

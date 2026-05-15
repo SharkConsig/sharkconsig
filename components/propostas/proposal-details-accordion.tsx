@@ -107,6 +107,7 @@ interface ProdutoConfig {
   coeficiente: number | null;
   percentual_producao: number | null;
   convenio_id: string | null;
+  banco_id: string | null;
   operacoes: string[] | null;
   regras: Regra[] | null;
   convenios: { nome: string } | null;
@@ -151,6 +152,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
 
   
   const [dbProdutosConfigs, setDbProdutosConfigs] = useState<ProdutoConfig[]>([])
+  const [dbBancos, setDbBancos] = useState<{id: string, nome: string}[]>([])
+  const [dbConvenios, setDbConvenios] = useState<{id: string, nome: string}[]>([])
+  const [dbOperacoes, setDbOperacoes] = useState<{id: string, nome: string}[]>([])
   const [selectedCoefValue, setSelectedCoefValue] = useState<number | null>(
     (proposal.coeficiente !== undefined && proposal.coeficiente !== null) ? Number(proposal.coeficiente) : null
   )
@@ -167,6 +171,28 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     banco: proposal.banco || "",
     operacao: proposal.tipo_operacao || ""
   })
+
+  useEffect(() => {
+    async function fetchReferences() {
+      try {
+        const [
+          { data: convData },
+          { data: bancoData },
+          { data: operData }
+        ] = await Promise.all([
+          supabase.from('convenios').select('id, nome').eq('ativo', true),
+          supabase.from('bancos').select('id, nome').eq('ativo', true),
+          supabase.from('tipos_operacao').select('id, nome').eq('ativo', true)
+        ])
+        setDbConvenios(convData || [])
+        setDbBancos(bancoData || [])
+        setDbOperacoes(operData || [])
+      } catch (err) {
+        console.warn("Erro ao buscar referências para propostas:", err)
+      }
+    }
+    fetchReferences()
+  }, [])
 
   useEffect(() => {
     async function fetchUsers() {
@@ -370,6 +396,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
             coeficiente,
             percentual_producao,
             convenio_id,
+            banco_id,
             operacoes,
             regras,
             convenios (nome)
@@ -1375,7 +1402,18 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                       </div>
                       <div className="overflow-y-auto custom-scrollbar p-1">
                         {(() => {
+                          const bancoId = dbBancos.find(b => b.nome === selection.banco)?.id
+                          const convenioId = dbConvenios.find(c => c.nome === selection.convenio)?.id
+                          const operacaoId = dbOperacoes.find(o => o.nome === selection.operacao)?.id
+
                           const options = (dbProdutosConfigs as ProdutoConfig[]).flatMap(config => {
+                            // Aplicar mesma regra de filtragem da área 'DIGITAR PROPOSTA'
+                            const matchBanco = !bancoId || config.banco_id === bancoId;
+                            const matchConvenio = !convenioId || config.convenio_id === convenioId;
+                            const matchOperacao = !operacaoId || (config.operacoes && config.operacoes.includes(operacaoId));
+                            
+                            if (!matchBanco || !matchConvenio || !matchOperacao) return [];
+
                             if (config.regras && config.regras.length > 0) {
                               return config.regras.map((regra: Regra, idx: number) => ({
                                 id: `${config.id}-rule-${idx}`,
