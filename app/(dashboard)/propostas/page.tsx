@@ -17,13 +17,16 @@ import {
   Loader2,
   UserPlus,
   RefreshCw,
-  Eraser
+  Eraser,
+  FileSpreadsheet
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ProposalDetailsAccordion } from "@/components/propostas/proposal-details-accordion"
 import { StatusPropostaModal } from "@/components/propostas/status-proposta-modal"
 import { TransferirPropostaModal } from "@/components/propostas/transferir-proposta-modal"
 import { toast } from "react-hot-toast"
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
 
 const TABS_CONFIG = [
   {
@@ -120,6 +123,7 @@ interface Proposal {
   valor_operacao_operacional?: number
   coeficiente_prazo?: string
   data_consulta?: string
+  data_digitacao?: string
   updated_at?: string
   created_at: string
 }
@@ -168,6 +172,17 @@ export default function ProposalsPage() {
       // Verificar se é status de pagamento para salvar data_pago_cliente
       if (newStatus.includes("PAGO AO CLIENTE")) {
         actualFullUpdate.data_pago_cliente = isoDate
+      }
+
+      // NOVO: Salvar data_digitacao quando a proposta sai de 'AGUARDANDO DIGITAÇÃO OPERACIONAL' e ganha um ADE
+      // Só salva se o campo ainda estiver vazio (não pode sofrer alteração posterior)
+      if (
+        proposal.status === "AGUARDANDO DIGITAÇÃO OPERACIONAL" && 
+        newStatus !== "AGUARDANDO DIGITAÇÃO OPERACIONAL" &&
+        ade && 
+        !proposal.data_digitacao
+      ) {
+        actualFullUpdate.data_digitacao = isoDate
       }
 
       let { error: updateError } = await supabase
@@ -529,6 +544,73 @@ export default function ProposalsPage() {
     setExpandedProposalId(expandedProposalId === proposalId ? null : proposalId)
   }
 
+  const exportToExcel = async () => {
+    if (filteredProposals.length === 0) {
+      toast.error("Não há dados para exportar.")
+      return
+    }
+
+    const loadingToast = toast.loading("Gerando arquivo Excel...")
+
+    try {
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet('Propostas')
+
+      // Define columns
+      worksheet.columns = [
+        { header: 'ID LEAD', key: 'id_lead', width: 15 },
+        { header: 'ADE', key: 'ade', width: 15 },
+        { header: 'CORRETOR', key: 'corretor', width: 30 },
+        { header: 'EQUIPE', key: 'equipe', width: 25 },
+        { header: 'CPF CLIENTE', key: 'cpf', width: 20 },
+        { header: 'NOME CLIENTE', key: 'cliente', width: 35 },
+        { header: 'BANCO', key: 'banco', width: 15 },
+        { header: 'CONVÊNIO', key: 'convenio', width: 20 },
+        { header: 'TIPO OPERAÇÃO', key: 'tipo', width: 20 },
+        { header: 'STATUS', key: 'status', width: 40 },
+        { header: 'VALOR OPERAÇÃO', key: 'valor', width: 20 },
+        { header: 'DATA CRIAÇÃO', key: 'criado', width: 20 },
+        { header: 'ÚLTIMA ATUALIZAÇÃO', key: 'atualizado', width: 20 },
+      ]
+
+      // Add rows
+      filteredProposals.forEach(p => {
+        worksheet.addRow({
+          id_lead: p.id_lead,
+          ade: p.ade || '-',
+          corretor: p.nome_corretor || '-',
+          equipe: p.equipe || '-',
+          cpf: p.cliente_cpf,
+          cliente: p.nome_cliente,
+          banco: p.banco,
+          convenio: p.convenio,
+          tipo: p.tipo_operacao,
+          status: p.status,
+          valor: (p.valor_operacao || p.valor_cliente || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+          criado: format(new Date(p.created_at), "dd/MM/yyyy HH:mm:ss"),
+          atualizado: p.updated_at ? format(new Date(p.updated_at), "dd/MM/yyyy HH:mm:ss") : '-',
+        })
+      })
+
+      // Stylize header
+      worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1C2643' }
+      }
+      
+      // Generate buffer
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      saveAs(blob, `SharkConsig_Propostas_${format(new Date(), "ddMMyyyy_HHmm")}.xlsx`)
+      toast.success("Exportação Excel concluída!", { id: loadingToast })
+    } catch (error) {
+      console.error("Erro ao exportar Excel:", error)
+      toast.error("Erro ao exportar arquivo Excel.", { id: loadingToast })
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col">
       <Header title="PROPOSTAS" />
@@ -666,6 +748,21 @@ export default function ProposalsPage() {
             </div>
           )}
         </div>
+
+        {/* Export Button Row - Only for Operacional and Admin */}
+        {(isAdmin || isOperational) && (
+          <div className="flex justify-end pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportToExcel}
+              className="h-10 px-6 bg-white border-primary/20 text-primary hover:bg-primary/5 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-sm cursor-pointer border-2 min-w-[200px]"
+            >
+              <FileSpreadsheet className="w-5 h-5" />
+              EXPORTAR EXCEL
+            </Button>
+          </div>
+        )}
 
         {/* Table */}
         <Card className="card-shadow border border-slate-200 overflow-hidden">
@@ -871,49 +968,108 @@ export default function ProposalsPage() {
 
           {/* Pagination */}
           {totalPages > 1 && !expandedProposalId && (
-            <div className="px-8 py-10 flex flex-col sm:flex-row items-center justify-between border-t border-slate-50 bg-slate-50/30 gap-4">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredProposals.length)} de {filteredProposals.length} propostas
-              </p>
+            <div className="px-6 py-8 flex flex-col md:flex-row items-center justify-between border-t border-slate-100 bg-slate-50/20 gap-6">
+              <div className="flex flex-col items-center md:items-start">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                  RESULTADOS DA BUSCA
+                </p>
+                <p className="text-[11px] font-bold text-[#1C2643] uppercase">
+                  Mostrando <span className="text-primary">{((currentPage - 1) * itemsPerPage) + 1}</span> a <span className="text-primary">{Math.min(currentPage * itemsPerPage, filteredProposals.length)}</span> de <span className="text-primary">{filteredProposals.length}</span> propostas
+                </p>
+              </div>
               
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <Button
                   variant="outline"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                  size="sm"
+                  className="h-10 px-4 rounded-xl border-slate-200 text-[#1C2643] hover:bg-white hover:border-primary hover:text-primary transition-all disabled:opacity-30 font-bold text-[10px] uppercase cursor-pointer"
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-4 h-4 mr-2" />
+                  Anterior
                 </Button>
                 
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <Button
-                      key={page}
-                      variant={currentPage === page ? "default" : "outline"}
-                      size="icon"
-                      className={cn(
-                        "h-8 w-8 rounded-lg transition-all text-[10px] font-black tracking-widest",
-                        currentPage === page 
-                          ? "bg-primary text-white shadow-lg shadow-primary/20 border-primary" 
-                          : "border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20"
-                      )}
-                      onClick={() => handlePageChange(page)}
-                    >
-                      {page}
-                    </Button>
-                  ))}
+                <div className="hidden sm:flex items-center gap-2">
+                  {(() => {
+                    const pages = [];
+                    const maxVisible = 5;
+                    let startPage = Math.max(1, currentPage - 2);
+                    const endPage = Math.min(totalPages, startPage + maxVisible - 1);
+                    
+                    if (endPage - startPage < maxVisible - 1) {
+                      startPage = Math.max(1, endPage - maxVisible + 1);
+                    }
+
+                    for (let i = startPage; i <= endPage; i++) {
+                      pages.push(
+                        <Button
+                          key={i}
+                          variant={currentPage === i ? "default" : "outline"}
+                          size="icon"
+                          className={cn(
+                            "h-10 w-10 rounded-xl transition-all text-[11px] font-black tracking-widest cursor-pointer",
+                            currentPage === i 
+                              ? "bg-primary text-white shadow-xl shadow-primary/30 border-primary" 
+                              : "bg-white border-slate-200 text-slate-400 hover:text-primary hover:border-primary/40"
+                          )}
+                          onClick={() => handlePageChange(i)}
+                        >
+                          {i}
+                        </Button>
+                      );
+                    }
+                    
+                    // Add ellipses for many pages
+                    if (startPage > 1) {
+                       pages.unshift(<span key="start-dots" className="text-slate-300 font-bold px-1">...</span>);
+                       pages.unshift(
+                         <Button
+                            key={1}
+                            variant="outline"
+                            size="icon"
+                            className="h-10 w-10 rounded-xl bg-white border-slate-200 text-slate-400 hover:text-primary transition-all text-[11px] font-black cursor-pointer"
+                            onClick={() => handlePageChange(1)}
+                          >
+                            1
+                          </Button>
+                       );
+                    }
+                    
+                    if (endPage < totalPages) {
+                      pages.push(<span key="end-dots" className="text-slate-300 font-bold px-1">...</span>);
+                      pages.push(
+                        <Button
+                           key={totalPages}
+                           variant="outline"
+                           size="icon"
+                           className="h-10 w-10 rounded-xl bg-white border-slate-200 text-slate-400 hover:text-primary transition-all text-[11px] font-black cursor-pointer"
+                           onClick={() => handlePageChange(totalPages)}
+                         >
+                           {totalPages}
+                         </Button>
+                      );
+                    }
+
+                    return pages;
+                  })()}
+                </div>
+
+                <div className="flex sm:hidden items-center bg-white border border-slate-200 rounded-xl px-4 h-10">
+                  <span className="text-[11px] font-black text-primary">{currentPage}</span>
+                  <span className="mx-2 text-slate-300">/</span>
+                  <span className="text-[11px] font-bold text-slate-500">{totalPages}</span>
                 </div>
 
                 <Button
                   variant="outline"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                  size="sm"
+                  className="h-10 px-4 rounded-xl border-slate-200 text-[#1C2643] hover:bg-white hover:border-primary hover:text-primary transition-all disabled:opacity-30 font-bold text-[10px] uppercase cursor-pointer"
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  Próximo
+                  <ChevronRight className="w-4 h-4 ml-2" />
                 </Button>
               </div>
             </div>

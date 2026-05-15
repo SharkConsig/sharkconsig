@@ -17,7 +17,8 @@ import {
   Eye,
   Loader2,
   RefreshCw,
-  Check
+  Check,
+  FileSpreadsheet
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
@@ -26,6 +27,8 @@ import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
 import { format } from "date-fns"
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
 import {
   Popover,
   PopoverContent,
@@ -71,14 +74,36 @@ export interface Ticket {
   user_avatar?: string
 }
 
-const secondaryCards = [
-  { label: "GOV SP - NOVO APROVADO", count: 0, color: "text-slate-600" },
-  { label: "GOV SP - CARTÃO BENEFÍCIO APROVADO", count: 0, color: "text-slate-600" },
-  { label: "CLT - CARTÃO APROVADO", count: 0, color: "text-slate-600" },
-  { label: "CLT - CARTÃO BENEFÍCIO", count: 0, color: "text-slate-600" },
-  { label: "CARTÃO BENEFÍCIO APROVADO", count: 0, color: "text-slate-600" },
-  { label: "MARGEM 40% - APROVADO", count: 0, color: "text-slate-600" },
-  { label: "PREF SAO PAULO - CARTÃO BENEFÍCIO APROVADO", count: 0, color: "text-slate-600" },
+const APROVADOS_LABELS = [
+  "GOV SP - NOVO APROVADO",
+  "GOV SP - CARTÃO BENEFICIO APROVADO",
+  "CLT - CARTÃO APROVADO",
+  "CLT - CARTÃO BENEFICIO",
+  "CARTÃO BENEFICIO APROVADO",
+  "CLIENTE APROVADO CARTÃO",
+  "AUMENTO SIAPE - AGUARDANDO DIGITAÇÃO",
+  "MARGEM 40% - APROVADO",
+  "COMPRA DE DIVIDA CARTÃO - APROVADO",
+  "CLIENTE SEM INTERESSE",
+  "PREF SAO PAULO - CARTÃO BENEFICIO APROVADO",
+  "PREF SAO PAULO - NOVO APROVADO",
+  "PREF SAO PAULO - CARTÃO CONSIGNADO APROVADO",
+  "GOV PR - NOVO APROVADO",
+  "GOV PR - BENEFICIO APROVADO"
+]
+
+const NAO_APROVADOS_LABELS = [
+  "CLIENTE IMPOSSIBILITADO",
+  "GOV SP - NÃO APROVADO",
+  "ATIVOS - Zerado",
+  "SIAPE - ACOMPANHAR VIRADA",
+  "MARGEM 40%",
+  "CLT - Zerado",
+  "CLT - Negativo",
+  "ATIVOS - Negativo",
+  "COMPRA DE DIVIDA CARTÃO - NÃO APROVADO",
+  "PREF SAO PAULO - NÃO APROVADO",
+  "GOV PR - NOVO NÃO ARPROVADO"
 ]
 
 function MultiSelect({ 
@@ -363,12 +388,26 @@ export default function TicketsPage() {
       const ticketStatusUpper = (ticket.status_chamados?.nome || ticket.status || "").trim().toUpperCase()
       
       if (selectedSecondaryStatus) {
-        matchesStatus = ticketStatusUpper === selectedSecondaryStatus.toUpperCase()
+        const u = selectedSecondaryStatus.toUpperCase()
+        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+        matchesStatus = ticketStatusUpper === u || ticketStatusUpper === ua
       } else if (selectedStatus && selectedStatus !== "TODOS") {
         if (selectedStatus === "APROVADOS") {
-          matchesStatus = ticketStatusUpper.includes("APROVADO")
+          matchesStatus = APROVADOS_LABELS.some(label => {
+            const u = label.toUpperCase()
+            const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+            return ticketStatusUpper === u || ticketStatusUpper === ua
+          })
+        } else if (selectedStatus === "NÃO APROVADOS") {
+          matchesStatus = NAO_APROVADOS_LABELS.some(label => {
+            const u = label.toUpperCase()
+            const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+            return ticketStatusUpper === u || ticketStatusUpper === ua
+          })
         } else if (selectedStatus === "ABERTO") {
-          matchesStatus = ticketStatusUpper === "ABERTO" || ticketStatusUpper === "ABERTOS" || ticketStatusUpper.includes("ABERTO")
+          matchesStatus = ticketStatusUpper === "ABERTO" || ticketStatusUpper === "ABERTOS"
+        } else if (selectedStatus === "AGUARDANDO OPERACIONAL") {
+          matchesStatus = ticketStatusUpper === "AGUARDANDO OPERACIONAL"
         } else {
           matchesStatus = ticketStatusUpper === selectedStatus.toUpperCase()
         }
@@ -382,8 +421,20 @@ export default function TicketsPage() {
     let count = counts[card.label] || 0
     if (card.label === "ABERTO") {
       count = (counts["ABERTO"] || 0) + (counts["ABERTOS"] || 0)
+    } else if (card.label === "AGUARDANDO OPERACIONAL") {
+      count = counts["AGUARDANDO OPERACIONAL"] || 0
     } else if (card.label === "APROVADOS") {
-      count = Object.entries(counts).reduce((acc, [k, v]) => k.includes("APROVADO") ? acc + v : acc, 0)
+      count = APROVADOS_LABELS.reduce((acc, label) => {
+        const u = label.toUpperCase()
+        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+        return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
+      }, 0)
+    } else if (card.label === "NÃO APROVADOS") {
+      count = NAO_APROVADOS_LABELS.reduce((acc, label) => {
+        const u = label.toUpperCase()
+        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+        return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
+      }, 0)
     } else if (card.label === "TODOS") {
       count = baseFilteredTickets.length
     }
@@ -397,7 +448,7 @@ export default function TicketsPage() {
       setSelectedSecondaryStatus(null)
     } else {
       setSelectedStatus(status)
-      if (status !== "APROVADOS") {
+      if (status !== "APROVADOS" && status !== "NÃO APROVADOS") {
         setSelectedSecondaryStatus(null)
       }
     }
@@ -409,9 +460,20 @@ export default function TicketsPage() {
       setSelectedSecondaryStatus(null)
     } else {
       setSelectedSecondaryStatus(status)
-      setSelectedStatus("APROVADOS")
+      // selectedStatus is already APROVADOS or NÃO APROVADOS when clicking these
     }
   }
+
+  const secondaryCards = useMemo(() => {
+    const labels = selectedStatus === "APROVADOS" ? APROVADOS_LABELS : (selectedStatus === "NÃO APROVADOS" ? NAO_APROVADOS_LABELS : [])
+    
+    return labels.map(label => {
+      const u = label.toUpperCase()
+      const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+      const count = (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
+      return { label, count, color: "text-slate-600" }
+    })
+  }, [counts, selectedStatus])
 
   // Reset page on search or date filter or advanced filters
   useEffect(() => {
@@ -429,6 +491,65 @@ export default function TicketsPage() {
 
   const toggleTicketExpansion = (ticketId: string) => {
     setExpandedTicketId(expandedTicketId === ticketId ? null : ticketId)
+  }
+
+  const exportToExcel = async () => {
+    if (filteredTickets.length === 0) {
+      toast.error("Não há dados para exportar.")
+      return
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet('Chamados')
+
+      // Define columns
+      worksheet.columns = [
+        { header: 'ID', key: 'id', width: 10 },
+        { header: 'Status', key: 'status', width: 25 },
+        { header: 'Corretor', key: 'corretor', width: 30 },
+        { header: 'Origem', key: 'origem', width: 15 },
+        { header: 'Cliente', key: 'cliente', width: 30 },
+        { header: 'CPF', key: 'cpf', width: 20 },
+        { header: 'Telefone', key: 'telefone', width: 20 },
+        { header: 'Margem', key: 'margem', width: 15 },
+        { header: 'Equipe', key: 'equipe', width: 20 },
+        { header: 'Data', key: 'data', width: 20 },
+      ]
+
+      // Add rows
+      filteredTickets.forEach(ticket => {
+        worksheet.addRow({
+          id: ticket.id,
+          status: ticket.status_chamados?.nome || ticket.status,
+          corretor: ticket.user_nome || '---',
+          origem: ticket.origem,
+          cliente: ticket.cliente_nome,
+          cpf: ticket.cliente_cpf,
+          telefone: ticket.cliente_telefone,
+          margem: ticket.margem,
+          equipe: ticket.equipe,
+          data: format(new Date(ticket.created_at), "dd/MM/yyyy HH:mm:ss"),
+        })
+      })
+
+      // Stylize header
+      worksheet.getRow(1).font = { bold: true }
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE8E8E8' }
+      }
+      
+      // Generate buffer
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      saveAs(blob, `Chamados_Export_${format(new Date(), "ddMMyyyy_HHmm")}.xlsx`)
+      toast.success("Exportação Excel concluída!")
+    } catch (error) {
+      console.error("Erro ao exportar Excel:", error)
+      toast.error("Erro ao exportar arquivo Excel.")
+    }
   }
 
   const handleDigitarProposta = (ticket: Ticket) => {
@@ -714,25 +835,50 @@ export default function TicketsPage() {
           ))}
         </div>
 
-        {/* Secondary Status Cards (Only visible if APROVADOS is selected) */}
+        {/* Secondary Status Cards (Only visible if APROVADOS or NÃO APROVADOS is selected) */}
         <div className={cn(
-          "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 transition-all duration-300 overflow-hidden",
-          selectedStatus === "APROVADOS" ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+          "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 transition-all duration-300 overflow-hidden",
+          (selectedStatus === "APROVADOS" || selectedStatus === "NÃO APROVADOS") ? "max-h-[800px] opacity-100 pt-2" : "max-h-0 opacity-0 pointer-events-none"
         )}>
           {secondaryCards.map((card) => (
             <button 
               key={card.label}
               onClick={() => handleSecondaryClick(card.label)}
               className={cn(
-                "p-3 bg-white rounded-lg border border-slate-100 shadow-sm transition-all hover:border-primary/30 hover:shadow-md text-left",
-                selectedSecondaryStatus === card.label && "bg-primary/5 border-primary/30 ring-1 ring-primary/30"
+                "p-3 bg-white rounded-xl border border-slate-200 shadow-sm transition-all hover:border-primary/40 hover:shadow-md text-left group",
+                selectedSecondaryStatus === card.label ? "bg-primary/5 border-primary ring-1 ring-primary/20" : "hover:bg-slate-50"
               )}
             >
-              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{card.label}</p>
-              <p className={cn("text-lg font-black", card.color)}>{card.count}</p>
+              <p className={cn(
+                "text-[8px] font-black uppercase tracking-[0.1em] mb-1.5 transition-colors",
+                selectedSecondaryStatus === card.label ? "text-primary" : "text-slate-400 group-hover:text-slate-500"
+              )}>
+                {card.label}
+              </p>
+              <p className={cn(
+                "text-xl font-black transition-transform group-hover:scale-105 origin-left",
+                selectedSecondaryStatus === card.label ? "text-[#1C2643]" : card.color
+              )}>
+                {card.count}
+              </p>
             </button>
           ))}
         </div>
+
+        {/* Export Button Row - Only for Operacional and Admin */}
+        {(isOperational || isAdmin) && (
+          <div className="flex justify-end pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportToExcel}
+              className="h-10 px-6 bg-white border-primary/20 text-primary hover:bg-primary/5 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-sm cursor-pointer border-2 min-w-[200px]"
+            >
+              <FileSpreadsheet className="w-5 h-5" />
+              EXPORTAR EXCEL
+            </Button>
+          </div>
+        )}
 
         {/* Tickets Table Card */}
         <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
@@ -953,49 +1099,108 @@ export default function TicketsPage() {
 
             {/* Pagination / List Footer */}
             {totalPages > 1 && !expandedTicketId && (
-              <div className="px-8 py-10 flex flex-col sm:flex-row items-center justify-between border-t border-slate-50 bg-slate-50/30 gap-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredTickets.length)} de {filteredTickets.length} chamados
-                </p>
+              <div className="px-6 py-8 flex flex-col md:flex-row items-center justify-between border-t border-slate-100 bg-slate-50/20 gap-6">
+                <div className="flex flex-col items-center md:items-start">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                    RESULTADOS DA BUSCA
+                  </p>
+                  <p className="text-[11px] font-bold text-[#1C2643] uppercase">
+                    Mostrando <span className="text-primary">{((currentPage - 1) * itemsPerPage) + 1}</span> a <span className="text-primary">{Math.min(currentPage * itemsPerPage, filteredTickets.length)}</span> de <span className="text-primary">{filteredTickets.length}</span> chamados
+                  </p>
+                </div>
                 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <Button
                     variant="outline"
-                    size="icon"
-                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    size="sm"
+                    className="h-10 px-4 rounded-xl border-slate-200 text-[#1C2643] hover:bg-white hover:border-primary hover:text-primary transition-all disabled:opacity-30 font-bold text-[10px] uppercase cursor-pointer"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-4 h-4 mr-2" />
+                    Anterior
                   </Button>
                   
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? "default" : "outline"}
-                        size="icon"
-                        className={cn(
-                          "h-8 w-8 rounded-lg transition-all text-[10px] font-black tracking-widest",
-                          currentPage === page 
-                            ? "bg-primary text-white shadow-lg shadow-primary/20 border-primary" 
-                            : "border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20"
-                        )}
-                        onClick={() => handlePageChange(page)}
-                      >
-                        {page}
-                      </Button>
-                    ))}
+                  <div className="hidden sm:flex items-center gap-2">
+                    {(() => {
+                      const pages = [];
+                      const maxVisible = 5;
+                      let startPage = Math.max(1, currentPage - 2);
+                      const endPage = Math.min(totalPages, startPage + maxVisible - 1);
+                      
+                      if (endPage - startPage < maxVisible - 1) {
+                        startPage = Math.max(1, endPage - maxVisible + 1);
+                      }
+
+                      for (let i = startPage; i <= endPage; i++) {
+                        pages.push(
+                          <Button
+                            key={i}
+                            variant={currentPage === i ? "default" : "outline"}
+                            size="icon"
+                            className={cn(
+                              "h-10 w-10 rounded-xl transition-all text-[11px] font-black tracking-widest cursor-pointer",
+                              currentPage === i 
+                                ? "bg-primary text-white shadow-xl shadow-primary/30 border-primary" 
+                                : "bg-white border-slate-200 text-slate-400 hover:text-primary hover:border-primary/40"
+                            )}
+                            onClick={() => handlePageChange(i)}
+                          >
+                            {i}
+                          </Button>
+                        );
+                      }
+                      
+                      // Add ellipses for many pages
+                      if (startPage > 1) {
+                         pages.unshift(<span key="start-dots" className="text-slate-300 font-bold px-1">...</span>);
+                         pages.unshift(
+                           <Button
+                              key={1}
+                              variant="outline"
+                              size="icon"
+                              className="h-10 w-10 rounded-xl bg-white border-slate-200 text-slate-400 hover:text-primary transition-all text-[11px] font-black cursor-pointer"
+                              onClick={() => handlePageChange(1)}
+                            >
+                              1
+                            </Button>
+                         );
+                      }
+                      
+                      if (endPage < totalPages) {
+                        pages.push(<span key="end-dots" className="text-slate-300 font-bold px-1">...</span>);
+                        pages.push(
+                          <Button
+                             key={totalPages}
+                             variant="outline"
+                             size="icon"
+                             className="h-10 w-10 rounded-xl bg-white border-slate-200 text-slate-400 hover:text-primary transition-all text-[11px] font-black cursor-pointer"
+                             onClick={() => handlePageChange(totalPages)}
+                           >
+                             {totalPages}
+                           </Button>
+                        );
+                      }
+
+                      return pages;
+                    })()}
+                  </div>
+
+                  <div className="flex sm:hidden items-center bg-white border border-slate-200 rounded-xl px-4 h-10">
+                    <span className="text-[11px] font-black text-primary">{currentPage}</span>
+                    <span className="mx-2 text-slate-300">/</span>
+                    <span className="text-[11px] font-bold text-slate-500">{totalPages}</span>
                   </div>
 
                   <Button
                     variant="outline"
-                    size="icon"
-                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    size="sm"
+                    className="h-10 px-4 rounded-xl border-slate-200 text-[#1C2643] hover:bg-white hover:border-primary hover:text-primary transition-all disabled:opacity-30 font-bold text-[10px] uppercase cursor-pointer"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    Próximo
+                    <ChevronRight className="w-4 h-4 ml-2" />
                   </Button>
                 </div>
               </div>

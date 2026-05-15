@@ -10,23 +10,11 @@ import {
   CheckCircle2, 
   Trophy,
   Loader2,
-  PieChart as PieChartIcon,
   BarChart3,
-  MessageSquare
+  MessageSquare,
+  Users
 } from "lucide-react"
-import { 
-  PieChart, 
-  Pie, 
-  Cell, 
-  ResponsiveContainer, 
-  Tooltip, 
-  Legend,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid
-} from "recharts"
+import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
 
@@ -52,9 +40,15 @@ interface RankingItem {
 interface TicketStats {
   total: number
   notApproved: number
-  converted: number
+  approved: number
+  inNegotiation: number
+  aberto: number
+  aguardandoOperacional: number
   byStatus: { name: string; value: number; color: string }[]
+  byMainStatus: { name: string; value: number; color: string }[]
   byOrigin: { name: string; value: number }[]
+  byConvenio: { name: string; value: number }[]
+  byBroker: { name: string; value: number }[]
 }
 
 interface AdminStats {
@@ -178,32 +172,96 @@ export function AdminDashboard({
         </motion.div>
       </div>
 
-      {/* TABS SELECTION */}
-      <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl mb-8">
-        <button
-          onClick={() => setActiveTab('propostas')}
-          className={cn(
-            "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2",
-            activeTab === 'propostas' 
-              ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
-              : "text-slate-400 hover:text-slate-600"
-          )}
-        >
-          <BarChart3 className="w-4 h-4" />
-          Propostas e Metas
-        </button>
-        <button
-          onClick={() => setActiveTab('chamados')}
-          className={cn(
-            "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2",
-            activeTab === 'chamados' 
-              ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
-              : "text-slate-400 hover:text-slate-600"
-          )}
-        >
-          <MessageSquare className="w-4 h-4" />
-          Gráficos de Chamados
-        </button>
+      {/* TABS SELECTION AND FILTER */}
+      <div className="flex flex-col gap-4 mb-8">
+        <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl">
+          <button
+            onClick={() => setActiveTab('propostas')}
+            className={cn(
+              "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2",
+              activeTab === 'propostas' 
+                ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                : "text-slate-400 hover:text-slate-600"
+            )}
+          >
+            <BarChart3 className="w-4 h-4" />
+            METAS E PRODUÇÃO
+          </button>
+          <button
+            onClick={() => setActiveTab('chamados')}
+            className={cn(
+              "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2",
+              activeTab === 'chamados' 
+                ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                : "text-slate-400 hover:text-slate-600"
+            )}
+          >
+            <MessageSquare className="w-4 h-4" />
+            CHAMADOS
+          </button>
+        </div>
+
+        {/* Filter Section - Aligned to Right, Below Tabs */}
+        <div className="flex justify-end">
+          <div className="flex items-end gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Início</span>
+              <input 
+                type="date" 
+                value={tempStartDate}
+                onChange={(e) => setTempStartDate(e.target.value)}
+                className="text-[12px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Fim</span>
+              <input 
+                type="date" 
+                value={tempEndDate}
+                onChange={(e) => setTempEndDate(e.target.value)}
+                className="text-[12px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  setStartDate(tempStartDate);
+                  setEndDate(tempEndDate);
+                }}
+                disabled={!tempStartDate && !tempEndDate}
+                className="px-4 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm h-[34px]"
+              >
+                APLICAR
+              </button>
+              <button 
+                onClick={() => {
+                  const todayStr = format(new Date(), "yyyy-MM-dd");
+                  setTempStartDate(todayStr);
+                  setTempEndDate(todayStr);
+                  setStartDate(todayStr);
+                  setEndDate(todayStr);
+                }}
+                className="px-4 py-2 bg-slate-100 text-slate-500 text-[10px] font-black rounded-lg hover:bg-slate-200 transition-all active:scale-95 shadow-sm h-[34px]"
+              >
+                HOJE
+              </button>
+              <button 
+                onClick={() => {
+                  const now = new Date();
+                  const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+                  const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+                  setTempStartDate(firstDay);
+                  setTempEndDate(lastDay);
+                  setStartDate(firstDay);
+                  setEndDate(lastDay);
+                }}
+                className="px-4 py-2 bg-slate-100 text-slate-500 text-[10px] font-black rounded-lg hover:bg-slate-200 transition-all active:scale-95 shadow-sm h-[34px]"
+              >
+                MÊS
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {activeTab === 'propostas' ? (
@@ -425,54 +483,10 @@ export function AdminDashboard({
         {/* 6. Ranking de Vendas dos corretores */}
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }} className="lg:col-span-12">
           <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white border-slate-100">
-            <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+            <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
                <div className="flex items-center gap-3">
                  <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Ranking de Vendas</h3>
                  <Trophy className="w-6 h-6 text-amber-500 fill-amber-500" />
-               </div>
-               
-               <div className="flex flex-wrap items-end gap-3">
-                 <div className="flex flex-col">
-                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Início</span>
-                   <input 
-                     type="date" 
-                     value={tempStartDate}
-                     onChange={(e) => setTempStartDate(e.target.value)}
-                     className="text-[13px] font-bold text-[#1C2643] bg-slate-100 border-none rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                   />
-                 </div>
-                 <div className="flex flex-col">
-                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Fim</span>
-                   <input 
-                     type="date" 
-                     value={tempEndDate}
-                     onChange={(e) => setTempEndDate(e.target.value)}
-                     className="text-[13px] font-bold text-[#1C2643] bg-slate-100 border-none rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                   />
-                 </div>
-                 <div className="flex items-center gap-2">
-                   <button 
-                     onClick={() => {
-                       setStartDate(tempStartDate);
-                       setEndDate(tempEndDate);
-                     }}
-                     disabled={!tempStartDate && !tempEndDate}
-                     className="px-4 py-2 bg-[#1C2643] text-white text-[11px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm"
-                   >
-                     APLICAR
-                   </button>
-                   <button 
-                     onClick={() => {
-                       setTempStartDate("");
-                       setTempEndDate("");
-                       setStartDate("");
-                       setEndDate("");
-                     }}
-                     className="px-4 py-2 bg-slate-100 text-slate-500 text-[11px] font-black rounded-lg hover:bg-slate-200 transition-all active:scale-95 shadow-sm"
-                   >
-                     HOJE
-                   </button>
-                 </div>
                </div>
             </div>
 
@@ -588,139 +602,162 @@ export function AdminDashboard({
           className="space-y-6"
         >
           {/* Ticket Stats Dashboard */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <DashboardCard className="p-6 bg-white border-slate-100">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Total de Chamados</p>
-              <p className="text-3xl font-black text-[#1C2643] tracking-tighter">{ticketStats?.total || 0}</p>
-              <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Abertos no Período</p>
-            </DashboardCard>
-            
-            <DashboardCard className="p-6 bg-white border-slate-100">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Não Aprovados</p>
-              <p className="text-3xl font-black text-rose-600 tracking-tighter">{ticketStats?.notApproved || 0}</p>
-              <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Recusados/Cancelados</p>
-            </DashboardCard>
-
-            <DashboardCard className="p-6 bg-white border-slate-100">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Convertidos em Proposta</p>
-              <p className="text-3xl font-black text-emerald-600 tracking-tighter">{ticketStats?.converted || 0}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+            <DashboardCard className="p-6 bg-[#FE9A00]/5 border-[#FE9A00]/20 shadow-sm">
+              <p className="text-[10px] font-black text-[#FE9A00] uppercase tracking-[0.2em] mb-1">Aberto</p>
+              <p className="text-3xl font-black text-[#FE9A00] tracking-tighter">{ticketStats?.aberto || 0}</p>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[11px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded uppercase tracking-tighter">
-                  {ticketStats?.total ? Math.round((ticketStats.converted / ticketStats.total) * 100) : 0}% Taxa
+                <span className="text-[11px] font-black text-[#FE9A00] uppercase tracking-tighter">
+                  {ticketStats?.total ? Math.round((ticketStats.aberto / ticketStats.total) * 100) : 0}%
                 </span>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">de Conversão</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
               </div>
             </DashboardCard>
 
-            <DashboardCard className="p-6 bg-white border-slate-100">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Aguardando Análise</p>
-              <p className="text-3xl font-black text-amber-500 tracking-tighter">
-                {(ticketStats?.byStatus?.find(s => s.name === 'ABERTO')?.value || 0)}
-              </p>
-              <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Em fila de espera</p>
+            <DashboardCard className="p-6 bg-[#FF6A03]/5 border-[#FF6A03]/20 shadow-sm">
+              <p className="text-[10px] font-black text-[#FF6A03] uppercase tracking-[0.2em] mb-1">Aguardando Operacional</p>
+              <p className="text-3xl font-black text-[#FF6A03] tracking-tighter">{ticketStats?.aguardandoOperacional || 0}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px] font-black text-[#FF6A03] uppercase tracking-tighter">
+                  {ticketStats?.total ? Math.round((ticketStats.aguardandoOperacional / ticketStats.total) * 100) : 0}%
+                </span>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+              </div>
+            </DashboardCard>
+
+            <DashboardCard className="p-6 bg-[#06BADC]/5 border-[#06BADC]/20 shadow-sm">
+              <p className="text-[10px] font-black text-[#06BADC] uppercase tracking-[0.2em] mb-1">Em Negociação / Proposta Enviada</p>
+              <p className="text-3xl font-black text-[#06BADC] tracking-tighter">{ticketStats?.inNegotiation || 0}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px] font-black text-[#06BADC] uppercase tracking-tighter">
+                  {ticketStats?.total ? Math.round((ticketStats.inNegotiation / ticketStats.total) * 100) : 0}%
+                </span>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+              </div>
+            </DashboardCard>
+
+            <DashboardCard className="p-6 bg-[#10b981]/5 border-[#10b981]/20 shadow-sm">
+              <p className="text-[10px] font-black text-[#10b981] uppercase tracking-[0.2em] mb-1">Aprovado</p>
+              <p className="text-3xl font-black text-[#10b981] tracking-tighter">{ticketStats?.approved || 0}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px] font-black text-[#10b981] uppercase tracking-tighter">
+                  {ticketStats?.total ? Math.round((ticketStats.approved / ticketStats.total) * 100) : 0}%
+                </span>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+              </div>
+            </DashboardCard>
+            
+            <DashboardCard className="p-6 bg-[#ef4444]/5 border-[#ef4444]/20 shadow-sm">
+              <p className="text-[10px] font-black text-[#ef4444] uppercase tracking-[0.2em] mb-1">Não Aprovado</p>
+              <p className="text-3xl font-black text-[#ef4444] tracking-tighter">{ticketStats?.notApproved || 0}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px] font-black text-[#ef4444] uppercase tracking-tighter">
+                  {ticketStats?.total ? Math.round((ticketStats.notApproved / ticketStats.total) * 100) : 0}%
+                </span>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+              </div>
+            </DashboardCard>
+
+            <DashboardCard className="p-6 bg-slate-50/30 border-slate-200 shadow-sm">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Todos</p>
+              <p className="text-3xl font-black text-slate-600 tracking-tighter">{ticketStats?.total || 0}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px] font-black text-slate-600 uppercase tracking-tighter">
+                  100%
+                </span>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">Acumulado</p>
+              </div>
             </DashboardCard>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Pie Chart: Status dos Chamados */}
-            <DashboardCard className="p-8 bg-white border-slate-100 h-[400px] flex flex-col">
+            {/* Bar Chart: Origem dos Clientes - Expanded to fill-row since we removed the Pie Chart */}
+          <div className="lg:col-span-2">
+            <DashboardCard className="p-8 bg-white border-slate-100 h-auto flex flex-col">
               <div className="flex items-center gap-2 mb-8">
-                <PieChartIcon className="w-5 h-5 text-[#1C2643]" />
-                <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">Distribuição por Status</h3>
+                <Users className="w-5 h-5 text-[#1C2643]" />
+                <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">Produção por Corretor</h3>
               </div>
-              <div className="flex-1 w-full min-h-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={ticketStats?.byStatus || []}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={0}
-                      outerRadius={100}
-                      dataKey="value"
-                      stroke="#fff"
-                      strokeWidth={2}
-                      labelLine={false}
-                          label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                            const RADIAN = Math.PI / 180;
-                            const radius = innerRadius + (outerRadius - innerRadius) * 0.6;
-                            const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                            const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                            return (
-                              <text 
-                                x={x} 
-                                y={y} 
-                                fill="#FFFFFF" 
-                                textAnchor="middle" 
-                                dominantBaseline="central" 
-                                className="text-[12px] font-black"
-                              >
-                                {`${(percent * 100).toFixed(0)}%`}
-                              </text>
-                            );
-                          }}
-                    >
-                      {(ticketStats?.byStatus || []).map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{ 
-                        borderRadius: '16px', 
-                        border: 'none', 
-                        boxShadow: '0 10px 30px -10px rgba(0,0,0,0.1)',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        textTransform: 'uppercase'
-                      }}
-                    />
-                    <Legend 
-                      verticalAlign="bottom" 
-                      height={36} 
-                      iconType="circle"
-                      formatter={(value) => <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{value}</span>}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="space-y-4">
+                {(ticketStats?.byBroker || []).map((item, idx) => {
+                  const percentage = ticketStats.total ? Math.round((item.value / ticketStats.total) * 100) : 0
+                  return (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                        <span className="text-slate-500">{item.name}</span>
+                        <span className="text-slate-700">{item.value} ({percentage}%)</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${percentage}%` }}
+                          transition={{ duration: 1, delay: idx * 0.1 }}
+                          className="h-full bg-orange-500"
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </DashboardCard>
+          </div>
+        </div>
 
-            {/* Bar Chart: Origem dos Clientes */}
-            <DashboardCard className="p-8 bg-white border-slate-100 h-[400px] flex flex-col">
-              <div className="flex items-center gap-2 mb-8">
-                <TrendingUp className="w-5 h-5 text-[#1C2643]" />
-                <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">Origem dos Clientes</h3>
-              </div>
-              <div className="flex-1 w-full min-h-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={ticketStats?.byOrigin || []} layout="vertical" margin={{ left: 40 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                    <XAxis type="number" hide />
-                    <YAxis 
-                      dataKey="name" 
-                      type="category" 
-                      width={100} 
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }}
-                    />
-                    <Tooltip 
-                      cursor={{ fill: 'transparent' }}
-                      contentStyle={{ 
-                        borderRadius: '16px', 
-                        border: 'none', 
-                        boxShadow: '0 10px 30px -10px rgba(0,0,0,0.1)',
-                        fontSize: '12px'
-                      }}
-                    />
-                    <Bar 
-                      dataKey="value" 
-                      fill="#1C2643" 
-                      radius={[0, 4, 4, 0]} 
-                      barSize={20}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          <DashboardCard className="p-8 bg-white border-slate-100 h-auto flex flex-col">
+            <div className="flex items-center gap-2 mb-8">
+              <TrendingUp className="w-5 h-5 text-[#1C2643]" />
+              <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">Origem dos Clientes</h3>
+            </div>
+            <div className="space-y-4">
+              {ticketStats?.byOrigin.slice(0, 8).map((item, idx) => {
+                const percentage = ticketStats.total ? Math.round((item.value / ticketStats.total) * 100) : 0
+                return (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                      <span className="text-slate-500">{item.name}</span>
+                      <span className="text-slate-700">{item.value} ({percentage}%)</span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${percentage}%` }}
+                        transition={{ duration: 1, delay: idx * 0.1 }}
+                        className="h-full bg-[#1C2643]"
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </DashboardCard>
+
+          {/* Distribution: Convênio */}
+          <DashboardCard className="p-8 bg-white border-slate-100 h-auto flex flex-col">
+            <div className="flex items-center gap-2 mb-8">
+              <BarChart3 className="w-5 h-5 text-[#1C2643]" />
+              <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">CHAMADOS POR CONVÊNIO</h3>
+            </div>
+              <div className="space-y-4">
+                {(ticketStats?.byConvenio || []).map((item, idx) => {
+                  const percentage = ticketStats.total ? Math.round((item.value / ticketStats.total) * 100) : 0
+                  return (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                        <span className="text-slate-500">{item.name}</span>
+                        <span className="text-slate-700">{item.value} ({percentage}%)</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${percentage}%` }}
+                          transition={{ duration: 1, delay: idx * 0.1 }}
+                          className="h-full bg-blue-500"
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </DashboardCard>
           </div>

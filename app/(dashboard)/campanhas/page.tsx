@@ -193,8 +193,20 @@ export default function CampaignsPage() {
       const allCsvRows: string[] = []
       const uniqueRowsKeys = new Set()
       
-      const pageSize = 500 
+      // Definição do Header do CSV (Alinhado com as colunas da base SIAPE)
+      const headers = [
+        "CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3", 
+        "MATRÍCULA", "ÓRGÃO", "SITUAÇÃO FUNCIONAL", "SALÁRIO", "INSTITUIDOR", 
+        "REGIME JURÍDICO", "UF", "SALDO 70%", "MARGEM 35%", "BRUTA 5%", 
+        "UTILIZADA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO UTILIZADA 5%", 
+        "BENEFÍCIO LÍQUIDA 5%", "BANCO", "PRAZO", "TIPO"
+      ].map(h => `"${h}"`).join(",")
+      
+      allCsvRows.push(headers)
+      
+      const pageSize = 150 // Reduzido ligeiramente para maior estabilidade
       let totalProcessed = 0
+      let lastCpfInBatch: string | null = null;
       
       const startRange = partIndex * PART_SIZE;
       const endRange = Math.min((partIndex + 1) * PART_SIZE - 1, (campaign.publico_estimado || 0) - 1);
@@ -202,38 +214,36 @@ export default function CampaignsPage() {
 
       if (totalToExport <= 0) {
         alert("Intervalo de exportação inválido.");
+        setIsExporting(null);
         return;
       }
 
       while (totalProcessed < totalToExport) {
-        const from = startRange + totalProcessed;
-        const to = Math.min(from + pageSize - 1, endRange);
-
-        // DETERMINAR QUAL TABELA USAR BASEADO NO CONVÊNIO DA CAMPANHA (Split Tables Optimization)
-        // Isso aumenta a performance e evita timeouts em grandes exportações
+        // DETERMINAR QUAL TABELA USAR (Priorizando SIAPE conforme nova regra de negócio)
         let targetTable = 'base_consulta_rapida';
-        const campaignConvenio = campaign.nome?.toUpperCase() || "";
-        
-        // Tentamos inferir a tabela pelo convênio da campanha ou filtros
-        if (campaignConvenio.includes('SIAPE')) {
+        const campaignName = (campaign.nome || "").toUpperCase();
+        const convenioKey = filters.convenio;
+
+        const TABLE_MAP: Record<string, string> = {
+          'siape': 'base_consulta_siape',
+          'governo_sp': 'base_consulta_governo_sp',
+          'prefeitura_sp': 'base_consulta_prefeitura_sp',
+          'governo_pi': 'base_consulta_governo_pi',
+          'governo_ma': 'base_consulta_governo_ma',
+        };
+
+        if (convenioKey === 'siape' || campaignName.includes('SIAPE') || campaignName.includes('FEDERAL')) {
           targetTable = 'base_consulta_siape';
-        } else if (campaignConvenio.includes('GOVERNO SP')) {
-          targetTable = 'base_consulta_governo_sp';
-        } else if (campaignConvenio.includes('PREFEITURA SP')) {
-          targetTable = 'base_consulta_prefeitura_sp';
-        } else if (campaignConvenio.includes('GOVERNO PI')) {
-          targetTable = 'base_consulta_governo_pi';
-        } else if (campaignConvenio.includes('GOVERNO MA')) {
-          targetTable = 'base_consulta_governo_ma';
-        } else if (filters.orgaos?.length > 0) {
-          const firstOrgao = filters.orgaos[0].toUpperCase();
-          if (firstOrgao.includes('SIAPE')) targetTable = 'base_consulta_siape';
+        } else if (convenioKey && TABLE_MAP[convenioKey]) {
+          targetTable = TABLE_MAP[convenioKey];
         }
 
-        // CONSULTA NA TABELA BASE CORRETA
-        let query = supabase.from(targetTable).select('*')
+        // SELEÇÃO OTIMIZADA: Apenas colunas necessárias para o CSV
+        const columnsToSelect = "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
+        
+        let query = supabase.from(targetTable).select(columnsToSelect)
 
-        // ... (Filtros permanecem idênticos)
+        // APLICAR FILTROS IDENTICOS AOS DO CÁLCULO DE AUDIÊNCIA
         if (filters.orgaos?.length > 0) {
           const codeFilters = Object.entries(ORGAOS_MAPPING)
             .filter(([, name]) => filters.orgaos.includes(name))
@@ -241,6 +251,7 @@ export default function CampaignsPage() {
           const combinedOrgaos = Array.from(new Set([...filters.orgaos, ...codeFilters]));
           if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
         }
+        
         if (filters.situacoes?.length > 0) query = query.in('situacao_funcional', filters.situacoes)
         if (filters.regimes?.length > 0) query = query.in('regime_juridico', filters.regimes)
         if (filters.ufs?.length > 0) query = query.in('uf', filters.ufs)
@@ -275,26 +286,24 @@ export default function CampaignsPage() {
         const cBMin = parseSafeNumber(filters.cardBeneficioMin)
         if (cBMin !== null) query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin)
 
-        // 4. ITENS DE CRÉDITO (UNIFICADO PARA CARTÕES COM INTERSEÇÃO)
         if (filters.loanBanks?.length > 0) query = query.in('banco', filters.loanBanks)
         
-        const hasCardTypeFilter = filters.cardTypes?.length > 0;
+        const hasCardTypeFilter = filters.cardTypes?.length > 0 && !filters.cardTypes.includes('__ACTIVE__') || (filters.cardTypes?.length > 1);
         const hasCardBankFilter = filters.cardBanks?.length > 0;
 
         if (hasCardTypeFilter || hasCardBankFilter) {
+          const cleanCardTypes = filters.cardTypes?.filter(t => t !== '__ACTIVE__') || [];
           const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
             .filter(([, info]) => {
-              const matchesType = !hasCardTypeFilter || filters.cardTypes.includes(info.label);
+              const matchesType = cleanCardTypes.length === 0 || cleanCardTypes.includes(info.label);
               const matchesBank = !hasCardBankFilter || (info.bank && filters.cardBanks.includes(info.bank));
               return matchesType && matchesBank;
             })
             .map(([code]) => code);
           
           if (cardQueryCodes.length > 0) {
-            // Filtro de alta performance usando coluna de prefixo indexada
             query = query.in('tipo_prefix', cardQueryCodes);
           } else if (hasCardTypeFilter && hasCardBankFilter) {
-            // Sem interseção, força resultado vazio para o lote
             query = query.eq('tipo', '999999999_FORCE_EMPTY');
           }
         }
@@ -304,14 +313,27 @@ export default function CampaignsPage() {
         if (!isNaN(pMin)) query = query.gte('prazo', pMin)
         if (!isNaN(pMax)) query = query.lte('prazo', pMax)
 
-        const { data: bcrData, error: bcrError } = await query.range(from, to)
+        // PAGINAÇÃO HÍBRIDA: Keyset Pagination com fallback para Range no início de cada parte
+        query = query.order('cpf', { ascending: true })
+
+        let bcrData, bcrError;
+        if (totalProcessed === 0) {
+          // No início da parte, usamos range para saltar para o ponto de partida
+          const { data, error } = await query.range(startRange, startRange + pageSize - 1)
+          bcrData = data; bcrError = error;
+        } else if (lastCpfInBatch) {
+          // Após o primeiro lote da parte, usamos o CPF como cursor (Keyset Pagination)
+          const { data, error } = await query.gt('cpf', lastCpfInBatch).limit(pageSize)
+          bcrData = data; bcrError = error;
+        }
+
         if (bcrError) throw bcrError
 
         if (!bcrData || bcrData.length === 0) {
           break;
         } else {
+          lastCpfInBatch = bcrData[bcrData.length - 1].cpf as string;
           bcrData.forEach((row) => {
-            // UNICIDADE GARANTIDA POR CPF
             const key = row.cpf as string;
             if (uniqueRowsKeys.has(key)) return
             uniqueRowsKeys.add(key)
@@ -324,7 +346,10 @@ export default function CampaignsPage() {
               row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
               row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0,
               row.banco || "", row.prazo || "", row.tipo || ""
-            ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")
+            ].map(val => {
+              const clean = String(val === null || val === undefined ? "" : val).replace(/"/g, '""');
+              return `"${clean}"`;
+            }).join(",")
             
             allCsvRows.push(csvRow)
           })
@@ -332,37 +357,36 @@ export default function CampaignsPage() {
           totalProcessed += bcrData.length;
           const progress = Math.min(Math.round((totalProcessed / totalToExport) * 100), 100)
           setExportProgress(progress)
+
+          // Pequeno delay para liberar a main thread e evitar sobrecarga no banco (Backpressure)
+          await new Promise(resolve => setTimeout(resolve, 300))
         }
       }
 
       if (allCsvRows.length === 0) {
-        alert("Nenhum dado encontrado para este intervalo.")
+        alert("Nenhum dado encontrado para os filtros desta campanha.")
+        setIsExporting(null)
         return
       }
 
-      const headers = [
-        "cpf", "nome", "data_de_nascimento", "telefone_1", "telefone_2", "telefone_3",
-        "matricula", "orgao", "situacao_funcional", "salario", "instituidor", "regime_juridico", "uf",
-        "saldo_70%", "margem_35%", "bruta_5", "utilizada_5", "liquida_5", "beneficio_bruta_5", "beneficio_utilizada_5", "beneficio_liquida_5",
-        "banco", "prazo", "tipo"
-      ]
-      
-      const csvContent = [headers.join(","), ...allCsvRows].join("\n")
+      const csvContent = allCsvRows.join("\n")
       const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' })
       const link = document.createElement("a")
       const url = URL.createObjectURL(blob)
       link.setAttribute("href", url)
-      link.setAttribute("download", `campanha_${campaign.nome.toLowerCase().replace(/\s+/g, '_')}_p${partIndex + 1}_${new Date().getTime()}.csv`)
+      link.setAttribute("download", `campanha_${campaign.nome.toLowerCase().replace(/[^\w\s]/gi, '').replace(/\s+/g, '_')}_p${partIndex + 1}_${new Date().getTime()}.csv`)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
 
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : "Verifique o console.";
+      const errorMsg = err instanceof Error ? err.message : "Erro desconhecido. Verifique o console.";
       console.error("ERRO DETALHADO NA EXPORTAÇÃO:", err)
       alert(`Erro ao exportar campanha: ${errorMsg}`)
     } finally {
       setIsExporting(null)
+      setExportProgress(0)
     }
   }
 
@@ -555,13 +579,13 @@ export default function CampaignsPage() {
                                     <DropdownMenuTrigger 
                                       render={
                                         <Button 
-                                          variant="ghost" 
+                                          variant="outline" 
                                           size="sm" 
                                           disabled={isExporting !== null}
-                                          className={`h-8 px-3 text-[9px] font-bold uppercase tracking-widest transition-colors ${
+                                          className={`h-8 px-4 text-[9.5px] font-bold uppercase tracking-widest transition-all shadow-sm ${
                                             isExporting?.startsWith(campaign.id) 
-                                              ? "text-primary bg-primary/5" 
-                                              : "text-slate-400 hover:text-primary hover:bg-primary/5"
+                                              ? "text-primary bg-primary/5 border-primary/20" 
+                                              : "text-blue-600 border-blue-100 hover:bg-blue-50 hover:border-blue-200"
                                           }`}
                                         >
                                           {isExporting?.startsWith(campaign.id) ? (
@@ -571,7 +595,7 @@ export default function CampaignsPage() {
                                             </div>
                                           ) : (
                                             <>
-                                              <Download className="w-3 h-3 mr-2" />
+                                              <Download className="w-3.5 h-3.5 mr-2" />
                                               Exportar Partes
                                             </>
                                           )}
@@ -594,31 +618,31 @@ export default function CampaignsPage() {
                                 ) : (
                                   <Button 
                                     onClick={() => handleExport(campaign)}
-                                    variant="ghost" 
+                                    variant="outline" 
                                     size="sm" 
                                     disabled={isExporting !== null}
-                                    className={`h-8 px-3 text-[9px] font-bold uppercase tracking-widest transition-colors ${
+                                    className={`h-8 px-5 text-[9.5px] font-bold uppercase tracking-widest transition-all shadow-sm ${
                                       isExporting?.startsWith(campaign.id) 
-                                        ? "text-primary bg-primary/5" 
-                                        : "text-slate-400 hover:text-primary hover:bg-primary/5"
+                                        ? "text-primary bg-primary/5 border-primary/20" 
+                                        : "text-blue-600 border-blue-100 hover:bg-blue-50 hover:border-blue-200"
                                     }`}
                                   >
                                     {isExporting?.startsWith(campaign.id) ? (
-                                      <div className="flex flex-col items-end gap-1 min-w-[100px]">
+                                      <div className="flex flex-col items-end gap-1.5 min-w-[120px]">
                                         <div className="flex items-center gap-2">
                                           <Loader2 className="w-3 h-3 animate-spin" />
-                                          <span className="text-[9px]">{exportProgress}%</span>
+                                          <span className="text-[10px] tabular-nums">{exportProgress}%</span>
                                         </div>
-                                        <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                                        <div className="w-full h-1 bg-slate-100/50 rounded-full overflow-hidden">
                                           <div 
-                                            className="h-full bg-primary transition-all duration-300" 
+                                            className="h-full bg-primary transition-all duration-300 ease-out" 
                                             style={{ width: `${exportProgress}%` }}
                                           />
                                         </div>
                                       </div>
                                     ) : (
                                       <>
-                                        <Download className="w-3 h-3 mr-2" />
+                                        <Download className="w-3.5 h-3.5 mr-2" />
                                         Exportar
                                       </>
                                     )}

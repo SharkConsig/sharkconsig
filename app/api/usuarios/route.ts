@@ -174,21 +174,54 @@ export async function DELETE(request: Request) {
     const supabaseAdmin = createAdminClient();
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
+    const transferTo = searchParams.get('transferTo')
 
     if (!id) {
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 })
     }
 
-    // 1. Limpar referências em tabelas que podem ter foreign keys sem CASCADE
-    // Isso evita o erro "AuthApiError: Database error deleting user"
+    // 1. Se informou um supervisor para transferência, realizar o remanejamento
+    if (transferTo) {
+      // Buscar dados do novo supervisor para atualizar os nomes nas tabelas
+      const { data: supervisorData, error: supError } = await supabaseAdmin.auth.admin.getUserById(transferTo)
+      
+      if (!supError && supervisorData?.user) {
+        const supervisorUser = supervisorData.user
+        const supervisorMeta = supervisorUser.user_metadata || {}
+        const supervisorNome = supervisorMeta.nome_completo || supervisorMeta.full_name || 'Supervisor'
+
+        await Promise.all([
+          // Transferir Propostas
+          supabaseAdmin.from('propostas')
+            .update({ 
+              corretor_id: transferTo,
+              corretor: supervisorNome
+            })
+            .eq('corretor_id', id),
+          
+          // Transferir Chamados
+          supabaseAdmin.from('chamados')
+            .update({ 
+              user_id: transferTo,
+              user_nome: supervisorNome
+            })
+            .eq('user_id', id)
+        ])
+      } else {
+        console.warn(`Supervisor ${transferTo} não encontrado para transferência. Continuando com exclusão sem transferência.`)
+      }
+    }
+
+    // 2. Limpar referências em tabelas que podem ter foreign keys sem CASCADE
     await Promise.all([
       supabaseAdmin.from('campanhas').delete().eq('user_id', id),
       supabaseAdmin.from('lotes').delete().eq('user_id', id),
-      // Nos chamados, podemos querer manter o registro mas desvincular o usuário
-      supabaseAdmin.from('chamados').update({ user_id: null }).eq('user_id', id)
+      // Nos chamados e propostas que NÃO foram transferidos (ou se não houve transferência), setar NULL para evitar erro de FK
+      supabaseAdmin.from('chamados').update({ user_id: null }).eq('user_id', id),
+      supabaseAdmin.from('propostas').update({ corretor_id: null }).eq('corretor_id', id)
     ])
 
-    // 2. Deletar do Auth
+    // 3. Deletar do Auth
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id)
     if (authError) throw authError
 

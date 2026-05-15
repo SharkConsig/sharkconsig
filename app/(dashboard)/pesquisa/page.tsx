@@ -140,15 +140,42 @@ export default function SearchClientPage() {
       }
       
       const cleanCPF = digits.padStart(11, '0')
+      const phoneDigits = digits.length >= 8 ? (digits.length > 11 ? digits.slice(-11) : digits) : digits;
 
       // ESTRATÉGIA DE BUSCA OTIMIZADA (Split Tables)
-      // Em vez de buscar em todas as tabelas de produção (lento), 
-      // buscamos na tabela global de consulta rápida primeiro para identificar o convênio
+      // Buscamos na tabela global de consulta rápida primeiro para identificar o convênio
+      const searchTerms = [
+        `cpf.eq.${cleanCPF}`,
+        `telefone_1.eq.${digits}`,
+        `telefone_2.eq.${digits}`,
+        `telefone_3.eq.${digits}`
+      ];
+
+      // Adicionamos variantes comuns de telefone
+      if (digits.length >= 8) {
+        // Variante sem prefixos (últimos 9 ou 11 dígitos)
+        if (digits !== phoneDigits) {
+          searchTerms.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
+        }
+        
+        // Se tem 11 dígitos (com DDD), tenta sem o nono dígito (caso raro mas possível em cadastros antigos)
+        if (digits.length === 11) {
+          const withoutNinth = digits.slice(0, 2) + digits.slice(3);
+          searchTerms.push(`telefone_1.eq.${withoutNinth}`, `telefone_2.eq.${withoutNinth}`, `telefone_3.eq.${withoutNinth}`);
+        }
+        
+        // Se tem 11 dígitos, tenta com '0' na frente (comum em SP/RJ em alguns sistemas)
+        if (digits.length === 11) {
+          const withZero = `0${digits}`;
+          searchTerms.push(`telefone_1.eq.${withZero}`, `telefone_2.eq.${withZero}`, `telefone_3.eq.${withZero}`);
+        }
+      }
+
       const { data: quickData, error: quickError } = await withRetry(async () => 
         await supabase
           .from('base_consulta_rapida')
           .select('convenio, cpf')
-          .or(`cpf.eq.${cleanCPF},telefone_1.eq.${digits},telefone_2.eq.${digits},telefone_3.eq.${digits}`)
+          .or(searchTerms.join(','))
           .limit(1)
           .maybeSingle()
       );
@@ -158,12 +185,25 @@ export default function SearchClientPage() {
       // Se encontramos na consulta rápida, já sabemos qual tabela de produção atacar
       const targetConvenio = quickData?.convenio;
       const finalCpf = quickData?.cpf || cleanCPF;
+      
+      // FALLBACK: Se não encontrou CPF na consulta rápida e a pesquisa parece ser por telefone,
+      // podemos ter que fazer uma busca mais lenta nas tabelas de produção se a base rápida estiver desatualizada.
+      const isActuallyAPhone = digits.length >= 8 && digits.length <= 13;
 
-      // 1. SIAPE
+      // 1. SIAPE (clientes)
       if (!targetConvenio || targetConvenio === 'siape') {
-        const { data: siapeData } = await withRetry<ClientData | null>(async () => 
-          await supabase.from('clientes').select('*').eq('cpf', finalCpf).maybeSingle()
-        )
+        const query = supabase.from('clientes').select('*');
+        if (quickData?.cpf) {
+          query.eq('cpf', quickData.cpf);
+        } else if (isActuallyAPhone) {
+          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
+          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
+          query.or(prodSearch.join(','));
+        } else {
+          query.eq('cpf', finalCpf);
+        }
+        
+        const { data: siapeData } = await withRetry<ClientData | null>(async () => await query.maybeSingle());
 
         if (siapeData) {
           setClient(siapeData)
@@ -179,9 +219,18 @@ export default function SearchClientPage() {
 
       // 2. GOVERNO SP
       if (!targetConvenio || targetConvenio === 'governo_sp') {
-        const { data: govSpData } = await withRetry<ClientData | null>(async () => 
-          await supabase.from('governo_sp_clientes').select('*').eq('cpf', finalCpf).maybeSingle()
-        )
+        const query = supabase.from('governo_sp_clientes').select('*');
+        if (quickData?.cpf) {
+          query.eq('cpf', quickData.cpf);
+        } else if (isActuallyAPhone) {
+          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
+          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
+          query.or(prodSearch.join(','));
+        } else {
+          query.eq('cpf', finalCpf);
+        }
+        
+        const { data: govSpData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
 
         if (govSpData) {
           setClient(govSpData)
@@ -197,9 +246,18 @@ export default function SearchClientPage() {
 
       // 3. PREFEITURA SP
       if (!targetConvenio || targetConvenio === 'prefeitura_sp') {
-        const { data: pmspData } = await withRetry<ClientData | null>(async () => 
-          await supabase.from('prefeitura_sp_clientes').select('*').eq('cpf', finalCpf).maybeSingle()
-        )
+        const query = supabase.from('prefeitura_sp_clientes').select('*');
+        if (quickData?.cpf) {
+          query.eq('cpf', quickData.cpf);
+        } else if (isActuallyAPhone) {
+          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
+          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
+          query.or(prodSearch.join(','));
+        } else {
+          query.eq('cpf', finalCpf);
+        }
+        
+        const { data: pmspData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
 
         if (pmspData) {
           setClient(pmspData)
@@ -215,9 +273,18 @@ export default function SearchClientPage() {
 
       // 4. GOVERNO PI
       if (!targetConvenio || targetConvenio === 'governo_pi') {
-        const { data: govPiData } = await withRetry<ClientData | null>(async () => 
-          await supabase.from('governo_pi_clientes').select('*').eq('cpf', finalCpf).maybeSingle()
-        )
+        const query = supabase.from('governo_pi_clientes').select('*');
+        if (quickData?.cpf) {
+          query.eq('cpf', quickData.cpf);
+        } else if (isActuallyAPhone) {
+          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
+          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
+          query.or(prodSearch.join(','));
+        } else {
+          query.eq('cpf', finalCpf);
+        }
+        
+        const { data: govPiData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
 
         if (govPiData) {
           setClient(govPiData)
@@ -233,9 +300,18 @@ export default function SearchClientPage() {
 
       // 5. GOVERNO MA
       if (!targetConvenio || targetConvenio === 'governo_ma') {
-        const { data: govMaData } = await withRetry<ClientData | null>(async () => 
-          await supabase.from('governo_ma_clientes').select('*').eq('cpf', finalCpf).maybeSingle()
-        )
+        const query = supabase.from('governo_ma_clientes').select('*');
+        if (quickData?.cpf) {
+          query.eq('cpf', quickData.cpf);
+        } else if (isActuallyAPhone) {
+          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
+          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
+          query.or(prodSearch.join(','));
+        } else {
+          query.eq('cpf', finalCpf);
+        }
+        
+        const { data: govMaData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
 
         if (govMaData) {
           setClient(govMaData)

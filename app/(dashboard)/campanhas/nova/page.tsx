@@ -506,7 +506,7 @@ export default function NewCampaignPage() {
         nome: campaignName,
         publico_estimado: estimatedAudience,
         filtros: { ...filters, convenio: activeConvenio },
-        criado_por: user?.id,
+        user_id: user?.id,
         created_at: new Date().toISOString()
       });
 

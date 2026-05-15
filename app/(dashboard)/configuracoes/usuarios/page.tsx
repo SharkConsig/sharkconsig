@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 import { 
   MoreVertical, 
   UserPlus, 
@@ -71,15 +72,75 @@ export default function UsuariosPage() {
     isOpen: boolean;
     title: string;
     description: string;
-    onConfirm: () => void;
     loading: boolean;
+    type?: 'delete' | 'status';
+    targetUser?: Usuario;
+    statusData?: { id: string, newStatus: string };
   }>({
     isOpen: false,
     title: "",
     description: "",
-    onConfirm: () => {},
     loading: false
   })
+
+  const [selectedSupervisorTransfer, setSelectedSupervisorTransfer] = useState<string>("")
+
+  const executeDelete = async () => {
+    const user = confirmConfig.targetUser;
+    if (!user) return;
+
+    if (!selectedSupervisorTransfer) {
+      toast.error("Selecione um supervisor para transferência")
+      return
+    }
+
+    setConfirmConfig(prev => ({ ...prev, loading: true }))
+    try {
+      const response = await fetch(`/api/usuarios?id=${user.id}&transferTo=${selectedSupervisorTransfer}`, {
+        method: "DELETE"
+      })
+      if (!response.ok) throw new Error("Erro ao excluir usuário")
+      toast.success("Usuário excluído e dados transferidos com sucesso")
+      fetchUsuarios()
+      setConfirmConfig(prev => ({ ...prev, isOpen: false }))
+    } catch (error) {
+      console.error(error)
+      toast.error("Erro ao excluir usuário")
+    } finally {
+      setConfirmConfig(prev => ({ ...prev, loading: false }))
+    }
+  }
+
+  const executeToggleStatus = async () => {
+    const data = confirmConfig.statusData;
+    if (!data) return;
+
+    setConfirmConfig(prev => ({ ...prev, loading: true }))
+    try {
+      const response = await fetch("/api/usuarios", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: data.id, status: data.newStatus })
+      })
+      if (!response.ok) throw new Error("Erro ao alterar status do usuário")
+      toast.success(`Usuário ${data.newStatus === "ATIVO" ? "ativado" : "inativado"} com sucesso`)
+      fetchUsuarios()
+      setConfirmConfig(prev => ({ ...prev, isOpen: false }))
+    } catch (error) {
+      console.error(error)
+      toast.error("Erro ao alterar status do usuário")
+    } finally {
+      setConfirmConfig(prev => ({ ...prev, loading: false }))
+    }
+  }
+
+  const handleFinalConfirm = () => {
+    if (confirmConfig.type === 'delete') {
+      executeDelete();
+    } else {
+      executeToggleStatus();
+    }
+  }
 
   useEffect(() => {
     if (!authLoading && !canAccessAdminAreas) {
@@ -106,29 +167,15 @@ export default function UsuariosPage() {
     fetchUsuarios()
   }, [fetchUsuarios])
 
-  const handleDeleteUser = async (id: string) => {
+  const handleDeleteUser = async (user: Usuario) => {
+    setSelectedSupervisorTransfer("")
     setConfirmConfig({
       isOpen: true,
+      type: 'delete',
+      targetUser: user,
       title: "Excluir Usuário",
-      description: "Tem certeza que deseja excluir este usuário? Esta ação não pode ser desfeita.",
+      description: `Tem certeza que deseja excluir o usuário ${user.nome}? Para continuar, selecione um supervisor para transferir suas propostas e chamados.`,
       loading: false,
-      onConfirm: async () => {
-        setConfirmConfig(prev => ({ ...prev, loading: true }))
-        try {
-          const response = await fetch(`/api/usuarios?id=${id}`, {
-            method: "DELETE"
-          })
-          if (!response.ok) throw new Error("Erro ao excluir usuário")
-          toast.success("Usuário excluído com sucesso")
-          fetchUsuarios()
-          setConfirmConfig(prev => ({ ...prev, isOpen: false }))
-        } catch (error) {
-          console.error(error)
-          toast.error("Erro ao excluir usuário")
-        } finally {
-          setConfirmConfig(prev => ({ ...prev, loading: false }))
-        }
-      }
     })
   }
 
@@ -138,28 +185,11 @@ export default function UsuariosPage() {
     
     setConfirmConfig({
       isOpen: true,
+      type: 'status',
+      statusData: { id, newStatus },
       title: isActivating ? "Ativar Usuário" : "Inativar Usuário",
       description: `Tem certeza que deseja ${isActivating ? "ativar" : "inativar"} este usuário?`,
       loading: false,
-      onConfirm: async () => {
-        setConfirmConfig(prev => ({ ...prev, loading: true }))
-        try {
-          const response = await fetch("/api/usuarios", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, status: newStatus })
-          })
-          if (!response.ok) throw new Error("Erro ao alterar status do usuário")
-          toast.success(`Usuário ${isActivating ? "ativado" : "inativado"} com sucesso`)
-          fetchUsuarios()
-          setConfirmConfig(prev => ({ ...prev, isOpen: false }))
-        } catch (error) {
-          console.error(error)
-          toast.error("Erro ao alterar status do usuário")
-        } finally {
-          setConfirmConfig(prev => ({ ...prev, loading: false }))
-        }
-      }
     })
   }
 
@@ -220,6 +250,33 @@ export default function UsuariosPage() {
               <p className="text-[11px] font-medium text-slate-500 leading-relaxed">
                 {confirmConfig.description}
               </p>
+
+              {confirmConfig.type === 'delete' && (
+                <div className="w-full mt-4 text-left space-y-1.5">
+                  <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Transferir dados para:</Label>
+                  <Select value={selectedSupervisorTransfer} onValueChange={setSelectedSupervisorTransfer}>
+                    <SelectTrigger className="w-full h-[42px] bg-white border-slate-200 shadow-sm rounded-xl font-bold text-[11px] text-slate-700 hover:border-slate-300 transition-colors">
+                      <SelectValue placeholder="Selecione um Supervisor">
+                        {selectedSupervisorTransfer && usuarios.find(u => u.id === selectedSupervisorTransfer)?.nome}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-100">
+                      {usuarios
+                        .filter(u => u.funcao === 'Supervisor' || u.funcao === 'Administrador')
+                        .map(sup => (
+                          <SelectItem 
+                            key={sup.id} 
+                            value={sup.id} 
+                            disabled={confirmConfig.targetUser?.id === sup.id}
+                          >
+                            {sup.nome} ({sup.funcao})
+                          </SelectItem>
+                        ))
+                      }
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
           <div className="bg-slate-50 p-4 flex items-center justify-center gap-3 border-t border-slate-100">
@@ -232,7 +289,7 @@ export default function UsuariosPage() {
               Cancelar
             </Button>
             <Button 
-              onClick={confirmConfig.onConfirm}
+              onClick={handleFinalConfirm}
               disabled={confirmConfig.loading}
               className="px-6 h-[34px] bg-[#0a192f] hover:bg-[#0a192f]/90 text-white font-bold text-[9px] rounded-lg gap-2 transition-all uppercase tracking-widest shadow-lg shadow-slate-900/20"
             >
@@ -401,7 +458,7 @@ export default function UsuariosPage() {
                                 </DropdownMenuItem>
 
                                 <DropdownMenuItem 
-                                  onClick={() => handleDeleteUser(usuario.id)}
+                                  onClick={() => handleDeleteUser(usuario)}
                                   className="font-bold text-[11px] py-2.5 cursor-pointer text-rose-500 hover:text-rose-500 hover:bg-rose-50 uppercase tracking-wider"
                                 >
                                   Excluir Usuário

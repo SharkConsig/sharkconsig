@@ -85,6 +85,7 @@ interface Proposal {
   coeficiente?: number | string
   valor_producao_corretor?: number
   data_consulta?: string
+  data_digitacao?: string
   arquivo_rg_frente?: string
   arquivo_rg_verso?: string
   arquivo_contracheque?: string
@@ -948,6 +949,20 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">ADE</label>
+                <span className="block text-[13px] font-black text-slate-900 tracking-tight py-1">
+                  {proposal.ade || "-"}
+                </span>
+              </div>
+              {proposal.data_digitacao && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Data de Digitação</label>
+                  <span className="block text-[13px] font-black text-[#00C853] tracking-tight py-1 italic">
+                    {new Date(proposal.data_digitacao).toLocaleDateString('pt-BR')} {new Date(proposal.data_digitacao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Dados Pessoais */}

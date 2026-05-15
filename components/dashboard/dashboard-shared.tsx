@@ -52,7 +52,7 @@ export function Gauge({ value, producedValue }: { value: number, producedValue: 
 
   return (
     <div className="relative w-full">
-      <svg className="w-full" viewBox="0 0 180 120">
+      <svg className="w-full" viewBox="-40 -40 260 160">
         {Array.from({ length: segments }).map((_, i) => {
           const startAngle = Math.PI + (i * Math.PI) / segments
           const endAngle = Math.PI + ((i + 1) * Math.PI) / segments
@@ -114,17 +114,18 @@ export function Gauge({ value, producedValue }: { value: number, producedValue: 
           <line
             x1="90"
             y1="90"
-            x2="155"
-            y2="95"
+            x2="160"
+            y2="92"
             stroke="black"
             strokeOpacity="0.05"
             strokeWidth="4"
-            className="blur-[1px]"
+            transform="translate(2, 2)"
+            className="blur-[2px]"
           />
           <line
             x1="90"
             y1="90"
-            x2="155"
+            x2="160"
             y2="90"
             stroke="#1C2643"
             strokeWidth="3"
@@ -132,22 +133,24 @@ export function Gauge({ value, producedValue }: { value: number, producedValue: 
           />
           <circle cx="90" cy="90" r="6" fill="#1C2643" stroke="white" strokeWidth="2.5" />
           
-          <g transform={`translate(165, 90) rotate(${-needleRotation}, 0, 0)`}>
+          <g transform={`translate(160, 90) rotate(${-needleRotation}, 0, 0)`}>
             <rect 
-              x="-12" 
-              y="-7" 
-              width="24" 
-              height="14" 
-              rx="4" 
+              x="-22" 
+              y="-11" 
+              width="44" 
+              height="22" 
+              rx="6" 
               fill="#1C2643"
+              stroke="white"
+              strokeWidth="1.5"
             />
             <text
               x="0"
               y="0"
-              dy="3.5"
+              dominantBaseline="central"
               textAnchor="middle"
               fill="white"
-              className="text-[8px] font-black"
+              className="text-[10px] font-black"
             >
               {formattedValue}
             </text>
