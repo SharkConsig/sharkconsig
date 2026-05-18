@@ -234,6 +234,12 @@ function NewTicketForm() {
       if (field === 'beneficio5') return "LÍQUIDA CARTÃO BENEFÍCIO";
     }
 
+    if (conv === "GOVBR OPORTUNIDADES" || conv === "GOVBR") {
+      if (field === 'margem') return "MARGEM EMPRÉSTIMO";
+      if (field === 'liquida5') return "MARGEM CARTÃO";
+      if (field === 'beneficio5') return "Margem 5%";
+    }
+
     if (field === 'margem') return "Margem 35%";
     if (field === 'liquida5') return "Líquida 5%";
     if (field === 'beneficio5') return "Benefício Líquida 5%";

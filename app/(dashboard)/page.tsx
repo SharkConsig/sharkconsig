@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 import { Header } from "@/components/layout/header"
 import { 
@@ -56,6 +57,19 @@ interface TicketStats {
   byOrigin: { name: string; value: number }[]
   byConvenio: { name: string; value: number }[]
   byBroker: { name: string; value: number }[]
+}
+
+interface Campaign {
+  id: string
+  nome: string
+  publico_estimado: number
+  created_at: string
+  filtros: {
+    convenio?: string
+    distribuicao?: string[]
+    corretores_selecionados?: string[]
+    [key: string]: unknown
+  }
 }
 
 const APROVADOS_LABELS = [
@@ -167,6 +181,7 @@ interface User {
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
   const { perfil, isCorretor, isAdmin, isOperational } = useAuth()
   const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || isAdmin
   const { isCollapsed } = useSidebar()
@@ -199,6 +214,7 @@ export default function DashboardPage() {
   const [teamPendingInconsistencyCount, setTeamPendingInconsistencyCount] = useState(0)
   const [opInProcessValue, setOpInProcessValue] = useState(0)
   const [opInProcessCount, setOpInProcessCount] = useState(0)
+  const [dashboardCampaigns, setDashboardCampaigns] = useState<Campaign[]>([])
   
   const fetchDashboardData = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -282,6 +298,50 @@ export default function DashboardPage() {
           .limit(1)
       )
       setBanners(bannerData || [])
+
+      // Fetch distributed campaigns for the dashboard
+      try {
+        const { data: campaignData, error: campaignError } = await withRetry(() => 
+          supabase
+            .from('campanhas')
+            .select('*')
+            .order('created_at', { ascending: false })
+        )
+
+        if (!campaignError && campaignData) {
+          // A campaign is only visible here if it has at least one distribution entry
+          // We use a more robust check for distribution
+          let filteredCampaigns = campaignData.filter(c => {
+            const f = c.filtros
+            const distribution = f?.distribuicao || []
+            const brokers = f?.corretores_selecionados || []
+            return (Array.isArray(distribution) && distribution.length > 0) || 
+                   (Array.isArray(brokers) && brokers.length > 0)
+          })
+          
+          if (!isAdmin && perfil) {
+            const userId = perfil.id
+            const supervisorId = perfil.supervisor_id
+            
+            filteredCampaigns = filteredCampaigns.filter(c => {
+              const f = c.filtros
+              const distribution = f?.distribuicao || []
+              const brokers = f?.corretores_selecionados || []
+              
+              if (Array.isArray(brokers) && brokers.length > 0) {
+                return brokers.includes(userId)
+              }
+              
+              return (Array.isArray(distribution) && distribution.includes(userId)) || 
+                     (supervisorId && Array.isArray(distribution) && distribution.includes(supervisorId))
+            })
+          }
+          
+          setDashboardCampaigns(filteredCampaigns.slice(0, 3))
+        }
+      } catch (err) {
+        console.warn("Could not fetch dashboard campaigns:", err)
+      }
 
       const paidStatuses = [
         "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", 
@@ -657,6 +717,7 @@ export default function DashboardPage() {
           else if (convention.includes('PREFEITURA SP') || convention.includes('PREF SAO PAULO') || convention.includes('PREF SÃO PAULO')) convCategory = 'PREFEITURA SP'
           else if (convention.includes('PIAUÍ') || convention.includes('PIAUI')) convCategory = 'PREFEITURA PIAUÍ'
           else if (convention.includes('MARANHÃO') || convention.includes('MARANHAO')) convCategory = 'PREFEITURA MARANHÃO'
+          else if (convention.includes('GOVBR') || convention.includes('GOVERNO BR')) convCategory = 'GOVBR OPORTUNIDADES'
           
           acc.byConvenio[convCategory] = (acc.byConvenio[convCategory] || 0) + 1
 
@@ -743,7 +804,7 @@ export default function DashboardPage() {
           }))
           .sort((a, b) => b.value - a.value)
 
-        const convenioOrder = ['SIAPE/FEDERAL', 'GOVERNO SP', 'PREFEITURA SP', 'PREFEITURA PIAUÍ', 'PREFEITURA MARANHÃO', 'OUTROS']
+        const convenioOrder = ['SIAPE/FEDERAL', 'GOVERNO SP', 'PREFEITURA SP', 'PREFEITURA PIAUÍ', 'PREFEITURA MARANHÃO', 'GOVBR OPORTUNIDADES', 'OUTROS']
         const byConvenio = convenioOrder
           .map(name => ({
             name,
@@ -1395,23 +1456,24 @@ export default function DashboardPage() {
                              </div>
                            ))
                          ) : (
-                           [1, 2, 3].map((_, idx) => (
-                              <div key={idx} className="h-14 bg-slate-100/70 rounded-2xl border border-slate-200 border-dashed" />
-                           ))
+                           <div className="flex flex-col items-center justify-center py-10 opacity-30">
+                             <CheckCircle2 className="w-8 h-8 mb-2" />
+                             <p className="text-[10px] font-bold uppercase tracking-widest text-center">Nenhum pagamento registrado</p>
+                           </div>
                          )}
                       </div>
                     )}
                  </div>
 
-                  {/* Mapa de oportunidades OR Operacional specific card */}
+                  {/* ACESSAR CAMPANHA (Anterior Mapa de oportunidades) */}
                   <div className="bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
                      <div className="flex items-center gap-3 mb-2">
                         <div className="w-10 h-10 bg-[#1C2643] rounded-xl flex items-center justify-center">
-                           <Clock className="w-6 h-6 text-white" />
+                           <Target className="w-6 h-6 text-white" />
                         </div>
                         <div>
                            <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none">
-                             {isOperational ? "CONTRATOS EM ANDAMENTO (OPERACIONAL)" : "Mapa de oportunidades"}
+                             {isOperational ? "CONTRATOS EM ANDAMENTO (OPERACIONAL)" : "ACESSAR CAMPANHA"}
                            </p>
                         </div>
                      </div>
@@ -1429,9 +1491,37 @@ export default function DashboardPage() {
                        </div>
                      ) : (
                        <div className="space-y-3">
-                          {[1, 2, 3].map((_, index) => (
-                             <div key={index} className="h-14 bg-slate-100/70 rounded-2xl border border-slate-200 border-dashed" />
-                          ))}
+                          {dashboardCampaigns.length > 0 ? (
+                            dashboardCampaigns.map((campaign) => (
+                              <div 
+                                key={campaign.id} 
+                                onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
+                                className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200 hover:border-primary/30 hover:bg-white transition-all cursor-pointer group"
+                              >
+                                <div className="flex flex-col">
+                                  <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-primary transition-colors">
+                                    {campaign.nome}
+                                  </span>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                    {campaign.filtros?.convenio || 'Geral'}
+                                  </span>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-[11px] font-black text-[#1C2643]">
+                                    {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
+                                  </p>
+                                  <p className="text-[9px] font-bold text-slate-400">
+                                    {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
+                                  </p>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-8 opacity-40">
+                              <Target className="w-8 h-8 mb-2" />
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                            </div>
+                          )}
                        </div>
                      )}
                   </div>

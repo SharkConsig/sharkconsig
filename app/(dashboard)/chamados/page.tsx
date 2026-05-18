@@ -172,7 +172,7 @@ export default function TicketsPage() {
   const { perfil, user, isOperational, isAdmin, isSupervisor, isDeveloper } = useAuth()
   const { isCollapsed } = useSidebar()
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedStatus, setSelectedStatus] = useState<string | null>("TODOS")
+  const [selectedStatus, setSelectedStatus] = useState<string | null>("ABERTO")
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")

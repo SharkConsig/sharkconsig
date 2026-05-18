@@ -1090,12 +1090,9 @@ export default function CampaignsPage() {
 
       {/* Modal de Distribuição de Campanha */}
       <Dialog open={showDistributionModal} onOpenChange={setShowDistributionModal}>
-        <DialogContent className="max-w-md border-none rounded-[32px] shadow-2xl p-0 overflow-hidden bg-white">
-          <div className="p-8">
-            <div className="flex items-center justify-between mb-6">
-              <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center">
-                <Share2 className="w-7 h-7 text-blue-600" />
-              </div>
+        <DialogContent className="max-w-md w-[95vw] max-h-[85vh] border-none rounded-[32px] shadow-2xl p-0 bg-white flex flex-col overflow-hidden">
+          <div className="p-8 pb-4 flex-1 flex flex-col min-h-0">
+            <div className="flex items-center justify-end mb-6 shrink-0">
               {distributionStep === 2 && (
                 <Button 
                   variant="ghost" 
@@ -1104,15 +1101,15 @@ export default function CampaignsPage() {
                   className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-blue-600 gap-2"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
-                  Voltar
+                  VOLTAR
                 </Button>
               )}
             </div>
             
-            <h3 className="text-[20px] font-black text-slate-900 uppercase tracking-tighter mb-2">
+            <h3 className="text-[19px] font-black text-slate-900 uppercase tracking-tighter mb-1.5">
               {distributionStep === 1 ? "Distribuir Campanha" : "Selecionar Corretores"}
             </h3>
-            <p className="text-[12px] font-medium text-slate-500 leading-relaxed uppercase tracking-wider">
+            <p className="text-[11px] font-medium text-slate-500 leading-relaxed uppercase tracking-wider">
               {distributionStep === 1 
                 ? "Escolha as equipes (supervisores) que terão acesso a esta campanha:" 
                 : "Selecione os corretores desta(s) equipe(s) que poderão visualizar os dados:"}
@@ -1120,7 +1117,7 @@ export default function CampaignsPage() {
               <span className="font-bold text-blue-600">{campaignToDistribute?.nome}</span>
             </p>
 
-            <div className="mt-8 space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="mt-8 space-y-3 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
               {isLoadingUsers ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-3">
                   <Loader2 className="w-6 h-6 text-primary animate-spin" />
@@ -1153,7 +1150,7 @@ export default function CampaignsPage() {
                           })
                         }}
                         className={cn(
-                          "w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-200 group text-left",
+                          "w-full flex items-center justify-between py-2.5 px-4 rounded-xl border transition-all duration-200 group text-left",
                           isSelected 
                             ? "bg-blue-600 border-blue-600 shadow-md shadow-blue-100" 
                             : "bg-white border-slate-100 hover:border-blue-200 hover:bg-blue-50/30"
@@ -1161,7 +1158,7 @@ export default function CampaignsPage() {
                       >
                         <div className="flex items-center gap-3">
                           <div className={cn(
-                            "w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-black uppercase transition-colors shrink-0 overflow-hidden",
+                            "w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-black uppercase transition-colors shrink-0 overflow-hidden",
                             isSelected ? "bg-white/20 text-white" : "bg-blue-50 text-blue-600"
                           )}>
                             {sup.avatar_url ? (
@@ -1172,13 +1169,13 @@ export default function CampaignsPage() {
                           </div>
                           <div className="flex flex-col min-w-0">
                             <span className={cn(
-                              "text-[12px] font-bold uppercase tracking-tight truncate",
+                              "text-[11.5px] font-bold uppercase tracking-tight truncate",
                               isSelected ? "text-white" : "text-slate-900 group-hover:text-blue-600"
                             )}>
                               {sup.nome}
                             </span>
                             <span className={cn(
-                              "text-[10px] font-medium uppercase tracking-widest",
+                              "text-[9.5px] font-medium uppercase tracking-widest",
                               isSelected ? "text-white/70" : "text-slate-400"
                             )}>
                               {sup.equipe}
@@ -1237,7 +1234,7 @@ export default function CampaignsPage() {
                             )
                           }}
                           className={cn(
-                            "w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-200 group text-left",
+                            "w-full flex items-center justify-between py-2.5 px-4 rounded-xl border transition-all duration-200 group text-left",
                             isSelected 
                               ? "bg-emerald-600 border-emerald-600 shadow-md shadow-emerald-100" 
                               : "bg-white border-slate-100 hover:border-emerald-200 hover:bg-emerald-50/30"
@@ -1245,7 +1242,7 @@ export default function CampaignsPage() {
                         >
                           <div className="flex items-center gap-3">
                             <div className={cn(
-                              "w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-black uppercase transition-colors shrink-0 overflow-hidden",
+                              "w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-black uppercase transition-colors shrink-0 overflow-hidden",
                               isSelected ? "bg-white/20 text-white" : "bg-emerald-50 text-emerald-600"
                             )}>
                               {broker.avatar_url ? (
@@ -1256,13 +1253,13 @@ export default function CampaignsPage() {
                             </div>
                             <div className="flex flex-col min-w-0">
                               <span className={cn(
-                                "text-[12px] font-bold uppercase tracking-tight truncate",
+                                "text-[11.5px] font-bold uppercase tracking-tight truncate",
                                 isSelected ? "text-white" : "text-slate-900 group-hover:text-emerald-600"
                               )}>
                                 {broker.nome}
                               </span>
                               <span className={cn(
-                                "text-[10px] font-medium uppercase tracking-widest",
+                                "text-[9.5px] font-medium uppercase tracking-widest",
                                 isSelected ? "text-white/70" : "text-slate-400"
                               )}>
                                 Equipe: {sup?.nome || broker.equipe}
@@ -1286,18 +1283,18 @@ export default function CampaignsPage() {
             </div>
           </div>
 
-          <div className="p-6 bg-slate-50 flex gap-3">
+          <div className="p-6 bg-slate-50 flex gap-3 shrink-0 rounded-b-[32px] overflow-hidden">
             <Button 
               variant="ghost" 
-              className="flex-1 h-12 text-[11px] font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-100 rounded-xl"
+              className="flex-1 h-11 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-100 rounded-xl"
               onClick={() => setShowDistributionModal(false)}
               disabled={isSavingDistribution}
             >
-              Cancelar
+              CANCELAR
             </Button>
             {distributionStep === 1 ? (
               <Button 
-                className="flex-1 h-12 text-[11px] font-bold uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200 rounded-xl gap-2"
+                className="flex-1 h-11 text-[10px] font-bold uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200 rounded-xl gap-2"
                 onClick={() => {
                   if (selectedSupervisors.length === 0) {
                     alert("Selecione ao menos um supervisor.")
@@ -1307,16 +1304,16 @@ export default function CampaignsPage() {
                 }}
                 disabled={isLoadingUsers}
               >
-                Próxima Etapa
+                PRÓXIMA ETAPA
                 <ChevronRight className="w-4 h-4" />
               </Button>
             ) : (
               <Button 
-                className="flex-1 h-12 text-[11px] font-bold uppercase tracking-widest bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200 rounded-xl gap-2"
+                className="flex-1 h-11 text-[10px] font-bold uppercase tracking-widest bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200 rounded-xl gap-2"
                 onClick={handleSaveDistribution}
                 disabled={isSavingDistribution}
               >
-                {isSavingDistribution ? <Loader2 className="w-4 h-4 animate-spin" /> : "Finalizar Distribuição"}
+                {isSavingDistribution ? <Loader2 className="w-4 h-4 animate-spin" /> : "FINALIZAR DISTRIBUIÇÃO"}
               </Button>
             )}
           </div>
