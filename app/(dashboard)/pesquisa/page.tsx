@@ -615,7 +615,7 @@ export default function SearchClientPage() {
                         <div className="space-y-8 sm:space-y-10">
                           <div className="flex items-center gap-3">
                             <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                            <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula</h3>
+                            <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (GOVERNO RORAIMA)</h3>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
