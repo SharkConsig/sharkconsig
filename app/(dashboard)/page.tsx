@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import { format } from "date-fns"
 import { Header } from "@/components/layout/header"
 import { 
@@ -20,7 +21,7 @@ import {
 
 import { useAuth } from "@/context/auth-context"
 import { cn, withRetry } from "@/lib/utils"
-import { motion } from "motion/react"
+import { motion, AnimatePresence } from "motion/react"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { useSidebar } from "@/context/sidebar-context"
 import { DashboardCard, Gauge, formatCurrency } from "@/components/dashboard/dashboard-shared"
@@ -204,6 +205,7 @@ export default function DashboardPage() {
   const [teamInProcessCount, setTeamInProcessCount] = useState(0)
   const [teamPendingInconsistencyValue, setTeamPendingInconsistencyValue] = useState(0)
   const [banners, setBanners] = useState<{image_url: string, title: string | null}[]>([])
+  const [currentBanner, setCurrentBanner] = useState(0)
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
   const [ticketStats, setTicketStats] = useState<TicketStats | null>(null)
   const [startDate, setStartDate] = useState<string>("")
@@ -295,7 +297,6 @@ export default function DashboardPage() {
           .select('image_url, title')
           .eq('is_active', true)
           .order('created_at', { ascending: false })
-          .limit(1)
       )
       setBanners(bannerData || [])
 
@@ -938,6 +939,19 @@ export default function DashboardPage() {
       supabase.removeChannel(channel)
     }
   }, [perfil?.id, fetchDashboardData])
+
+  useEffect(() => {
+    if (banners.length <= 1) {
+      setCurrentBanner(0)
+      return
+    }
+    
+    const timer = setInterval(() => {
+      setCurrentBanner(prev => (prev + 1) % banners.length)
+    }, 8000)
+    
+    return () => clearInterval(timer)
+  }, [banners.length])
 
   const monthlyProduced = useMemo(() => {
     // Respect custom filter if applied, otherwise use current month
@@ -1704,13 +1718,60 @@ export default function DashboardPage() {
             {!isSupervisor && (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="lg:col-span-8">
                 {banners.length > 0 ? (
-                  <DashboardCard className="relative overflow-hidden text-white w-full aspect-video flex flex-col p-3 sm:p-4 border-none bg-transparent">
-                    <div className="w-full h-full">
-                       <img 
-                         src={banners[0].image_url} 
-                         alt={banners[0].title || "Campanha SharkConsig"} 
-                         className="w-full h-full object-cover rounded-[32px] sm:rounded-[40px]"
-                       />
+                  <DashboardCard className="relative overflow-hidden text-white w-full aspect-video flex flex-col p-3 sm:p-4 border-none bg-transparent group">
+                    <div className="w-full h-full relative">
+                      <AnimatePresence mode="wait">
+                        <motion.div
+                          key={currentBanner}
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -20 }}
+                          transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
+                          className="absolute inset-0 w-full h-full font-sans"
+                        >
+                          <Image 
+                            src={banners[currentBanner].image_url} 
+                            alt={banners[currentBanner].title || "Campanha SharkConsig"} 
+                            fill
+                            priority
+                            referrerPolicy="no-referrer"
+                            className="object-cover rounded-[32px] sm:rounded-[40px] shadow-2xl"
+                          />
+                        </motion.div>
+                      </AnimatePresence>
+
+                      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/60 via-black/20 to-transparent pointer-events-none rounded-b-[32px] sm:rounded-b-[40px]" />
+
+                      {banners[currentBanner].title && (
+                        <div className="absolute bottom-16 left-8 right-8 z-10 pointer-events-none">
+                          <motion.p 
+                            key={`title-${currentBanner}`}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="text-white font-black text-xl sm:text-2xl lg:text-3xl uppercase tracking-tighter drop-shadow-lg"
+                          >
+                            {banners[currentBanner].title}
+                          </motion.p>
+                        </div>
+                      )}
+
+                      {banners.length > 1 && (
+                        <div className="absolute bottom-8 left-8 flex items-center gap-2 z-10">
+                          {banners.map((_, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => setCurrentBanner(idx)}
+                              className={cn(
+                                "h-1.5 rounded-full transition-all duration-500",
+                                idx === currentBanner 
+                                  ? "bg-white w-10 shadow-[0_0_10px_rgba(255,255,255,0.5)]" 
+                                  : "bg-white/30 w-3 hover:bg-white/50"
+                              )}
+                              title={`Ver banner ${idx + 1}`}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </DashboardCard>
                 ) : (

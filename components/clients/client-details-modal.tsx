@@ -109,7 +109,7 @@ interface Registration {
   prefeitura_sp_lotacoes?: Lotacao[];
   governo_pi_lotacoes?: Lotacao[];
   governo_ma_lotacoes?: Lotacao[];
-  governo_rr_instituidores?: any[];
+  governo_rr_instituidores?: Record<string, unknown>[];
   matricula?: string;
   regime_contratacao?: string;
   displayId?: string;

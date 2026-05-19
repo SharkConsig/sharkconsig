@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
 import { Header } from "@/components/layout/header"
-import { cn } from "@/lib/utils"
+import { cn, withRetry } from "@/lib/utils"
 import { 
   Target, 
   Loader2, 
@@ -173,10 +173,30 @@ export default function CampanhaAtendimentoPage() {
       // Determine table
       let table = 'base_consulta_siape'
       const campaignName = (camp.nome || "").toUpperCase()
-      if (campaignName.includes("GOVERNO SP")) table = 'base_consulta_governo_sp'
-      else if (campaignName.includes("PREFEITURA SP")) table = 'base_consulta_prefeitura_sp'
-      else if (campaignName.includes("GOVERNO PI")) table = 'base_consulta_governo_pi'
-      else if (campaignName.includes("GOVERNO MA")) table = 'base_consulta_governo_ma'
+      const convenioKey = camp.filtros?.convenio
+
+      const TABLE_MAP: Record<string, string> = {
+        'siape': 'base_consulta_siape',
+        'governo_sp': 'base_consulta_governo_sp',
+        'prefeitura_sp': 'base_consulta_prefeitura_sp',
+        'governo_pi': 'base_consulta_governo_pi',
+        'governo_ma': 'base_consulta_governo_ma',
+        'governo_rr': 'base_consulta_rapida',
+      }
+
+      if (convenioKey && TABLE_MAP[convenioKey]) {
+        table = TABLE_MAP[convenioKey]
+      } else if (campaignName.includes("GOVERNO SP")) {
+        table = 'base_consulta_governo_sp'
+      } else if (campaignName.includes("PREFEITURA SP")) {
+        table = 'base_consulta_prefeitura_sp'
+      } else if (campaignName.includes("GOVERNO PI")) {
+        table = 'base_consulta_governo_pi'
+      } else if (campaignName.includes("GOVERNO MA")) {
+        table = 'base_consulta_governo_ma'
+      } else if (campaignName.includes("RORAIMA") || campaignName.includes("RR")) {
+        table = 'base_consulta_rapida'
+      }
       
       // Build Query
       let query = supabase.from(table).select('*')
@@ -189,7 +209,7 @@ export default function CampanhaAtendimentoPage() {
       // Sort and Offset
       query = query.order('cpf', { ascending: true }).range(globalOffset, globalOffset)
       
-      const { data, error } = await query.maybeSingle()
+      const { data, error } = await withRetry(() => query.maybeSingle())
       
       if (error) throw error
       
@@ -209,10 +229,12 @@ export default function CampanhaAtendimentoPage() {
         
         // Fetch detailed registrations if SIAPE
         if (table === 'base_consulta_siape') {
-          const { data: regData } = await supabase
-            .from('matriculas')
-            .select('*, instituidores(*, itens_credito(*))')
-            .eq('cliente_cpf', client.cpf)
+          const { data: regData } = await withRetry(() => 
+            supabase
+              .from('matriculas')
+              .select('*, instituidores(*, itens_credito(*))')
+              .eq('cliente_cpf', client.cpf)
+          )
           
           setRegistrations(regData || [])
         } else {
@@ -243,47 +265,92 @@ export default function CampanhaAtendimentoPage() {
       } else {
         toast.info("Não há mais leads disponíveis nesta campanha seguindo a fila atual.")
       }
-    } catch (err) {
-      console.error("Erro ao carregar lead:", err)
-      toast.error("Erro ao carregar próximo cliente.")
+    } catch (err: unknown) {
+      const error = err as { message?: string }
+      console.error("Erro ao carregar lead:", error)
+      const errorMsg = error?.message || "Erro ao carregar próximo cliente."
+      toast.error(errorMsg)
     }
   }, [user])
 
   const fetchCampaignAndProgress = useCallback(async () => {
-    if (!user || !campaignId) return
+    if (!user || !campaignId) {
+      console.warn("fetchCampaignAndProgress abortado: user ou campaignId ausente", { userId: user?.id, campaignId })
+      return
+    }
+    
+    // Validar se o campaignId é um UUID válido para evitar erro de sintaxe do Postgres
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(campaignId)) {
+      console.error("ID de campanha inválido:", campaignId)
+      toast.error("ID de campanha inválido.")
+      router.push('/campanhas/distribuicao')
+      return
+    }
     
     setIsLoading(true)
+    console.log("Iniciando carregamento da campanha:", campaignId)
+    
     try {
       // 1. Fetch Campaign
-      const { data: campaignData, error: campaignError } = await supabase
-        .from('campanhas')
-        .select('*')
-        .eq('id', campaignId)
-        .single()
+      const { data: campaignData, error: campaignError } = await withRetry(() => 
+        supabase
+          .from('campanhas')
+          .select('*')
+          .eq('id', campaignId)
+          .maybeSingle()
+      )
       
-      if (campaignError) throw campaignError
+      if (campaignError) {
+        console.error("Erro Supabase (Camaign):", campaignError)
+        throw campaignError
+      }
+      
+      if (!campaignData) {
+        toast.error("Campanha não encontrada.")
+        router.push('/campanhas/distribuicao')
+        return
+      }
+      
       setCampaign(campaignData)
+      console.log("Campanha carregada com sucesso:", campaignData.nome)
 
       // 2. Count progress for this broker
-      const { count, error: countError } = await supabase
-        .from('campanha_atendimentos')
-        .select('*', { count: 'exact', head: true })
-        .eq('campanha_id', campaignId)
-        .eq('corretor_id', user.id)
+      const { count, error: countError } = await withRetry(() => 
+        supabase
+          .from('campanha_atendimentos')
+          .select('*', { count: 'exact', head: true })
+          .eq('campanha_id', campaignId)
+          .eq('corretor_id', user.id)
+      )
       
-      if (countError) throw countError
-      setCompletedCount(count || 0)
+      if (countError) {
+        console.error("Erro Supabase (Count):", countError)
+        throw countError
+      }
+      
+      const finishedCount = count || 0
+      setCompletedCount(finishedCount)
+      console.log("Progresso do corretor:", finishedCount)
       
       // 3. Fetch next lead
-      await loadNextLead(campaignData, count || 0)
+      await loadNextLead(campaignData, finishedCount)
       
     } catch (err: unknown) {
-      console.error("Erro ao carregar campanha:", err)
-      toast.error("Erro ao carregar dados da campanha.")
+      const error = err as any
+      console.error("Erro detalhado ao carregar campanha:", {
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+        fullError: error
+      })
+      const errorMsg = error?.message || "Erro ao carregar dados da campanha."
+      toast.error(`Falha ao iniciar: ${errorMsg}`)
     } finally {
       setIsLoading(false)
     }
-  }, [user, campaignId, loadNextLead])
+  }, [user, campaignId, loadNextLead, router])
 
   useEffect(() => {
     fetchCampaignAndProgress()
@@ -298,13 +365,15 @@ export default function CampanhaAtendimentoPage() {
     
     setIsSubmitting(true)
     try {
-      const { error } = await supabase.from('campanha_atendimentos').insert({
-        campanha_id: campaign.id,
-        corretor_id: user.id,
-        cliente_cpf: currentLead.cpf,
-        tabulacao,
-        observacao
-      })
+      const { error } = await withRetry(() => 
+        supabase.from('campanha_atendimentos').insert({
+          campanha_id: campaign.id,
+          corretor_id: user.id,
+          cliente_cpf: currentLead.cpf,
+          tabulacao,
+          observacao
+        })
+      )
       
       if (error) throw error
       

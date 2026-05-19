@@ -206,8 +206,7 @@ export default function SettingsPage() {
   
   const [bannerForm, setBannerForm] = useState({
     title: "",
-    image: null as File | null,
-    imagePreview: ""
+    images: [] as { file: File, preview: string }[]
   })
 
   // Products Management State
@@ -271,86 +270,70 @@ export default function SettingsPage() {
 
   const handleBannerSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!bannerForm.image && !bannerForm.imagePreview) {
-      toast.error("Selecione uma imagem primeiro")
+    if (bannerForm.images.length === 0) {
+      toast.error("Selecione pelo menos uma imagem primeiro")
       return
     }
 
     setIsSubmitting(true)
     try {
-      let imageUrl = bannerForm.imagePreview
-
-      if (bannerForm.image) {
-        console.log("Iniciando validação de imagem e upload...")
-        // Validar dimensões
-        const img = new Image()
-        const objectUrl = URL.createObjectURL(bannerForm.image)
-        
-        await new Promise((resolve, reject) => {
-          img.onload = resolve
-          img.onerror = () => reject(new Error("Erro ao carregar imagem para validação"))
-          img.src = objectUrl
-        })
-
-        if (img.width !== 2560 || img.height !== 1440) {
-          console.warn(`Dimensões inválidas: ${img.width}x${img.height}`)
-          toast.error(`Dimensões incorretas: ${img.width}x${img.height}. A imagem deve ter exatamente 2560x1440.`)
-          setIsSubmitting(false)
-          URL.revokeObjectURL(objectUrl)
-          return
-        }
-        URL.revokeObjectURL(objectUrl)
-
-        const fileExt = bannerForm.image.name.split('.').pop()
-        const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
-        const filePath = `banners/${fileName}`
-
-        console.log("Fazendo upload para storage:", filePath)
-        const { error: uploadError } = await withRetry(() => 
-          supabase.storage
-            .from('dashboard-banners')
-            .upload(filePath, bannerForm.image as File)
-        )
-
-        if (uploadError) {
-          console.error("Erro no upload storage:", uploadError)
-          throw new Error(`Erro no upload: ${uploadError.message || JSON.stringify(uploadError)}`)
-        }
-
-        const { data } = supabase.storage
-          .from('dashboard-banners')
-          .getPublicUrl(filePath)
-        
-        imageUrl = data.publicUrl
-        console.log("Upload concluído. URL pública:", imageUrl)
-      }
-
-      console.log("Inserindo registro no banco de dados...")
+      console.log(`Iniciando processamento de ${bannerForm.images.length} banners...`)
       
-      // Deativar outros banners se este for ser o ativo
-      await supabase
-        .from('dashboard_banners')
-        .update({ is_active: false })
-        .eq('is_active', true)
+      for (const item of bannerForm.images) {
+        let imageUrl = item.preview
 
-      const { error: insertError } = await withRetry(() => 
-        supabase
-          .from('dashboard_banners')
-          .insert({
-            image_url: imageUrl,
-            title: bannerForm.title || null,
-            is_active: true
+        if (item.file) {
+          console.log("Iniciando validação de imagem e upload...")
+          const img = new Image()
+          const objectUrl = URL.createObjectURL(item.file)
+          
+          await new Promise((resolve, reject) => {
+            img.onload = resolve
+            img.onerror = () => reject(new Error("Erro ao carregar imagem para validação"))
+            img.src = objectUrl
           })
-      )
 
-      if (insertError) {
-        console.error("Erro na inserção do banco:", insertError)
-        throw new Error(`Erro no banco: ${insertError.message || JSON.stringify(insertError)}`)
+          if (img.width !== 2560 || img.height !== 1440) {
+            console.warn(`Dimensões inválidas: ${img.width}x${img.height}`)
+            toast.error(`Dimensões incorretas: ${img.width}x${img.height}. Todas as imagens devem ter exatamente 2560x1440.`)
+            URL.revokeObjectURL(objectUrl)
+            continue // Pular esta imagem
+          }
+          URL.revokeObjectURL(objectUrl)
+
+          const fileExt = item.file.name.split('.').pop()
+          const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+          const filePath = `banners/${fileName}`
+
+          const { error: uploadError } = await withRetry(() => 
+            supabase.storage
+              .from('dashboard-banners')
+              .upload(filePath, item.file)
+          )
+
+          if (uploadError) throw uploadError
+
+          const { data } = supabase.storage
+            .from('dashboard-banners')
+            .getPublicUrl(filePath)
+          
+          imageUrl = data.publicUrl
+        }
+
+        await withRetry(() => 
+          supabase
+            .from('dashboard_banners')
+            .insert({
+              image_url: imageUrl,
+              title: bannerForm.title || null,
+              is_active: true
+            })
+        )
       }
 
-      toast.success("Banner adicionado com sucesso!")
+      toast.success(`${bannerForm.images.length} banners adicionados ao carrossel!`)
       setIsBannerModalOpen(false)
-      setBannerForm({ title: "", image: null, imagePreview: "" })
+      setBannerForm({ title: "", images: [] })
       await fetchStatuses()
     } catch (error: unknown) {
       console.error("Erro completo ao salvar banner:", error)
@@ -381,14 +364,6 @@ export default function SettingsPage() {
   const handleToggleBanner = async (id: string, currentStatus: boolean) => {
     try {
       const newStatus = !currentStatus
-
-      if (newStatus) {
-        // Se estiver ATIVANDO, primeiro desativamos todos os outros
-        await supabase
-          .from('dashboard_banners')
-          .update({ is_active: false })
-          .eq('is_active', true)
-      }
 
       const { error: toggleError } = await supabase
         .from('dashboard_banners')
@@ -1958,11 +1933,11 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2">
                 <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
                 <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                  GERENCIAR BANNERS DO DASHBOARD (2560x1440)
+                  GERENCIAR CARROSSEL DO DASHBOARD (2560x1440)
                   {isBannersExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
                 </h2>
               </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Upload de campanhas visuais para o dashboard do corretor</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Upload de campanhas visuais para o carrossel infinito do dashboard</p>
             </div>
           </div>
 
@@ -1978,7 +1953,7 @@ export default function SettingsPage() {
                   <div className="flex justify-end">
                     <Button 
                       onClick={() => {
-                        setBannerForm({ title: "", image: null, imagePreview: "" })
+                        setBannerForm({ title: "", images: [] })
                         setIsBannerModalOpen(true)
                       }}
                       className="h-9 px-6 text-[10px] font-bold uppercase tracking-widest gap-2 bg-[#171717] text-white rounded-xl"
@@ -1992,11 +1967,15 @@ export default function SettingsPage() {
                     {banners.length > 0 ? (
                       banners.map((banner) => (
                         <Card key={banner.id} className="relative group overflow-hidden border-slate-100 rounded-2xl shadow-sm hover:shadow-xl transition-all h-[200px]">
-                           <img 
-                             src={banner.image_url} 
-                             alt={banner.title || "Banner"} 
-                             className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                           />
+                           <div className="absolute inset-0 w-full h-full">
+                             <Image 
+                               src={banner.image_url} 
+                               alt={banner.title || "Banner"} 
+                               fill
+                               className="object-cover transition-transform duration-700 group-hover:scale-110"
+                               referrerPolicy="no-referrer"
+                             />
+                           </div>
                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 z-10">
                               <p className="text-white font-bold text-[12px] uppercase tracking-tight truncate mb-3">{banner.title || "Sem título"}</p>
                               <div className="flex items-center gap-2">
@@ -3037,7 +3016,7 @@ export default function SettingsPage() {
         <DialogContent className="sm:max-w-[600px] border-none rounded-3xl shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase">
-              Upload de Novo Banner
+              Adicionar ao Carrossel de Banners
             </DialogTitle>
           </DialogHeader>
 
@@ -3053,55 +3032,56 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-4">
-              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Imagem do Banner (2560x1440)</Label>
+              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Imagens do Banner (2560x1440) - Selecione várias</Label>
               
-              <div className="relative group">
-                {bannerForm.imagePreview ? (
-                  <div className="relative w-full aspect-[2560/1440] rounded-2xl overflow-hidden border-2 border-primary/20 shadow-xl">
-                    <img src={bannerForm.imagePreview} className="w-full h-full object-cover" alt="Preview" />
+              <div className="grid grid-cols-2 gap-4">
+                {bannerForm.images.map((item, index) => (
+                  <div key={index} className="relative aspect-[2560/1440] rounded-2xl overflow-hidden border-2 border-primary/20 shadow-lg group">
+                    <img src={item.preview} className="w-full h-full object-cover" alt={`Preview ${index + 1}`} />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <Button 
                         type="button"
                         variant="ghost"
-                        onClick={() => setBannerForm(prev => ({ ...prev, image: null, imagePreview: "" }))}
+                        onClick={() => setBannerForm(prev => ({ 
+                          ...prev, 
+                          images: prev.images.filter((_, i) => i !== index) 
+                        }))}
                         className="text-white hover:text-rose-400"
                       >
                         <Trash2 className="w-6 h-6" />
                       </Button>
                     </div>
                   </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center w-full aspect-[2560/1440] border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-slate-100/50 hover:border-primary/30 transition-all cursor-pointer">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <Plus className="w-8 h-8 text-slate-300 mb-2" />
-                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Clique para selecionar imagem</p>
-                      <p className="text-[9px] text-slate-300 mt-1 uppercase">JPG, PNG ou WEBP (Resolução: 2560x1440)</p>
-                    </div>
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) {
-                          if (file.size > 5 * 1024 * 1024) {
-                            toast.error("Imagem muito grande. Limite de 5MB.")
-                            return
-                          }
-                          const reader = new FileReader()
-                          reader.onloadend = () => {
-                            setBannerForm(prev => ({ 
-                              ...prev, 
-                              image: file, 
-                              imagePreview: reader.result as string 
-                            }))
-                          }
-                          reader.readAsDataURL(file)
+                ))}
+                <label className="flex flex-col items-center justify-center aspect-[2560/1440] border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-slate-100/50 hover:border-primary/30 transition-all cursor-pointer">
+                  <div className="flex flex-col items-center justify-center p-4 text-center">
+                    <Plus className="w-6 h-6 text-slate-300 mb-2" />
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Adicionar Imagem</p>
+                  </div>
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || [])
+                      files.forEach(file => {
+                        if (file.size > 5 * 1024 * 1024) {
+                          toast.error(`Arquivo ${file.name} é muito grande (Limite 5MB).`)
+                          return
                         }
-                      }}
-                    />
-                  </label>
-                )}
+                        const reader = new FileReader()
+                        reader.onloadend = () => {
+                          setBannerForm(prev => ({ 
+                            ...prev, 
+                            images: [...prev.images, { file, preview: reader.result as string }] 
+                          }))
+                        }
+                        reader.readAsDataURL(file)
+                      })
+                    }}
+                  />
+                </label>
               </div>
             </div>
 

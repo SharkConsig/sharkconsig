@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
 import { 
@@ -287,10 +287,13 @@ export default function CampaignsPage() {
             'prefeitura_sp': 'base_consulta_prefeitura_sp',
             'governo_pi': 'base_consulta_governo_pi',
             'governo_ma': 'base_consulta_governo_ma',
+            'governo_rr': 'base_consulta_rapida', // Uses centralized table for now
           };
 
           if (convenioKey === 'siape' || campaignName.includes('SIAPE') || campaignName.includes('FEDERAL')) {
             targetTable = 'base_consulta_siape';
+          } else if (convenioKey === 'governo_rr' || campaignName.includes('RORAIMA')) {
+            targetTable = 'base_consulta_rapida';
           } else if (convenioKey && TABLE_MAP[(convenioKey as string)]) {
             targetTable = TABLE_MAP[(convenioKey as string)];
           }
@@ -436,7 +439,14 @@ export default function CampaignsPage() {
         console.log("Exportação abortada.")
         return
       }
-      const errorMsg = err instanceof Error ? err.message : "Erro desconhecido. Verifique o console.";
+
+      const error = err as { code?: string; message?: string };
+      const idTimeout = error?.code === "57014"; // Postgres timeout
+
+      const errorMsg = idTimeout 
+        ? "Tempo limite do banco de dados excedido. Tente reduzir o intervalo de exportação ou simplificar os filtros." 
+        : (err instanceof Error ? err.message : "Erro desconhecido. Verifique o console.");
+
       console.error("ERRO DETALHADO NA EXPORTAÇÃO:", err)
       alert(`Erro ao exportar campanha: ${errorMsg}`)
     } finally {
@@ -757,23 +767,20 @@ export default function CampaignsPage() {
                                 {/* Exportar */}
                                 {campaign.publico_estimado > PART_SIZE ? (
                                   <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        disabled={isExporting !== null}
-                                        className={cn(
-                                          "w-8 h-8 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all border border-transparent hover:border-emerald-100 shadow-sm hover:shadow-md",
-                                          isExporting?.startsWith(campaign.id) && "text-emerald-600 bg-emerald-50 border-emerald-100"
-                                        )}
-                                        title="Exportar Partes"
-                                      >
-                                        {isExporting?.startsWith(campaign.id) ? (
-                                          <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                          <Download className="w-4 h-4" />
-                                        )}
-                                      </Button>
+                                    <DropdownMenuTrigger 
+                                      disabled={isExporting !== null}
+                                      className={cn(
+                                        buttonVariants({ variant: "ghost", size: "icon" }),
+                                        "w-8 h-8 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all border border-transparent hover:border-emerald-100 shadow-sm hover:shadow-md",
+                                        isExporting?.startsWith(campaign.id) && "text-emerald-600 bg-emerald-50 border-emerald-100"
+                                      )}
+                                      title="Exportar Partes"
+                                    >
+                                      {isExporting?.startsWith(campaign.id) ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <Download className="w-4 h-4" />
+                                      )}
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-[240px] rounded-2xl border-slate-100 shadow-xl p-2">
                                       {Array.from({ length: Math.ceil(campaign.publico_estimado / PART_SIZE) }).map((_, i) => (
