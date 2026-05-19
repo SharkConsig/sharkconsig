@@ -167,6 +167,13 @@ function MultiSelect({
   )
 }
 
+const normalizeConvenioName = (convenio: string | null | undefined) => {
+  if (!convenio) return convenio;
+  const upper = convenio.toUpperCase();
+  if (upper === 'GOVBR OPORTUNIDADES' || upper === 'GOVBR') return 'GOVERNO RORAIMA';
+  return convenio;
+};
+
 export default function TicketsPage() {
   const router = useRouter()
   const { perfil, user, isOperational, isAdmin, isSupervisor, isDeveloper } = useAuth()
@@ -325,7 +332,10 @@ export default function TicketsPage() {
   const uniqueCorretores = useMemo(() => Array.from(new Set(tickets.map(t => t.user_nome).filter(Boolean))).sort() as string[], [tickets])
   const uniqueStatus = useMemo(() => Array.from(new Set(tickets.map(t => t.status_chamados?.nome || t.status).filter(Boolean))).sort() as string[], [tickets])
   const uniqueOrigens = useMemo(() => Array.from(new Set(tickets.map(t => t.origem).filter(Boolean))).sort() as string[], [tickets])
-  const uniqueConvenios = useMemo(() => Array.from(new Set(tickets.map(t => t.convenio).filter(Boolean))).sort() as string[], [tickets])
+  const uniqueConvenios = useMemo(() => {
+    const names = tickets.map(t => normalizeConvenioName(t.convenio)).filter(Boolean) as string[];
+    return Array.from(new Set(names)).sort();
+  }, [tickets])
   const uniqueEquipes = useMemo(() => Array.from(new Set(tickets.map(t => t.equipe).filter(Boolean))).sort() as string[], [tickets])
 
   // Base tickets filtered by search and advanced filters
@@ -341,7 +351,7 @@ export default function TicketsPage() {
         ticket.cliente_cpf.includes(searchTerm) ||
         ticket.cliente_telefone.toLowerCase().includes(searchLower) ||
         ticket.origem.toLowerCase().includes(searchLower) ||
-        ticket.convenio.toLowerCase().includes(searchLower) ||
+        (normalizeConvenioName(ticket.convenio) || "").toLowerCase().includes(searchLower) ||
         ticket.equipe.toLowerCase().includes(searchLower) ||
         ticketStatusName.includes(searchLower) ||
         ticket.margem?.toString().includes(searchTerm) ||
@@ -358,7 +368,7 @@ export default function TicketsPage() {
       }
       if (filterOrigens.length > 0 && !filterOrigens.includes(ticket.origem)) return false
       if (filterCliente && !ticket.cliente_nome.toLowerCase().includes(filterCliente.toLowerCase())) return false
-      if (filterConvenios.length > 0 && !filterConvenios.includes(ticket.convenio)) return false
+      if (filterConvenios.length > 0 && !filterConvenios.includes(normalizeConvenioName(ticket.convenio) as string)) return false
       if (filterEquipes.length > 0 && !filterEquipes.includes(ticket.equipe)) return false
 
       // Filtro de Margem
@@ -947,7 +957,7 @@ export default function TicketsPage() {
                           <td className="px-4 py-4">
                             <div className="flex flex-col">
                               <span className="text-[11.5px] font-bold text-slate-700 uppercase tracking-tight">{ticket.cliente_nome}</span>
-                              <span className="text-[9px] font-medium text-slate-400">{ticket.convenio}</span>
+                              <span className="text-[9px] font-medium text-slate-400">{normalizeConvenioName(ticket.convenio)}</span>
                             </div>
                           </td>
                           <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{ticket.cliente_cpf}</td>

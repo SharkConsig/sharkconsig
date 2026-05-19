@@ -234,7 +234,7 @@ function NewTicketForm() {
       if (field === 'beneficio5') return "LÍQUIDA CARTÃO BENEFÍCIO";
     }
 
-    if (conv === "GOVBR OPORTUNIDADES" || conv === "GOVBR") {
+    if (conv === "GOVERNO RORAIMA" || conv === "GOV RORAIMA" || conv === "GOVBR OPORTUNIDADES") {
       if (field === 'margem') return "MARGEM EMPRÉSTIMO";
       if (field === 'liquida5') return "MARGEM CARTÃO";
       if (field === 'beneficio5') return "Margem 5%";

@@ -717,7 +717,7 @@ export default function DashboardPage() {
           else if (convention.includes('PREFEITURA SP') || convention.includes('PREF SAO PAULO') || convention.includes('PREF SÃO PAULO')) convCategory = 'PREFEITURA SP'
           else if (convention.includes('PIAUÍ') || convention.includes('PIAUI')) convCategory = 'PREFEITURA PIAUÍ'
           else if (convention.includes('MARANHÃO') || convention.includes('MARANHAO')) convCategory = 'PREFEITURA MARANHÃO'
-          else if (convention.includes('GOVBR') || convention.includes('GOVERNO BR')) convCategory = 'GOVBR OPORTUNIDADES'
+          else if (convention.includes('GOVBR') || convention.includes('GOVERNO BR') || convention.includes('RORAIMA')) convCategory = 'GOVERNO RORAIMA'
           
           acc.byConvenio[convCategory] = (acc.byConvenio[convCategory] || 0) + 1
 
@@ -804,7 +804,7 @@ export default function DashboardPage() {
           }))
           .sort((a, b) => b.value - a.value)
 
-        const convenioOrder = ['SIAPE/FEDERAL', 'GOVERNO SP', 'PREFEITURA SP', 'PREFEITURA PIAUÍ', 'PREFEITURA MARANHÃO', 'GOVBR OPORTUNIDADES', 'OUTROS']
+        const convenioOrder = ['SIAPE/FEDERAL', 'GOVERNO SP', 'PREFEITURA SP', 'PREFEITURA PIAUÍ', 'PREFEITURA MARANHÃO', 'GOVERNO RORAIMA', 'OUTROS']
         const byConvenio = convenioOrder
           .map(name => ({
             name,

@@ -109,6 +109,9 @@ interface Registration {
   prefeitura_sp_lotacoes?: Lotacao[];
   governo_pi_lotacoes?: Lotacao[];
   governo_ma_lotacoes?: Lotacao[];
+  governo_rr_instituidores?: any[];
+  matricula?: string;
+  regime_contratacao?: string;
   displayId?: string;
   currentInstituidor?: string;
   [key: string]: unknown;
@@ -136,7 +139,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -276,6 +279,31 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
         )
 
         if (idError) console.error("Erro ao buscar identificações Governo MA:", idError)
+        setRegistrations((idData as Registration[]) || [])
+        setIsLoading(false)
+        return
+      }
+
+      // 6. Try search in Governo RR Clients
+      const { data: govRrData } = await withRetry<ClientData | null>(async () => 
+        await supabase.from('governo_rr_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+      )
+
+      if (govRrData) {
+        setClient(govRrData)
+        setClientType('governo_rr')
+
+        const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
+          await supabase
+            .from('governo_rr_matriculas')
+            .select(`
+              *,
+              governo_rr_instituidores (*)
+            `)
+            .eq('cliente_id', (govRrData as ClientData).id)
+        )
+
+        if (idError) console.error("Erro ao buscar matrículas Governo Roraima:", idError)
         setRegistrations((idData as Registration[]) || [])
         setIsLoading(false)
         return
@@ -812,7 +840,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                               );
                             })()}
                           </>
-                        ) : (
+                        ) : clientType === 'governo_pi' || clientType === 'governo_ma' ? (
                           <>
                             {/* Governo PI ou MA */}
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
@@ -914,7 +942,60 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                               );
                             })()}
                           </>
-                        )}
+                        ) : clientType === 'governo_rr' ? (
+                          <>
+                            {/* Governo Roraima */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase">
+                                  {activeReg.regime_contratacao || "---"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Origem</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.governo_rr_instituidores?.[0]?.origem || "---"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-6">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-3.5 bg-cyan-600 rounded-full"></div>
+                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens de Crédito</h4>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className={cn(
+                                  "p-6 border rounded-2xl transition-all",
+                                  (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                )}>
+                                  <p className={cn("text-[10px] font-black uppercase tracking-widest mb-2", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "text-emerald-700" : "text-red-700")}>
+                                    Margem Empréstimo
+                                  </p>
+                                  <p className={cn("text-2xl font-black", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "text-emerald-700" : "text-red-700")}>
+                                    {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo))}
+                                  </p>
+                                </div>
+                                <div className={cn(
+                                  "p-6 border rounded-2xl transition-all",
+                                  (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "bg-cyan-50 border-cyan-200" : "bg-red-50 border-red-200"
+                                )}>
+                                  <p className={cn("text-[10px] font-black uppercase tracking-widest mb-2", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "text-cyan-700" : "text-red-700")}>
+                                    Margem Cartão
+                                  </p>
+                                  <p className={cn("text-2xl font-black", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "text-cyan-700" : "text-red-700")}>
+                                    {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao))}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : null}
                       </CardContent>
                     </Card>
 

@@ -114,7 +114,7 @@ export default function SearchClientPage() {
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_br' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -325,9 +325,9 @@ export default function SearchClientPage() {
         }
       }
 
-      // 6. GOVBR
-      if (!targetConvenio || targetConvenio === 'governo_br') {
-        const query = supabase.from('governo_br_clientes').select('*');
+      // 6. GOVERNO RORAIMA (Previously GOVBR)
+      if (!targetConvenio || targetConvenio === 'governo_rr') {
+        const query = supabase.from('governo_rr_clientes').select('*');
         if (quickData?.cpf) {
           query.eq('cpf', quickData.cpf);
         } else if (isActuallyAPhone) {
@@ -338,13 +338,13 @@ export default function SearchClientPage() {
           query.eq('cpf', finalCpf);
         }
         
-        const { data: govBrData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
+        const { data: govRrData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
 
-        if (govBrData) {
-          setClient(govBrData)
-          setClientType('governo_br')
+        if (govRrData) {
+          setClient(govRrData)
+          setClientType('governo_rr')
           const { data: idData } = await withRetry<Record<string, unknown>[] | null>(async () =>
-            await supabase.from('governo_br_matriculas').select('*, governo_br_instituidores(*)').eq('cliente_id', govBrData.id)
+            await supabase.from('governo_rr_matriculas').select('*, governo_rr_instituidores(*)').eq('cliente_id', govRrData.id)
           )
           setRegistrations(idData || [])
           setShowProfile(true)
@@ -615,7 +615,7 @@ export default function SearchClientPage() {
                         <div className="space-y-8 sm:space-y-10">
                           <div className="flex items-center gap-3">
                             <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                            <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (GOVERNO RORAIMA)</h3>
+                            <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula</h3>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
@@ -1783,14 +1783,14 @@ export default function SearchClientPage() {
                 </div>
               );
             })()}
-            {clientType === 'governo_br' && registrations.length > 0 && (() => {
+            {clientType === 'governo_rr' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
                   {/* Tabs Navigation */}
                   <div className="flex flex-wrap gap-1 px-4 sm:px-8">
                     {registrations.map((reg, idx) => (
                       <button
-                        key={`tab-br-${reg.id}-${idx}`}
+                        key={`tab-rr-${reg.id}-${idx}`}
                         onClick={() => setActiveRegIndex(idx)}
                         className={cn(
                           "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
@@ -1806,7 +1806,7 @@ export default function SearchClientPage() {
 
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
-                    const lotacao = reg.governo_br_instituidores?.[0] || {};
+                    const lotacao = reg.governo_rr_instituidores?.[0] || {};
                     
                     return (
                       <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
@@ -1814,9 +1814,9 @@ export default function SearchClientPage() {
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
                               <div className="w-1 h-5 bg-cyan-600 rounded-full"></div>
-                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (GOVBR OPORTUNIDADES)</h3>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (GOVERNO RORAIMA)</h3>
                             </div>
-
+                            {/* ... labels update inside ... */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
                               <div className="space-y-1.5">
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
@@ -1877,7 +1877,7 @@ export default function SearchClientPage() {
                             </div>
                           </div>
 
-                          {/* Footer Buttons for GOVBR */}
+                          {/* Footer Buttons for GOV RR */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
                             <Button 
                               onClick={() => {
@@ -1893,7 +1893,7 @@ export default function SearchClientPage() {
                                   margem: formatCurrency(lotacao.margem_emprestimo),
                                   liquida5: formatCurrency(lotacao.margem_cartao),
                                   beneficio5: "R$ 0,00",
-                                  convenio: "GOVBR OPORTUNIDADES",
+                                  convenio: "GOVERNO RORAIMA",
                                   matricula: reg.matricula || ""
                                 });
                                 router.push(`/chamados/novo?${params.toString()}`);
@@ -1915,7 +1915,7 @@ export default function SearchClientPage() {
                                   tel2: unmaskPhone(client.telefone_2),
                                   tel3: unmaskPhone(client.telefone_3),
                                   origem: "pesquisa",
-                                  convenio: "GOVBR OPORTUNIDADES"
+                                  convenio: "GOVERNO RORAIMA"
                                 });
                                 router.push(`/propostas/nova?${params.toString()}`);
                               }}

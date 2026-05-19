@@ -47,7 +47,7 @@ export default function ImportBatchPage() {
   const [totalBasePMSP, setTotalBasePMSP] = useState(0);
   const [totalBaseGovPI, setTotalBaseGovPI] = useState(0);
   const [totalBaseGovMA, setTotalBaseGovMA] = useState(0);
-  const [totalBaseGovBR, setTotalBaseGovBR] = useState(0);
+  const [totalBaseGovRR, setTotalBaseGovRR] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
   
   // Pagination State
@@ -114,7 +114,7 @@ export default function ImportBatchPage() {
       console.log("Estado da Sessão (fetchTotalBase):", `Logado como ${session.user.email}`);
       console.log("Token JWT (Tamanho):", session.access_token.length);
 
-      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govBRRes] = await Promise.all([
+      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes] = await Promise.all([
         withRetry(async () => {
           return await supabase
             .from('clientes')
@@ -142,7 +142,7 @@ export default function ImportBatchPage() {
         }),
         withRetry(async () => {
           return await supabase
-            .from('governo_br_clientes')
+            .from('governo_rr_clientes')
             .select('*', { count: 'exact', head: true });
         })
       ]);
@@ -162,8 +162,8 @@ export default function ImportBatchPage() {
       if (govMARes.error) {
         console.warn("Aviso Supabase (Total GOV MA):", govMARes.error.message);
       }
-      if (govBRRes.error) {
-        console.warn("Aviso Supabase (Total GOV BR):", govBRRes.error.message);
+      if (govRRRes.error) {
+        console.warn("Aviso Supabase (Total GOV RR):", govRRRes.error.message);
       }
 
       setTotalBaseSiape(siapeRes.count || 0);
@@ -171,7 +171,7 @@ export default function ImportBatchPage() {
       setTotalBasePMSP(pmspRes.count || 0);
       setTotalBaseGovPI(govPIRes.count || 0);
       setTotalBaseGovMA(govMARes.count || 0);
-      setTotalBaseGovBR(govBRRes.count || 0);
+      setTotalBaseGovRR(govRRRes.count || 0);
     } catch (err: unknown) {
       const error = err as Error;
       console.warn("Aviso inesperado ao buscar total da base:", error?.message || error);
@@ -1246,7 +1246,7 @@ export default function ImportBatchPage() {
     }
   };
 
-  const processGovernoBrChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
+  const processGovernoRrChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
     // cpfs, nome, data_de_nascimento, matricula, origem, regime_contratacao, margem_emprestimo, margem_cartao, telefone_1, telefone_2, telefone_3
     const normalizedRows = results.map(row => ({
       cpf: normalizeCPF(row.cpf || ""),
@@ -1265,7 +1265,7 @@ export default function ImportBatchPage() {
     if (normalizedRows.length === 0) return;
 
     const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
-    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('governo_br_clientes', 'cpf', cpfs);
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('governo_rr_clientes', 'cpf', cpfs);
     const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
 
     const shouldPreserve = (val: string | number | null | undefined) => {
@@ -1297,17 +1297,17 @@ export default function ImportBatchPage() {
 
     const clientRows = Array.from(clientMap.values());
     const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_br_clientes')
+      return await supabase.from('governo_rr_clientes')
         .upsert(clientRows, { onConflict: 'cpf' })
         .select('id, cpf');
     });
 
-    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes GOVBR: ${clientErr?.message}`);
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes GOV RR: ${clientErr?.message}`);
 
     const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
-    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_br_matriculas', 'cliente_id', clientIds);
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_rr_matriculas', 'cliente_id', clientIds);
     const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula}`, i]));
 
     const identMap = new Map<string, Record<string, unknown>>();
@@ -1331,12 +1331,12 @@ export default function ImportBatchPage() {
 
     const identRows = Array.from(identMap.values());
     const { data: identsData, error: identErr } = await withRetry(async () => {
-      return await supabase.from('governo_br_matriculas')
+      return await supabase.from('governo_rr_matriculas')
         .upsert(identRows, { onConflict: 'cliente_id, matricula' })
         .select('id, cliente_id, matricula');
     });
 
-    if (identErr || !identsData) throw new Error(`Erro ao salvar matrículas GOVBR: ${identErr?.message}`);
+    if (identErr || !identsData) throw new Error(`Erro ao salvar matrículas GOV RR: ${identErr?.message}`);
 
     const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, matricula: string}) => [`${id.cliente_id}_${id.matricula}`, id.id]));
 
@@ -1358,9 +1358,9 @@ export default function ImportBatchPage() {
 
     if (lotacaoRows.length > 0) {
       const { error: lotErr } = await withRetry(async () => {
-        return await supabase.from('governo_br_instituidores').insert(lotacaoRows);
+        return await supabase.from('governo_rr_instituidores').insert(lotacaoRows);
       });
-      if (lotErr) throw new Error(`Erro ao salvar instituidores GOVBR: ${lotErr.message}`);
+      if (lotErr) throw new Error(`Erro ao salvar instituidores GOV RR: ${lotErr.message}`);
     }
   };
 
@@ -1424,7 +1424,7 @@ export default function ImportBatchPage() {
                 resolve(checkRequired(["cpf", "matricula", "orgao", "margem_cartao_consignado"]));
               } else if (type === "GOVERNO_MA") {
                 resolve(checkRequired(["cpf", "matricula", "orgao", "margem_emprestimo_consignado"]));
-              } else if (type === "GOVERNO_BR") {
+              } else if (type === "GOVERNO_RR") {
                 resolve(checkRequired(["cpf", "matricula", "origem", "regime_contratacao"]));
               } else {
                 resolve(false);
@@ -1531,8 +1531,8 @@ export default function ImportBatchPage() {
                 await processGovernoPiChunk(results.data, currentBatch.id);
               } else if (type === "GOVERNO_MA") {
                 await processGovernoMaChunk(results.data, currentBatch.id);
-              } else if (type === "GOVERNO_BR") {
-                await processGovernoBrChunk(results.data, currentBatch.id);
+              } else if (type === "GOVERNO_RR") {
+                await processGovernoRrChunk(results.data, currentBatch.id);
               }
             });
             
@@ -1648,7 +1648,7 @@ export default function ImportBatchPage() {
     ));
   };
 
-  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_br') => {
+  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr') => {
     let headers = "";
     let filename = "";
 
@@ -1670,9 +1670,9 @@ export default function ImportBatchPage() {
     } else if (type === 'governo_ma') {
       headers = "cpf,nome,matricula,vinculo,data_nascimento,telefone_1,telefone_2,telefone_3,orgao,margem_emprestimo_consignado,margem_cartao_consignado,margem_cartao_beneficio";
       filename = "modelo_governo_ma.csv";
-    } else if (type === 'governo_br') {
+    } else if (type === 'governo_rr') {
       headers = "cpf,nome,data_de_nascimento,matricula,origem,regime_contratacao,margem_emprestimo,margem_cartao,telefone_1,telefone_2,telefone_3";
-      filename = "modelo_govbr_oportunidades.csv";
+      filename = "modelo_governo_roraima.csv";
     }
     
     const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
@@ -1711,7 +1711,7 @@ export default function ImportBatchPage() {
                     <option value="PREFEITURA_SP">PREFEITURA SP</option>
                     <option value="GOVERNO_PI">GOVERNO PIAUÍ</option>
                     <option value="GOVERNO_MA">GOVERNO MARANHÃO</option>
-                    <option value="GOVERNO_BR">GOVBR OPORTUNIDADES</option>
+                    <option value="GOVERNO_RR">GOVERNO RORAIMA</option>
                   </select>
                   <Input 
                     value={description}
@@ -1845,13 +1845,13 @@ export default function ImportBatchPage() {
                       </div>
                     </button>
                     <button 
-                      onClick={() => downloadCSV('governo_br')}
+                      onClick={() => downloadCSV('governo_rr')}
                       className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
                     >
                       <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
                       <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVBR OPORTUNIDADES</p>
-                        <p className="text-[10px] text-slate-400">Base GOVBR Oportunidades</p>
+                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO RORAIMA</p>
+                        <p className="text-[10px] text-slate-400">Base Governo Roraima</p>
                       </div>
                     </button>
                   </div>
@@ -1909,7 +1909,7 @@ export default function ImportBatchPage() {
                     </button>
                   </div>
                   <p className="text-[14px] font-black text-slate-900 tracking-tighter">
-                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovBR || 0)).toLocaleString('pt-BR')}
+                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0)).toLocaleString('pt-BR')}
                   </p>
                 </div>
 
@@ -1971,14 +1971,14 @@ export default function ImportBatchPage() {
                       </p>
                     </div>
 
-                    {/* GOV BR */}
+                    {/* GOVERNO RR */}
                     <div className="space-y-1.5 group cursor-default">
                       <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
-                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">GOV BR</span>
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">GOV RORAIMA</span>
                       </div>
                       <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-cyan-600 transition-colors">
-                        {totalBaseGovBR.toLocaleString('pt-BR')}
+                        {totalBaseGovRR.toLocaleString('pt-BR')}
                       </p>
                     </div>
                   </div>
@@ -2030,9 +2030,9 @@ export default function ImportBatchPage() {
                             batch.tipo === "GOVERNO_SP" ? "bg-emerald-600" : 
                             batch.tipo === "PREFEITURA_SP" ? "bg-blue-600" : 
                             batch.tipo === "GOVERNO_PI" ? "bg-purple-600" : 
-                            batch.tipo === "GOVERNO_MA" ? "bg-orange-600" : "bg-cyan-600"
+                            batch.tipo === "GOVERNO_RR" ? "bg-cyan-600" : "bg-cyan-600"
                           )}>
-                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo === "PREFEITURA_SP" ? "PREFEITURA SP" : batch.tipo === "GOVERNO_PI" ? "GOVERNO PI" : batch.tipo === "GOVERNO_MA" ? "GOVERNO MA" : batch.tipo === "GOVERNO_BR" ? "GOVBR" : batch.tipo}
+                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo === "PREFEITURA_SP" ? "PREFEITURA SP" : batch.tipo === "GOVERNO_PI" ? "GOVERNO PI" : batch.tipo === "GOVERNO_MA" ? "GOVERNO MA" : batch.tipo === "GOVERNO_RR" ? "GOV RR" : batch.tipo}
                           </span>
                           <span className="text-[12px] font-semibold text-slate-600 uppercase">{batch.descricao}</span>
                         </div>
