@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
 import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { translateOrgao } from "@/lib/orgaos-mapping"
@@ -118,6 +118,246 @@ export default function SearchClientPage() {
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
+
+  const triggerAutoSearch = async (targetCpf: string) => {
+    if (!targetCpf) return
+    setIsLoading(true)
+    setError(null)
+    setShowProfile(false)
+    setShowSensitiveData(false)
+    setClient(null)
+    setClientType(null)
+    setRegistrations([])
+    setActiveRegIndex(0)
+
+    try {
+      const digits = targetCpf.replace(/\D/g, "")
+      if (!digits) {
+        setError("Por favor, insira um CPF ou telefone.")
+        setIsLoading(false)
+        return
+      }
+      
+      const cleanCPF = digits.padStart(11, '0')
+      const phoneDigits = digits.length >= 8 ? (digits.length > 11 ? digits.slice(-11) : digits) : digits;
+
+      const searchTerms = [
+        `cpf.eq.${cleanCPF}`,
+        `telefone_1.eq.${digits}`,
+        `telefone_2.eq.${digits}`,
+        `telefone_3.eq.${digits}`
+      ];
+
+      if (digits.length >= 8) {
+        if (digits !== phoneDigits) {
+          searchTerms.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
+        }
+        if (digits.length === 11) {
+          const withoutNinth = digits.slice(0, 2) + digits.slice(3);
+          searchTerms.push(`telefone_1.eq.${withoutNinth}`, `telefone_2.eq.${withoutNinth}`, `telefone_3.eq.${withoutNinth}`);
+        }
+        if (digits.length === 11) {
+          const withZero = `0${digits}`;
+          searchTerms.push(`telefone_1.eq.${withZero}`, `telefone_2.eq.${withZero}`, `telefone_3.eq.${withZero}`);
+        }
+      }
+
+      const { data: quickData, error: quickError } = await withRetry(async () => 
+        await supabase
+          .from('base_consulta_rapida')
+          .select('*')
+          .or(searchTerms.join(','))
+          .limit(1)
+          .maybeSingle()
+      )
+
+      if (quickError) throw quickError
+
+      let currentClientType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null = null
+      let clientData: any = null
+
+      if (quickData) {
+        const source = quickData.origem
+        if (source === 'siape') currentClientType = 'siape'
+        else if (source === 'governo_sp') currentClientType = 'governo_sp'
+        else if (source === 'prefeitura_sp') currentClientType = 'prefeitura_sp'
+        else if (source === 'governo_pi') currentClientType = 'governo_pi'
+        else if (source === 'governo_ma') currentClientType = 'governo_ma'
+        else if (source === 'governo_rr') currentClientType = 'governo_rr'
+      }
+
+      const tableMap: Record<string, string> = {
+        siape: 'clientes',
+        governo_sp: 'governo_sp_clientes',
+        prefeitura_sp: 'prefeitura_sp_clientes',
+        governo_pi: 'governo_pi_clientes',
+        governo_ma: 'governo_ma_clientes',
+        governo_rr: 'governo_rr_clientes'
+      }
+
+      if (currentClientType && tableMap[currentClientType]) {
+        const { data, error } = await withRetry(async () => 
+          await supabase.from(tableMap[currentClientType!]).select('*').eq('cpf', cleanCPF).maybeSingle()
+        )
+        if (error) throw error
+        clientData = data
+      }
+
+      if (!clientData) {
+        for (const [type, table] of Object.entries(tableMap)) {
+          const { data, error } = await withRetry(async () => 
+            await supabase.from(table).select('*').eq('cpf', cleanCPF).maybeSingle()
+          )
+          if (!error && data) {
+            clientData = data
+            currentClientType = type as any
+            break
+          }
+        }
+      }
+
+      if (clientData) {
+        setClientType(currentClientType)
+        setClient({
+          id: clientData.id || clientData.cpf,
+          nome: clientData.nome,
+          cpf: clientData.cpf,
+          data_nascimento: clientData.data_nascimento,
+          telefone_1: clientData.telefone_1,
+          telefone_2: clientData.telefone_2 || clientData.telefone_recado,
+          telefone_3: clientData.telefone_3,
+        })
+
+        if (currentClientType === 'siape') {
+          const { data: regData, error: regError } = await withRetry(async () => 
+            await supabase.from('matriculas').select('*, instituidores(*, itens_credito(*))').eq('cliente_cpf', clientData.cpf)
+          )
+          if (regError) throw regError
+          setRegistrations(regData || [])
+        } else if (currentClientType === 'governo_sp') {
+          const { data: regData, error: regError } = await withRetry(async () => 
+            await supabase.from('governo_sp_identificacoes').select('*, governo_sp_lotacoes(*)').eq('cliente_id', clientData.id)
+          )
+          if (regError) throw regError
+          const mapped = (regData || []).map(r => ({
+            id: r.id,
+            numero_matricula: r.rs_pv_ex || '---',
+            situacao_funcional: r.situacao_funcional,
+            salario: 0,
+            orgao: r.secretaria,
+            regime_juridico: r.regime_juridico,
+            uf: 'SP',
+            instituidores: (r.governo_sp_lotacoes || []).map((l: any) => ({
+              id: l.id,
+              nome: null,
+              itens_credito: []
+            }))
+          }))
+          setRegistrations(mapped as any)
+        } else if (currentClientType === 'prefeitura_sp') {
+          const { data: regData, error: regError } = await withRetry(async () => 
+            await supabase.from('prefeitura_sp_identificacoes').select('*, prefeitura_sp_lotacoes(*)').eq('cliente_id', clientData.id)
+          )
+          if (regError) throw regError
+          const mapped = (regData || []).map(r => ({
+            id: r.id,
+            numero_matricula: r.rf || '---',
+            situacao_funcional: r.situacao_funcional,
+            salario: 0,
+            orgao: r.secretaria,
+            regime_juridico: r.regime_juridico,
+            uf: 'SP',
+            instituidores: (r.prefeitura_sp_lotacoes || []).map((l: any) => ({
+              id: l.id,
+              nome: null,
+              itens_credito: []
+            }))
+          }))
+          setRegistrations(mapped as any)
+        } else if (currentClientType === 'governo_pi') {
+          const { data: regData, error: regError } = await withRetry(async () => 
+            await supabase.from('governo_pi_identificacoes').select('*, governo_pi_lotacoes(*)').eq('cliente_id', clientData.id)
+          )
+          if (regError) throw regError
+          const mapped = (regData || []).map(r => ({
+            id: r.id,
+            numero_matricula: r.matricula || '---',
+            situacao_funcional: r.situacao_funcional,
+            salario: 0,
+            orgao: r.secretaria,
+            regime_juridico: r.regime_juridico,
+            uf: 'PI',
+            instituidores: (r.governo_pi_lotacoes || []).map((l: any) => ({
+              id: l.id,
+              nome: null,
+              itens_credito: []
+            }))
+          }))
+          setRegistrations(mapped as any)
+        } else if (currentClientType === 'governo_ma') {
+          const { data: regData, error: regError } = await withRetry(async () => 
+            await supabase.from('governo_ma_identificacoes').select('*, governo_ma_lotacoes(*)').eq('cliente_id', clientData.id)
+          )
+          if (regError) throw regError
+          const mapped = (regData || []).map(r => ({
+            id: r.id,
+            numero_matricula: r.matricula || '---',
+            situacao_funcional: r.situacao_funcional,
+            salario: 0,
+            orgao: r.secretaria,
+            regime_juridico: r.regime_juridico,
+            uf: 'MA',
+            instituidores: (r.governo_ma_lotacoes || []).map((l: any) => ({
+              id: l.id,
+              nome: null,
+              itens_credito: []
+            }))
+          }))
+          setRegistrations(mapped as any)
+        } else if (currentClientType === 'governo_rr') {
+          const { data: regData, error: regError } = await withRetry(async () => 
+            await supabase.from('governo_rr_matriculas').select('*, governo_rr_instituidores(*)').eq('cliente_id', clientData.id)
+          )
+          if (regError) throw regError
+          const mapped = (regData || []).map(r => ({
+            id: r.id,
+            numero_matricula: r.matricula || '---',
+            situacao_funcional: r.situacao_funcional,
+            salario: 0,
+            orgao: r.secretaria,
+            regime_juridico: r.regime_juridico,
+            uf: 'RR',
+            instituidores: (r.governo_rr_instituidores || []).map((l: any) => ({
+              id: l.id,
+              nome: null,
+              itens_credito: []
+            }))
+          }))
+          setRegistrations(mapped as any)
+        }
+        
+        setShowProfile(true)
+      } else {
+        setError("Nenhum cliente cadastrado encontrado com esses dados.")
+      }
+    } catch (err) {
+      console.error("Erro na busca automática:", err)
+      setError("Ocorreu um erro ao buscar o cliente. Tente novamente.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      const cpfParam = params.get("cpf")
+      if (cpfParam) {
+        setSearchQuery(cpfParam)
+        triggerAutoSearch(cpfParam)
+      }
+    }
+  }, [])
 
   const handleSearch = async () => {
     if (!searchQuery) return

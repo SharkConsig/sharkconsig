@@ -26,8 +26,96 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "react-hot-toast"
-import { translateOrgao } from "@/lib/orgaos-mapping"
-import { getContractTypeInfo } from "@/lib/contratos-mapping"
+import { translateOrgao, ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
+import { getContractTypeInfo, CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
+
+// --- Helper Functions ---
+const parseSafeNumber = (val: string | undefined | null) => {
+  if (!val) return null;
+  let clean = val.replace(/[R$\s]/g, "");
+  
+  if (clean.includes(",") && clean.includes(".")) {
+    clean = clean.replace(/\./g, "").replace(",", ".");
+  } else if (clean.includes(",")) {
+    clean = clean.replace(",", ".");
+  }
+  
+  const num = parseFloat(clean);
+  return isNaN(num) ? null : num;
+};
+
+const applyCampaignFilters = (query: any, filters: CampaignFilters) => {
+  if (filters.orgaos && filters.orgaos.length > 0) {
+    const codeFilters = Object.entries(ORGAOS_MAPPING)
+      .filter(([, name]) => filters.orgaos?.includes(name))
+      .map(([code]) => code);
+    const combinedOrgaos = Array.from(new Set([...filters.orgaos, ...codeFilters]));
+    if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
+  }
+  
+  if (filters.situacoes && filters.situacoes.length > 0) query = query.in('situacao_funcional', filters.situacoes)
+  if (filters.regimes && filters.regimes.length > 0) query = query.in('regime_juridico', filters.regimes)
+  if (filters.ufs && filters.ufs.length > 0) query = query.in('uf', filters.ufs)
+
+  if (filters.idadeMin) {
+    const d = new Date()
+    d.setFullYear(d.getFullYear() - parseInt(filters.idadeMin))
+    query = query.lte('data_nascimento', d.toISOString().split('T')[0])
+  }
+  if (filters.idadeMax) {
+    const d = new Date()
+    d.setFullYear(d.getFullYear() - parseInt(filters.idadeMax) - 1)
+    d.setDate(d.getDate() + 1)
+    query = query.gte('data_nascimento', d.toISOString().split('T')[0])
+  }
+  
+  const mMin = parseSafeNumber(filters.margemMin)
+  const mMax = parseSafeNumber(filters.margemMax)
+  if (mMin !== null || mMax !== null) {
+    query = query.not('margem_35', 'is', null);
+    if (mMin !== null && mMax !== null) query = query.gte('margem_35', mMin).lte('margem_35', mMax);
+    else if (mMin !== null) query = query.gte('margem_35', mMin);
+    else if (mMax !== null) query = query.lte('margem_35', mMax);
+  }
+
+  const sMin = parseSafeNumber(filters.saldoMin)
+  if (sMin !== null) query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
+  
+  const cMMin = parseSafeNumber(filters.cardMargemMin)
+  if (cMMin !== null) query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin)
+  
+  const cBMin = parseSafeNumber(filters.cardBeneficioMin)
+  if (cBMin !== null) query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin)
+
+  if (filters.loanBanks && filters.loanBanks.length > 0) query = query.in('banco', filters.loanBanks)
+  
+  const hasCardTypeFilter = filters.cardTypes && filters.cardTypes.length > 0 && !filters.cardTypes.includes('__ACTIVE__') || (filters.cardTypes && filters.cardTypes.length > 1);
+  const hasCardBankFilter = filters.cardBanks && filters.cardBanks.length > 0;
+
+  if (hasCardTypeFilter || hasCardBankFilter) {
+    const cleanCardTypes = filters.cardTypes?.filter(t => t !== '__ACTIVE__') || [];
+    const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+      .filter(([, info]) => {
+        const matchesType = cleanCardTypes.length === 0 || cleanCardTypes.includes(info.label);
+        const matchesBank = !hasCardBankFilter || (info.bank && filters.cardBanks?.includes(info.bank));
+        return matchesType && matchesBank;
+      })
+      .map(([code]) => code);
+    
+    if (cardQueryCodes.length > 0) {
+      query = query.in('tipo_prefix', cardQueryCodes);
+    } else if (hasCardTypeFilter && hasCardBankFilter) {
+      query = query.eq('tipo', '999999999_FORCE_EMPTY');
+    }
+  }
+
+  const pMin = filters.loanPrazoMin ? parseInt(filters.loanPrazoMin) : NaN;
+  const pMax = filters.loanPrazoMax ? parseInt(filters.loanPrazoMax) : NaN;
+  if (!isNaN(pMin)) query = query.gte('prazo', pMin)
+  if (!isNaN(pMax)) query = query.lte('prazo', pMax)
+
+  return query;
+};
 
 // --- Interfaces ---
 interface CampaignFilters {
@@ -36,6 +124,20 @@ interface CampaignFilters {
   situacoes?: string[];
   regimes?: string[];
   ufs?: string[];
+  margemMin?: string;
+  margemMax?: string;
+  saldoMin?: string;
+  saldoMax?: string;
+  cardMargemMin?: string;
+  cardBeneficioMin?: string;
+  loanBanks?: string[];
+  loanPrazoMin?: string;
+  loanPrazoMax?: string;
+  cardBanks?: string[];
+  cardTypes?: string[];
+  idadeMin?: string;
+  idadeMax?: string;
+  distribuicao?: string[];
   corretores_selecionados?: string[];
 }
 
@@ -161,15 +263,57 @@ export default function CampanhaAtendimentoPage() {
     setObservacao("")
 
     try {
-      const filters = camp.filtros
-      const brokers = filters.corretores_selecionados || []
-      const numBrokers = brokers.length || 1
-      const myIndex = brokers.indexOf(user.id)
-      const brokerRelIndex = myIndex === -1 ? 0 : myIndex // Fallback to 0 if not explicitly listed
+      let targetCpf: string | null = null
 
-      // Logic: Lead index in global sequence = (FinishedCount * NumBrokers) + myIndex
-      const globalOffset = (offset * numBrokers) + brokerRelIndex
-      
+      // Try stateful Round Robin database-backed queue via Postgres RPC
+      try {
+        // Race the RPC call against a 2.5s client-side timeout to avoid freezing on Postgres locked state or heavy scans
+        const rpcPromise = supabase.rpc('obter_proximo_cliente_campanha', {
+          p_campanha_id: camp.id,
+          p_corretor_id: user.id
+        })
+        
+        const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) => {
+          setTimeout(() => reject(new Error("RPC Timeout")), 2500)
+        })
+
+        const { data: rpcData, error: rpcError } = await Promise.race([
+          rpcPromise,
+          timeoutPromise as any
+        ])
+        
+        if (!rpcError && rpcData) {
+          targetCpf = rpcData as string;
+          console.log("Stateful Round Robin lead CPF loaded via RPC:", targetCpf);
+        } else {
+          console.warn("RPC skipped or returned null, falling back to query checks", rpcError);
+        }
+      } catch (rpcErr) {
+        console.warn("RPC failed or timed out, falling back to standard code logic:", rpcErr);
+      }
+
+      // Stateful fallback logic: check manually for any active incomplete claim in campanha_vinculos
+      if (!targetCpf) {
+        try {
+          const { data: activeClaim } = await supabase
+            .from('campanha_vinculos')
+            .select('cliente_cpf')
+            .eq('campanha_id', camp.id)
+            .eq('corretor_id', user.id)
+            .eq('completed', false)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (activeClaim?.cliente_cpf) {
+            targetCpf = activeClaim.cliente_cpf;
+            console.log("Active incomplete lead reclaimed from database state:", targetCpf);
+          }
+        } catch (claimErr) {
+          console.warn("Claim search table error:", claimErr);
+        }
+      }
+
       // Determine table
       let table = 'base_consulta_siape'
       const campaignName = (camp.nome || "").toUpperCase()
@@ -198,20 +342,96 @@ export default function CampanhaAtendimentoPage() {
         table = 'base_consulta_rapida'
       }
       
-      // Build Query
-      let query = supabase.from(table).select('*')
-      
-      // Apply Campaign Filters
-      if (filters.ufs && filters.ufs.length > 0) query = query.in('uf', filters.ufs)
-      if (filters.orgaos && filters.orgaos.length > 0) query = query.in('orgao', filters.orgaos)
-      if (filters.situacoes && filters.situacoes.length > 0) query = query.in('situacao_funcional', filters.situacoes)
-      
-      // Sort and Offset
-      query = query.order('cpf', { ascending: true }).range(globalOffset, globalOffset)
-      
-      const { data, error } = await withRetry(() => query.maybeSingle())
-      
-      if (error) throw error
+      let data = null;
+
+      if (targetCpf) {
+        const { data: leadData, error: leadError } = await withRetry(() => 
+          supabase.from(table).select('*').eq('cpf', targetCpf).maybeSingle()
+        )
+        if (leadError) throw leadError
+        data = leadData
+      } else {
+        // Fallback to client-side formulaic mathematical round robin
+        const filters = camp.filtros
+        const brokers = filters.corretores_selecionados || []
+        const numBrokers = brokers.length || 1
+        const myIndex = brokers.indexOf(user.id)
+        const brokerRelIndex = myIndex === -1 ? 0 : myIndex // Fallback to 0 if not explicitly listed
+
+        // Logic: Lead index in global sequence = (FinishedCount * NumBrokers) + myIndex
+        const globalOffset = (offset * numBrokers) + brokerRelIndex
+        
+        // 1. INDEX-ONLY OPTIMIZATION: Query ONLY the 'cpf' column first instead of SELECT *
+        // Selecting only one indexed key avoids loading massive unindexed text buffers into memory during sorts/filtering.
+        let query = supabase.from(table).select('cpf')
+        
+        // Apply Campaign Filters using dynamic full filters from export module matching
+        query = applyCampaignFilters(query, filters)
+        
+        // Sort and Offset
+        query = query.order('cpf', { ascending: true }).range(globalOffset, globalOffset)
+        
+        let fetchedLeadCpf: string | null = null
+        let fetchError: any = null
+        
+        try {
+          const { data: resCpf, error: errCpf } = await withRetry(() => query.maybeSingle())
+          fetchError = errCpf
+          fetchedLeadCpf = resCpf?.cpf || null
+        } catch (err: any) {
+          fetchError = err
+        }
+        
+        // 2. UNORDERED GRACEFUL FALLBACK:
+        // If Postgres sorting is timing out (code 57014 or any other error/timeout), fall back to an unordered fast scan.
+        // Postgres does NOT have to sort 1.3M rows and can instantly yield matching tuples in partial sequential scan.
+        if (fetchError || !fetchedLeadCpf) {
+          console.warn("Ordered check failed/timed out, trying fast unordered fallback scan", fetchError)
+          
+          let unorderedQuery = supabase.from(table).select('cpf')
+          unorderedQuery = applyCampaignFilters(unorderedQuery, filters)
+          
+          // Use modulo offset to avoid deep pagination scans and keep it very fast
+          const fastOffset = globalOffset % 500
+          unorderedQuery = unorderedQuery.range(fastOffset, fastOffset)
+          
+          try {
+            const { data: resCpfUnordered, error: errCpfUnordered } = await withRetry(() => unorderedQuery.maybeSingle())
+            if (!errCpfUnordered && resCpfUnordered?.cpf) {
+              fetchedLeadCpf = resCpfUnordered.cpf
+            } else if (errCpfUnordered) {
+              console.error("Unordered fallback failed too:", errCpfUnordered)
+            }
+          } catch (unordErr) {
+            console.error("Unordered search promise crash:", unordErr)
+          }
+        }
+        
+        // 3. RAPID SINGLE KEY LOOKUP:
+        // If we found a target CPF, fetch the full row details via its primary indexed key.
+        if (fetchedLeadCpf) {
+          const { data: fullLead, error: fullLeadError } = await withRetry(() => 
+            supabase.from(table).select('*').eq('cpf', fetchedLeadCpf).maybeSingle()
+          )
+          if (fullLeadError) throw fullLeadError
+          data = fullLead
+        }
+        
+        // Attempt stateful claim creation so future steps become fully sequential
+        if (data && data.cpf) {
+          try {
+            await supabase.from('campanha_vinculos').insert({
+              campanha_id: camp.id,
+              corretor_id: user.id,
+              cliente_cpf: data.cpf,
+              completed: false,
+              indice: globalOffset
+            })
+          } catch (insertErr) {
+            console.warn("Could not record initial lead claimed row:", insertErr)
+          }
+        }
+      }
       
       if (data) {
         // Transform base data to ClientData and Fetch registrations
@@ -263,7 +483,7 @@ export default function CampanhaAtendimentoPage() {
           } as unknown as Registration])
         }
       } else {
-        toast.info("Não há mais leads disponíveis nesta campanha seguindo a fila atual.")
+        toast("Não há mais leads disponíveis nesta campanha seguindo a fila atual.", { icon: "ℹ️" })
       }
     } catch (err: unknown) {
       const error = err as { message?: string }
@@ -337,7 +557,7 @@ export default function CampanhaAtendimentoPage() {
       await loadNextLead(campaignData, finishedCount)
       
     } catch (err: unknown) {
-      const error = err as any
+      const error = err as { message?: string; details?: string; hint?: string; code?: string }
       console.error("Erro detalhado ao carregar campanha:", {
         message: error?.message,
         details: error?.details,
@@ -358,30 +578,41 @@ export default function CampanhaAtendimentoPage() {
 
   const handleTabulateAndNext = async () => {
     if (!tabulacao) {
-      toast.error("Por favor, selecione uma tabulação.")
-      return
-    }
-    if (!currentLead || !campaign || !user) return
-    
-    setIsSubmitting(true)
-    try {
-      const { error } = await withRetry(() => 
-        supabase.from('campanha_atendimentos').insert({
-          campanha_id: campaign.id,
-          corretor_id: user.id,
-          cliente_cpf: currentLead.cpf,
-          tabulacao,
-          observacao
-        })
-      )
-      
-      if (error) throw error
-      
-      toast.success("Atendimento registrado!")
-      setCompletedCount(prev => prev + 1)
-      await loadNextLead(campaign, completedCount + 1)
-      
-    } catch (err) {
+       toast.error("Por favor, selecione uma tabulação.")
+       return
+     }
+     if (!currentLead || !campaign || !user) return
+     
+     setIsSubmitting(true)
+     try {
+       const { error } = await withRetry(() => 
+         supabase.from('campanha_atendimentos').insert({
+           campanha_id: campaign.id,
+           corretor_id: user.id,
+           cliente_cpf: currentLead.cpf,
+           tabulacao,
+           observacao
+         })
+       )
+       
+       if (error) throw error
+
+       // Mark lead as completed in campanha_vinculos statefully
+       try {
+         await supabase.from('campanha_vinculos')
+           .update({ completed: true })
+           .eq('campanha_id', campaign.id)
+           .eq('corretor_id', user.id)
+           .eq('cliente_cpf', currentLead.cpf)
+       } catch (linkErr) {
+         console.warn("Could not mark claim as completed statefully:", linkErr)
+       }
+       
+       toast.success("Atendimento registrado!")
+       setCompletedCount(prev => prev + 1)
+       await loadNextLead(campaign, completedCount + 1)
+       
+     } catch (err) {
       console.error("Erro ao salvar tabulação:", err)
       toast.error("Erro ao salvar atendimento.")
     } finally {

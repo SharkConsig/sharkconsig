@@ -695,8 +695,6 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           valor_cliente: cleanMoney(formData.valor_cliente_operacional),
           margem_utilizada: cleanMoney(formData.margem_utilizada),
           coeficiente_prazo: formData.coeficiente_prazo,
-          prazo: selectedPrazoValue,
-          coeficiente: selectedCoefValue,
           observacoes: finalObservations,
         });
       }
@@ -1520,16 +1518,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Prazo</label>
-                  <Input 
-                    readOnly
-                    value={selectedPrazoValue !== null && selectedPrazoValue !== undefined ? `${selectedPrazoValue}x` : "-"}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] font-bold text-[#1A2B49] focus:outline-none transition-colors cursor-default disabled:opacity-75"
-                    placeholder="-"
-                  />
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
                   <Input 

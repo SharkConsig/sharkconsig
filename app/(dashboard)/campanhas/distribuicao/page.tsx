@@ -3,24 +3,24 @@
 import { useRouter } from "next/navigation"
 
 import { Header } from "@/components/layout/header"
-import { useSidebar } from "@/context/sidebar-context"
 import { cn } from "@/lib/utils"
 import { 
   Users, 
-  Target, 
   Loader2,
   Search,
   ChevronLeft,
   ChevronRight,
-  Info
+  Info,
+  Trash2,
+  X
 } from "lucide-react"
-import { motion } from "motion/react"
 import { useAuth } from "@/context/auth-context"
 import { supabase } from "@/lib/supabase"
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { toast } from "sonner"
 
 interface Campaign {
   id: string;
@@ -50,9 +50,14 @@ interface Campaign {
   };
 }
 
+interface BrokerUser {
+  id: string;
+  nome: string;
+  funcao?: string;
+}
+
 export default function DistribuicaoCampanhaPage() {
   const router = useRouter()
-  const { isCollapsed } = useSidebar()
   const { user, perfil, isAdmin, isDeveloper } = useAuth()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -60,6 +65,16 @@ export default function DistribuicaoCampanhaPage() {
   const [searchQuery, setSearchQuery] = useState("")
   
   const [startedCampaigns, setStartedCampaigns] = useState<string[]>([])
+  const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null)
+  const [allUsers, setAllUsers] = useState<BrokerUser[]>([])
+  const [selectedCampaignForTeam, setSelectedCampaignForTeam] = useState<Campaign | null>(null)
+
+  const canStart = !isAdmin && !isDeveloper && (
+    perfil?.role === 'Supervisor' || 
+    perfil?.role === 'Corretor' || 
+    perfil?.role === 'Estágio' || 
+    perfil?.role === 'Estagio'
+  );
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -68,6 +83,31 @@ export default function DistribuicaoCampanhaPage() {
   const handleStartCampaign = (campaignId: string) => {
     router.push(`/campanhas/atendimento/${campaignId}`)
   }
+
+  const handleToggleActive = async (campaign: Campaign) => {
+    try {
+      const isCurrentlyActive = campaign.filtros?.ativa !== false;
+      const newAtivaState = !isCurrentlyActive;
+      const updatedFiltros = {
+        ...(campaign.filtros || {}),
+        ativa: newAtivaState
+      };
+
+      const { error: updateError } = await supabase
+        .from('campanhas')
+        .update({ filtros: updatedFiltros })
+        .eq('id', campaign.id);
+
+      if (updateError) throw updateError;
+
+      toast.success(newAtivaState ? "Campanha ativada com sucesso!" : "Campanha desativada com sucesso!");
+      fetchCampaigns();
+    } catch (err: unknown) {
+      console.error("Erro ao alterar status da campanha:", err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      toast.error(`Erro ao alterar status da campanha: ${errorMessage}`);
+    }
+  };
 
   // Access check removed - now accessible to all roles
   useEffect(() => {
@@ -96,6 +136,7 @@ export default function DistribuicaoCampanhaPage() {
                              (Array.isArray(brokers) && brokers.length > 0)
         
         if (!isAdmin && !isDeveloper) {
+          if (c.filtros?.ativa === false) return false;
           if (!isDistributed) return false;
           
           const userId = user.id
@@ -140,6 +181,21 @@ export default function DistribuicaoCampanhaPage() {
   useEffect(() => {
     fetchCampaigns()
   }, [fetchCampaigns])
+
+  useEffect(() => {
+    const fetchAllUsers = async () => {
+      try {
+        const response = await fetch('/api/usuarios')
+        if (response.ok) {
+          const data = await response.json()
+          setAllUsers(data || [])
+        }
+      } catch (err) {
+        console.error("Erro ao buscar usuários do sistema:", err)
+      }
+    }
+    fetchAllUsers()
+  }, [])
 
   const filteredCampaigns = campaigns.filter(c => 
     c.nome.toLowerCase().includes(searchQuery.toLowerCase())
@@ -257,23 +313,80 @@ export default function DistribuicaoCampanhaPage() {
                             </div>
                           </td>
                           <td className="px-8 py-5 text-center">
-                            <div className="inline-flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Ativa</span>
-                            </div>
+                            {campaign.filtros?.ativa === false ? (
+                              <button 
+                                disabled={!isAdmin && !isDeveloper}
+                                onClick={() => (isAdmin || isDeveloper) && handleToggleActive(campaign)}
+                                className={cn(
+                                  "inline-flex items-center gap-1.5 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-100 uppercase tracking-widest text-[9px] font-black text-rose-600 outline-none select-none transition-all duration-150",
+                                  (isAdmin || isDeveloper) ? "cursor-pointer hover:bg-rose-100 active:scale-95" : "cursor-default"
+                                )}
+                                title={(isAdmin || isDeveloper) ? "Clique para Ativar" : undefined}
+                              >
+                                <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                <span>Inativa</span>
+                              </button>
+                            ) : (
+                              <button 
+                                disabled={!isAdmin && !isDeveloper}
+                                onClick={() => (isAdmin || isDeveloper) && handleToggleActive(campaign)}
+                                className={cn(
+                                  "inline-flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 uppercase tracking-widest text-[9px] font-black text-emerald-600 outline-none select-none transition-all duration-150",
+                                  (isAdmin || isDeveloper) ? "cursor-pointer hover:bg-emerald-100 active:scale-95" : "cursor-default"
+                                )}
+                                title={(isAdmin || isDeveloper) ? "Clique para Desativar" : undefined}
+                              >
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span>Ativa</span>
+                              </button>
+                            )}
                           </td>
                           <td className="px-8 py-5 text-right">
-                            <Button 
-                              onClick={() => handleStartCampaign(campaign.id)}
-                              className={cn(
-                                "h-9 px-6 text-[10px] font-black uppercase tracking-widest rounded-xl shadow-sm transition-all active:scale-95",
-                                isStarted 
-                                  ? "bg-slate-100 text-slate-600 hover:bg-slate-200" 
-                                  : "bg-[#1C2643] text-white hover:bg-black shadow-slate-200"
+                            <div className="flex items-center justify-end gap-2">
+                              {canStart && (
+                                <Button 
+                                  onClick={() => handleStartCampaign(campaign.id)}
+                                  className={cn(
+                                    "h-9 px-6 text-[10px] font-black uppercase tracking-widest rounded-xl shadow-sm transition-all active:scale-95",
+                                    isStarted 
+                                      ? "bg-slate-100 text-slate-600 hover:bg-slate-200" 
+                                      : "bg-[#1C2643] text-white hover:bg-black shadow-slate-200"
+                                  )}
+                                >
+                                  {isStarted ? "Continuar" : "INICIAR"}
+                                </Button>
                               )}
-                            >
-                              {isStarted ? "Continuar" : "INICIAR"}
-                            </Button>
+
+                              {(isAdmin || isDeveloper) && (
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedCampaignForTeam(campaign);
+                                  }}
+                                  title="Ver Equipe"
+                                  className="h-9 w-9 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all active:scale-95"
+                                >
+                                  <Users className="w-4.5 h-4.5" />
+                                </Button>
+                              )}
+
+                              {(isAdmin || isDeveloper) && (
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCampaignToDelete(campaign.id);
+                                  }}
+                                  title="Excluir"
+                                  className="h-9 w-9 rounded-xl border border-rose-205 text-rose-600 hover:bg-rose-50 transition-all active:scale-95"
+                                >
+                                  <Trash2 className="w-4.5 h-4.5" />
+                                </Button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -322,6 +435,145 @@ export default function DistribuicaoCampanhaPage() {
           </div>
         )}
       </div>
+
+      {campaignToDelete && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full border border-slate-200 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="text-[13px] font-black uppercase tracking-widest text-[#1C2643]">Confirmar Exclusão</h3>
+            <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider leading-relaxed font-sans">
+              Deseja excluir esta campanha definitivamente? Essa ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-3 pt-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setCampaignToDelete(null)}
+                className="flex-1 h-10 text-[10px] font-black uppercase tracking-widest rounded-xl"
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={async () => {
+                  try {
+                    const { error: deleteError } = await supabase
+                      .from('campanhas')
+                      .delete()
+                      .eq('id', campaignToDelete);
+
+                    if (deleteError) throw deleteError;
+
+                    toast.success("Campanha excluída com sucesso!");
+                    setCampaignToDelete(null);
+                    fetchCampaigns();
+                  } catch (err: unknown) {
+                    console.error("Erro ao excluir campanha:", err);
+                    const errorMessage = err instanceof Error ? err.message : String(err);
+                    toast.error(`Erro ao excluir campanha: ${errorMessage}`);
+                  }
+                }}
+                className="flex-1 h-10 text-[10px] font-black uppercase tracking-widest bg-rose-500 hover:bg-rose-600 text-white rounded-xl active:scale-95 transition-all"
+              >
+                Excluir
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCampaignForTeam && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full border border-slate-200 shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-[#1C2643]" />
+                <h3 className="text-[13px] font-black uppercase tracking-widest text-[#1C2643]">Equipe da Campanha</h3>
+              </div>
+              <button 
+                onClick={() => setSelectedCampaignForTeam(null)}
+                className="text-slate-400 hover:text-slate-600 rounded-full p-1 bg-slate-50 hover:bg-slate-100 transition-colors"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 mb-4 text-left">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Campanha</span>
+                <span className="text-[14px] font-extrabold text-[#1C2643] uppercase">{selectedCampaignForTeam.nome}</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Convênio</span>
+                <span className="text-[10px] font-bold text-slate-600 px-2 py-0.5 bg-slate-100/50 border border-slate-200/50 rounded-md uppercase inline-block mt-0.5">
+                  {selectedCampaignForTeam.filtros?.convenio || 'Geral'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin text-left">
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 border-b border-slate-100 pb-1">Supervisores ({selectedCampaignForTeam.filtros?.distribuicao?.length || 0})</h4>
+                {(() => {
+                  const supsDef = selectedCampaignForTeam.filtros?.distribuicao || [];
+                  const matchedSups = allUsers.filter(u => supsDef.includes(u.id));
+                  
+                  if (supsDef.length === 0) {
+                    return <p className="text-[10px] text-slate-400 font-bold uppercase py-1">Nenhum supervisor distribuído</p>;
+                  }
+                  
+                  return (
+                    <div className="space-y-1">
+                      {supsDef.map((userId) => {
+                        const matchedUser = matchedSups.find(u => u.id === userId);
+                        return (
+                          <div key={userId} className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100/50">
+                            <span className="text-[11px] font-bold text-slate-700 capitalize">{matchedUser ? matchedUser.nome.toLowerCase() : `ID: ${userId.substring(0, 8)}...`}</span>
+                            <span className="text-[8.5px] font-black uppercase bg-amber-50 border border-amber-100 text-amber-600 px-2 py-0.5 rounded-md">Supervisor</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 border-b border-slate-100 pb-1">Corretores ({selectedCampaignForTeam.filtros?.corretores_selecionados?.length || 0})</h4>
+                {(() => {
+                  const brokersDef = selectedCampaignForTeam.filtros?.corretores_selecionados || [];
+                  const matchedBrokers = allUsers.filter(u => brokersDef.includes(u.id));
+                  
+                  if (brokersDef.length === 0) {
+                    return <p className="text-[10px] text-slate-400 font-bold uppercase py-1">Nenhum corretor selecionado</p>;
+                  }
+                  
+                  return (
+                    <div className="space-y-1">
+                      {brokersDef.map((userId) => {
+                        const matchedUser = matchedBrokers.find(u => u.id === userId);
+                        return (
+                          <div key={userId} className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100/50">
+                            <span className="text-[11px] font-bold text-slate-700 capitalize">{matchedUser ? matchedUser.nome.toLowerCase() : `ID: ${userId.substring(0, 8)}...`}</span>
+                            <span className="text-[8.5px] font-black uppercase bg-blue-50 border border-blue-100 text-blue-600 px-2 py-0.5 rounded-md">Corretor</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex justify-end mt-4">
+              <Button 
+                onClick={() => setSelectedCampaignForTeam(null)}
+                className="h-10 px-6 text-[10px] font-black uppercase tracking-widest rounded-xl bg-[#1C2643] text-white hover:bg-black active:scale-95 transition-all"
+              >
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
