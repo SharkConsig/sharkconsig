@@ -190,15 +190,12 @@ export async function DELETE(request: Request) {
         const supervisorMeta = supervisorUser.user_metadata || {}
         const supervisorNome = supervisorMeta.nome_completo || supervisorMeta.full_name || 'Supervisor'
 
-        const isoNow = new Date().toISOString()
-
         await Promise.all([
           // Transferir Propostas
           supabaseAdmin.from('propostas')
             .update({ 
               corretor_id: transferTo,
-              corretor: supervisorNome,
-              updated_at: isoNow
+              corretor: supervisorNome
             })
             .eq('corretor_id', id),
           
@@ -221,7 +218,7 @@ export async function DELETE(request: Request) {
       supabaseAdmin.from('lotes').delete().eq('user_id', id),
       // Nos chamados e propostas que NÃO foram transferidos (ou se não houve transferência), setar NULL para evitar erro de FK
       supabaseAdmin.from('chamados').update({ user_id: null }).eq('user_id', id),
-      supabaseAdmin.from('propostas').update({ corretor_id: null, updated_at: new Date().toISOString() }).eq('corretor_id', id)
+      supabaseAdmin.from('propostas').update({ corretor_id: null }).eq('corretor_id', id)
     ])
 
     // 3. Deletar do Auth

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
 import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle } from "lucide-react"
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { translateOrgao } from "@/lib/orgaos-mapping"
@@ -124,93 +124,7 @@ export default function SearchClientPage() {
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
-  const [activeGlobalRegIndex, setActiveGlobalRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
-
-  const unifiedMatriculas = useMemo(() => {
-    interface UnifiedMatriculaItem {
-      profileType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr';
-      label: string;
-      client: ClientData;
-      localRegIndex: number;
-      id: string;
-    }
-    const result: UnifiedMatriculaItem[] = []
-
-    profiles.forEach((profile) => {
-      if (profile.type === 'siape') {
-        let localIdx = 0;
-        profile.registrations.forEach((reg) => {
-          if (!reg.instituidores || reg.instituidores.length === 0) {
-            result.push({
-              profileType: 'siape',
-              label: `SIAPE - Matrícula ${reg.numero_matricula || reg.matricula || '---'}`,
-              client: profile.client,
-              localRegIndex: localIdx++,
-              id: `siape-${reg.id}-noinst-${localIdx}`
-            });
-          } else {
-            reg.instituidores.forEach((_, instIdx) => {
-              result.push({
-                profileType: 'siape',
-                label: `SIAPE - Matrícula ${reg.numero_matricula || reg.matricula || '---'}`,
-                client: profile.client,
-                localRegIndex: localIdx++,
-                id: `siape-${reg.id}-inst-${instIdx}-${localIdx}`
-              });
-            });
-          }
-        });
-      } else {
-        profile.registrations.forEach((reg, regIdx) => {
-          let label = '---';
-          let prefix = '';
-          if (profile.type === 'governo_sp') {
-            prefix = 'GOV SP';
-            label = String(reg.numero_matricula || reg.identificacao || '---');
-          } else if (profile.type === 'prefeitura_sp') {
-            prefix = 'PREF SP';
-            label = String(reg.numero_matricula || reg.identificacao || '---');
-          } else if (profile.type === 'governo_pi') {
-            prefix = 'GOV PIAUÍ';
-            label = String(reg.numero_matricula || reg.matricula || '---');
-          } else if (profile.type === 'governo_ma') {
-            prefix = 'GOV MA';
-            label = String(reg.numero_matricula || reg.matricula || '---');
-          } else if (profile.type === 'governo_rr') {
-            prefix = 'GOV RR';
-            label = String(reg.numero_matricula || reg.matricula || '---');
-          }
-
-          result.push({
-            profileType: profile.type,
-            label: `${prefix} - ID/Matrícula ${label}`,
-            client: profile.client,
-            localRegIndex: regIdx,
-            id: `${profile.type}-${reg.id || regIdx}`
-          });
-        });
-      }
-    });
-
-    return result;
-  }, [profiles]);
-
-  const handleGlobalTabClick = (globalIndex: number) => {
-    setActiveGlobalRegIndex(globalIndex);
-    const item = unifiedMatriculas[globalIndex];
-    if (item) {
-      setClient(item.client);
-      setClientType(item.profileType);
-      
-      const targetProfile = profiles.find(p => p.type === item.profileType);
-      if (targetProfile) {
-        setRegistrations(targetProfile.registrations);
-      }
-      
-      setActiveRegIndex(item.localRegIndex);
-    }
-  };
 
   const fetchRegistrationsForType = async (
     type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr',
@@ -389,35 +303,10 @@ export default function SearchClientPage() {
 
     const initialProfile = foundProfiles.find(p => p.type === preferredType) || foundProfiles[0]
     
-    const tempUnified: Array<{ profileType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr'; localIdx: number }> = []
-    foundProfiles.forEach((profile) => {
-      if (profile.type === 'siape') {
-        let localIdx = 0;
-        profile.registrations.forEach((reg) => {
-          if (!reg.instituidores || reg.instituidores.length === 0) {
-            tempUnified.push({ profileType: 'siape', localIdx: localIdx++ });
-          } else {
-            reg.instituidores.forEach(() => {
-              tempUnified.push({ profileType: 'siape', localIdx: localIdx++ });
-            });
-          }
-        });
-      } else {
-        profile.registrations.forEach((_, regIdx) => {
-          tempUnified.push({ profileType: profile.type, localIdx: regIdx });
-        });
-      }
-    });
-
-    const matchedGlobalIdx = tempUnified.findIndex(item => item.profileType === initialProfile.type);
-    const finalGlobalIdx = matchedGlobalIdx !== -1 ? matchedGlobalIdx : 0;
-    const initialItem = tempUnified[finalGlobalIdx];
-
     setClient(initialProfile.client)
     setClientType(initialProfile.type)
     setRegistrations(initialProfile.registrations)
-    setActiveRegIndex(initialItem ? initialItem.localIdx : 0)
-    setActiveGlobalRegIndex(finalGlobalIdx)
+    setActiveRegIndex(0)
     setShowProfile(true)
   }
 
@@ -432,7 +321,6 @@ export default function SearchClientPage() {
     setRegistrations([])
     setProfiles([])
     setActiveRegIndex(0)
-    setActiveGlobalRegIndex(0)
 
     try {
       const digits = targetCpf.replace(/\D/g, "")
@@ -509,7 +397,6 @@ export default function SearchClientPage() {
         triggerAutoSearch(cpfParam)
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleSearch = async () => {
@@ -524,7 +411,6 @@ export default function SearchClientPage() {
     setRegistrations([])
     setProfiles([])
     setActiveRegIndex(0)
-    setActiveGlobalRegIndex(0)
 
     try {
       const digits = searchQuery.replace(/\D/g, "")
@@ -737,6 +623,46 @@ export default function SearchClientPage() {
 
         {showProfile && client && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
+            {profiles.length > 1 && (
+              <div className="flex flex-col gap-2.5 bg-[#FAF9F6]/50 border border-slate-200/60 p-4 rounded-xl shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05)]">
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#171717]/40">
+                  Convênios Vinculados a este CPF ({profiles.length})
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {profiles.map((p) => {
+                    const isActive = clientType === p.type;
+                    const convenioDisplayName = 
+                      p.type === 'siape' ? 'SIAPE' :
+                      p.type === 'governo_sp' ? 'GOVERNO SP' :
+                      p.type === 'prefeitura_sp' ? 'PREFEITURA SP' :
+                      p.type === 'governo_pi' ? 'GOVERNO PIAUÍ' :
+                      p.type === 'governo_ma' ? 'GOVERNO MARANHÃO' :
+                      p.type === 'governo_rr' ? 'GOVERNO RORAIMA' : String(p.type).toUpperCase();
+                    
+                    return (
+                      <button
+                        key={`profile-tab-${p.type}`}
+                        type="button"
+                        onClick={() => {
+                          setClient(p.client);
+                          setClientType(p.type);
+                          setRegistrations(p.registrations);
+                          setActiveRegIndex(0);
+                        }}
+                        className={cn(
+                          "px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all border cursor-pointer",
+                          isActive 
+                            ? "bg-[#171717] text-white border-[#171717] shadow-sm font-black scale-102" 
+                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                        )}
+                      >
+                        {convenioDisplayName}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {/* Dados Pessoais */}
             <Card className="card-shadow border border-slate-200">
               <CardContent className="p-8 space-y-10">
@@ -826,35 +752,6 @@ export default function SearchClientPage() {
               </CardContent>
             </Card>
 
-            {/* Unified Matrículas Tabs Section */}
-            {unifiedMatriculas.length > 0 && (
-              <div className="flex flex-col gap-3.5 bg-[#FAF9F6]/50 border border-slate-200/60 p-4 rounded-xl shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05)] mt-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-[#171717]/40 px-2">
-                  Matrículas e Vínculos Vinculados a este CPF ({unifiedMatriculas.length})
-                </p>
-                <div className="flex flex-wrap gap-2 px-1">
-                  {unifiedMatriculas.map((m, idx) => {
-                    const isActive = activeGlobalRegIndex === idx;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => handleGlobalTabClick(idx)}
-                        className={cn(
-                          "px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all border cursor-pointer",
-                          isActive 
-                            ? "bg-[#171717] text-white border-[#171717] shadow-sm font-black scale-102" 
-                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                        )}
-                      >
-                        {m.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             {/* Matrículas Section */}
             {clientType === 'siape' && registrations.length > 0 && (() => {
               const allRegs = registrations.flatMap(reg => {
@@ -881,9 +778,29 @@ export default function SearchClientPage() {
 
               return (
                 <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {allRegs.map((reg, idx) => (
+                      <button
+                        key={`tab-${reg.id}-${idx}`}
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)]" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        <div className="flex flex-col items-center">
+                          <span>Matrícula {reg.numero_matricula}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
                   {/* Active Content */}
                   {allRegs[activeRegIndex] && (
-                    <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
+                    <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
                       <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                         <div className="space-y-8 sm:space-y-10">
                           <div className="flex items-center gap-3">
@@ -1256,6 +1173,24 @@ export default function SearchClientPage() {
             {clientType === 'governo_sp' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-gov-${reg.id}-${idx}`}
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        ID {reg.identificacao}
+                      </button>
+                    ))}
+                  </div>
+
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
                     const lotacao = reg.governo_sp_lotacoes?.[0] || {};
@@ -1296,7 +1231,7 @@ export default function SearchClientPage() {
                     const beneficio = getCardLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
 
                     return (
-                      <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
                         <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
@@ -1497,12 +1432,30 @@ export default function SearchClientPage() {
             {clientType === 'governo_ma' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-ma-${reg.id}-${idx}`}
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
                     const lotacao = reg.governo_ma_lotacoes?.[0] || {};
                     
                     return (
-                      <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
                         <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
@@ -1650,12 +1603,30 @@ export default function SearchClientPage() {
             {clientType === 'governo_pi' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-pi-${reg.id}-${idx}`}
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
                     const lotacao = reg.governo_pi_lotacoes?.[0] || {};
                     
                     return (
-                      <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
                         <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
@@ -1782,6 +1753,24 @@ export default function SearchClientPage() {
             {clientType === 'prefeitura_sp' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-pmsp-${reg.id}-${idx}`}
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        ID {reg.identificacao}
+                      </button>
+                    ))}
+                  </div>
+
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
                     const lotacao = reg.prefeitura_sp_lotacoes?.[0] || {};
@@ -1821,7 +1810,7 @@ export default function SearchClientPage() {
                     const beneficio = getCardLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
 
                     return (
-                      <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
                         <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
@@ -1987,12 +1976,30 @@ export default function SearchClientPage() {
             {clientType === 'governo_rr' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-rr-${reg.id}-${idx}`}
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
                     const lotacao = reg.governo_rr_instituidores?.[0] || {};
                     
                     return (
-                      <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
                         <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">

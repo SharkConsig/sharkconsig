@@ -353,167 +353,130 @@ export default function NewCampaignPage() {
         idadeMin, idadeMax 
       } = filters;
 
-      // CONSULTA DIRETA NA TABELA ESPECIALIZADA (SEM JOINS) COM EXTRACÇÃO DE CPF ÚNICO
+      // CONSULTA DIRETA NA TABELA ESPECIALIZADA (SEM JOINS)
       const tableName = TABLE_MAP[activeConvenio] || 'base_consulta_siape';
+      let query = supabase
+        .from(tableName)
+        .select('cpf', { count: 'exact', head: true });
+
+      // Filtros de Margem 35% no topo para priorizar o uso do índice
+      const mMinNum = parseSafeNumber(filters.margemMin);
+      const mMaxNum = parseSafeNumber(filters.margemMax);
       
-      let lastCpf: string | null = null;
-      const stepSize = 5000; // Chunk size of 5000 CPFs for high stability and speed
-      let hasMore = true;
-      const uniqueCpfs = new Set<string>();
-
-      while (hasMore) {
-        let query = supabase.from(tableName).select('cpf');
-
-        // Filtros de Margem 35% no topo para priorizar o uso do índice
-        const mMinNum = parseSafeNumber(filters.margemMin);
-        const mMaxNum = parseSafeNumber(filters.margemMax);
+      if (mMinNum !== null || mMaxNum !== null) {
+        // Filtro preventivo de nulos para otimizar a performance do índice
+        query = query.not("margem_35", "is", null);
         
-        if (mMinNum !== null || mMaxNum !== null) {
-          // Filtro preventivo de nulos para otimizar a performance do índice
-          query = query.not("margem_35", "is", null);
-          
-          if (mMinNum !== null) {
-            query = query.gte("margem_35", mMinNum);
-          }
-          if (mMaxNum !== null) {
-            query = query.lte("margem_35", mMaxNum);
-          }
+        if (mMinNum !== null) {
+          query = query.gte("margem_35", mMinNum);
         }
-
-        // 1. Filtros de Matrícula
-        if (orgaos.length > 0) {
-          const codeFilters = Object.entries(ORGAOS_MAPPING)
-            .filter(([, name]) => orgaos.includes(name))
-            .map(([code]) => code);
-          const combinedOrgaos = Array.from(new Set([...orgaos, ...codeFilters]));
-          if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
-        }
-        if (situacoes.length > 0) query = query.in('situacao_funcional', situacoes);
-        if (regimes.length > 0) query = query.in('regime_juridico', regimes);
-        if (ufs.length > 0) query = query.in('uf', ufs);
-
-        // 2. Filtro de IDADE
-        if (idadeMin) {
-          const ageMin = parseInt(idadeMin);
-          if (!isNaN(ageMin)) {
-            const d = new Date();
-            d.setFullYear(d.getFullYear() - ageMin);
-            const dateStr = d.toISOString().split('T')[0];
-            query = query.lte('data_nascimento', dateStr);
-          }
-        }
-        if (idadeMax) {
-          const ageMax = parseInt(idadeMax);
-          if (!isNaN(ageMax)) {
-            const d = new Date();
-            d.setFullYear(d.getFullYear() - ageMax - 1);
-            d.setDate(d.getDate() + 1);
-            const dateStr = d.toISOString().split('T')[0];
-            query = query.gte('data_nascimento', dateStr);
-          }
-        }
-
-        const sMin = parseSafeNumber(saldoMin);
-        if (sMin !== null) {
-          query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
-        }
-        
-        const cMMin = parseSafeNumber(cardMargemMin);
-        if (cMMin !== null) {
-          query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
-        }
-        const cBMin = parseSafeNumber(cardBeneficioMin);
-        if (cBMin !== null) {
-          query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
-        }
-
-        // 4. ITENS DE CRÉDITO (UNIFICADO PARA CARTÕES)
-        if (loanBanks.length > 0) query = query.in('banco', loanBanks);
-        
-        // Lógica de Interseção para Filtros de Cartão (Tipo e Banco)
-        const hasCardTypeFilter = cardTypes.length > 0 && !cardTypes.includes('__ACTIVE__') || (cardTypes.length > 1);
-        const hasCardBankFilter = cardBanks.length > 0;
-
-        if (hasCardTypeFilter || hasCardBankFilter) {
-          // Remove o marcador técnico da lista se estiver presente para não sujar a lógica
-          const cleanCardTypes = cardTypes.filter(t => t !== '__ACTIVE__');
-          
-          const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
-            .filter(([, info]) => {
-              const matchesType = cleanCardTypes.length === 0 || cleanCardTypes.includes(info.label);
-              const matchesBank = !hasCardBankFilter || (info.bank && cardBanks.includes(info.bank));
-              return matchesType && matchesBank;
-            })
-            .map(([code]) => code);
-          
-          if (cardQueryCodes.length > 0) {
-            // Filtro de alta performance usando coluna de prefixo indexada
-            query = query.in('tipo_prefix', cardQueryCodes);
-          } else if (hasCardTypeFilter && hasCardBankFilter) {
-            // Se selecionou filtros sem interseção (ex: Banco X que não tem tipo Y), forçamos resultado vazio
-            query = query.eq('tipo', '999999999_FORCE_EMPTY');
-          }
-        }
-
-        const pMin = parseInt(loanPrazoMin);
-        const pMax = parseInt(loanPrazoMax);
-        if (!isNaN(pMin)) query = query.gte('prazo', pMin);
-        if (!isNaN(pMax)) query = query.lte('prazo', pMax);
-
-        // Keyset Pagination for super fast lookups
-        if (lastCpf) {
-          query = query.gt('cpf', lastCpf);
-        }
-
-        query = query.order('cpf', { ascending: true }).limit(stepSize);
-
-        const { data: cpfBatch, error } = await withRetry(() => query);
-
-        if (error) {
-          // Se for timeout (57014) ou erro sem código/vazio, tratamos como silêncio/fim
-          const isSilent = error.code === '57014' || !error.code || !error.message;
-          
-          if (isSilent) {
-            console.warn("Timeout ou Resposta Vazia no Supabase: Interrompendo contagem de unicidade.");
-            hasMore = false;
-            break;
-          }
-
-          console.error("Erro retornado pelo Supabase (detalhado):", {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-            full: error
-          });
-          throw error;
-        }
-
-        if (!cpfBatch || cpfBatch.length === 0) {
-          hasMore = false;
-        } else {
-          // Atualiza o cursor do keyset para o próximo lote
-          lastCpf = cpfBatch[cpfBatch.length - 1].cpf;
-
-          for (const row of cpfBatch) {
-            if (row.cpf) {
-              const cleanCpf = row.cpf.trim();
-              if (cleanCpf) {
-                uniqueCpfs.add(cleanCpf);
-              }
-            }
-          }
-
-          if (cpfBatch.length < stepSize) {
-            hasMore = false;
-          }
-
-          // Main Thread Breathing para manter UI responsiva e evitar travamentos
-          await new Promise(resolve => setTimeout(resolve, 50));
+        if (mMaxNum !== null) {
+          query = query.lte("margem_35", mMaxNum);
         }
       }
 
-      setEstimatedAudience(uniqueCpfs.size);
+      // 1. Filtros de Matrícula
+      if (orgaos.length > 0) {
+        const codeFilters = Object.entries(ORGAOS_MAPPING)
+          .filter(([, name]) => orgaos.includes(name))
+          .map(([code]) => code);
+        const combinedOrgaos = Array.from(new Set([...orgaos, ...codeFilters]));
+        if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
+      }
+      if (situacoes.length > 0) query = query.in('situacao_funcional', situacoes);
+      if (regimes.length > 0) query = query.in('regime_juridico', regimes);
+      if (ufs.length > 0) query = query.in('uf', ufs);
+
+      // 2. Filtro de IDADE
+      if (idadeMin) {
+        const ageMin = parseInt(idadeMin);
+        if (!isNaN(ageMin)) {
+          const d = new Date();
+          d.setFullYear(d.getFullYear() - ageMin);
+          const dateStr = d.toISOString().split('T')[0];
+          query = query.lte('data_nascimento', dateStr);
+        }
+      }
+      if (idadeMax) {
+        const ageMax = parseInt(idadeMax);
+        if (!isNaN(ageMax)) {
+          const d = new Date();
+          d.setFullYear(d.getFullYear() - ageMax - 1);
+          d.setDate(d.getDate() + 1);
+          const dateStr = d.toISOString().split('T')[0];
+          query = query.gte('data_nascimento', dateStr);
+        }
+      }
+
+      const sMin = parseSafeNumber(saldoMin);
+      if (sMin !== null) {
+        query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
+      }
+      
+      const cMMin = parseSafeNumber(cardMargemMin);
+      if (cMMin !== null) {
+        query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+      }
+      const cBMin = parseSafeNumber(cardBeneficioMin);
+      if (cBMin !== null) {
+        query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+      }
+
+      // 4. ITENS DE CRÉDITO (UNIFICADO PARA CARTÕES)
+      if (loanBanks.length > 0) query = query.in('banco', loanBanks);
+      
+      // Lógica de Interseção para Filtros de Cartão (Tipo e Banco)
+      const hasCardTypeFilter = cardTypes.length > 0 && !cardTypes.includes('__ACTIVE__') || (cardTypes.length > 1);
+      const hasCardBankFilter = cardBanks.length > 0;
+
+      if (hasCardTypeFilter || hasCardBankFilter) {
+        // Remove o marcador técnico da lista se estiver presente para não sujar a lógica
+        const cleanCardTypes = cardTypes.filter(t => t !== '__ACTIVE__');
+        
+        const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+          .filter(([, info]) => {
+            const matchesType = cleanCardTypes.length === 0 || cleanCardTypes.includes(info.label);
+            const matchesBank = !hasCardBankFilter || (info.bank && cardBanks.includes(info.bank));
+            return matchesType && matchesBank;
+          })
+          .map(([code]) => code);
+        
+        if (cardQueryCodes.length > 0) {
+          // Filtro de alta performance usando coluna de prefixo indexada
+          query = query.in('tipo_prefix', cardQueryCodes);
+        } else if (hasCardTypeFilter && hasCardBankFilter) {
+          // Se selecionou filtros sem interseção (ex: Banco X que não tem tipo Y), forçamos resultado vazio
+          query = query.eq('tipo', '999999999_FORCE_EMPTY');
+        }
+      }
+
+      const pMin = parseInt(loanPrazoMin);
+      const pMax = parseInt(loanPrazoMax);
+      if (!isNaN(pMin)) query = query.gte('prazo', pMin);
+      if (!isNaN(pMax)) query = query.lte('prazo', pMax);
+
+      const { count, error } = await query;
+
+      if (error) {
+        // Se for timeout (57014) ou erro sem código/vazio, tratamos como silêncio
+        const isSilent = error.code === '57014' || !error.code || !error.message;
+        
+        if (isSilent) {
+          console.warn("Timeout ou Resposta Vazia no Supabase: Tratando como zero resultados.");
+          setEstimatedAudience(0);
+          return;
+        }
+
+        console.error("Erro retornado pelo Supabase (detalhado):", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          full: error
+        });
+        throw error;
+      }
+      setEstimatedAudience(count || 0);
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
       // Se for timeout ou resposta vazia, não mostramos o Alerta

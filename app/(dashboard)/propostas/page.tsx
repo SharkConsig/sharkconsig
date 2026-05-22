@@ -238,7 +238,7 @@ export default function ProposalsPage() {
             console.warn("Tentativa de emergência: Salvando apenas o STATUS...")
             const { error: emergencyError } = await supabase
               .from('propostas')
-              .update({ status: newStatus, updated_at: isoDate })
+              .update({ status: newStatus })
               .eq('id_lead', idLead)
             
             if (!emergencyError) {

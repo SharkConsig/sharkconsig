@@ -40,9 +40,9 @@ import Link from "next/link"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { cn } from "@/lib/utils"
-// import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
+import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { supabase } from "@/lib/supabase"
-// import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
+import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
 import { useAuth } from "@/context/auth-context"
 
@@ -216,6 +216,23 @@ export default function CampaignsPage() {
     throw new Error("Máximo de tentativas excedido");
   };
 
+  const parseSafeNumber = (val: string) => {
+    if (!val) return null;
+    let clean = val.replace(/[R$\s]/g, "");
+    
+    // Se houver vírgula e ponto, assumimos padrão BR (ponto milhar, vírgula decimal): 1.000,00 -> 1000.00
+    if (clean.includes(",") && clean.includes(".")) {
+      clean = clean.replace(/\./g, "").replace(",", ".");
+    } 
+    // Se houver apenas vírgula: 1000,00 -> 1000.00
+    else if (clean.includes(",")) {
+      clean = clean.replace(",", ".");
+    }
+    
+    const num = parseFloat(clean);
+    return isNaN(num) ? null : num;
+  };
+
   const PART_SIZE = 50000;
 
   const handleExport = async (campaign: Campaign, partIndex: number = 0) => {
@@ -226,6 +243,7 @@ export default function CampaignsPage() {
     abortControllerRef.current = new AbortController()
     
     try {
+      const filters = campaign.filtros
       const allCsvRows: string[] = []
       const uniqueRowsKeys = new Set()
       
@@ -273,7 +291,7 @@ export default function CampaignsPage() {
           break;
         }
 
-        const cpfs = memberBatch.map((m: { cliente_cpf: string }) => m.cliente_cpf).filter(Boolean);
+        const cpfs = memberBatch.map((m: any) => m.cliente_cpf).filter(Boolean);
         if (cpfs.length === 0) {
           break;
         }
@@ -313,45 +331,18 @@ export default function CampaignsPage() {
         );
         if (bcrError) throw bcrError;
 
-        interface BcrRow { 
-          cpf: string; 
-          nome: string; 
-          data_nascimento?: string; 
-          telefone_1?: string; 
-          telefone_2?: string; 
-          telefone_3?: string; 
-          numero_matricula?: string; 
-          orgao?: string; 
-          situacao_funcional?: string; 
-          salario?: number; 
-          instituidor_nome?: string; 
-          regime_juridico?: string; 
-          uf?: string; 
-          saldo_70?: number; 
-          margem_35?: number; 
-          bruta_5?: number; 
-          utilizada_5?: number; 
-          liquida_5?: number; 
-          beneficio_bruta_5?: number; 
-          beneficio_utilizada_5?: number; 
-          beneficio_liquida_5?: number; 
-          banco?: string; 
-          prazo?: string | number; 
-          tipo?: string;
-        }
-
         // O(N) Maps lookup para preservar a ordem exata de ordem_fila sem loops lineares complexos
-        const bcrMap = new Map((bcrData || []).map((row: { cpf: string }) => [row.cpf, row]));
+        const bcrMap = new Map((bcrData || []).map((row: any) => [row.cpf, row]));
 
-        const sortedBatchData: BcrRow[] = [];
+        const sortedBatchData: any[] = [];
         cpfs.forEach((cpf: string) => {
-          const matchedRow = bcrMap.get(cpf) as BcrRow | undefined;
+          const matchedRow = bcrMap.get(cpf);
           if (matchedRow) {
             sortedBatchData.push(matchedRow);
           }
         });
 
-        sortedBatchData.forEach((row: BcrRow) => {
+        sortedBatchData.forEach((row: { cpf: string; nome: string; data_nascimento?: string; telefone_1?: string; telefone_2?: string; telefone_3?: string; numero_matricula?: string; orgao?: string; situacao_funcional?: string; salario?: number; instituidor_nome?: string; regime_juridico?: string; uf?: string; saldo_70?: number; margem_35?: number; bruta_5?: number; utilizada_5?: number; liquida_5?: number; beneficio_bruta_5?: number; beneficio_utilizada_5?: number; beneficio_liquida_5?: number; banco?: string; prazo?: string | number; tipo?: string }) => {
           const key = row.cpf;
           if (uniqueRowsKeys.has(key)) return
           uniqueRowsKeys.add(key)
