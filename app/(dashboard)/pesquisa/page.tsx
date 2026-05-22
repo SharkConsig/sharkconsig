@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
 import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { translateOrgao } from "@/lib/orgaos-mapping"
@@ -105,6 +105,12 @@ interface ClientData {
   [key: string]: unknown;
 }
 
+interface ConvenioProfile {
+  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr';
+  client: ClientData;
+  registrations: Registration[];
+}
+
 export default function SearchClientPage() {
   const router = useRouter()
   const { } = useAuth()
@@ -116,8 +122,304 @@ export default function SearchClientPage() {
   const [client, setClient] = useState<ClientData | null>(null)
   const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
+  const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
+  const [activeGlobalRegIndex, setActiveGlobalRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
+
+  const unifiedMatriculas = useMemo(() => {
+    interface UnifiedMatriculaItem {
+      profileType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr';
+      label: string;
+      client: ClientData;
+      localRegIndex: number;
+      id: string;
+    }
+    const result: UnifiedMatriculaItem[] = []
+
+    profiles.forEach((profile) => {
+      if (profile.type === 'siape') {
+        let localIdx = 0;
+        profile.registrations.forEach((reg) => {
+          if (!reg.instituidores || reg.instituidores.length === 0) {
+            result.push({
+              profileType: 'siape',
+              label: `SIAPE - Matrícula ${reg.numero_matricula || reg.matricula || '---'}`,
+              client: profile.client,
+              localRegIndex: localIdx++,
+              id: `siape-${reg.id}-noinst-${localIdx}`
+            });
+          } else {
+            reg.instituidores.forEach((_, instIdx) => {
+              result.push({
+                profileType: 'siape',
+                label: `SIAPE - Matrícula ${reg.numero_matricula || reg.matricula || '---'}`,
+                client: profile.client,
+                localRegIndex: localIdx++,
+                id: `siape-${reg.id}-inst-${instIdx}-${localIdx}`
+              });
+            });
+          }
+        });
+      } else {
+        profile.registrations.forEach((reg, regIdx) => {
+          let label = '---';
+          let prefix = '';
+          if (profile.type === 'governo_sp') {
+            prefix = 'GOV SP';
+            label = String(reg.numero_matricula || reg.identificacao || '---');
+          } else if (profile.type === 'prefeitura_sp') {
+            prefix = 'PREF SP';
+            label = String(reg.numero_matricula || reg.identificacao || '---');
+          } else if (profile.type === 'governo_pi') {
+            prefix = 'GOV PIAUÍ';
+            label = String(reg.numero_matricula || reg.matricula || '---');
+          } else if (profile.type === 'governo_ma') {
+            prefix = 'GOV MA';
+            label = String(reg.numero_matricula || reg.matricula || '---');
+          } else if (profile.type === 'governo_rr') {
+            prefix = 'GOV RR';
+            label = String(reg.numero_matricula || reg.matricula || '---');
+          }
+
+          result.push({
+            profileType: profile.type,
+            label: `${prefix} - ID/Matrícula ${label}`,
+            client: profile.client,
+            localRegIndex: regIdx,
+            id: `${profile.type}-${reg.id || regIdx}`
+          });
+        });
+      }
+    });
+
+    return result;
+  }, [profiles]);
+
+  const handleGlobalTabClick = (globalIndex: number) => {
+    setActiveGlobalRegIndex(globalIndex);
+    const item = unifiedMatriculas[globalIndex];
+    if (item) {
+      setClient(item.client);
+      setClientType(item.profileType);
+      
+      const targetProfile = profiles.find(p => p.type === item.profileType);
+      if (targetProfile) {
+        setRegistrations(targetProfile.registrations);
+      }
+      
+      setActiveRegIndex(item.localRegIndex);
+    }
+  };
+
+  const fetchRegistrationsForType = async (
+    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr',
+    clientData: ClientData
+  ): Promise<Registration[]> => {
+    if (type === 'siape') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('matriculas').select('*, instituidores(*, itens_credito(*))').eq('cliente_cpf', clientData.cpf)
+      )
+      if (regError) throw regError
+      return (regData || []) as Registration[]
+    } else if (type === 'governo_sp') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('governo_sp_identificacoes').select('*, governo_sp_lotacoes(*)').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => ({
+        ...r,
+        id: r.id as string,
+        numero_matricula: (r.rs_pv_ex as string) || '---',
+        identificacao: (r.rs_pv_ex as string) || '---',
+        situacao_funcional: r.situacao_funcional as string | null,
+        salario: 0,
+        orgao: r.secretaria as string | null,
+        regime_juridico: r.regime_juridico as string | null,
+        uf: 'SP',
+        governo_sp_lotacoes: (r.governo_sp_lotacoes || []) as unknown[],
+        instituidores: ((r.governo_sp_lotacoes || []) as Record<string, unknown>[]).map((l) => ({
+          id: l.id as string,
+          nome: null,
+          itens_credito: []
+        }))
+      })) as unknown as Registration[]
+    } else if (type === 'prefeitura_sp') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('prefeitura_sp_identificacoes').select('*, prefeitura_sp_lotacoes(*)').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => ({
+        ...r,
+        id: r.id as string,
+        numero_matricula: (r.rf as string) || '---',
+        identificacao: (r.rf as string) || '---',
+        situacao_funcional: r.situacao_funcional as string | null,
+        salario: 0,
+        orgao: r.secretaria as string | null,
+        regime_juridico: r.regime_juridico as string | null,
+        uf: 'SP',
+        prefeitura_sp_lotacoes: (r.prefeitura_sp_lotacoes || []) as unknown[],
+        instituidores: ((r.prefeitura_sp_lotacoes || []) as Record<string, unknown>[]).map((l) => ({
+          id: l.id as string,
+          nome: null,
+          itens_credito: []
+        }))
+      })) as unknown as Registration[]
+    } else if (type === 'governo_pi') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('governo_pi_identificacoes').select('*, governo_pi_lotacoes(*)').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => ({
+        ...r,
+        id: r.id as string,
+        numero_matricula: (r.matricula as string) || '---',
+        matricula: (r.matricula as string) || '---',
+        situacao_funcional: r.situacao_funcional as string | null,
+        salario: 0,
+        orgao: r.secretaria as string | null,
+        regime_juridico: r.regime_juridico as string | null,
+        uf: 'PI',
+        governo_pi_lotacoes: (r.governo_pi_lotacoes || []) as unknown[],
+        instituidores: ((r.governo_pi_lotacoes || []) as Record<string, unknown>[]).map((l) => ({
+          id: l.id as string,
+          nome: null,
+          itens_credito: []
+        }))
+      })) as unknown as Registration[]
+    } else if (type === 'governo_ma') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('governo_ma_identificacoes').select('*, governo_ma_lotacoes(*)').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => ({
+        ...r,
+        id: r.id as string,
+        numero_matricula: (r.matricula as string) || '---',
+        matricula: (r.matricula as string) || '---',
+        situacao_funcional: r.situacao_funcional as string | null,
+        salario: 0,
+        orgao: r.secretaria as string | null,
+        regime_juridico: r.regime_juridico as string | null,
+        uf: 'MA',
+        governo_ma_lotacoes: (r.governo_ma_lotacoes || []) as unknown[],
+        instituidores: ((r.governo_ma_lotacoes || []) as Record<string, unknown>[]).map((l) => ({
+          id: l.id as string,
+          nome: null,
+          itens_credito: []
+        }))
+      })) as unknown as Registration[]
+    } else if (type === 'governo_rr') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('governo_rr_matriculas').select('*, governo_rr_instituidores(*)').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => ({
+        ...r,
+        id: r.id as string,
+        numero_matricula: (r.matricula as string) || '---',
+        matricula: (r.matricula as string) || '---',
+        situacao_funcional: r.situacao_funcional as string | null,
+        salario: 0,
+        orgao: r.secretaria as string | null,
+        regime_juridico: r.regime_juridico as string | null,
+        uf: 'RR',
+        governo_rr_instituidores: (r.governo_rr_instituidores || []) as unknown[],
+        instituidores: ((r.governo_rr_instituidores || []) as Record<string, unknown>[]).map((l) => ({
+          id: l.id as string,
+          nome: null,
+          itens_credito: []
+        }))
+      })) as unknown as Registration[]
+    }
+    return []
+  }
+
+  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null) => {
+    const tableMap = {
+      siape: 'clientes',
+      governo_sp: 'governo_sp_clientes',
+      prefeitura_sp: 'prefeitura_sp_clientes',
+      governo_pi: 'governo_pi_clientes',
+      governo_ma: 'governo_ma_clientes',
+      governo_rr: 'governo_rr_clientes'
+    }
+
+    const foundProfiles: ConvenioProfile[] = []
+
+    const queryPromises = Object.entries(tableMap).map(async ([type, table]) => {
+      try {
+        const { data, error } = await withRetry(async () => 
+          await supabase.from(table).select('*').eq('cpf', cpf).maybeSingle()
+        )
+        if (!error && data) {
+          const clientObj: ClientData = {
+            id: (data.id as string) || (data.cpf as string),
+            nome: data.nome as string | null,
+            cpf: data.cpf as string,
+            data_nascimento: data.data_nascimento as string | null,
+            telefone_1: data.telefone_1 as string | null,
+            telefone_2: (data.telefone_2 || data.telefone_recado) as string | null,
+            telefone_3: data.telefone_3 as string | null,
+          }
+          const regs = await fetchRegistrationsForType(type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr', clientObj)
+          return {
+            type: type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr',
+            client: clientObj,
+            registrations: regs
+          }
+        }
+      } catch (err) {
+        console.error(`Erro ao carregar perfil ${type} para o CPF ${cpf}:`, err)
+      }
+      return null
+    })
+
+    const results = await Promise.all(queryPromises)
+    results.forEach(p => {
+      if (p) foundProfiles.push(p)
+    })
+
+    if (foundProfiles.length === 0) {
+      throw new Error("Cliente não encontrado.")
+    }
+
+    setProfiles(foundProfiles)
+
+    const initialProfile = foundProfiles.find(p => p.type === preferredType) || foundProfiles[0]
+    
+    const tempUnified: Array<{ profileType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr'; localIdx: number }> = []
+    foundProfiles.forEach((profile) => {
+      if (profile.type === 'siape') {
+        let localIdx = 0;
+        profile.registrations.forEach((reg) => {
+          if (!reg.instituidores || reg.instituidores.length === 0) {
+            tempUnified.push({ profileType: 'siape', localIdx: localIdx++ });
+          } else {
+            reg.instituidores.forEach(() => {
+              tempUnified.push({ profileType: 'siape', localIdx: localIdx++ });
+            });
+          }
+        });
+      } else {
+        profile.registrations.forEach((_, regIdx) => {
+          tempUnified.push({ profileType: profile.type, localIdx: regIdx });
+        });
+      }
+    });
+
+    const matchedGlobalIdx = tempUnified.findIndex(item => item.profileType === initialProfile.type);
+    const finalGlobalIdx = matchedGlobalIdx !== -1 ? matchedGlobalIdx : 0;
+    const initialItem = tempUnified[finalGlobalIdx];
+
+    setClient(initialProfile.client)
+    setClientType(initialProfile.type)
+    setRegistrations(initialProfile.registrations)
+    setActiveRegIndex(initialItem ? initialItem.localIdx : 0)
+    setActiveGlobalRegIndex(finalGlobalIdx)
+    setShowProfile(true)
+  }
 
   const triggerAutoSearch = async (targetCpf: string) => {
     if (!targetCpf) return
@@ -128,7 +430,9 @@ export default function SearchClientPage() {
     setClient(null)
     setClientType(null)
     setRegistrations([])
+    setProfiles([])
     setActiveRegIndex(0)
+    setActiveGlobalRegIndex(0)
 
     try {
       const digits = targetCpf.replace(/\D/g, "")
@@ -146,19 +450,19 @@ export default function SearchClientPage() {
         `telefone_1.eq.${digits}`,
         `telefone_2.eq.${digits}`,
         `telefone_3.eq.${digits}`
-      ];
+      ]
 
       if (digits.length >= 8) {
         if (digits !== phoneDigits) {
-          searchTerms.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
+          searchTerms.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`)
         }
         if (digits.length === 11) {
-          const withoutNinth = digits.slice(0, 2) + digits.slice(3);
-          searchTerms.push(`telefone_1.eq.${withoutNinth}`, `telefone_2.eq.${withoutNinth}`, `telefone_3.eq.${withoutNinth}`);
+          const withoutNinth = digits.slice(0, 2) + digits.slice(3)
+          searchTerms.push(`telefone_1.eq.${withoutNinth}`, `telefone_2.eq.${withoutNinth}`, `telefone_3.eq.${withoutNinth}`)
         }
         if (digits.length === 11) {
-          const withZero = `0${digits}`;
-          searchTerms.push(`telefone_1.eq.${withZero}`, `telefone_2.eq.${withZero}`, `telefone_3.eq.${withZero}`);
+          const withZero = `0${digits}`
+          searchTerms.push(`telefone_1.eq.${withZero}`, `telefone_2.eq.${withZero}`, `telefone_3.eq.${withZero}`)
         }
       }
 
@@ -173,173 +477,21 @@ export default function SearchClientPage() {
 
       if (quickError) throw quickError
 
-      let currentClientType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null = null
-      let clientData: any = null
+      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null = null
+      let resolvedCpf = cleanCPF
 
       if (quickData) {
+        resolvedCpf = quickData.cpf || cleanCPF
         const source = quickData.origem
-        if (source === 'siape') currentClientType = 'siape'
-        else if (source === 'governo_sp') currentClientType = 'governo_sp'
-        else if (source === 'prefeitura_sp') currentClientType = 'prefeitura_sp'
-        else if (source === 'governo_pi') currentClientType = 'governo_pi'
-        else if (source === 'governo_ma') currentClientType = 'governo_ma'
-        else if (source === 'governo_rr') currentClientType = 'governo_rr'
+        if (source === 'siape') preferredType = 'siape'
+        else if (source === 'governo_sp') preferredType = 'governo_sp'
+        else if (source === 'prefeitura_sp') preferredType = 'prefeitura_sp'
+        else if (source === 'governo_pi') preferredType = 'governo_pi'
+        else if (source === 'governo_ma') preferredType = 'governo_ma'
+        else if (source === 'governo_rr') preferredType = 'governo_rr'
       }
 
-      const tableMap: Record<string, string> = {
-        siape: 'clientes',
-        governo_sp: 'governo_sp_clientes',
-        prefeitura_sp: 'prefeitura_sp_clientes',
-        governo_pi: 'governo_pi_clientes',
-        governo_ma: 'governo_ma_clientes',
-        governo_rr: 'governo_rr_clientes'
-      }
-
-      if (currentClientType && tableMap[currentClientType]) {
-        const { data, error } = await withRetry(async () => 
-          await supabase.from(tableMap[currentClientType!]).select('*').eq('cpf', cleanCPF).maybeSingle()
-        )
-        if (error) throw error
-        clientData = data
-      }
-
-      if (!clientData) {
-        for (const [type, table] of Object.entries(tableMap)) {
-          const { data, error } = await withRetry(async () => 
-            await supabase.from(table).select('*').eq('cpf', cleanCPF).maybeSingle()
-          )
-          if (!error && data) {
-            clientData = data
-            currentClientType = type as any
-            break
-          }
-        }
-      }
-
-      if (clientData) {
-        setClientType(currentClientType)
-        setClient({
-          id: clientData.id || clientData.cpf,
-          nome: clientData.nome,
-          cpf: clientData.cpf,
-          data_nascimento: clientData.data_nascimento,
-          telefone_1: clientData.telefone_1,
-          telefone_2: clientData.telefone_2 || clientData.telefone_recado,
-          telefone_3: clientData.telefone_3,
-        })
-
-        if (currentClientType === 'siape') {
-          const { data: regData, error: regError } = await withRetry(async () => 
-            await supabase.from('matriculas').select('*, instituidores(*, itens_credito(*))').eq('cliente_cpf', clientData.cpf)
-          )
-          if (regError) throw regError
-          setRegistrations(regData || [])
-        } else if (currentClientType === 'governo_sp') {
-          const { data: regData, error: regError } = await withRetry(async () => 
-            await supabase.from('governo_sp_identificacoes').select('*, governo_sp_lotacoes(*)').eq('cliente_id', clientData.id)
-          )
-          if (regError) throw regError
-          const mapped = (regData || []).map(r => ({
-            id: r.id,
-            numero_matricula: r.rs_pv_ex || '---',
-            situacao_funcional: r.situacao_funcional,
-            salario: 0,
-            orgao: r.secretaria,
-            regime_juridico: r.regime_juridico,
-            uf: 'SP',
-            instituidores: (r.governo_sp_lotacoes || []).map((l: any) => ({
-              id: l.id,
-              nome: null,
-              itens_credito: []
-            }))
-          }))
-          setRegistrations(mapped as any)
-        } else if (currentClientType === 'prefeitura_sp') {
-          const { data: regData, error: regError } = await withRetry(async () => 
-            await supabase.from('prefeitura_sp_identificacoes').select('*, prefeitura_sp_lotacoes(*)').eq('cliente_id', clientData.id)
-          )
-          if (regError) throw regError
-          const mapped = (regData || []).map(r => ({
-            id: r.id,
-            numero_matricula: r.rf || '---',
-            situacao_funcional: r.situacao_funcional,
-            salario: 0,
-            orgao: r.secretaria,
-            regime_juridico: r.regime_juridico,
-            uf: 'SP',
-            instituidores: (r.prefeitura_sp_lotacoes || []).map((l: any) => ({
-              id: l.id,
-              nome: null,
-              itens_credito: []
-            }))
-          }))
-          setRegistrations(mapped as any)
-        } else if (currentClientType === 'governo_pi') {
-          const { data: regData, error: regError } = await withRetry(async () => 
-            await supabase.from('governo_pi_identificacoes').select('*, governo_pi_lotacoes(*)').eq('cliente_id', clientData.id)
-          )
-          if (regError) throw regError
-          const mapped = (regData || []).map(r => ({
-            id: r.id,
-            numero_matricula: r.matricula || '---',
-            situacao_funcional: r.situacao_funcional,
-            salario: 0,
-            orgao: r.secretaria,
-            regime_juridico: r.regime_juridico,
-            uf: 'PI',
-            instituidores: (r.governo_pi_lotacoes || []).map((l: any) => ({
-              id: l.id,
-              nome: null,
-              itens_credito: []
-            }))
-          }))
-          setRegistrations(mapped as any)
-        } else if (currentClientType === 'governo_ma') {
-          const { data: regData, error: regError } = await withRetry(async () => 
-            await supabase.from('governo_ma_identificacoes').select('*, governo_ma_lotacoes(*)').eq('cliente_id', clientData.id)
-          )
-          if (regError) throw regError
-          const mapped = (regData || []).map(r => ({
-            id: r.id,
-            numero_matricula: r.matricula || '---',
-            situacao_funcional: r.situacao_funcional,
-            salario: 0,
-            orgao: r.secretaria,
-            regime_juridico: r.regime_juridico,
-            uf: 'MA',
-            instituidores: (r.governo_ma_lotacoes || []).map((l: any) => ({
-              id: l.id,
-              nome: null,
-              itens_credito: []
-            }))
-          }))
-          setRegistrations(mapped as any)
-        } else if (currentClientType === 'governo_rr') {
-          const { data: regData, error: regError } = await withRetry(async () => 
-            await supabase.from('governo_rr_matriculas').select('*, governo_rr_instituidores(*)').eq('cliente_id', clientData.id)
-          )
-          if (regError) throw regError
-          const mapped = (regData || []).map(r => ({
-            id: r.id,
-            numero_matricula: r.matricula || '---',
-            situacao_funcional: r.situacao_funcional,
-            salario: 0,
-            orgao: r.secretaria,
-            regime_juridico: r.regime_juridico,
-            uf: 'RR',
-            instituidores: (r.governo_rr_instituidores || []).map((l: any) => ({
-              id: l.id,
-              nome: null,
-              itens_credito: []
-            }))
-          }))
-          setRegistrations(mapped as any)
-        }
-        
-        setShowProfile(true)
-      } else {
-        setError("Nenhum cliente cadastrado encontrado com esses dados.")
-      }
+      await loadProfilesForCpf(resolvedCpf, preferredType)
     } catch (err) {
       console.error("Erro na busca automática:", err)
       setError("Ocorreu um erro ao buscar o cliente. Tente novamente.")
@@ -357,6 +509,7 @@ export default function SearchClientPage() {
         triggerAutoSearch(cpfParam)
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleSearch = async () => {
@@ -369,7 +522,9 @@ export default function SearchClientPage() {
     setClient(null)
     setClientType(null)
     setRegistrations([])
+    setProfiles([])
     setActiveRegIndex(0)
+    setActiveGlobalRegIndex(0)
 
     try {
       const digits = searchQuery.replace(/\D/g, "")
@@ -383,31 +538,24 @@ export default function SearchClientPage() {
       const phoneDigits = digits.length >= 8 ? (digits.length > 11 ? digits.slice(-11) : digits) : digits;
 
       // ESTRATÉGIA DE BUSCA OTIMIZADA (Split Tables)
-      // Buscamos na tabela global de consulta rápida primeiro para identificar o convênio
       const searchTerms = [
         `cpf.eq.${cleanCPF}`,
         `telefone_1.eq.${digits}`,
         `telefone_2.eq.${digits}`,
         `telefone_3.eq.${digits}`
-      ];
+      ]
 
-      // Adicionamos variantes comuns de telefone
       if (digits.length >= 8) {
-        // Variante sem prefixos (últimos 9 ou 11 dígitos)
         if (digits !== phoneDigits) {
-          searchTerms.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
+          searchTerms.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`)
         }
-        
-        // Se tem 11 dígitos (com DDD), tenta sem o nono dígito (caso raro mas possível em cadastros antigos)
         if (digits.length === 11) {
-          const withoutNinth = digits.slice(0, 2) + digits.slice(3);
-          searchTerms.push(`telefone_1.eq.${withoutNinth}`, `telefone_2.eq.${withoutNinth}`, `telefone_3.eq.${withoutNinth}`);
+          const withoutNinth = digits.slice(0, 2) + digits.slice(3)
+          searchTerms.push(`telefone_1.eq.${withoutNinth}`, `telefone_2.eq.${withoutNinth}`, `telefone_3.eq.${withoutNinth}`)
         }
-        
-        // Se tem 11 dígitos, tenta com '0' na frente (comum em SP/RJ em alguns sistemas)
         if (digits.length === 11) {
-          const withZero = `0${digits}`;
-          searchTerms.push(`telefone_1.eq.${withZero}`, `telefone_2.eq.${withZero}`, `telefone_3.eq.${withZero}`);
+          const withZero = `0${digits}`
+          searchTerms.push(`telefone_1.eq.${withZero}`, `telefone_2.eq.${withZero}`, `telefone_3.eq.${withZero}`)
         }
       }
 
@@ -418,178 +566,54 @@ export default function SearchClientPage() {
           .or(searchTerms.join(','))
           .limit(1)
           .maybeSingle()
-      );
+      )
 
-      if (quickError) console.warn("Erro na consulta rápida:", quickError);
+      if (quickError) console.warn("Erro na consulta rápida:", quickError)
 
-      // Se encontramos na consulta rápida, já sabemos qual tabela de produção atacar
-      const targetConvenio = quickData?.convenio;
-      const finalCpf = quickData?.cpf || cleanCPF;
+      const targetConvenio = quickData?.convenio as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | undefined
+      const finalCpf = quickData?.cpf || cleanCPF
       
-      // FALLBACK: Se não encontrou CPF na consulta rápida e a pesquisa parece ser por telefone,
-      // podemos ter que fazer uma busca mais lenta nas tabelas de produção se a base rápida estiver desatualizada.
-      const isActuallyAPhone = digits.length >= 8 && digits.length <= 13;
+      const isActuallyAPhone = digits.length >= 8 && digits.length <= 13
 
-      // 1. SIAPE (clientes)
-      if (!targetConvenio || targetConvenio === 'siape') {
-        const query = supabase.from('clientes').select('*');
-        if (quickData?.cpf) {
-          query.eq('cpf', quickData.cpf);
-        } else if (isActuallyAPhone) {
-          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
-          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
-          query.or(prodSearch.join(','));
+      if (quickData?.cpf) {
+        await loadProfilesForCpf(quickData.cpf, targetConvenio || null)
+        return
+      }
+
+      // FALLBACK: busca sequencial nas tabelas de produção pelo telefone ou CPF diretamente
+      const tableMap = {
+        siape: 'clientes',
+        governo_sp: 'governo_sp_clientes',
+        prefeitura_sp: 'prefeitura_sp_clientes',
+        governo_pi: 'governo_pi_clientes',
+        governo_ma: 'governo_ma_clientes',
+        governo_rr: 'governo_rr_clientes'
+      }
+
+      let foundCpf: string | null = null
+      let foundType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null = null
+
+      for (const [type, table] of Object.entries(tableMap)) {
+        const query = supabase.from(table).select('cpf')
+        if (isActuallyAPhone) {
+          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`]
+          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`)
+          query.or(prodSearch.join(','))
         } else {
-          query.eq('cpf', finalCpf);
+          query.eq('cpf', finalCpf)
         }
         
-        const { data: siapeData } = await withRetry<ClientData | null>(async () => await query.maybeSingle());
-
-        if (siapeData) {
-          setClient(siapeData)
-          setClientType('siape')
-          const { data: regData } = await withRetry(async () => 
-            await supabase.from('matriculas').select('*, instituidores(*, itens_credito(*))').eq('cliente_cpf', siapeData.cpf)
-          )
-          setRegistrations(regData || [])
-          setShowProfile(true)
-          return
+        const { data } = await withRetry(async () => await query.limit(1).maybeSingle())
+        if (data?.cpf) {
+          foundCpf = data.cpf as string
+          foundType = type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr'
+          break
         }
       }
 
-      // 2. GOVERNO SP
-      if (!targetConvenio || targetConvenio === 'governo_sp') {
-        const query = supabase.from('governo_sp_clientes').select('*');
-        if (quickData?.cpf) {
-          query.eq('cpf', quickData.cpf);
-        } else if (isActuallyAPhone) {
-          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
-          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
-          query.or(prodSearch.join(','));
-        } else {
-          query.eq('cpf', finalCpf);
-        }
-        
-        const { data: govSpData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
-
-        if (govSpData) {
-          setClient(govSpData)
-          setClientType('governo_sp')
-          const { data: idData } = await withRetry<Record<string, unknown>[] | null>(async () =>
-            await supabase.from('governo_sp_identificacoes').select('*, governo_sp_lotacoes(*)').eq('cliente_id', govSpData.id)
-          )
-          setRegistrations(idData || [])
-          setShowProfile(true)
-          return
-        }
-      }
-
-      // 3. PREFEITURA SP
-      if (!targetConvenio || targetConvenio === 'prefeitura_sp') {
-        const query = supabase.from('prefeitura_sp_clientes').select('*');
-        if (quickData?.cpf) {
-          query.eq('cpf', quickData.cpf);
-        } else if (isActuallyAPhone) {
-          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
-          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
-          query.or(prodSearch.join(','));
-        } else {
-          query.eq('cpf', finalCpf);
-        }
-        
-        const { data: pmspData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
-
-        if (pmspData) {
-          setClient(pmspData)
-          setClientType('prefeitura_sp')
-          const { data: idData } = await withRetry<Record<string, unknown>[] | null>(async () =>
-            await supabase.from('prefeitura_sp_identificacoes').select('*, prefeitura_sp_lotacoes(*)').eq('cliente_id', pmspData.id)
-          )
-          setRegistrations(idData || [])
-          setShowProfile(true)
-          return
-        }
-      }
-
-      // 4. GOVERNO PI
-      if (!targetConvenio || targetConvenio === 'governo_pi') {
-        const query = supabase.from('governo_pi_clientes').select('*');
-        if (quickData?.cpf) {
-          query.eq('cpf', quickData.cpf);
-        } else if (isActuallyAPhone) {
-          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
-          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
-          query.or(prodSearch.join(','));
-        } else {
-          query.eq('cpf', finalCpf);
-        }
-        
-        const { data: govPiData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
-
-        if (govPiData) {
-          setClient(govPiData)
-          setClientType('governo_pi')
-          const { data: idData } = await withRetry<Record<string, unknown>[] | null>(async () =>
-            await supabase.from('governo_pi_identificacoes').select('*, governo_pi_lotacoes(*)').eq('cliente_id', govPiData.id)
-          )
-          setRegistrations(idData || [])
-          setShowProfile(true)
-          return
-        }
-      }
-
-      // 5. GOVERNO MA
-      if (!targetConvenio || targetConvenio === 'governo_ma') {
-        const query = supabase.from('governo_ma_clientes').select('*');
-        if (quickData?.cpf) {
-          query.eq('cpf', quickData.cpf);
-        } else if (isActuallyAPhone) {
-          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
-          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
-          query.or(prodSearch.join(','));
-        } else {
-          query.eq('cpf', finalCpf);
-        }
-        
-        const { data: govMaData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
-
-        if (govMaData) {
-          setClient(govMaData)
-          setClientType('governo_ma')
-          const { data: idData } = await withRetry<Record<string, unknown>[] | null>(async () =>
-            await supabase.from('governo_ma_identificacoes').select('*, governo_ma_lotacoes(*)').eq('cliente_id', govMaData.id)
-          )
-          setRegistrations(idData || [])
-          setShowProfile(true)
-          return
-        }
-      }
-
-      // 6. GOVERNO RORAIMA (Previously GOVBR)
-      if (!targetConvenio || targetConvenio === 'governo_rr') {
-        const query = supabase.from('governo_rr_clientes').select('*');
-        if (quickData?.cpf) {
-          query.eq('cpf', quickData.cpf);
-        } else if (isActuallyAPhone) {
-          const prodSearch = [`cpf.eq.${cleanCPF}`, `telefone_1.eq.${digits}`, `telefone_2.eq.${digits}`, `telefone_3.eq.${digits}`];
-          if (digits !== phoneDigits) prodSearch.push(`telefone_1.eq.${phoneDigits}`, `telefone_2.eq.${phoneDigits}`, `telefone_3.eq.${phoneDigits}`);
-          query.or(prodSearch.join(','));
-        } else {
-          query.eq('cpf', finalCpf);
-        }
-        
-        const { data: govRrData } = await withRetry<ClientData | null>(async () => await query.maybeSingle())
-
-        if (govRrData) {
-          setClient(govRrData)
-          setClientType('governo_rr')
-          const { data: idData } = await withRetry<Record<string, unknown>[] | null>(async () =>
-            await supabase.from('governo_rr_matriculas').select('*, governo_rr_instituidores(*)').eq('cliente_id', govRrData.id)
-          )
-          setRegistrations(idData || [])
-          setShowProfile(true)
-          return
-        }
+      if (foundCpf) {
+        await loadProfilesForCpf(foundCpf, foundType)
+        return
       }
 
       setError("Cliente não encontrado.")
@@ -802,6 +826,35 @@ export default function SearchClientPage() {
               </CardContent>
             </Card>
 
+            {/* Unified Matrículas Tabs Section */}
+            {unifiedMatriculas.length > 0 && (
+              <div className="flex flex-col gap-3.5 bg-[#FAF9F6]/50 border border-slate-200/60 p-4 rounded-xl shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05)] mt-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#171717]/40 px-2">
+                  Matrículas e Vínculos Vinculados a este CPF ({unifiedMatriculas.length})
+                </p>
+                <div className="flex flex-wrap gap-2 px-1">
+                  {unifiedMatriculas.map((m, idx) => {
+                    const isActive = activeGlobalRegIndex === idx;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => handleGlobalTabClick(idx)}
+                        className={cn(
+                          "px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all border cursor-pointer",
+                          isActive 
+                            ? "bg-[#171717] text-white border-[#171717] shadow-sm font-black scale-102" 
+                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                        )}
+                      >
+                        {m.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Matrículas Section */}
             {clientType === 'siape' && registrations.length > 0 && (() => {
               const allRegs = registrations.flatMap(reg => {
@@ -828,29 +881,9 @@ export default function SearchClientPage() {
 
               return (
                 <div className="space-y-0">
-                  {/* Tabs Navigation */}
-                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
-                    {allRegs.map((reg, idx) => (
-                      <button
-                        key={`tab-${reg.id}-${idx}`}
-                        onClick={() => setActiveRegIndex(idx)}
-                        className={cn(
-                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
-                          activeRegIndex === idx 
-                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)]" 
-                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
-                        )}
-                      >
-                        <div className="flex flex-col items-center">
-                          <span>Matrícula {reg.numero_matricula}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-
                   {/* Active Content */}
                   {allRegs[activeRegIndex] && (
-                    <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                    <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
                       <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                         <div className="space-y-8 sm:space-y-10">
                           <div className="flex items-center gap-3">
@@ -1223,24 +1256,6 @@ export default function SearchClientPage() {
             {clientType === 'governo_sp' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
-                  {/* Tabs Navigation */}
-                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
-                    {registrations.map((reg, idx) => (
-                      <button
-                        key={`tab-gov-${reg.id}-${idx}`}
-                        onClick={() => setActiveRegIndex(idx)}
-                        className={cn(
-                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
-                          activeRegIndex === idx 
-                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
-                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
-                        )}
-                      >
-                        ID {reg.identificacao}
-                      </button>
-                    ))}
-                  </div>
-
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
                     const lotacao = reg.governo_sp_lotacoes?.[0] || {};
@@ -1281,7 +1296,7 @@ export default function SearchClientPage() {
                     const beneficio = getCardLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
 
                     return (
-                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                      <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
                         <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
@@ -1482,30 +1497,12 @@ export default function SearchClientPage() {
             {clientType === 'governo_ma' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
-                  {/* Tabs Navigation */}
-                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
-                    {registrations.map((reg, idx) => (
-                      <button
-                        key={`tab-ma-${reg.id}-${idx}`}
-                        onClick={() => setActiveRegIndex(idx)}
-                        className={cn(
-                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
-                          activeRegIndex === idx 
-                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
-                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
-                        )}
-                      >
-                        MATRÍCULA {reg.matricula}
-                      </button>
-                    ))}
-                  </div>
-
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
                     const lotacao = reg.governo_ma_lotacoes?.[0] || {};
                     
                     return (
-                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                      <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
                         <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
@@ -1653,30 +1650,12 @@ export default function SearchClientPage() {
             {clientType === 'governo_pi' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
-                  {/* Tabs Navigation */}
-                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
-                    {registrations.map((reg, idx) => (
-                      <button
-                        key={`tab-pi-${reg.id}-${idx}`}
-                        onClick={() => setActiveRegIndex(idx)}
-                        className={cn(
-                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
-                          activeRegIndex === idx 
-                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
-                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
-                        )}
-                      >
-                        MATRÍCULA {reg.matricula}
-                      </button>
-                    ))}
-                  </div>
-
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
                     const lotacao = reg.governo_pi_lotacoes?.[0] || {};
                     
                     return (
-                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                      <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
                         <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
@@ -1803,24 +1782,6 @@ export default function SearchClientPage() {
             {clientType === 'prefeitura_sp' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
-                  {/* Tabs Navigation */}
-                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
-                    {registrations.map((reg, idx) => (
-                      <button
-                        key={`tab-pmsp-${reg.id}-${idx}`}
-                        onClick={() => setActiveRegIndex(idx)}
-                        className={cn(
-                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
-                          activeRegIndex === idx 
-                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
-                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
-                        )}
-                      >
-                        ID {reg.identificacao}
-                      </button>
-                    ))}
-                  </div>
-
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
                     const lotacao = reg.prefeitura_sp_lotacoes?.[0] || {};
@@ -1860,7 +1821,7 @@ export default function SearchClientPage() {
                     const beneficio = getCardLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
 
                     return (
-                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                      <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
                         <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
@@ -2026,30 +1987,12 @@ export default function SearchClientPage() {
             {clientType === 'governo_rr' && registrations.length > 0 && (() => {
               return (
                 <div className="space-y-0">
-                  {/* Tabs Navigation */}
-                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
-                    {registrations.map((reg, idx) => (
-                      <button
-                        key={`tab-rr-${reg.id}-${idx}`}
-                        onClick={() => setActiveRegIndex(idx)}
-                        className={cn(
-                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
-                          activeRegIndex === idx 
-                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
-                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
-                        )}
-                      >
-                        MATRÍCULA {reg.matricula}
-                      </button>
-                    ))}
-                  </div>
-
                   {registrations[activeRegIndex] && (() => {
                     const reg = registrations[activeRegIndex];
                     const lotacao = reg.governo_rr_instituidores?.[0] || {};
                     
                     return (
-                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                      <Card className="card-shadow border border-slate-200 animate-in fade-in duration-300">
                         <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">

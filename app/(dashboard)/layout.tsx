@@ -42,7 +42,7 @@ export default function DashboardLayout({
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       try {
-        if (event === 'SIGNED_OUT' || (!session && event === 'INITIAL_SESSION')) {
+        if (event === 'SIGNED_OUT') {
           if (window.location.pathname !== '/auth/login') {
             setIsLoading(true)
             router.replace("/auth/login")

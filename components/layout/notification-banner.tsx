@@ -72,7 +72,9 @@ export function NotificationBanner() {
     }
   }, [isCorretor, user])
 
-  if (!isCorretor || proposalsWithIssue === 0 || !isVisible) {
+  const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
+
+  if (!isCorretor || proposalsWithIssue === 0 || !isVisible || isCampanhaAtendimento) {
     return null
   }
 

@@ -323,6 +323,7 @@ export default function UsuariosPage() {
                       <SelectItem value="Supervisor">Supervisor</SelectItem>
                       <SelectItem value="Operacional">Operacional</SelectItem>
                       <SelectItem value="Estágio">Estágio</SelectItem>
+                      <SelectItem value="Processo Seletivo">Processo Seletivo</SelectItem>
                       <SelectItem value="Desenvolvedor">Desenvolvedor</SelectItem>
                     </SelectContent>
                   </Select>

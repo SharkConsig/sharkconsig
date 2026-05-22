@@ -31,7 +31,7 @@ const menuItems = [
         name: "DASHBOARD", 
         href: "/", 
         icon: Landmark, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "IMPORTAR LOTE", 
@@ -55,37 +55,37 @@ const menuItems = [
         name: "ACESSAR CLIENTE", 
         href: "/pesquisa", 
         icon: Search, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "ACESSAR CAMPANHA", 
         href: "/campanhas/distribuicao", 
         icon: Users, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "ABRIR CHAMADO", 
         href: "/chamados/novo", 
         icon: MessageSquarePlus, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "CHAMADOS", 
         href: "/chamados", 
         icon: MessageSquareText, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "DIGITAR PROPOSTA", 
         href: "/propostas/nova", 
         icon: FileEdit, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "PROPOSTAS", 
         href: "/propostas", 
         icon: ClipboardList, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "CONFIGURAÇÕES", 
@@ -114,6 +114,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { perfil, isAdmin } = useAuth()
   const [isHovered, setIsHovered] = useState(false)
 
+  const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
   const effectiveCollapsed = isCollapsed && !isHovered
 
   const filteredMenuItems = menuItems.map(section => ({
@@ -148,7 +149,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           "bg-sidebar border-r border-slate-200 flex flex-col h-screen transition-all duration-300 z-[150] sidebar-shadow",
           "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
           effectiveCollapsed ? "w-20" : "w-64",
-          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+          isCampanhaAtendimento && "pointer-events-none opacity-40 cursor-not-allowed select-none"
         )}
       >
         <div className={cn(

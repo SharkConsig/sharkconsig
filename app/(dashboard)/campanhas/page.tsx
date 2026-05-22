@@ -40,9 +40,9 @@ import Link from "next/link"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { cn } from "@/lib/utils"
-import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
+// import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { supabase } from "@/lib/supabase"
-import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
+// import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
 import { useAuth } from "@/context/auth-context"
 
@@ -216,23 +216,6 @@ export default function CampaignsPage() {
     throw new Error("Máximo de tentativas excedido");
   };
 
-  const parseSafeNumber = (val: string) => {
-    if (!val) return null;
-    let clean = val.replace(/[R$\s]/g, "");
-    
-    // Se houver vírgula e ponto, assumimos padrão BR (ponto milhar, vírgula decimal): 1.000,00 -> 1000.00
-    if (clean.includes(",") && clean.includes(".")) {
-      clean = clean.replace(/\./g, "").replace(",", ".");
-    } 
-    // Se houver apenas vírgula: 1000,00 -> 1000.00
-    else if (clean.includes(",")) {
-      clean = clean.replace(",", ".");
-    }
-    
-    const num = parseFloat(clean);
-    return isNaN(num) ? null : num;
-  };
-
   const PART_SIZE = 50000;
 
   const handleExport = async (campaign: Campaign, partIndex: number = 0) => {
@@ -243,7 +226,6 @@ export default function CampaignsPage() {
     abortControllerRef.current = new AbortController()
     
     try {
-      const filters = campaign.filtros
       const allCsvRows: string[] = []
       const uniqueRowsKeys = new Set()
       
@@ -259,7 +241,6 @@ export default function CampaignsPage() {
       
       const pageSize = 100 // Lotes menores reduzem chance de timeout individual
       let totalProcessed = 0
-      let lastCpfInBatch: string | null = null;
       
       const startRange = partIndex * PART_SIZE;
       const endRange = Math.min((partIndex + 1) * PART_SIZE - 1, (campaign.publico_estimado || 0) - 1);
@@ -277,144 +258,126 @@ export default function CampaignsPage() {
         }
         
         const fetchBatch = async () => {
-          let targetTable = 'base_consulta_rapida';
-          const campaignName = (campaign.nome || "").toUpperCase();
-          const convenioKey = filters.convenio;
-
-          const TABLE_MAP: Record<string, string> = {
-            'siape': 'base_consulta_siape',
-            'governo_sp': 'base_consulta_governo_sp',
-            'prefeitura_sp': 'base_consulta_prefeitura_sp',
-            'governo_pi': 'base_consulta_governo_pi',
-            'governo_ma': 'base_consulta_governo_ma',
-            'governo_rr': 'base_consulta_rapida', // Uses centralized table for now
-          };
-
-          if (convenioKey === 'siape' || campaignName.includes('SIAPE') || campaignName.includes('FEDERAL')) {
-            targetTable = 'base_consulta_siape';
-          } else if (convenioKey === 'governo_rr' || campaignName.includes('RORAIMA')) {
-            targetTable = 'base_consulta_rapida';
-          } else if (convenioKey && TABLE_MAP[(convenioKey as string)]) {
-            targetTable = TABLE_MAP[(convenioKey as string)];
-          }
-
-          const columnsToSelect = "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
-          
-          let query = supabase.from(targetTable).select(columnsToSelect)
-
-          if (filters.orgaos?.length > 0) {
-            const codeFilters = Object.entries(ORGAOS_MAPPING)
-              .filter(([, name]) => filters.orgaos.includes(name))
-              .map(([code]) => code);
-            const combinedOrgaos = Array.from(new Set([...filters.orgaos, ...codeFilters]));
-            if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
-          }
-          
-          if (filters.situacoes?.length > 0) query = query.in('situacao_funcional', filters.situacoes)
-          if (filters.regimes?.length > 0) query = query.in('regime_juridico', filters.regimes)
-          if (filters.ufs?.length > 0) query = query.in('uf', filters.ufs)
-
-          if (filters.idadeMin) {
-            const d = new Date()
-            d.setFullYear(d.getFullYear() - parseInt(filters.idadeMin))
-            query = query.lte('data_nascimento', d.toISOString().split('T')[0])
-          }
-          if (filters.idadeMax) {
-            const d = new Date()
-            d.setFullYear(d.getFullYear() - parseInt(filters.idadeMax) - 1)
-            d.setDate(d.getDate() + 1)
-            query = query.gte('data_nascimento', d.toISOString().split('T')[0])
-          }
-          
-          const mMin = parseSafeNumber(filters.margemMin)
-          const mMax = parseSafeNumber(filters.margemMax)
-          if (mMin !== null || mMax !== null) {
-            query = query.not('margem_35', 'is', null);
-            if (mMin !== null && mMax !== null) query = query.gte('margem_35', mMin).lte('margem_35', mMax);
-            else if (mMin !== null) query = query.gte('margem_35', mMin);
-            else if (mMax !== null) query = query.lte('margem_35', mMax);
-          }
-
-          const sMin = parseSafeNumber(filters.saldoMin)
-          if (sMin !== null) query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
-          
-          const cMMin = parseSafeNumber(filters.cardMargemMin)
-          if (cMMin !== null) query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin)
-          
-          const cBMin = parseSafeNumber(filters.cardBeneficioMin)
-          if (cBMin !== null) query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin)
-
-          if (filters.loanBanks?.length > 0) query = query.in('banco', filters.loanBanks)
-          
-          const hasCardTypeFilter = filters.cardTypes?.length > 0 && !filters.cardTypes.includes('__ACTIVE__') || (filters.cardTypes?.length > 1);
-          const hasCardBankFilter = filters.cardBanks?.length > 0;
-
-          if (hasCardTypeFilter || hasCardBankFilter) {
-            const cleanCardTypes = filters.cardTypes?.filter(t => t !== '__ACTIVE__') || [];
-            const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
-              .filter(([, info]) => {
-                const matchesType = cleanCardTypes.length === 0 || cleanCardTypes.includes(info.label);
-                const matchesBank = !hasCardBankFilter || (info.bank && filters.cardBanks.includes(info.bank));
-                return matchesType && matchesBank;
-              })
-              .map(([code]) => code);
-            
-            if (cardQueryCodes.length > 0) {
-              query = query.in('tipo_prefix', cardQueryCodes);
-            } else if (hasCardTypeFilter && hasCardBankFilter) {
-              query = query.eq('tipo', '999999999_FORCE_EMPTY');
-            }
-          }
-
-          const pMin = parseInt(filters.loanPrazoMin)
-          const pMax = parseInt(filters.loanPrazoMax)
-          if (!isNaN(pMin)) query = query.gte('prazo', pMin)
-          if (!isNaN(pMax)) query = query.lte('prazo', pMax)
-
-          query = query.order('cpf', { ascending: true })
-
-          if (totalProcessed === 0) {
-            return await query.range(startRange, startRange + pageSize - 1);
-          } else if (lastCpfInBatch) {
-            return await query.gt('cpf', lastCpfInBatch).limit(pageSize);
-          }
-          return { data: [], error: null };
+          return await supabase
+            .from('campanha_membros')
+            .select('cliente_cpf, convenio')
+            .eq('campanha_id', campaign.id)
+            .order('ordem_fila', { ascending: true })
+            .range(startRange + totalProcessed, startRange + totalProcessed + pageSize - 1);
         };
 
-        const { data: bcrData } = await withRetry(fetchBatch);
+        const { data: memberBatch, error: memberError } = await withRetry(fetchBatch);
+        if (memberError) throw memberError;
 
-        if (!bcrData || bcrData.length === 0) {
+        if (!memberBatch || memberBatch.length === 0) {
           break;
-        } else {
-          lastCpfInBatch = bcrData[bcrData.length - 1].cpf as string;
-          bcrData.forEach((row: { cpf: string; nome: string; data_nascimento?: string; telefone_1?: string; telefone_2?: string; telefone_3?: string; numero_matricula?: string; orgao?: string; situacao_funcional?: string; salario?: number; instituidor_nome?: string; regime_juridico?: string; uf?: string; saldo_70?: number; margem_35?: number; bruta_5?: number; utilizada_5?: number; liquida_5?: number; beneficio_bruta_5?: number; beneficio_utilizada_5?: number; beneficio_liquida_5?: number; banco?: string; prazo?: string | number; tipo?: string }) => {
-            const key = row.cpf;
-            if (uniqueRowsKeys.has(key)) return
-            uniqueRowsKeys.add(key)
-
-            const csvRow = [
-              row.cpf, row.nome, row.data_nascimento || "",
-              row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "", 
-              row.numero_matricula || "", row.orgao || "", row.situacao_funcional || "",
-              row.salario || 0, row.instituidor_nome || "", row.regime_juridico || "", row.uf || "",
-              row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
-              row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0,
-              row.banco || "", row.prazo || "", row.tipo || ""
-            ].map(val => {
-              const clean = String(val === null || val === undefined ? "" : val).replace(/"/g, '""');
-              return `"${clean}"`;
-            }).join(",")
-            
-            allCsvRows.push(csvRow)
-          })
-
-          totalProcessed += bcrData.length;
-          const progress = Math.min(Math.round((totalProcessed / totalToExport) * 100), 100)
-          setExportProgress(progress)
-
-          // Backpressure: delay para liberar main thread e evitar sobrecarga
-          await new Promise(resolve => setTimeout(resolve, 400))
         }
+
+        const cpfs = memberBatch.map((m: { cliente_cpf: string }) => m.cliente_cpf).filter(Boolean);
+        if (cpfs.length === 0) {
+          break;
+        }
+
+        // Determinar tabela de consulta rápida otimizada
+        let targetTable = 'base_consulta_siape';
+        const campaignName = (campaign.nome || "").toUpperCase();
+        const convenioKey = campaign.convenio || campaign.filtros?.convenio;
+
+        const TABLE_MAP: Record<string, string> = {
+          'siape': 'base_consulta_siape',
+          'governo_sp': 'base_consulta_governo_sp',
+          'prefeitura_sp': 'base_consulta_prefeitura_sp',
+          'governo_pi': 'base_consulta_governo_pi',
+          'governo_ma': 'base_consulta_governo_ma',
+          'governo_rr': 'base_consulta_rapida',
+        };
+
+        if (convenioKey && TABLE_MAP[convenioKey]) {
+          targetTable = TABLE_MAP[convenioKey];
+        } else if (campaignName.includes('GOVERNO SP')) {
+          targetTable = 'base_consulta_governo_sp';
+        } else if (campaignName.includes('PREFEITURA SP')) {
+          targetTable = 'base_consulta_prefeitura_sp';
+        } else if (campaignName.includes('GOVERNO PI')) {
+          targetTable = 'base_consulta_governo_pi';
+        } else if (campaignName.includes('GOVERNO MA')) {
+          targetTable = 'base_consulta_governo_ma';
+        } else if (campaignName.includes('RORAIMA') || campaignName.includes('RR')) {
+          targetTable = 'base_consulta_rapida';
+        }
+
+        const columnsToSelect = "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
+
+        const { data: bcrData, error: bcrError } = await withRetry(() =>
+          supabase.from(targetTable).select(columnsToSelect).in('cpf', cpfs)
+        );
+        if (bcrError) throw bcrError;
+
+        interface BcrRow { 
+          cpf: string; 
+          nome: string; 
+          data_nascimento?: string; 
+          telefone_1?: string; 
+          telefone_2?: string; 
+          telefone_3?: string; 
+          numero_matricula?: string; 
+          orgao?: string; 
+          situacao_funcional?: string; 
+          salario?: number; 
+          instituidor_nome?: string; 
+          regime_juridico?: string; 
+          uf?: string; 
+          saldo_70?: number; 
+          margem_35?: number; 
+          bruta_5?: number; 
+          utilizada_5?: number; 
+          liquida_5?: number; 
+          beneficio_bruta_5?: number; 
+          beneficio_utilizada_5?: number; 
+          beneficio_liquida_5?: number; 
+          banco?: string; 
+          prazo?: string | number; 
+          tipo?: string;
+        }
+
+        // O(N) Maps lookup para preservar a ordem exata de ordem_fila sem loops lineares complexos
+        const bcrMap = new Map((bcrData || []).map((row: { cpf: string }) => [row.cpf, row]));
+
+        const sortedBatchData: BcrRow[] = [];
+        cpfs.forEach((cpf: string) => {
+          const matchedRow = bcrMap.get(cpf) as BcrRow | undefined;
+          if (matchedRow) {
+            sortedBatchData.push(matchedRow);
+          }
+        });
+
+        sortedBatchData.forEach((row: BcrRow) => {
+          const key = row.cpf;
+          if (uniqueRowsKeys.has(key)) return
+          uniqueRowsKeys.add(key)
+
+          const csvRow = [
+            row.cpf, row.nome, row.data_nascimento || "",
+            row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "", 
+            row.numero_matricula || "", row.orgao || "", row.situacao_funcional || "",
+            row.salario || 0, row.instituidor_nome || "", row.regime_juridico || "", row.uf || "",
+            row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
+            row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0,
+            row.banco || "", row.prazo || "", row.tipo || ""
+          ].map(val => {
+            const clean = String(val === null || val === undefined ? "" : val).replace(/"/g, '""');
+            return `"${clean}"`;
+          }).join(",")
+          
+          allCsvRows.push(csvRow)
+        });
+
+        totalProcessed += memberBatch.length;
+        const progress = Math.min(Math.round((totalProcessed / totalToExport) * 100), 100)
+        setExportProgress(progress)
+
+        // Backpressure: delay para liberar main thread e evitar sobrecarga
+        await new Promise(resolve => setTimeout(resolve, 400))
       }
 
       if (allCsvRows.length === 0) {
@@ -536,6 +499,38 @@ export default function CampaignsPage() {
         .eq('id', campaignToDistribute.id)
 
       if (updateError) throw updateError
+
+      // Clear existing participants for this campaign
+      await supabase
+        .from('campanha_participantes')
+        .delete()
+        .eq('campanha_id', campaignToDistribute.id)
+
+      // Collect participants to insert
+      const participantsToInsert: { campanha_id: string; user_id: string; papel: string }[] = []
+
+      selectedSupervisors.forEach(supId => {
+        participantsToInsert.push({
+          campanha_id: campaignToDistribute.id,
+          user_id: supId,
+          papel: 'supervisor'
+        })
+      })
+
+      selectedBrokers.forEach(brokerId => {
+        participantsToInsert.push({
+          campanha_id: campaignToDistribute.id,
+          user_id: brokerId,
+          papel: 'corretor'
+        })
+      })
+
+      if (participantsToInsert.length > 0) {
+        const { error: partError } = await supabase
+          .from('campanha_participantes')
+          .insert(participantsToInsert)
+        if (partError) throw partError
+      }
 
       setCampaigns(prev => prev.map(c => 
         c.id === campaignToDistribute.id ? { ...c, filtros: updatedFiltros } : c

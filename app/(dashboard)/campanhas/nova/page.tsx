@@ -18,7 +18,7 @@ import {
   X
 } from "lucide-react"
 import { motion } from "motion/react"
-import { cn } from "@/lib/utils"
+import { cn, withRetry } from "@/lib/utils"
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
@@ -353,130 +353,167 @@ export default function NewCampaignPage() {
         idadeMin, idadeMax 
       } = filters;
 
-      // CONSULTA DIRETA NA TABELA ESPECIALIZADA (SEM JOINS)
+      // CONSULTA DIRETA NA TABELA ESPECIALIZADA (SEM JOINS) COM EXTRACÇÃO DE CPF ÚNICO
       const tableName = TABLE_MAP[activeConvenio] || 'base_consulta_siape';
-      let query = supabase
-        .from(tableName)
-        .select('cpf', { count: 'exact', head: true });
-
-      // Filtros de Margem 35% no topo para priorizar o uso do índice
-      const mMinNum = parseSafeNumber(filters.margemMin);
-      const mMaxNum = parseSafeNumber(filters.margemMax);
       
-      if (mMinNum !== null || mMaxNum !== null) {
-        // Filtro preventivo de nulos para otimizar a performance do índice
-        query = query.not("margem_35", "is", null);
+      let lastCpf: string | null = null;
+      const stepSize = 5000; // Chunk size of 5000 CPFs for high stability and speed
+      let hasMore = true;
+      const uniqueCpfs = new Set<string>();
+
+      while (hasMore) {
+        let query = supabase.from(tableName).select('cpf');
+
+        // Filtros de Margem 35% no topo para priorizar o uso do índice
+        const mMinNum = parseSafeNumber(filters.margemMin);
+        const mMaxNum = parseSafeNumber(filters.margemMax);
         
-        if (mMinNum !== null) {
-          query = query.gte("margem_35", mMinNum);
+        if (mMinNum !== null || mMaxNum !== null) {
+          // Filtro preventivo de nulos para otimizar a performance do índice
+          query = query.not("margem_35", "is", null);
+          
+          if (mMinNum !== null) {
+            query = query.gte("margem_35", mMinNum);
+          }
+          if (mMaxNum !== null) {
+            query = query.lte("margem_35", mMaxNum);
+          }
         }
-        if (mMaxNum !== null) {
-          query = query.lte("margem_35", mMaxNum);
+
+        // 1. Filtros de Matrícula
+        if (orgaos.length > 0) {
+          const codeFilters = Object.entries(ORGAOS_MAPPING)
+            .filter(([, name]) => orgaos.includes(name))
+            .map(([code]) => code);
+          const combinedOrgaos = Array.from(new Set([...orgaos, ...codeFilters]));
+          if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
         }
-      }
+        if (situacoes.length > 0) query = query.in('situacao_funcional', situacoes);
+        if (regimes.length > 0) query = query.in('regime_juridico', regimes);
+        if (ufs.length > 0) query = query.in('uf', ufs);
 
-      // 1. Filtros de Matrícula
-      if (orgaos.length > 0) {
-        const codeFilters = Object.entries(ORGAOS_MAPPING)
-          .filter(([, name]) => orgaos.includes(name))
-          .map(([code]) => code);
-        const combinedOrgaos = Array.from(new Set([...orgaos, ...codeFilters]));
-        if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
-      }
-      if (situacoes.length > 0) query = query.in('situacao_funcional', situacoes);
-      if (regimes.length > 0) query = query.in('regime_juridico', regimes);
-      if (ufs.length > 0) query = query.in('uf', ufs);
-
-      // 2. Filtro de IDADE
-      if (idadeMin) {
-        const ageMin = parseInt(idadeMin);
-        if (!isNaN(ageMin)) {
-          const d = new Date();
-          d.setFullYear(d.getFullYear() - ageMin);
-          const dateStr = d.toISOString().split('T')[0];
-          query = query.lte('data_nascimento', dateStr);
+        // 2. Filtro de IDADE
+        if (idadeMin) {
+          const ageMin = parseInt(idadeMin);
+          if (!isNaN(ageMin)) {
+            const d = new Date();
+            d.setFullYear(d.getFullYear() - ageMin);
+            const dateStr = d.toISOString().split('T')[0];
+            query = query.lte('data_nascimento', dateStr);
+          }
         }
-      }
-      if (idadeMax) {
-        const ageMax = parseInt(idadeMax);
-        if (!isNaN(ageMax)) {
-          const d = new Date();
-          d.setFullYear(d.getFullYear() - ageMax - 1);
-          d.setDate(d.getDate() + 1);
-          const dateStr = d.toISOString().split('T')[0];
-          query = query.gte('data_nascimento', dateStr);
+        if (idadeMax) {
+          const ageMax = parseInt(idadeMax);
+          if (!isNaN(ageMax)) {
+            const d = new Date();
+            d.setFullYear(d.getFullYear() - ageMax - 1);
+            d.setDate(d.getDate() + 1);
+            const dateStr = d.toISOString().split('T')[0];
+            query = query.gte('data_nascimento', dateStr);
+          }
         }
-      }
 
-      const sMin = parseSafeNumber(saldoMin);
-      if (sMin !== null) {
-        query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
-      }
-      
-      const cMMin = parseSafeNumber(cardMargemMin);
-      if (cMMin !== null) {
-        query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
-      }
-      const cBMin = parseSafeNumber(cardBeneficioMin);
-      if (cBMin !== null) {
-        query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
-      }
-
-      // 4. ITENS DE CRÉDITO (UNIFICADO PARA CARTÕES)
-      if (loanBanks.length > 0) query = query.in('banco', loanBanks);
-      
-      // Lógica de Interseção para Filtros de Cartão (Tipo e Banco)
-      const hasCardTypeFilter = cardTypes.length > 0 && !cardTypes.includes('__ACTIVE__') || (cardTypes.length > 1);
-      const hasCardBankFilter = cardBanks.length > 0;
-
-      if (hasCardTypeFilter || hasCardBankFilter) {
-        // Remove o marcador técnico da lista se estiver presente para não sujar a lógica
-        const cleanCardTypes = cardTypes.filter(t => t !== '__ACTIVE__');
+        const sMin = parseSafeNumber(saldoMin);
+        if (sMin !== null) {
+          query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
+        }
         
-        const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
-          .filter(([, info]) => {
-            const matchesType = cleanCardTypes.length === 0 || cleanCardTypes.includes(info.label);
-            const matchesBank = !hasCardBankFilter || (info.bank && cardBanks.includes(info.bank));
-            return matchesType && matchesBank;
-          })
-          .map(([code]) => code);
+        const cMMin = parseSafeNumber(cardMargemMin);
+        if (cMMin !== null) {
+          query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+        }
+        const cBMin = parseSafeNumber(cardBeneficioMin);
+        if (cBMin !== null) {
+          query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+        }
+
+        // 4. ITENS DE CRÉDITO (UNIFICADO PARA CARTÕES)
+        if (loanBanks.length > 0) query = query.in('banco', loanBanks);
         
-        if (cardQueryCodes.length > 0) {
-          // Filtro de alta performance usando coluna de prefixo indexada
-          query = query.in('tipo_prefix', cardQueryCodes);
-        } else if (hasCardTypeFilter && hasCardBankFilter) {
-          // Se selecionou filtros sem interseção (ex: Banco X que não tem tipo Y), forçamos resultado vazio
-          query = query.eq('tipo', '999999999_FORCE_EMPTY');
+        // Lógica de Interseção para Filtros de Cartão (Tipo e Banco)
+        const hasCardTypeFilter = cardTypes.length > 0 && !cardTypes.includes('__ACTIVE__') || (cardTypes.length > 1);
+        const hasCardBankFilter = cardBanks.length > 0;
+
+        if (hasCardTypeFilter || hasCardBankFilter) {
+          // Remove o marcador técnico da lista se estiver presente para não sujar a lógica
+          const cleanCardTypes = cardTypes.filter(t => t !== '__ACTIVE__');
+          
+          const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+            .filter(([, info]) => {
+              const matchesType = cleanCardTypes.length === 0 || cleanCardTypes.includes(info.label);
+              const matchesBank = !hasCardBankFilter || (info.bank && cardBanks.includes(info.bank));
+              return matchesType && matchesBank;
+            })
+            .map(([code]) => code);
+          
+          if (cardQueryCodes.length > 0) {
+            // Filtro de alta performance usando coluna de prefixo indexada
+            query = query.in('tipo_prefix', cardQueryCodes);
+          } else if (hasCardTypeFilter && hasCardBankFilter) {
+            // Se selecionou filtros sem interseção (ex: Banco X que não tem tipo Y), forçamos resultado vazio
+            query = query.eq('tipo', '999999999_FORCE_EMPTY');
+          }
+        }
+
+        const pMin = parseInt(loanPrazoMin);
+        const pMax = parseInt(loanPrazoMax);
+        if (!isNaN(pMin)) query = query.gte('prazo', pMin);
+        if (!isNaN(pMax)) query = query.lte('prazo', pMax);
+
+        // Keyset Pagination for super fast lookups
+        if (lastCpf) {
+          query = query.gt('cpf', lastCpf);
+        }
+
+        query = query.order('cpf', { ascending: true }).limit(stepSize);
+
+        const { data: cpfBatch, error } = await withRetry(() => query);
+
+        if (error) {
+          // Se for timeout (57014) ou erro sem código/vazio, tratamos como silêncio/fim
+          const isSilent = error.code === '57014' || !error.code || !error.message;
+          
+          if (isSilent) {
+            console.warn("Timeout ou Resposta Vazia no Supabase: Interrompendo contagem de unicidade.");
+            hasMore = false;
+            break;
+          }
+
+          console.error("Erro retornado pelo Supabase (detalhado):", {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+            full: error
+          });
+          throw error;
+        }
+
+        if (!cpfBatch || cpfBatch.length === 0) {
+          hasMore = false;
+        } else {
+          // Atualiza o cursor do keyset para o próximo lote
+          lastCpf = cpfBatch[cpfBatch.length - 1].cpf;
+
+          for (const row of cpfBatch) {
+            if (row.cpf) {
+              const cleanCpf = row.cpf.trim();
+              if (cleanCpf) {
+                uniqueCpfs.add(cleanCpf);
+              }
+            }
+          }
+
+          if (cpfBatch.length < stepSize) {
+            hasMore = false;
+          }
+
+          // Main Thread Breathing para manter UI responsiva e evitar travamentos
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
       }
 
-      const pMin = parseInt(loanPrazoMin);
-      const pMax = parseInt(loanPrazoMax);
-      if (!isNaN(pMin)) query = query.gte('prazo', pMin);
-      if (!isNaN(pMax)) query = query.lte('prazo', pMax);
-
-      const { count, error } = await query;
-
-      if (error) {
-        // Se for timeout (57014) ou erro sem código/vazio, tratamos como silêncio
-        const isSilent = error.code === '57014' || !error.code || !error.message;
-        
-        if (isSilent) {
-          console.warn("Timeout ou Resposta Vazia no Supabase: Tratando como zero resultados.");
-          setEstimatedAudience(0);
-          return;
-        }
-
-        console.error("Erro retornado pelo Supabase (detalhado):", {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          full: error
-        });
-        throw error;
-      }
-      setEstimatedAudience(count || 0);
+      setEstimatedAudience(uniqueCpfs.size);
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
       // Se for timeout ou resposta vazia, não mostramos o Alerta
@@ -500,24 +537,192 @@ export default function NewCampaignPage() {
     
     setIsCreating(true);
     try {
-      // Salvar na tabela 'campanhas'
-      // Guardamos apenas os metadados e os filtros para que a exportação seja feita na lista de campanhas
-      const { error: saveError } = await supabase.from('campanhas').insert({
-        nome: campaignName,
-        publico_estimado: estimatedAudience,
-        filtros: { ...filters, convenio: activeConvenio },
-        user_id: user?.id,
-        created_at: new Date().toISOString()
-      });
+      // 1. Salvar na tabela 'campanhas' inicializando como 'PROCESSANDO'
+      const { data: createdCampaign, error: saveError } = await supabase
+        .from('campanhas')
+        .insert({
+          nome: campaignName,
+          publico_estimado: estimatedAudience,
+          convenio: activeConvenio,
+          filtros: { ...filters, convenio: activeConvenio },
+          filtros_json: { ...filters, convenio: activeConvenio },
+          user_id: user?.id,
+          criado_por: user?.id,
+          status: 'ativa',
+          processamento_status: 'PROCESSANDO',
+          created_at: new Date().toISOString(),
+          criado_em: new Date().toISOString()
+        })
+        .select()
+        .single();
 
       if (saveError) throw saveError;
+      const campaignId = createdCampaign.id;
 
-      alert("Campanha criada com sucesso! Agora você pode exportá-la na lista de 'Minhas Campanhas'.");
+      // 2. Aplicar os filtros e obter todos os CPFs em lotes para persistir na campanha_membros_membros
+      const tableName = TABLE_MAP[activeConvenio] || 'base_consulta_siape';
+      let lastCpf: string | null = null;
+      const stepSize = 1000; // Chunk size of 1000 CPFs for high stability and backpressure
+      let hasMore = true;
+      let orderIndex = 1;
+      const insertedCpfs = new Set<string>();
+
+      while (hasMore) {
+        let query = supabase.from(tableName).select('cpf');
+        
+        // Aplicar filtros equivalentes ao calculateAudience
+        const mMinNum = parseSafeNumber(filters.margemMin);
+        const mMaxNum = parseSafeNumber(filters.margemMax);
+        if (mMinNum !== null || mMaxNum !== null) {
+          query = query.not("margem_35", "is", null);
+          if (mMinNum !== null) query = query.gte("margem_35", mMinNum);
+          if (mMaxNum !== null) query = query.lte("margem_35", mMaxNum);
+        }
+
+        if (filters.orgaos.length > 0) {
+          const codeFilters = Object.entries(ORGAOS_MAPPING)
+            .filter(([, name]) => filters.orgaos.includes(name))
+            .map(([code]) => code);
+          const combinedOrgaos = Array.from(new Set([...filters.orgaos, ...codeFilters]));
+          if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
+        }
+        if (filters.situacoes.length > 0) query = query.in('situacao_funcional', filters.situacoes);
+        if (filters.regimes.length > 0) query = query.in('regime_juridico', filters.regimes);
+        if (filters.ufs.length > 0) query = query.in('uf', filters.ufs);
+
+        if (filters.idadeMin) {
+          const ageMin = parseInt(filters.idadeMin);
+          if (!isNaN(ageMin)) {
+            const d = new Date();
+            d.setFullYear(d.getFullYear() - ageMin);
+            const dateStr = d.toISOString().split('T')[0];
+            query = query.lte('data_nascimento', dateStr);
+          }
+        }
+        if (filters.idadeMax) {
+          const ageMax = parseInt(filters.idadeMax);
+          if (!isNaN(ageMax)) {
+            const d = new Date();
+            d.setFullYear(d.getFullYear() - ageMax - 1);
+            d.setDate(d.getDate() + 1);
+            const dateStr = d.toISOString().split('T')[0];
+            query = query.gte('data_nascimento', dateStr);
+          }
+        }
+
+        const sMin = parseSafeNumber(filters.saldoMin);
+        if (sMin !== null) {
+          query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
+        }
+        
+        const cMMin = parseSafeNumber(filters.cardMargemMin);
+        if (cMMin !== null) {
+          query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+        }
+        const cBMin = parseSafeNumber(filters.cardBeneficioMin);
+        if (cBMin !== null) {
+          query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+        }
+
+        if (filters.loanBanks.length > 0) query = query.in('banco', filters.loanBanks);
+        
+        const hasCardTypeFilter = filters.cardTypes.length > 0 && !filters.cardTypes.includes('__ACTIVE__') || (filters.cardTypes.length > 1);
+        const hasCardBankFilter = filters.cardBanks.length > 0;
+
+        if (hasCardTypeFilter || hasCardBankFilter) {
+          const cleanCardTypes = filters.cardTypes.filter(t => t !== '__ACTIVE__');
+          const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+            .filter(([, info]) => {
+              const matchesType = cleanCardTypes.length === 0 || cleanCardTypes.includes(info.label);
+              const matchesBank = !hasCardBankFilter || (info.bank && filters.cardBanks.includes(info.bank));
+              return matchesType && matchesBank;
+            })
+            .map(([code]) => code);
+          
+          if (cardQueryCodes.length > 0) {
+            query = query.in('tipo_prefix', cardQueryCodes);
+          } else if (hasCardTypeFilter && hasCardBankFilter) {
+            query = query.eq('tipo', '999999999_FORCE_EMPTY');
+          }
+        }
+
+        const pMin = parseInt(filters.loanPrazoMin);
+        const pMax = parseInt(filters.loanPrazoMax);
+        if (!isNaN(pMin)) query = query.gte('prazo', pMin);
+        if (!isNaN(pMax)) query = query.lte('prazo', pMax);
+
+        // Keyset Pagination for fast index lookups and preventing offsets timeouts
+        if (lastCpf) {
+          query = query.gt('cpf', lastCpf);
+        }
+
+        // Buscar lote de CPFs ordenados
+        query = query.order('cpf', { ascending: true }).limit(stepSize);
+
+        const { data: cpfBatch, error: cpfError } = await withRetry(() => query);
+        if (cpfError) throw cpfError;
+
+        if (!cpfBatch || cpfBatch.length === 0) {
+          hasMore = false;
+        } else {
+          // Atualiza o cursor do keyset para o próximo lote
+          lastCpf = cpfBatch[cpfBatch.length - 1].cpf;
+
+          // Filtra duplicados usando um Set global para evitar duplicatas entre lotes ou dentro do lote
+          const uniqueCpfBatch: { cpf: string }[] = [];
+          for (const row of cpfBatch) {
+            if (row.cpf) {
+              const cleanCpf = row.cpf.trim();
+              if (cleanCpf && !insertedCpfs.has(cleanCpf)) {
+                insertedCpfs.add(cleanCpf);
+                uniqueCpfBatch.push({ cpf: cleanCpf });
+              }
+            }
+          }
+
+          if (uniqueCpfBatch.length > 0) {
+            // Mapeia para bulk insert respeitando ordem da fila
+            const membersToInsert = uniqueCpfBatch.map((row: { cpf: string }) => ({
+              campanha_id: campaignId,
+              cliente_cpf: row.cpf,
+              convenio: activeConvenio,
+              ordem_fila: orderIndex++,
+              criado_em: new Date().toISOString()
+            }));
+
+            // Inserção agrupada
+            const { error: insertError } = await withRetry(() => supabase.from('campanha_membros').insert(membersToInsert));
+            if (insertError) throw insertError;
+          }
+
+          if (cpfBatch.length < stepSize) {
+            hasMore = false;
+          }
+
+          // Main Thread Breathing para manter UI responsiva e evitar travamentos
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+
+      // 3. Atualizar status do processamento para finalizado PRONTA e atualizar o público real de CPFs únicos
+      const realPublicoCount = insertedCpfs.size;
+      const { error: updateError } = await withRetry(() => supabase
+        .from('campanhas')
+        .update({ 
+          processamento_status: 'PRONTA',
+          publico_estimado: realPublicoCount
+        })
+        .eq('id', campaignId)
+      );
+
+      if (updateError) throw updateError;
+
+      alert("Campanha criada e materializada com sucesso! Todos os CPFs foram fixados.");
       router.push('/campanhas');
 
     } catch (err: unknown) {
       const error = err as { message?: string; details?: string; hint?: string; code?: string };
-      console.error("Erro detalhado ao criar campanha:", {
+      console.error("Erro detalhado ao criar campanha materializada:", {
         message: error.message,
         details: error.details,
         hint: error.hint,

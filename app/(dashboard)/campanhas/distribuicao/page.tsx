@@ -11,12 +11,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
-  Trash2,
-  X
+  X,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { supabase } from "@/lib/supabase"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Fragment } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,6 +48,7 @@ interface Campaign {
     corretores_selecionados?: string[];
     idadeMin?: string;
     idadeMax?: string;
+    sessoes_corretores?: Record<string, { entrou: string; saiu?: string | null }>;
   };
 }
 
@@ -70,11 +72,68 @@ export default function DistribuicaoCampanhaPage() {
   const [selectedCampaignForTeam, setSelectedCampaignForTeam] = useState<Campaign | null>(null)
 
   const canStart = !isAdmin && !isDeveloper && (
-    perfil?.role === 'Supervisor' || 
     perfil?.role === 'Corretor' || 
     perfil?.role === 'Estágio' || 
-    perfil?.role === 'Estagio'
+    perfil?.role === 'Estagio' ||
+    perfil?.role === 'Processo Seletivo'
   );
+
+  const isSupervisor = perfil?.role === 'Supervisor';
+
+  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+  const [monitoringData, setMonitoringData] = useState<Record<string, Record<string, { total: number; tabulacoes: Record<string, number>; last_active: string | null }>>>({});
+  const [isLoadingMonitoring, setIsLoadingMonitoring] = useState<boolean>(false);
+
+  const toggleCampaignExpansion = async (campaignId: string) => {
+    if (expandedCampaignId === campaignId) {
+      setExpandedCampaignId(null);
+    } else {
+      setExpandedCampaignId(campaignId);
+      setIsLoadingMonitoring(true);
+      try {
+        const { data: attendances, error: fetchError } = await supabase
+          .from('campanha_atendimentos')
+          .select('*')
+          .eq('campanha_id', campaignId);
+
+        if (fetchError) throw fetchError;
+
+        const brokerStats: Record<string, { total: number; tabulacoes: Record<string, number>; last_active: string | null }> = {};
+
+        attendances?.forEach((att) => {
+          const brokerId = att.corretor_id || 'unknown';
+          if (!brokerStats[brokerId]) {
+            brokerStats[brokerId] = {
+              total: 0,
+              tabulacoes: {},
+              last_active: null
+            };
+          }
+
+          brokerStats[brokerId].total += 1;
+          
+          const tab = att.tabulacao || 'Não tabulado';
+          brokerStats[brokerId].tabulacoes[tab] = (brokerStats[brokerId].tabulacoes[tab] || 0) + 1;
+
+          if (att.created_at) {
+            if (!brokerStats[brokerId].last_active || new Date(att.created_at) > new Date(brokerStats[brokerId].last_active)) {
+              brokerStats[brokerId].last_active = att.created_at;
+            }
+          }
+        });
+
+        setMonitoringData(prev => ({
+          ...prev,
+          [campaignId]: brokerStats
+        }));
+      } catch (err) {
+        console.error("Erro ao carregar monitoramento:", err);
+        toast.error("Erro ao carregar dados de monitoramento.");
+      } finally {
+        setIsLoadingMonitoring(false);
+      }
+    }
+  };
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -142,11 +201,15 @@ export default function DistribuicaoCampanhaPage() {
           const userId = user.id
           const supervisorId = perfil.supervisor_id
           
+          const isSelectedBroker = Array.isArray(brokers) && brokers.includes(userId);
+          const isSelectedSupervisor = Array.isArray(distribution) && distribution.includes(userId);
+          const isUnderSelectedSupervisor = !!(supervisorId && Array.isArray(distribution) && distribution.includes(supervisorId));
+
           if (Array.isArray(brokers) && brokers.length > 0) {
-            return brokers.includes(userId)
+            return isSelectedBroker || isSelectedSupervisor;
           }
           
-          return distribution.includes(userId) || (supervisorId && distribution.includes(supervisorId))
+          return isSelectedSupervisor || isUnderSelectedSupervisor;
         }
         
         return isDistributed
@@ -284,111 +347,229 @@ export default function DistribuicaoCampanhaPage() {
                   ) : (
                     paginatedCampaigns.map((campaign) => {
                       const isStarted = startedCampaigns.includes(campaign.id);
+                      const isExpanded = expandedCampaignId === campaign.id;
                       return (
-                        <tr key={campaign.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
-                          <td className="px-8 py-5 text-[11px] font-bold text-slate-400 truncate max-w-[100px]">
-                            {campaign.id.substring(0, 8)}...
-                          </td>
-                          <td className="px-8 py-5">
-                            <div className="flex flex-col">
-                              <span className="text-[12.5px] font-black text-slate-900 uppercase tracking-tight group-hover:text-primary transition-colors">
-                                {campaign.nome}
+                        <Fragment key={campaign.id}>
+                          <tr className={cn(
+                            "border-b border-slate-50 hover:bg-slate-50/50 transition-colors group",
+                            isExpanded && "bg-slate-50/70 border-b-0"
+                          )}>
+                            <td className="px-8 py-5 text-[11px] font-bold text-slate-400 truncate max-w-[100px]">
+                              {campaign.id.substring(0, 8)}...
+                            </td>
+                            <td className="px-8 py-5">
+                              <div className="flex flex-col">
+                                <span className="text-[12.5px] font-black text-slate-900 uppercase tracking-tight group-hover:text-primary transition-colors">
+                                  {campaign.nome}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium">
+                                  Liberada em {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-8 py-5">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2.5 py-1 bg-slate-100 rounded-md border border-slate-200/50">
+                                {campaign.filtros?.convenio || 'Geral'}
                               </span>
-                              <span className="text-[10px] text-slate-400 font-medium">
-                                Liberada em {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-8 py-5">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2.5 py-1 bg-slate-100 rounded-md border border-slate-200/50">
-                              {campaign.filtros?.convenio || 'Geral'}
-                            </span>
-                          </td>
-                          <td className="px-8 py-5 text-center">
-                            <div className="flex flex-col items-center">
-                              <span className="text-[12.5px] font-black text-slate-900 tracking-tight">
-                                {campaign.publico_estimado.toLocaleString('pt-BR')}
-                              </span>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Leads</span>
-                            </div>
-                          </td>
-                          <td className="px-8 py-5 text-center">
-                            {campaign.filtros?.ativa === false ? (
-                              <button 
-                                disabled={!isAdmin && !isDeveloper}
-                                onClick={() => (isAdmin || isDeveloper) && handleToggleActive(campaign)}
-                                className={cn(
-                                  "inline-flex items-center gap-1.5 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-100 uppercase tracking-widest text-[9px] font-black text-rose-600 outline-none select-none transition-all duration-150",
-                                  (isAdmin || isDeveloper) ? "cursor-pointer hover:bg-rose-100 active:scale-95" : "cursor-default"
-                                )}
-                                title={(isAdmin || isDeveloper) ? "Clique para Ativar" : undefined}
-                              >
-                                <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                                <span>Inativa</span>
-                              </button>
-                            ) : (
-                              <button 
-                                disabled={!isAdmin && !isDeveloper}
-                                onClick={() => (isAdmin || isDeveloper) && handleToggleActive(campaign)}
-                                className={cn(
-                                  "inline-flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 uppercase tracking-widest text-[9px] font-black text-emerald-600 outline-none select-none transition-all duration-150",
-                                  (isAdmin || isDeveloper) ? "cursor-pointer hover:bg-emerald-100 active:scale-95" : "cursor-default"
-                                )}
-                                title={(isAdmin || isDeveloper) ? "Clique para Desativar" : undefined}
-                              >
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                <span>Ativa</span>
-                              </button>
-                            )}
-                          </td>
-                          <td className="px-8 py-5 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              {canStart && (
-                                <Button 
-                                  onClick={() => handleStartCampaign(campaign.id)}
+                            </td>
+                            <td className="px-8 py-5 text-center">
+                              <div className="flex flex-col items-center">
+                                <span className="text-[12.5px] font-black text-slate-900 tracking-tight">
+                                  {(campaign.publico_estimado || 0).toLocaleString('pt-BR')}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">CPFs</span>
+                              </div>
+                            </td>
+                            <td className="px-8 py-5 text-center">
+                              {campaign.filtros?.ativa === false ? (
+                                <button 
+                                  disabled={!isAdmin && !isDeveloper}
+                                  onClick={() => (isAdmin || isDeveloper) && handleToggleActive(campaign)}
                                   className={cn(
-                                    "h-9 px-6 text-[10px] font-black uppercase tracking-widest rounded-xl shadow-sm transition-all active:scale-95",
-                                    isStarted 
-                                      ? "bg-slate-100 text-slate-600 hover:bg-slate-200" 
-                                      : "bg-[#1C2643] text-white hover:bg-black shadow-slate-200"
+                                    "inline-flex items-center gap-1.5 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-100 uppercase tracking-widest text-[9px] font-black text-rose-600 outline-none select-none transition-all duration-150",
+                                    (isAdmin || isDeveloper) ? "cursor-pointer hover:bg-rose-100 active:scale-95" : "cursor-default"
                                   )}
+                                  title={(isAdmin || isDeveloper) ? "Clique para Ativar" : undefined}
                                 >
-                                  {isStarted ? "Continuar" : "INICIAR"}
-                                </Button>
+                                  <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  <span>Inativa</span>
+                                </button>
+                              ) : (
+                                <button 
+                                  disabled={!isAdmin && !isDeveloper}
+                                  onClick={() => (isAdmin || isDeveloper) && handleToggleActive(campaign)}
+                                  className={cn(
+                                    "inline-flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 uppercase tracking-widest text-[9px] font-black text-emerald-600 outline-none select-none transition-all duration-150",
+                                    (isAdmin || isDeveloper) ? "cursor-pointer hover:bg-emerald-100 active:scale-95" : "cursor-default"
+                                  )}
+                                  title={(isAdmin || isDeveloper) ? "Clique para Desativar" : undefined}
+                                >
+                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  <span>Ativa</span>
+                                </button>
                               )}
+                            </td>
+                            <td className="px-8 py-5 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                {canStart && (
+                                  <Button 
+                                    onClick={() => handleStartCampaign(campaign.id)}
+                                    className={cn(
+                                      "h-9 px-6 text-[10px] font-black uppercase tracking-widest rounded-xl shadow-sm transition-all active:scale-95",
+                                      isStarted 
+                                        ? "bg-slate-100 text-slate-600 hover:bg-slate-200" 
+                                        : "bg-[#1C2643] text-white hover:bg-black shadow-slate-200"
+                                    )}
+                                  >
+                                    {isStarted ? "Continuar" : "INICIAR"}
+                                  </Button>
+                                )}
 
-                              {(isAdmin || isDeveloper) && (
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedCampaignForTeam(campaign);
-                                  }}
-                                  title="Ver Equipe"
-                                  className="h-9 w-9 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all active:scale-95"
-                                >
-                                  <Users className="w-4.5 h-4.5" />
-                                </Button>
-                              )}
+                                {(isSupervisor || isAdmin || isDeveloper) && (
+                                  <Button 
+                                    onClick={() => toggleCampaignExpansion(campaign.id)}
+                                    className={cn(
+                                      "h-9 px-5 text-[10px] font-black uppercase tracking-widest rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5",
+                                      isExpanded 
+                                        ? "bg-amber-600 text-white hover:bg-amber-700 shadow-amber-200" 
+                                        : "bg-amber-500 text-white hover:bg-amber-600 shadow-amber-100"
+                                    )}
+                                  >
+                                    <span>MONITORAMENTO</span>
+                                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
 
-                              {(isAdmin || isDeveloper) && (
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCampaignToDelete(campaign.id);
-                                  }}
-                                  title="Excluir"
-                                  className="h-9 w-9 rounded-xl border border-rose-205 text-rose-600 hover:bg-rose-50 transition-all active:scale-95"
-                                >
-                                  <Trash2 className="w-4.5 h-4.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                          {isExpanded && (
+                            <tr className="bg-slate-50/50">
+                              <td colSpan={6} className="px-8 pb-6 pt-2">
+                                <div className="bg-white rounded-2xl p-6 border border-slate-200/60 shadow-md space-y-4 animate-in slide-in-from-top-2 duration-200">
+                                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                    <div className="flex items-center gap-2">
+                                      <Users className="w-5 h-5 text-[#1C2643]" />
+                                      <span className="text-[12px] font-black uppercase tracking-widest text-[#1C2643]">
+                                        Acompanhamento de Execução da Campanha
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                      {campaign.filtros?.corretores_selecionados?.length || 0} corretores selecionados
+                                    </span>
+                                  </div>
+
+                                  {isLoadingMonitoring && !monitoringData[campaign.id] ? (
+                                    <div className="flex items-center justify-center py-8 gap-2">
+                                      <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando dados de execução...</span>
+                                    </div>
+                                  ) : (
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-left text-[11px] font-sans border-collapse">
+                                        <thead>
+                                          <tr className="border-b border-slate-100 pb-2">
+                                            <th className="font-bold text-slate-400 uppercase tracking-widest text-[8.5px] pb-3">Corretor</th>
+                                            <th className="font-bold text-slate-400 uppercase tracking-widest text-[8.5px] pb-3">Presença</th>
+                                            <th className="font-bold text-slate-400 uppercase tracking-widest text-[8.5px] pb-3 text-center">Entrou em</th>
+                                            <th className="font-bold text-slate-400 uppercase tracking-widest text-[8.5px] pb-3 text-center">Saiu em</th>
+                                            <th className="font-bold text-slate-400 uppercase tracking-widest text-[8.5px] pb-3 text-center">Clientes Trabalhados</th>
+                                            <th className="font-bold text-slate-400 uppercase tracking-widest text-[8.5px] pb-3 pl-4">Tabulações Realizadas</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {(() => {
+                                            const brokersDef = campaign.filtros?.corretores_selecionados || [];
+                                            const matchedBrokers = allUsers.filter(u => brokersDef.includes(u.id));
+
+                                            if (brokersDef.length === 0) {
+                                              return (
+                                                <tr>
+                                                  <td colSpan={6} className="py-6 text-center text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                                                    Nenhum corretor associado a esta campanha.
+                                                  </td>
+                                                </tr>
+                                              );
+                                            }
+
+                                            const stats = monitoringData[campaign.id] || {};
+
+                                            return matchedBrokers.map((broker) => {
+                                              const brokerStats = stats[broker.id] || { total: 0, tabulacoes: {}, last_active: null };
+                                              
+                                              // Ativo se interagiu nos últimos 15 min
+                                              const isBrokerActive = brokerStats.last_active 
+                                                ? (new Date().getTime() - new Date(brokerStats.last_active).getTime()) < 15 * 60 * 1000
+                                                : false;
+
+                                              const tabulacoesEntries = Object.entries(brokerStats.tabulacoes);
+                                              const sessao = campaign.filtros?.sessoes_corretores?.[broker.id];
+                                              const horaEntrada = sessao?.entrou 
+                                                ? new Date(sessao.entrou).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
+                                                : "-";
+                                              const horaSaida = sessao?.saiu 
+                                                ? new Date(sessao.saiu).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
+                                                : "-";
+
+                                              return (
+                                                <tr key={broker.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+                                                  <td className="py-4 font-bold text-slate-700 capitalize text-left">
+                                                    {broker.nome.toLowerCase()}
+                                                  </td>
+                                                  <td className="py-4">
+                                                    {isBrokerActive ? (
+                                                      <span className="inline-flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 uppercase tracking-widest text-[8.5px] font-black text-emerald-600">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                        Ativo
+                                                      </span>
+                                                    ) : (
+                                                      <span className="inline-flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200 uppercase tracking-widest text-[8.5px] font-black text-slate-400">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                                                        Inativo
+                                                      </span>
+                                                    )}
+                                                  </td>
+                                                  <td className="py-4 text-center text-[11px] font-mono text-slate-600 font-semibold">
+                                                    {horaEntrada}
+                                                  </td>
+                                                  <td className="py-4 text-center text-[11px] font-mono text-slate-600 font-semibold">
+                                                    {isBrokerActive ? (
+                                                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-[9px] text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-md font-bold uppercase animate-pulse">
+                                                        Trabalhando...
+                                                      </span>
+                                                    ) : (
+                                                      horaSaida
+                                                    )}
+                                                  </td>
+                                                  <td className="py-4 text-center text-[13px] font-black text-slate-800">
+                                                    {brokerStats.total}
+                                                  </td>
+                                                  <td className="py-4 pl-4 text-left">
+                                                    {tabulacoesEntries.length === 0 ? (
+                                                      <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Nenhuma atuação registrada</span>
+                                                    ) : (
+                                                      <div className="flex flex-wrap gap-2 justify-start">
+                                                        {tabulacoesEntries.map(([tab, count]) => (
+                                                          <span key={tab} className="inline-block bg-amber-50 border border-amber-100/80 rounded-lg px-2.5 py-1 text-[9px] font-bold text-amber-700 uppercase">
+                                                            {tab}: <span className="font-black text-amber-900">{count}</span>
+                                                          </span>
+                                                        ))}
+                                                      </div>
+                                                    )}
+                                                  </td>
+                                                </tr>
+                                              );
+                                            });
+                                          })()}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })
                   )}

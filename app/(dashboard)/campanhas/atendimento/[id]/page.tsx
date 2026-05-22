@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
@@ -7,12 +8,13 @@ import { useAuth } from "@/context/auth-context"
 import { Header } from "@/components/layout/header"
 import { cn, withRetry } from "@/lib/utils"
 import { 
-  Target, 
   Loader2, 
   ChevronRight, 
   LogOut, 
   CheckCircle2, 
-  MessageCircle
+  MessageCircle,
+  Eye,
+  EyeOff
 } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -24,8 +26,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { toast } from "react-hot-toast"
+import { toast } from "sonner"
 import { translateOrgao, ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
 import { getContractTypeInfo, CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
@@ -231,6 +232,53 @@ function MarginCard({ label, value, status, type = "neutral" }: { label: string;
   )
 }
 
+interface LoanData {
+  banco: string;
+  orgao: string | null;
+  contrato: string;
+  parcela: number;
+  prazo: number;
+  tipo: string;
+}
+
+function LoanRow({ loan }: { loan: LoanData }) {
+  const [taxa, setTaxa] = useState(1.5);
+  const i = taxa / 100;
+  const n = loan.prazo;
+  const p = loan.parcela;
+  const saldo = p * ((1 - Math.pow(1 + i, -n)) / i);
+
+  const info = getContractTypeInfo(loan.tipo);
+  const displayedBank = info.bank || loan.banco;
+
+  return (
+    <tr className="group bg-blue-50/30 hover:bg-blue-50/50 transition-colors">
+      <td className="py-3 pl-4 text-[11px] font-bold text-slate-700 rounded-l-xl border-y border-l border-blue-100">{displayedBank}</td>
+      <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.orgao || "-"}</td>
+      <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.contrato}</td>
+      <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">
+        {loan.parcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+      </td>
+      <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.prazo}</td>
+      <td className="py-3 text-center border-y border-blue-100">
+        <div className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-0.5 shadow-sm">
+          <input 
+            type="number" 
+            value={taxa}
+            onChange={(e) => setTaxa(Number(e.target.value))}
+            className="w-12 bg-transparent text-[11px] font-bold text-slate-900 focus:outline-none text-right pr-1"
+            step="0.01"
+          />
+          <span className="text-[10px] font-bold text-slate-400">%</span>
+        </div>
+      </td>
+      <td className="py-3 pr-4 text-[11px] font-bold text-slate-900 text-right rounded-r-xl border-y border-r border-blue-100">
+        {saldo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+      </td>
+    </tr>
+  );
+}
+
 // --- Main Page ---
 
 export default function CampanhaAtendimentoPage() {
@@ -249,7 +297,7 @@ export default function CampanhaAtendimentoPage() {
   
   // Tabulation
   const [tabulacao, setTabulacao] = useState<string>("")
-  const [observacao, setObservacao] = useState<string>("")
+  const [showSensitiveData, setShowSensitiveData] = useState(false)
   
   // Stats
   const [completedCount, setCompletedCount] = useState(0)
@@ -260,7 +308,7 @@ export default function CampanhaAtendimentoPage() {
     setRegistrations([])
     setActiveRegIndex(0)
     setTabulacao("")
-    setObservacao("")
+    setShowSensitiveData(false)
 
     try {
       let targetCpf: string | null = null
@@ -346,75 +394,88 @@ export default function CampanhaAtendimentoPage() {
 
       if (targetCpf) {
         const { data: leadData, error: leadError } = await withRetry(() => 
-          supabase.from(table).select('*').eq('cpf', targetCpf).maybeSingle()
+          supabase.from(table).select('*').eq('cpf', targetCpf).limit(1)
         )
         if (leadError) throw leadError
-        data = leadData
+        data = leadData && leadData.length > 0 ? leadData[0] : null
       } else {
-        // Fallback to client-side formulaic mathematical round robin
+        // Fallback to client-side formulaic mathematical round robin querying campanha_membros
         const filters = camp.filtros
         const brokers = filters.corretores_selecionados || []
         const numBrokers = brokers.length || 1
         const myIndex = brokers.indexOf(user.id)
         const brokerRelIndex = myIndex === -1 ? 0 : myIndex // Fallback to 0 if not explicitly listed
 
-        // Logic: Lead index in global sequence = (FinishedCount * NumBrokers) + myIndex
         const globalOffset = (offset * numBrokers) + brokerRelIndex
         
-        // 1. INDEX-ONLY OPTIMIZATION: Query ONLY the 'cpf' column first instead of SELECT *
-        // Selecting only one indexed key avoids loading massive unindexed text buffers into memory during sorts/filtering.
-        let query = supabase.from(table).select('cpf')
-        
-        // Apply Campaign Filters using dynamic full filters from export module matching
-        query = applyCampaignFilters(query, filters)
-        
-        // Sort and Offset
-        query = query.order('cpf', { ascending: true }).range(globalOffset, globalOffset)
-        
+        // 1. Fetch CPF from campanha_membros (extremely fast and indexed)
         let fetchedLeadCpf: string | null = null
-        let fetchError: any = null
-        
         try {
-          const { data: resCpf, error: errCpf } = await withRetry(() => query.maybeSingle())
-          fetchError = errCpf
-          fetchedLeadCpf = resCpf?.cpf || null
-        } catch (err: any) {
-          fetchError = err
+          const { data: memberRow, error: memberErr } = await withRetry(() =>
+            supabase
+              .from('campanha_membros')
+              .select('cliente_cpf')
+              .eq('campanha_id', camp.id)
+              .order('ordem_fila', { ascending: true })
+              .range(globalOffset, globalOffset)
+              .maybeSingle()
+          )
+          if (!memberErr && memberRow?.cliente_cpf) {
+            fetchedLeadCpf = memberRow.cliente_cpf
+          } else if (memberErr) {
+            console.error("Erro ao buscar campanha_membros:", memberErr)
+          }
+        } catch (err) {
+          console.error("Falha ao consultar campanha_membros, caindo para fallback:", err)
         }
         
-        // 2. UNORDERED GRACEFUL FALLBACK:
-        // If Postgres sorting is timing out (code 57014 or any other error/timeout), fall back to an unordered fast scan.
-        // Postgres does NOT have to sort 1.3M rows and can instantly yield matching tuples in partial sequential scan.
-        if (fetchError || !fetchedLeadCpf) {
-          console.warn("Ordered check failed/timed out, trying fast unordered fallback scan", fetchError)
+        // 2. Graceful fallback to formulaic scan if campanha_membros is not fully populated/available
+        if (!fetchedLeadCpf) {
+          let query = supabase.from(table).select('cpf')
+          query = applyCampaignFilters(query, filters)
+          query = query.order('cpf', { ascending: true }).range(globalOffset, globalOffset)
           
-          let unorderedQuery = supabase.from(table).select('cpf')
-          unorderedQuery = applyCampaignFilters(unorderedQuery, filters)
-          
-          // Use modulo offset to avoid deep pagination scans and keep it very fast
-          const fastOffset = globalOffset % 500
-          unorderedQuery = unorderedQuery.range(fastOffset, fastOffset)
+          let fetchError: any = null
           
           try {
-            const { data: resCpfUnordered, error: errCpfUnordered } = await withRetry(() => unorderedQuery.maybeSingle())
-            if (!errCpfUnordered && resCpfUnordered?.cpf) {
-              fetchedLeadCpf = resCpfUnordered.cpf
-            } else if (errCpfUnordered) {
-              console.error("Unordered fallback failed too:", errCpfUnordered)
+            const { data: resCpf, error: errCpf } = await withRetry(() => query.maybeSingle())
+            fetchError = errCpf
+            fetchedLeadCpf = resCpf?.cpf || null
+          } catch (err: any) {
+            fetchError = err
+          }
+          
+          // UNORDERED GRACEFUL FALLBACK below of the formula fallback
+          if (fetchError || !fetchedLeadCpf) {
+            console.warn("Ordered check failed/timed out, trying fast unordered fallback scan", fetchError)
+            
+            let unorderedQuery = supabase.from(table).select('cpf')
+            unorderedQuery = applyCampaignFilters(unorderedQuery, filters)
+            
+            const fastOffset = globalOffset % 500
+            unorderedQuery = unorderedQuery.range(fastOffset, fastOffset)
+            
+            try {
+              const { data: resCpfUnordered, error: errCpfUnordered } = await withRetry(() => unorderedQuery.maybeSingle())
+              if (!errCpfUnordered && resCpfUnordered?.cpf) {
+                fetchedLeadCpf = resCpfUnordered.cpf
+              } else if (errCpfUnordered) {
+                console.error("Unordered fallback failed too:", errCpfUnordered)
+              }
+            } catch (unordErr) {
+              console.error("Unordered search promise crash:", unordErr)
             }
-          } catch (unordErr) {
-            console.error("Unordered search promise crash:", unordErr)
           }
         }
         
         // 3. RAPID SINGLE KEY LOOKUP:
-        // If we found a target CPF, fetch the full row details via its primary indexed key.
+        // Use primary key query to fetch full details
         if (fetchedLeadCpf) {
           const { data: fullLead, error: fullLeadError } = await withRetry(() => 
-            supabase.from(table).select('*').eq('cpf', fetchedLeadCpf).maybeSingle()
+            supabase.from(table).select('*').eq('cpf', fetchedLeadCpf).limit(1)
           )
           if (fullLeadError) throw fullLeadError
-          data = fullLead
+          data = fullLead && fullLead.length > 0 ? fullLead[0] : null
         }
         
         // Attempt stateful claim creation so future steps become fully sequential
@@ -535,6 +596,27 @@ export default function CampanhaAtendimentoPage() {
       setCampaign(campaignData)
       console.log("Campanha carregada com sucesso:", campaignData.nome)
 
+      // Registrar horário de entrada
+      try {
+        const currentSessoes = campaignData.filtros?.sessoes_corretores || {};
+        const updatedFiltros = {
+          ...(campaignData.filtros || {}),
+          sessoes_corretores: {
+            ...currentSessoes,
+            [user.id]: {
+              ...(currentSessoes[user.id] || {}),
+              entrou: new Date().toISOString()
+            }
+          }
+        };
+        await supabase
+          .from('campanhas')
+          .update({ filtros: updatedFiltros })
+          .eq('id', campaignId);
+      } catch (entryTimeErr) {
+        console.error("Erro ao registrar horário de entrada:", entryTimeErr);
+      }
+
       // 2. Count progress for this broker
       const { count, error: countError } = await withRetry(() => 
         supabase
@@ -591,7 +673,7 @@ export default function CampanhaAtendimentoPage() {
            corretor_id: user.id,
            cliente_cpf: currentLead.cpf,
            tabulacao,
-           observacao
+           
          })
        )
        
@@ -620,7 +702,107 @@ export default function CampanhaAtendimentoPage() {
     }
   }
 
-  const handleExit = () => {
+  // Salvar hora de saída ao desmontar a página (caso mude de rota pelo menu lateral)
+  useEffect(() => {
+    return () => {
+      if (user?.id && campaignId) {
+        // Disparar atualização em background
+        supabase.from('campanhas').select('filtros').eq('id', campaignId).maybeSingle().then(({ data }) => {
+          if (data) {
+            const currentSessoes = data.filtros?.sessoes_corretores || {}
+            const updatedFiltros = {
+              ...(data.filtros || {}),
+              sessoes_corretores: {
+                ...currentSessoes,
+                [user.id]: {
+                  ...(currentSessoes[user.id] || {}),
+                  saiu: new Date().toISOString()
+                }
+              }
+            }
+            supabase.from('campanhas').update({ filtros: updatedFiltros }).eq('id', campaignId).then(() => {
+              console.log("Horário de saída registrado via unmount")
+            })
+          }
+        })
+      }
+    }
+  }, [user?.id, campaignId])
+
+  const handleExit = async () => {
+    if (!campaign || !user) {
+      router.push('/campanhas/distribuicao')
+      return
+    }
+
+    if (currentLead) {
+      if (!tabulacao) {
+        toast.error("Por favor, selecione uma tabulação para conseguir sair da campanha.")
+        return
+      }
+      
+      setIsSubmitting(true)
+      try {
+        const { error } = await withRetry(() => 
+          supabase.from('campanha_atendimentos').insert({
+            campanha_id: campaign.id,
+            corretor_id: user.id,
+            cliente_cpf: currentLead.cpf,
+            tabulacao
+          })
+        )
+        
+        if (error) throw error
+
+        // Mark lead as completed in campanha_vinculos statefully
+        try {
+          await supabase.from('campanha_vinculos')
+            .update({ completed: true })
+            .eq('campanha_id', campaign.id)
+            .eq('corretor_id', user.id)
+            .eq('cliente_cpf', currentLead.cpf)
+        } catch (linkErr) {
+          console.warn("Could not mark claim as completed statefully:", linkErr)
+        }
+      } catch (err) {
+        console.error("Erro ao salvar tabulação ao sair:", err)
+        toast.error("Erro ao salvar atendimento ao sair.")
+        setIsSubmitting(false)
+        return
+      }
+    }
+
+    // Registrar horário de saída
+    try {
+      const { data: latestCamp } = await supabase
+        .from('campanhas')
+        .select('filtros')
+        .eq('id', campaign.id)
+        .maybeSingle()
+
+      if (latestCamp) {
+        const currentSessoes = latestCamp.filtros?.sessoes_corretores || {}
+        const updatedFiltros = {
+          ...(latestCamp.filtros || {}),
+          sessoes_corretores: {
+            ...currentSessoes,
+            [user.id]: {
+              ...(currentSessoes[user.id] || {}),
+              saiu: new Date().toISOString()
+            }
+          }
+        }
+        await supabase
+          .from('campanhas')
+          .update({ filtros: updatedFiltros })
+          .eq('id', campaign.id)
+      }
+    } catch (exitTimeErr) {
+      console.error("Erro ao registrar horário de saída:", exitTimeErr)
+    }
+
+    toast.success("Atendimento registrado! Saindo...")
+    setIsSubmitting(false)
     router.push('/campanhas/distribuicao')
   }
 
@@ -632,11 +814,21 @@ export default function CampanhaAtendimentoPage() {
 
   const maskCPF = (cpf: string) => {
     if (!cpf) return ""
+    if (showSensitiveData) {
+      return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
+    }
     return cpf.replace(/(\d{3})\d{6}(\d{2})/, "$1.***.***-$2")
   }
 
   const maskPhone = (phone: string | null) => {
     if (!phone || phone === '0') return "NÃO INFORMADO"
+    if (showSensitiveData) {
+      const cleaned = phone.replace(/\D/g, "")
+      if (cleaned.length === 11) {
+        return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3")
+      }
+      return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
+    }
     return phone.replace(/\d{4}$/, "****")
   }
 
@@ -713,41 +905,34 @@ export default function CampanhaAtendimentoPage() {
       <Header title={`${campaign?.nome || "ATENDIMENTO"}`} />
       
       {/* --- Action Bar (Floating Logic) --- */}
-      <div className="sticky top-16 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-3 shadow-sm">
-        <div className="max-w-[1400px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl">
-              <Target className="w-4 h-4 text-emerald-400" />
-              <span className="text-[10px] font-black uppercase tracking-widest">{completedCount} Leads Finalizados</span>
-            </div>
-            <div className="h-4 w-px bg-slate-200 hidden md:block"></div>
-            <div className="flex items-center gap-2">
-                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tabulação:</span>
-                 <Select value={tabulacao} onValueChange={setTabulacao}>
-                   <SelectTrigger className="w-[200px] h-10 rounded-xl text-[10px] font-bold border-slate-200 bg-white">
-                     <SelectValue placeholder="SELECIONE O STATUS" />
-                   </SelectTrigger>
-                   <SelectContent className="rounded-xl">
-                     <SelectItem value="CLIENTE CHAMADO" className="text-[10px] font-bold">CLIENTE CHAMADO</SelectItem>
-                     <SelectItem value="NÃO EXISTE WHATSAPP" className="text-[10px] font-bold">NÃO EXISTE WHATSAPP</SelectItem>
-                     <SelectItem value="WHATSAPP DIVERGENTE" className="text-[10px] font-bold">WHATSAPP DIVERGENTE</SelectItem>
-                   </SelectContent>
-                 </Select>
-            </div>
+      <div className="sticky top-16 lg:top-20 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3.5 shadow-lg">
+        <div className="max-w-[1400px] mx-auto flex flex-col sm:flex-row items-center justify-end gap-3 sm:gap-4 w-full">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Tabulação:</span>
+            <Select value={tabulacao} onValueChange={setTabulacao}>
+              <SelectTrigger className="w-full sm:w-[220px] h-10 rounded-xl text-[10px] font-bold border-slate-200 bg-white focus:ring-1 focus:ring-slate-300">
+                <SelectValue placeholder="SELECIONE O STATUS" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="CLIENTE CHAMADO" className="text-[10px] font-bold">CLIENTE CHAMADO</SelectItem>
+                <SelectItem value="NÃO EXISTE WHATSAPP" className="text-[10px] font-bold">NÃO EXISTE WHATSAPP</SelectItem>
+                <SelectItem value="WHATSAPP DIVERGENTE" className="text-[10px] font-bold">WHATSAPP DIVERGENTE</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           
-          <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
             <Button 
                 variant="outline" 
                 onClick={handleExit}
-                className="h-10 px-6 rounded-xl text-[10px] font-bold uppercase border-slate-200 hover:bg-slate-50 flex-1 md:flex-none"
+                className="h-10 px-6 rounded-xl text-[10px] font-bold uppercase border-slate-200 hover:bg-slate-50 flex-1 sm:flex-none whitespace-nowrap"
             >
-              <LogOut className="w-4 h-4 mr-2" /> SAIR
+              <LogOut className="w-4 h-4 mr-2" /> SAIR DA CAMPANHA
             </Button>
             <Button 
                 onClick={handleTabulateAndNext}
                 disabled={isSubmitting}
-                className="h-10 px-8 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-blue-100 flex-1 md:flex-none"
+                className="h-10 px-8 bg-[#2E2E2E] hover:bg-[#1A1A1A] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-neutral-100 flex-1 sm:flex-none whitespace-nowrap"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "PRÓXIMO CLIENTE"} <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
@@ -764,27 +949,21 @@ export default function CampanhaAtendimentoPage() {
             exit={{ opacity: 0, y: -20 }}
             className="space-y-6"
           >
-            {/* Observação (Fixed on top of client data) */}
-            <Card className="card-shadow border-slate-200 bg-blue-50/20">
-                <CardContent className="p-6">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                        <MessageCircle className="w-3.5 h-3.5" /> Observações do Atendimento
-                    </p>
-                    <Textarea 
-                        placeholder="Escreva detalhes sobre o contato (Opcional)..."
-                        value={observacao}
-                        onChange={(e) => setObservacao(e.target.value)}
-                        className="min-h-[80px] bg-white border-slate-200 rounded-xl text-[12px] font-medium"
-                    />
-                </CardContent>
-            </Card>
-
             {/* Dados Pessoais */}
             <Card className="card-shadow border border-slate-200">
               <CardContent className="p-8 space-y-10">
-                <div className="flex items-center gap-3">
-                  <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                  <h3 className="text-[16px] font-bold text-slate-900">Perfil do Cliente</h3>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                    <h3 className="text-[16px] font-bold text-slate-900">Dados Pessoais</h3>
+                  </div>
+                  <button 
+                    onClick={() => setShowSensitiveData(!showSensitiveData)}
+                    className="text-slate-500 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100 rounded-full"
+                    id="toggle-sensitive-data"
+                  >
+                    {showSensitiveData ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-12">
@@ -868,19 +1047,25 @@ export default function CampanhaAtendimentoPage() {
                       {/* Margens */}
                       {activeInst && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {/* Row 1 */}
                           <MarginCard label="Saldo 70%" value={formatCurrency(activeInst.saldo_70)} type="neutral" />
                           <MarginCard 
                             label="Margem 35%" 
                             value={formatCurrency(activeInst.margem_35)} 
                             type={(activeInst.margem_35 || 0) > 0 ? "success" : "danger"}
-                            status={(activeInst.margem_35 || 0) > 0 ? "DISPONÍVEL" : "NÃO DISPONÍVEL"}
+                            status={(activeInst.margem_35 || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
                           />
                           <MarginCard 
-                            label="Soma Líquidas (5% + 5%)" 
-                            value={formatCurrency((activeInst.liquida_5 || 0) + (activeInst.beneficio_liquida_5 || 0))} 
+                            label="Soma das Margens Líquidas" 
+                            value={formatCurrency(
+                              (activeInst.margem_35 || 0) + 
+                              (activeInst.liquida_5 || 0) + 
+                              (activeInst.beneficio_liquida_5 || 0)
+                            )} 
                             type="warning" 
                           />
                           
+                          {/* Row 2 */}
                           <MarginCard label="Bruta 5%" value={formatCurrency(activeInst.bruta_5)} type="neutral" />
                           <MarginCard 
                              label="Utilizada 5%" 
@@ -890,44 +1075,181 @@ export default function CampanhaAtendimentoPage() {
                           <MarginCard 
                             label="Líquida 5%" 
                             value={formatCurrency(activeInst.liquida_5)} 
-                            type={(activeInst.liquida_5 || 0) > 0 ? "success" : "danger"}
-                            status={(activeInst.liquida_5 || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                            type={getUtilizadaStatus(activeInst.bruta_5, activeInst.liquida_5) === "SIM" ? "danger" : "success"}
+                            status={getUtilizadaStatus(activeInst.bruta_5, activeInst.liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
+                          />
+
+                          {/* Row 3 */}
+                          <MarginCard label="Benefício Bruta 5%" value={formatCurrency(activeInst.beneficio_bruta_5)} type="neutral" />
+                          <MarginCard 
+                             label="Benefício Utilizada 5%" 
+                             value={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5)} 
+                             type={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5) === "SIM" ? "danger" : "success"}
+                          />
+                          <MarginCard 
+                            label="Benefício Líquida 5%" 
+                            value={formatCurrency(activeInst.beneficio_liquida_5)} 
+                            type={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5) === "SIM" ? "danger" : "success"}
+                            status={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
                           />
                         </div>
                       )}
 
-                      {/* Contratos */}
-                      {activeInst && activeInst.itens_credito && activeInst.itens_credito.length > 0 && (
-                         <div className="space-y-8">
-                            <div className="flex items-center gap-3">
-                                <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                                <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Contratos</h3>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-separate border-spacing-y-2">
+                      {/* Contratos Section (SIAPE) */}
+                      {activeInst && (
+                        <div className="space-y-10 border-t border-slate-100 pt-8">
+                          {/* Contratos de Empréstimo */}
+                          {(() => {
+                            const contracts = ((activeInst?.itens_credito || activeReg?.itens_credito || []) as Contract[]);
+                            const filtered = contracts.filter(c => getContractTypeInfo(c.tipo).category === "EMPRESTIMO");
+                            
+                            return (
+                              <div className="space-y-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Contratos de Empréstimo</h3>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left border-separate border-spacing-y-2">
                                     <thead>
-                                        <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                            <th className="pb-2 text-left">Banco</th>
-                                            <th className="pb-2 text-center">Contrato</th>
-                                            <th className="pb-2 text-center">Parcela</th>
-                                            <th className="pb-2 text-center">Prazo</th>
-                                            <th className="pb-2 text-right">Tipo</th>
-                                        </tr>
+                                      <tr>
+                                        <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
+                                        <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Órgão</th>
+                                        <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Contrato</th>
+                                        <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Parcela</th>
+                                        <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Prazo</th>
+                                        <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Taxa</th>
+                                        <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Saldo Est.</th>
+                                      </tr>
                                     </thead>
-                                    <tbody className="text-[12px] font-bold text-slate-700">
-                                        {activeInst.itens_credito.map((c, i) => (
-                                            <tr key={i} className="bg-slate-50/50 hover:bg-slate-50 transition-colors">
-                                                <td className="p-4 rounded-l-xl border-y border-l border-slate-100">{c.banco}</td>
-                                                <td className="p-4 text-center border-y border-slate-100">{c.numero_do_contrato}</td>
-                                                <td className="p-4 text-center border-y border-slate-100">{formatCurrency(c.parcela)}</td>
-                                                <td className="p-4 text-center border-y border-slate-100">{c.prazo}</td>
-                                                <td className="p-4 text-right rounded-r-xl border-y border-r border-slate-100">{getContractTypeInfo(c.tipo).label}</td>
-                                            </tr>
-                                        ))}
+                                    <tbody>
+                                      {filtered.length > 0 ? (
+                                        filtered.map((contract, cIdx) => (
+                                          <LoanRow key={cIdx} loan={{
+                                            banco: contract.banco,
+                                            orgao: contract.orgao,
+                                            contrato: contract.numero_do_contrato,
+                                            parcela: contract.parcela,
+                                            prazo: contract.prazo,
+                                            tipo: contract.tipo
+                                          }} />
+                                        ))
+                                      ) : (
+                                        <tr>
+                                          <td colSpan={7} className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white rounded-xl border border-dashed border-slate-200">
+                                            Nenhum contrato de empréstimo encontrado
+                                          </td>
+                                        </tr>
+                                      )}
                                     </tbody>
-                                </table>
-                            </div>
-                         </div>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-4">
+                            {/* Cartão Consignado Section */}
+                            {(() => {
+                              const contracts = ((activeInst?.itens_credito || activeReg?.itens_credito || []) as Contract[]);
+                              const filtered = contracts.filter(c => getContractTypeInfo(c.tipo).category === "CARTAO_CONSIGNADO");
+                              
+                              return (
+                                <div className="space-y-4">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-1 h-5 bg-emerald-500 rounded-full"></div>
+                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Cartão Consignado</h3>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-separate border-spacing-y-2">
+                                      <thead>
+                                        <tr>
+                                          <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
+                                          <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Parcela</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {filtered.length > 0 ? (
+                                          filtered.map((card, cIdx) => {
+                                            const info = getContractTypeInfo(card.tipo);
+                                            const displayedBank = info.bank || card.banco;
+                                            
+                                            return (
+                                              <tr key={cIdx} className="bg-slate-50/50 hover:bg-slate-100/50 transition-colors">
+                                                <td className="py-3 pl-4 rounded-l-xl">
+                                                  <p className="text-[11px] font-bold text-slate-700 uppercase">{displayedBank}</p>
+                                                </td>
+                                                <td className="py-3 pr-4 text-right rounded-r-xl">
+                                                  <p className="text-[11px] font-black text-slate-900">{formatCurrency(card.parcela)}</p>
+                                                </td>
+                                              </tr>
+                                            );
+                                          })
+                                        ) : (
+                                          <tr>
+                                            <td colSpan={2} className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white rounded-xl border border-dashed border-slate-200">
+                                              Nenhum cartão consignado encontrado
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Cartão Benefício Section */}
+                            {(() => {
+                              const contracts = ((activeInst?.itens_credito || activeReg?.itens_credito || []) as Contract[]);
+                              const filtered = contracts.filter(c => getContractTypeInfo(c.tipo).category === "CARTAO_BENEFICIO");
+                              
+                              return (
+                                <div className="space-y-4">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-1 h-5 bg-purple-500 rounded-full"></div>
+                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Cartão Benefício</h3>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-separate border-spacing-y-2">
+                                      <thead>
+                                        <tr>
+                                          <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
+                                          <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Parcela</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {filtered.length > 0 ? (
+                                          filtered.map((card, cIdx) => {
+                                            const info = getContractTypeInfo(card.tipo);
+                                            const displayedBank = info.bank || card.banco;
+                                            
+                                            return (
+                                              <tr key={cIdx} className="bg-slate-50/50 hover:bg-slate-100/50 transition-colors">
+                                                <td className="py-3 pl-4 rounded-l-xl">
+                                                  <p className="text-[11px] font-bold text-slate-700 uppercase">{displayedBank}</p>
+                                                </td>
+                                                <td className="py-3 pr-4 text-right rounded-r-xl">
+                                                  <p className="text-[11px] font-black text-slate-900">{formatCurrency(card.parcela)}</p>
+                                                </td>
+                                              </tr>
+                                            );
+                                          })
+                                        ) : (
+                                          <tr>
+                                            <td colSpan={2} className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white rounded-xl border border-dashed border-slate-200">
+                                              Nenhum cartão benefício encontrado
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
                       )}
                     </CardContent>
                   </Card>

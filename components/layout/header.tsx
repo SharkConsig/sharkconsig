@@ -4,7 +4,7 @@ import { ChevronDown, LogOut, Menu, MessageSquarePlus, MessageSquareText, Clipbo
 import Image from "next/image"
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useSidebar } from "@/context/sidebar-context"
 import { supabase } from "@/lib/supabase"
 
@@ -16,6 +16,8 @@ import { useAuth } from "@/context/auth-context"
 
 export function Header({ title }: HeaderProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { toggleSidebar } = useSidebar()
@@ -74,7 +76,10 @@ export function Header({ title }: HeaderProps) {
       <div className="flex items-center gap-4">
         <button 
           onClick={toggleSidebar}
-          className="lg:hidden p-2 text-slate-400 hover:text-primary transition-colors"
+          disabled={isCampanhaAtendimento}
+          className={`lg:hidden p-2 text-slate-400 hover:text-primary transition-colors ${
+            isCampanhaAtendimento ? "pointer-events-none opacity-40" : ""
+          }`}
         >
           <Menu className="w-6 h-6" />
         </button>
@@ -83,7 +88,9 @@ export function Header({ title }: HeaderProps) {
         </h2>
       </div>
       <div className="flex items-center gap-2 sm:gap-4">
-        <div className="hidden md:flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100 mr-2">
+        <div className={`hidden md:flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100 mr-2 ${
+          isCampanhaAtendimento ? "pointer-events-none opacity-40 cursor-not-allowed select-none" : ""
+        }`}>
           <Link 
             href="/chamados/novo" 
             title="Abrir Chamado"

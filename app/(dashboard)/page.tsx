@@ -329,12 +329,15 @@ export default function DashboardPage() {
               const distribution = f?.distribuicao || []
               const brokers = f?.corretores_selecionados || []
               
+              const isSelectedBroker = Array.isArray(brokers) && brokers.includes(userId);
+              const isSelectedSupervisor = Array.isArray(distribution) && distribution.includes(userId);
+              const isUnderSelectedSupervisor = !!(supervisorId && Array.isArray(distribution) && distribution.includes(supervisorId));
+
               if (Array.isArray(brokers) && brokers.length > 0) {
-                return brokers.includes(userId)
+                return isSelectedBroker || isSelectedSupervisor;
               }
               
-              return (Array.isArray(distribution) && distribution.includes(userId)) || 
-                     (supervisorId && Array.isArray(distribution) && distribution.includes(supervisorId))
+              return isSelectedSupervisor || isUnderSelectedSupervisor;
             })
           }
           
@@ -1135,39 +1138,9 @@ export default function DashboardPage() {
               </motion.div>
             </div>
 
-            {/* TABS SELECTION AND FILTER */}
-            <div className="flex flex-col gap-4 mb-8">
-              <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl">
-                <button
-                  onClick={() => setActiveTab('propostas')}
-                  className={cn(
-                    "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2",
-                    activeTab === 'propostas' 
-                      ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
-                      : "text-slate-400 hover:text-slate-600"
-                  )}
-                >
-                  <TrendingUp className="w-4 h-4" />
-                  METAS E PRODUÇÃO
-                </button>
-                {isAdmin && (
-                  <button
-                    onClick={() => setActiveTab('chamados')}
-                    className={cn(
-                      "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2",
-                      activeTab === 'chamados' 
-                        ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
-                        : "text-slate-400 hover:text-slate-600"
-                    )}
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    CHAMADOS
-                  </button>
-                )}
-              </div>
-
-              {/* Filter Section - Aligned to Right, Below Tabs */}
-              {isSupervisor && (
+            {/* FILTER SECTION SECURELY RENDERED FOR SUPERVISOR */}
+            {isSupervisor && (
+              <div className="flex flex-col gap-4 mb-8">
                 <div className="flex justify-end">
                   <div className="flex items-end gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
                     <div className="flex flex-col">
@@ -1228,8 +1201,8 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {activeTab === 'propostas' ? (
               <motion.div 
