@@ -31,7 +31,7 @@ const menuItems = [
         name: "DASHBOARD", 
         href: "/", 
         icon: Landmark, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "IMPORTAR LOTE", 
@@ -55,37 +55,37 @@ const menuItems = [
         name: "ACESSAR CLIENTE", 
         href: "/pesquisa", 
         icon: Search, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "ACESSAR CAMPANHA", 
         href: "/campanhas/distribuicao", 
         icon: Users, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "ABRIR CHAMADO", 
         href: "/chamados/novo", 
         icon: MessageSquarePlus, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "CHAMADOS", 
         href: "/chamados", 
         icon: MessageSquareText, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "DIGITAR PROPOSTA", 
         href: "/propostas/nova", 
         icon: FileEdit, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "PROPOSTAS", 
         href: "/propostas", 
         icon: ClipboardList, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Processo Seletivo"] 
       },
       { 
         name: "CONFIGURAÇÕES", 

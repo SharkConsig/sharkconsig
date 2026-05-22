@@ -88,7 +88,8 @@ export function TransferirPropostaModal({
         .update({
           corretor_id: selectedUser.id,
           corretor: selectedUser.nome,
-          equipe: selectedUser.supervisor_nome || "-"
+          equipe: selectedUser.supervisor_nome || "-",
+          updated_at: new Date().toISOString()
         })
         .eq("id_lead", proposal.id_lead)
 

@@ -293,13 +293,14 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                       <SelectItem value="Supervisor" className="text-[10.5px] font-medium">Supervisor</SelectItem>
                       <SelectItem value="Operacional" className="text-[10.5px] font-medium">Operacional</SelectItem>
                       <SelectItem value="Estágio" className="text-[10.5px] font-medium">Estágio</SelectItem>
+                      <SelectItem value="Processo Seletivo" className="text-[10.5px] font-medium">Processo Seletivo</SelectItem>
                       <SelectItem value="Desenvolvedor" className="text-[10.5px] font-medium">Desenvolvedor</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                {/* Supervisor (Apenas para Corretor ou Estágio) */}
-                {(formData.funcao === "Corretor" || formData.funcao === "Estágio") && (
+                {/* Supervisor (Apenas para Corretor, Estágio ou Processo Seletivo) */}
+                {(formData.funcao === "Corretor" || formData.funcao === "Estágio" || formData.funcao === "Processo Seletivo") && (
                   <div className="space-y-1.5">
                     <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Supervisor Responsável</Label>
                     <Select 
