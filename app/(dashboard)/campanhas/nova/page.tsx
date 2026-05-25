@@ -486,51 +486,28 @@ export default function NewCampaignPage() {
       let totalCount = 0;
 
       const executeQueryWithFallback = async (queryBuilderFn: (countType: 'exact' | 'estimated' | 'planned') => any) => {
-        // 1. Tentar exact count com timeout robusto de 15 segundos (ideal para bancos de mais de 1M de linhas)
+        // Tentar contagem exata com timeout de 40 segundos para dar tempo ao PostgreSQL de aquecer o cache
         try {
           const controller = new AbortController();
           const q = queryBuilderFn('exact').abortSignal(controller.signal);
-          const timeoutId = setTimeout(() => controller.abort(), 15000);
+          const timeoutId = setTimeout(() => controller.abort(), 40000);
           const res = await q;
           clearTimeout(timeoutId);
           if (res.error) throw res.error;
           return res.count || 0;
         } catch (err) {
-          console.warn("Exact count falhou ou deu timeout, tentando estimated...", err);
+          console.warn("Contagem exata com timeout de 40s falhou ou deu timeout. Tentando novamente sem limite de tempo para aproveitar o cache...", err);
           
-          // 2. Tentar estimated count com timeout de 8 segundos
+          // Pequena pausa para respiro antes da tentativa final
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
           try {
-            const controller = new AbortController();
-            const q = queryBuilderFn('estimated').abortSignal(controller.signal);
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
-            const res = await q;
-            clearTimeout(timeoutId);
+            const res = await queryBuilderFn('exact');
             if (res.error) throw res.error;
             return res.count || 0;
-          } catch (err2) {
-            console.warn("Estimated count falhou ou deu timeout, tentando planned...", err2);
-            
-            // 3. Tentar planned count com timeout de 8 segundos
-            try {
-              const controller = new AbortController();
-              const q = queryBuilderFn('planned').abortSignal(controller.signal);
-              const timeoutId = setTimeout(() => controller.abort(), 8000);
-              const res = await q;
-              clearTimeout(timeoutId);
-              if (res.error) throw res.error;
-              return res.count || 0;
-            } catch (err3) {
-              console.warn("Todos os métodos rápidos de contagem falharam, tentando execução final garantida sem timeout...", err3);
-              try {
-                // 4. Última tentativa garantida: exact count sem timeout para lidar com servidores ocupados
-                const res = await queryBuilderFn('exact');
-                if (res.error) throw res.error;
-                return res.count || 0;
-              } catch (lastErr) {
-                console.error("Tentativa final sem timeout também falhou:", lastErr);
-                throw lastErr;
-              }
-            }
+          } catch (lastErr) {
+            console.error("Tentativa final de contagem exata também falhou:", lastErr);
+            throw lastErr;
           }
         }
       };
