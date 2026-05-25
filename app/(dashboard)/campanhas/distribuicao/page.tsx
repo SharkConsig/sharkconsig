@@ -13,7 +13,8 @@ import {
   Info,
   X,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Copy
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { supabase } from "@/lib/supabase"
@@ -968,19 +969,35 @@ export default function DistribuicaoCampanhaPage() {
                                       : "-";
 
                                     return (
-                                      <a
+                                      <button
                                         key={tIdx}
-                                        href={`https://wa.me/55${cleanTel}`}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex items-center gap-1.5 text-slate-600 hover:text-emerald-600 transition-colors font-semibold text-[11px] font-mono group"
-                                        title="Chamar no WhatsApp"
+                                        type="button"
+                                        onClick={() => {
+                                          if (!cleanTel) return;
+                                          if (navigator?.clipboard?.writeText) {
+                                            navigator.clipboard.writeText(cleanTel);
+                                            toast.success(`Copiado: ${formattedPhone}`);
+                                          } else {
+                                            try {
+                                              const textarea = document.createElement("textarea");
+                                              textarea.value = cleanTel;
+                                              textarea.style.position = "fixed";
+                                              document.body.appendChild(textarea);
+                                              textarea.select();
+                                              document.execCommand("copy");
+                                              document.body.removeChild(textarea);
+                                              toast.success(`Copiado: ${formattedPhone}`);
+                                            } catch (err) {
+                                              toast.error("Erro ao copiar número.");
+                                            }
+                                          }
+                                        }}
+                                        className="inline-flex items-center gap-1.5 text-slate-600 hover:text-sky-600 focus:text-sky-600 transition-colors font-semibold text-[11px] font-mono group cursor-pointer border-none bg-transparent p-0 text-left focus:outline-none"
+                                        title="Clique para copiar"
                                       >
-                                        <svg className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" viewBox="0 0 24 24" fill="currentColor">
-                                          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.457L0 24zm6.59-4.846c1.6.95 3.111 1.459 4.807 1.46 5.482 0 9.94-4.461 9.943-9.948.001-2.659-1.033-5.161-2.912-7.042C16.55 1.745 14.053.712 11.998.712c-5.492 0-9.952 4.464-9.955 9.953-.001 1.761.464 3.483 1.349 5.013l-.995 3.635 3.738-.98c1.514.826 3.037 1.258 4.673 1.258zm9.324-7.58c-.3-.15-1.771-.875-2.046-.975-.276-.102-.476-.15-.676.15-.2.3-.776.975-.95 1.175-.175.2-.35.225-.65.075-.3-.15-1.265-.467-2.41-1.485-.89-.794-1.492-1.775-1.667-2.075-.175-.3-.02-.463.13-.613.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.676-1.63-.925-2.23-.243-.585-.49-.506-.676-.516-.174-.008-.374-.01-.574-.01-.2 0-.526.075-.802.375-.275.3-1.05 1.025-1.05 2.5s1.075 2.9 1.225 3.1c.15.2 2.11 3.22 5.11 4.52.714.31 1.27.49 1.704.63.717.227 1.37.195 1.885.118.574-.085 1.771-.725 2.02-.1425.25-.7 0-1.294-.075-.15-.05-.225-.25-.3z" />
-                                        </svg>
+                                        <Copy className="w-3 h-3 text-slate-400 group-hover:text-sky-500 group-focus:text-sky-500 transition-colors" />
                                         <span>{formattedPhone}</span>
-                                      </a>
+                                      </button>
                                     );
                                   })
                                 )}
