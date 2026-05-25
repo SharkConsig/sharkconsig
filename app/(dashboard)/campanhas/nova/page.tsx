@@ -486,11 +486,11 @@ export default function NewCampaignPage() {
       let totalCount = 0;
 
       const executeQueryWithFallback = async (queryBuilderFn: (countType: 'exact' | 'estimated' | 'planned') => any) => {
-        // 1. Tentar exact count com timeout de 4 segundos
+        // 1. Tentar exact count com timeout robusto de 15 segundos (ideal para bancos de mais de 1M de linhas)
         try {
           const controller = new AbortController();
           const q = queryBuilderFn('exact').abortSignal(controller.signal);
-          const timeoutId = setTimeout(() => controller.abort(), 4000);
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
           const res = await q;
           clearTimeout(timeoutId);
           if (res.error) throw res.error;
@@ -498,11 +498,11 @@ export default function NewCampaignPage() {
         } catch (err) {
           console.warn("Exact count falhou ou deu timeout, tentando estimated...", err);
           
-          // 2. Tentar estimated count com timeout de 4 segundos
+          // 2. Tentar estimated count com timeout de 8 segundos
           try {
             const controller = new AbortController();
             const q = queryBuilderFn('estimated').abortSignal(controller.signal);
-            const timeoutId = setTimeout(() => controller.abort(), 4000);
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
             const res = await q;
             clearTimeout(timeoutId);
             if (res.error) throw res.error;
@@ -510,18 +510,26 @@ export default function NewCampaignPage() {
           } catch (err2) {
             console.warn("Estimated count falhou ou deu timeout, tentando planned...", err2);
             
-            // 3. Tentar planned count com timeout de 4 segundos
+            // 3. Tentar planned count com timeout de 8 segundos
             try {
               const controller = new AbortController();
               const q = queryBuilderFn('planned').abortSignal(controller.signal);
-              const timeoutId = setTimeout(() => controller.abort(), 4000);
+              const timeoutId = setTimeout(() => controller.abort(), 8000);
               const res = await q;
               clearTimeout(timeoutId);
               if (res.error) throw res.error;
               return res.count || 0;
             } catch (err3) {
-              console.error("Todos os métodos de contagem falharam:", err3);
-              throw err3;
+              console.warn("Todos os métodos rápidos de contagem falharam, tentando execução final garantida sem timeout...", err3);
+              try {
+                // 4. Última tentativa garantida: exact count sem timeout para lidar com servidores ocupados
+                const res = await queryBuilderFn('exact');
+                if (res.error) throw res.error;
+                return res.count || 0;
+              } catch (lastErr) {
+                console.error("Tentativa final sem timeout também falhou:", lastErr);
+                throw lastErr;
+              }
             }
           }
         }
@@ -566,7 +574,12 @@ export default function NewCampaignPage() {
       setEstimatedAudience(totalCount);
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
-      const isSilent = error?.code === '57014' || !error?.code || !error?.message;
+      const isSilent = 
+        error?.code === '57014' || 
+        error?.message?.includes('aborted') || 
+        error?.message?.includes('AbortError') ||
+        !error?.code || 
+        !error?.message;
       
       console.error("ERRO NO CÁLCULO DE AUDIÊNCIA:", err);
       setEstimatedAudience(0);

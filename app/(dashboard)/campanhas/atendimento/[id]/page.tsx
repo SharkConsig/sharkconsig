@@ -605,7 +605,8 @@ export default function CampanhaAtendimentoPage() {
             ...currentSessoes,
             [user.id]: {
               ...(currentSessoes[user.id] || {}),
-              entrou: new Date().toISOString()
+              entrou: new Date().toISOString(),
+              saiu: null
             }
           }
         };

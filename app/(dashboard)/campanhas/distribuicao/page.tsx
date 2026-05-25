@@ -85,6 +85,123 @@ export default function DistribuicaoCampanhaPage() {
   const [monitoringData, setMonitoringData] = useState<Record<string, Record<string, { total: number; tabulacoes: Record<string, number>; last_active: string | null }>>>({});
   const [isLoadingMonitoring, setIsLoadingMonitoring] = useState<boolean>(false);
 
+  // Modal para detalhamento de clientes tabulados
+  const [selectedTabulationDetails, setSelectedTabulationDetails] = useState<{
+    campaignId: string;
+    campaignName: string;
+    brokerId: string;
+    brokerNome: string;
+    tabName: string;
+    campaignConvenio: string | undefined;
+  } | null>(null);
+  const [tabulationClients, setTabulationClients] = useState<{
+    cpf: string;
+    nome: string;
+    telefone_1?: string | null;
+    telefone_2?: string | null;
+    telefone_3?: string | null;
+  }[]>([]);
+  const [isLoadingClients, setIsLoadingClients] = useState<boolean>(false);
+  const [clientsError, setClientsError] = useState<string | null>(null);
+
+  const handleTabulationClick = async (
+    campaignId: string, 
+    campaignName: string, 
+    campaignConvenio: string | undefined,
+    brokerId: string, 
+    brokerNome: string, 
+    tabName: string
+  ) => {
+    setSelectedTabulationDetails({
+      campaignId,
+      campaignName,
+      brokerId,
+      brokerNome,
+      tabName,
+      campaignConvenio
+    });
+    setIsLoadingClients(true);
+    setTabulationClients([]);
+    setClientsError(null);
+
+    try {
+      let query = supabase
+        .from('campanha_atendimentos')
+        .select('cliente_cpf')
+        .eq('campanha_id', campaignId)
+        .eq('corretor_id', brokerId);
+
+      if (tabName === 'Não tabulado') {
+        query = query.or('tabulacao.is.null,tabulacao.eq.Não tabulado');
+      } else {
+        query = query.eq('tabulacao', tabName);
+      }
+
+      const { data: atts, error: attError } = await query;
+      if (attError) throw attError;
+
+      if (!atts || atts.length === 0) {
+        setTabulationClients([]);
+        return;
+      }
+
+      const cpfs = atts.map(a => a.cliente_cpf).filter(Boolean);
+
+      const cNameUpper = campaignName.toUpperCase();
+      const convenioKey = campaignConvenio;
+
+      const TABLE_MAP: Record<string, string> = {
+        'siape': 'base_consulta_siape',
+        'governo_sp': 'base_consulta_governo_sp',
+        'prefeitura_sp': 'base_consulta_prefeitura_sp',
+        'governo_pi': 'base_consulta_governo_pi',
+        'governo_ma': 'base_consulta_governo_ma',
+        'governo_rr': 'base_consulta_governo_rr',
+      };
+
+      let targetTable = 'base_consulta_siape';
+      if (convenioKey && TABLE_MAP[convenioKey]) {
+        targetTable = TABLE_MAP[convenioKey];
+      } else if (cNameUpper.includes('GOVERNO SP')) {
+        targetTable = 'base_consulta_governo_sp';
+      } else if (cNameUpper.includes('PREFEITURA SP')) {
+        targetTable = 'base_consulta_prefeitura_sp';
+      } else if (cNameUpper.includes('GOVERNO PI')) {
+        targetTable = 'base_consulta_governo_pi';
+      } else if (cNameUpper.includes('GOVERNO MA')) {
+        targetTable = 'base_consulta_governo_ma';
+      } else if (cNameUpper.includes('RORAIMA') || cNameUpper.includes('RR')) {
+        targetTable = 'base_consulta_governo_rr';
+      }
+
+      const { data: clientDetails, error: clientErr } = await supabase
+        .from(targetTable)
+        .select('cpf, nome, telefone_1, telefone_2, telefone_3')
+        .in('cpf', cpfs);
+
+      if (clientErr) throw clientErr;
+
+      const mappedDetails = cpfs.map(cpf => {
+        const found = clientDetails?.find(c => c.cpf === cpf);
+        return {
+          cpf,
+          nome: found?.nome || 'CLIENTE NÃO ENCONTRADO NO BANCO',
+          telefone_1: found?.telefone_1 || null,
+          telefone_2: found?.telefone_2 || null,
+          telefone_3: found?.telefone_3 || null,
+        };
+      });
+
+      setTabulationClients(mappedDetails);
+    } catch (err: unknown) {
+      console.error("Erro ao buscar detalhes de clientes tabulados:", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setClientsError(errMsg || "Ocorreu um erro ao carregar as informações do cliente.");
+    } finally {
+      setIsLoadingClients(false);
+    }
+  };
+
   const toggleCampaignExpansion = async (campaignId: string) => {
     if (expandedCampaignId === campaignId) {
       setExpandedCampaignId(null);
@@ -504,12 +621,18 @@ export default function DistribuicaoCampanhaPage() {
                                                 : false;
 
                                               const tabulacoesEntries = Object.entries(brokerStats.tabulacoes);
+                                               const _isBrokerPresentUnused = false; // sessao 
+                                                 // ? (!!sessao.entrou && !sessao.saiu) 
+                                                 // : isBrokerActive;
                                               const sessao = campaign.filtros?.sessoes_corretores?.[broker.id];
+                                              const isBrokerPresent = sessao 
+                                                ? (!!sessao.entrou && !sessao.saiu) 
+                                                : isBrokerActive;
                                               const horaEntrada = sessao?.entrou 
-                                                ? new Date(sessao.entrou).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
+                                                ? new Date(sessao.entrou).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
                                                 : "-";
                                               const horaSaida = sessao?.saiu 
-                                                ? new Date(sessao.saiu).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
+                                                ? new Date(sessao.saiu).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
                                                 : "-";
 
                                               return (
@@ -518,7 +641,7 @@ export default function DistribuicaoCampanhaPage() {
                                                     {broker.nome.toLowerCase()}
                                                   </td>
                                                   <td className="py-4">
-                                                    {isBrokerActive ? (
+                                                    {isBrokerPresent ? (
                                                       <span className="inline-flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 uppercase tracking-widest text-[8.5px] font-black text-emerald-600">
                                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                                         Ativo
@@ -534,12 +657,14 @@ export default function DistribuicaoCampanhaPage() {
                                                     {horaEntrada}
                                                   </td>
                                                   <td className="py-4 text-center text-[11px] font-mono text-slate-600 font-semibold">
-                                                    {isBrokerActive ? (
+                                                    {sessao?.saiu ? (
+                                                      horaSaida
+                                                    ) : isBrokerPresent ? (
                                                       <span className="inline-flex items-center gap-1 bg-emerald-50 text-[9px] text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-md font-bold uppercase animate-pulse">
                                                         Trabalhando...
                                                       </span>
                                                     ) : (
-                                                      horaSaida
+                                                      "-"
                                                     )}
                                                   </td>
                                                   <td className="py-4 text-center text-[13px] font-black text-slate-800">
@@ -551,7 +676,7 @@ export default function DistribuicaoCampanhaPage() {
                                                     ) : (
                                                       <div className="flex flex-wrap gap-2 justify-start">
                                                         {tabulacoesEntries.map(([tab, count]) => (
-                                                          <span key={tab} className="inline-block bg-amber-50 border border-amber-100/80 rounded-lg px-2.5 py-1 text-[9px] font-bold text-amber-700 uppercase">
+                                                          <span key={tab} onClick={() => handleTabulationClick(campaign.id, campaign.nome, campaign.filtros?.convenio, broker.id, broker.nome, tab)} className="inline-block bg-amber-50 hover:bg-amber-100 active:scale-95 transition-all border border-amber-200 rounded-lg px-2.5 py-1 text-[9.5px] font-bold text-amber-800 uppercase cursor-pointer select-none" title="Clique para ver clientes">
                                                             {tab}: <span className="font-black text-amber-900">{count}</span>
                                                           </span>
                                                         ))}
@@ -748,6 +873,131 @@ export default function DistribuicaoCampanhaPage() {
             <div className="pt-4 border-t border-slate-100 flex justify-end mt-4">
               <Button 
                 onClick={() => setSelectedCampaignForTeam(null)}
+                className="h-10 px-6 text-[10px] font-black uppercase tracking-widest rounded-xl bg-[#1C2643] text-white hover:bg-black active:scale-95 transition-all"
+              >
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedTabulationDetails && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full border border-slate-200 shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150 text-slate-800">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+              <div className="flex flex-col text-left">
+                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Detalhamento por Tabulação</span>
+                <h3 className="text-[14px] font-black uppercase tracking-wider text-[#1C2643] mt-0.5">
+                  Filtro: {selectedTabulationDetails.tabName}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setSelectedTabulationDetails(null)}
+                className="text-slate-400 hover:text-slate-600 rounded-full p-1 bg-slate-50 hover:bg-slate-100 transition-colors"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-4 text-left p-3 rounded-xl bg-slate-50/50 border border-slate-100">
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Campanha</span>
+                <span className="text-[12px] font-bold text-[#1C2643] uppercase line-clamp-1">{selectedTabulationDetails.campaignName}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Corretor</span>
+                <span className="text-[12px] font-bold text-[#1C2643] capitalize block">{selectedTabulationDetails.brokerNome.toLowerCase()}</span>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin text-left min-h-[250px] flex flex-col justify-start">
+              {isLoadingClients ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3 flex-1">
+                  <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Consultando dados dos clientes...</span>
+                </div>
+              ) : clientsError ? (
+                <div className="flex flex-col items-center justify-center py-12 text-rose-500 gap-2 flex-1">
+                  <span className="text-[11px] font-bold uppercase tracking-widest block font-black">Erro ao buscar clientes</span>
+                  <span className="text-[10px] text-slate-500 text-center max-w-sm font-semibold">{clientsError}</span>
+                </div>
+              ) : tabulationClients.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2 flex-1">
+                  <span className="text-[11px] font-bold uppercase tracking-widest block font-black">Nenhum cliente encontrado</span>
+                  <span className="text-[10px] uppercase font-semibold text-center max-w-xs block">Nenhum registro foi encontrado para esta tabulação específica.</span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-100 rounded-xl">
+                  <table className="w-full text-left text-[11px] font-sans border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-155">
+                        <th className="px-4 py-3 font-bold text-[#1C2643] uppercase tracking-widest text-[8.5px]">CPF</th>
+                        <th className="px-4 py-3 font-bold text-[#1C2643] uppercase tracking-widest text-[8.5px]">Nome</th>
+                        <th className="px-4 py-3 font-bold text-[#1C2643] uppercase tracking-widest text-[8.5px]">Telefones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {tabulationClients.map((client, idx) => {
+                        const formattedCpf = client.cpf 
+                          ? client.cpf.replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") 
+                          : "-";
+                        
+                        return (
+                          <tr key={`${client.cpf}-${idx}`} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-slate-600 font-semibold tracking-wider whitespace-nowrap text-[11px]">
+                              {formattedCpf}
+                            </td>
+                            <td className="px-4 py-3 font-black text-slate-800 capitalize text-[11px]">
+                              {client.nome.toLowerCase()}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col gap-1">
+                                {[client.telefone_1, client.telefone_2, client.telefone_3].filter(v => v && v !== '0' && v !== 'NÃO INFORMADO').length === 0 ? (
+                                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">-</span>
+                                ) : (
+                                  [client.telefone_1, client.telefone_2, client.telefone_3].filter(v => v && v !== '0' && v !== 'NÃO INFORMADO').map((tel, tIdx) => {
+                                    const cleanTel = tel?.replace(/\D/g, "");
+                                    const formattedPhone = cleanTel 
+                                      ? cleanTel.length === 11 
+                                        ? `(${cleanTel.substring(0, 2)}) ${cleanTel.substring(2, 7)}-${cleanTel.substring(7, 11)}`
+                                        : cleanTel.length === 10
+                                          ? `(${cleanTel.substring(0, 2)}) ${cleanTel.substring(2, 6)}-${cleanTel.substring(6, 10)}`
+                                          : tel
+                                      : "-";
+
+                                    return (
+                                      <a
+                                        key={tIdx}
+                                        href={`https://wa.me/55${cleanTel}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1.5 text-slate-600 hover:text-emerald-600 transition-colors font-semibold text-[11px] font-mono group"
+                                        title="Chamar no WhatsApp"
+                                      >
+                                        <svg className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" viewBox="0 0 24 24" fill="currentColor">
+                                          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.457L0 24zm6.59-4.846c1.6.95 3.111 1.459 4.807 1.46 5.482 0 9.94-4.461 9.943-9.948.001-2.659-1.033-5.161-2.912-7.042C16.55 1.745 14.053.712 11.998.712c-5.492 0-9.952 4.464-9.955 9.953-.001 1.761.464 3.483 1.349 5.013l-.995 3.635 3.738-.98c1.514.826 3.037 1.258 4.673 1.258zm9.324-7.58c-.3-.15-1.771-.875-2.046-.975-.276-.102-.476-.15-.676.15-.2.3-.776.975-.95 1.175-.175.2-.35.225-.65.075-.3-.15-1.265-.467-2.41-1.485-.89-.794-1.492-1.775-1.667-2.075-.175-.3-.02-.463.13-.613.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.676-1.63-.925-2.23-.243-.585-.49-.506-.676-.516-.174-.008-.374-.01-.574-.01-.2 0-.526.075-.802.375-.275.3-1.05 1.025-1.05 2.5s1.075 2.9 1.225 3.1c.15.2 2.11 3.22 5.11 4.52.714.31 1.27.49 1.704.63.717.227 1.37.195 1.885.118.574-.085 1.771-.725 2.02-.1425.25-.7 0-1.294-.075-.15-.05-.225-.25-.3z" />
+                                        </svg>
+                                        <span>{formattedPhone}</span>
+                                      </a>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex justify-end mt-4">
+              <Button 
+                onClick={() => setSelectedTabulationDetails(null)}
                 className="h-10 px-6 text-[10px] font-black uppercase tracking-widest rounded-xl bg-[#1C2643] text-white hover:bg-black active:scale-95 transition-all"
               >
                 Fechar
