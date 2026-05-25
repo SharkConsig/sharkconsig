@@ -414,7 +414,7 @@ export default function SettingsPage() {
       setFaixasMetas(faixasMetasData || [])
 
       const perfisData: UsuarioAPI[] = usuariosResponse.ok ? await usuariosResponse.json() : []
-      const brokers = perfisData?.filter((p) => p.funcao === 'Corretor').map((p) => ({ id: p.id, nome: p.nome })) || []
+      const brokers = perfisData?.filter((p) => p.funcao === 'Corretor' || p.funcao === 'Estágio' || p.funcao === 'Processo Seletivo' || p.funcao === 'PROCESSO SELETIVO').map((p) => ({ id: p.id, nome: p.nome })) || []
       const supervisors = perfisData?.filter((p) => p.funcao === 'Supervisor' || p.funcao === 'Administrador').map((p) => ({ id: p.id, nome: p.nome })) || []
       setCorretoresList(brokers)
       setSupervisoresList(supervisors)

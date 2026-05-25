@@ -291,7 +291,9 @@ export default function CampaignsPage() {
           break;
         }
 
-        const cpfs = memberBatch.map((m: any) => m.cliente_cpf).filter(Boolean);
+        const cpfs = memberBatch
+          .map((m: { cliente_cpf: string | null }) => m.cliente_cpf)
+          .filter((cpf): cpf is string => !!cpf);
         if (cpfs.length === 0) {
           break;
         }
@@ -307,7 +309,7 @@ export default function CampaignsPage() {
           'prefeitura_sp': 'base_consulta_prefeitura_sp',
           'governo_pi': 'base_consulta_governo_pi',
           'governo_ma': 'base_consulta_governo_ma',
-          'governo_rr': 'base_consulta_rapida',
+          'governo_rr': 'base_consulta_governo_rr',
         };
 
         if (convenioKey && TABLE_MAP[convenioKey]) {
@@ -321,7 +323,7 @@ export default function CampaignsPage() {
         } else if (campaignName.includes('GOVERNO MA')) {
           targetTable = 'base_consulta_governo_ma';
         } else if (campaignName.includes('RORAIMA') || campaignName.includes('RR')) {
-          targetTable = 'base_consulta_rapida';
+          targetTable = 'base_consulta_governo_rr';
         }
 
         const columnsToSelect = "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
@@ -331,10 +333,39 @@ export default function CampaignsPage() {
         );
         if (bcrError) throw bcrError;
 
-        // O(N) Maps lookup para preservar a ordem exata de ordem_fila sem loops lineares complexos
-        const bcrMap = new Map((bcrData || []).map((row: any) => [row.cpf, row]));
+        interface ICampaignMembroRow {
+          cpf: string;
+          nome: string;
+          data_nascimento?: string;
+          telefone_1?: string;
+          telefone_2?: string;
+          telefone_3?: string;
+          numero_matricula?: string;
+          orgao?: string;
+          situacao_funcional?: string;
+          salario?: number;
+          instituidor_nome?: string;
+          regime_juridico?: string;
+          uf?: string;
+          saldo_70?: number;
+          margem_35?: number;
+          bruta_5?: number;
+          utilizada_5?: number;
+          liquida_5?: number;
+          beneficio_bruta_5?: number;
+          beneficio_utilizada_5?: number;
+          beneficio_liquida_5?: number;
+          banco?: string;
+          prazo?: string | number;
+          tipo?: string;
+        }
 
-        const sortedBatchData: any[] = [];
+        // O(N) Maps lookup para preservar a ordem exata de ordem_fila sem loops lineares complexos
+        const bcrMap = new Map<string, ICampaignMembroRow>(
+          (bcrData || []).map((row) => [row.cpf as string, row as unknown as ICampaignMembroRow])
+        );
+
+        const sortedBatchData: ICampaignMembroRow[] = [];
         cpfs.forEach((cpf: string) => {
           const matchedRow = bcrMap.get(cpf);
           if (matchedRow) {
@@ -540,7 +571,7 @@ export default function CampaignsPage() {
 
   const supervisors = allUsers.filter(u => u.funcao === 'Supervisor' || u.funcao === 'Administrador')
   const availableBrokers = allUsers.filter(u => 
-    u.funcao === 'Corretor' && 
+    (u.funcao === 'Corretor' || u.funcao === 'Estágio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO') && 
     (u.supervisor_id && selectedSupervisors.includes(u.supervisor_id))
   )
 

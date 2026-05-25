@@ -88,6 +88,37 @@ const TABLE_MAP: Record<string, string> = {
   'governo_ma': 'base_consulta_governo_ma',
 };
 
+const TABLE_COLUMNS: Record<string, string[]> = {
+  'base_consulta_siape': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'numero_matricula', 'orgao', 'situacao_funcional', 'regime_juridico', 
+    'salario', 'uf', 'instituidor_nome',
+    'saldo_70', 'margem_35', 'bruta_5', 'utilizada_5', 'liquida_5', 
+    'beneficio_bruta_5', 'beneficio_utilizada_5', 'beneficio_liquida_5',
+    'banco', 'tipo', 'tipo_prefix', 'prazo'
+  ],
+  'base_consulta_governo_sp': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3', 
+    'numero_matricula', 'orgao', 'situacao_funcional', 'regime_juridico', 
+    'margem_35', 'bruta_5', 'liquida_5', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
+  ],
+  'base_consulta_prefeitura_sp': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3', 
+    'numero_matricula', 'orgao', 'situacao_funcional', 'regime_juridico', 
+    'margem_35', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
+  ],
+  'base_consulta_governo_pi': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 
+    'numero_matricula', 'orgao', 'situacao_funcional', 
+    'margem_35', 'bruta_5', 'liquida_5', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
+  ],
+  'base_consulta_governo_ma': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 
+    'numero_matricula', 'orgao', 'situacao_funcional', 
+    'margem_35', 'bruta_5', 'liquida_5', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
+  ]
+};
+
 const CONVENIOS = [
   { id: 'siape', label: 'SIAPE / FEDERAL' },
   { id: 'governo_sp', label: 'GOVERNO SP' },
@@ -363,7 +394,9 @@ export default function NewCampaignPage() {
       const mMinNum = parseSafeNumber(filters.margemMin);
       const mMaxNum = parseSafeNumber(filters.margemMax);
       
-      if (mMinNum !== null || mMaxNum !== null) {
+      const tableCols = TABLE_COLUMNS[tableName] || TABLE_COLUMNS['base_consulta_siape'];
+
+      if ((mMinNum !== null || mMaxNum !== null) && tableCols.includes('margem_35')) {
         // Filtro preventivo de nulos para otimizar a performance do índice
         query = query.not("margem_35", "is", null);
         
@@ -376,19 +409,19 @@ export default function NewCampaignPage() {
       }
 
       // 1. Filtros de Matrícula
-      if (orgaos.length > 0) {
+      if (orgaos.length > 0 && tableCols.includes('orgao')) {
         const codeFilters = Object.entries(ORGAOS_MAPPING)
           .filter(([, name]) => orgaos.includes(name))
           .map(([code]) => code);
         const combinedOrgaos = Array.from(new Set([...orgaos, ...codeFilters]));
         if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
       }
-      if (situacoes.length > 0) query = query.in('situacao_funcional', situacoes);
-      if (regimes.length > 0) query = query.in('regime_juridico', regimes);
-      if (ufs.length > 0) query = query.in('uf', ufs);
+      if (situacoes.length > 0 && tableCols.includes('situacao_funcional')) query = query.in('situacao_funcional', situacoes);
+      if (regimes.length > 0 && tableCols.includes('regime_juridico')) query = query.in('regime_juridico', regimes);
+      if (ufs.length > 0 && tableCols.includes('uf')) query = query.in('uf', ufs);
 
       // 2. Filtro de IDADE
-      if (idadeMin) {
+      if (idadeMin && tableCols.includes('data_nascimento')) {
         const ageMin = parseInt(idadeMin);
         if (!isNaN(ageMin)) {
           const d = new Date();
@@ -397,7 +430,7 @@ export default function NewCampaignPage() {
           query = query.lte('data_nascimento', dateStr);
         }
       }
-      if (idadeMax) {
+      if (idadeMax && tableCols.includes('data_nascimento')) {
         const ageMax = parseInt(idadeMax);
         if (!isNaN(ageMax)) {
           const d = new Date();
@@ -409,27 +442,27 @@ export default function NewCampaignPage() {
       }
 
       const sMin = parseSafeNumber(saldoMin);
-      if (sMin !== null) {
+      if (sMin !== null && tableCols.includes('saldo_70')) {
         query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
       }
       
       const cMMin = parseSafeNumber(cardMargemMin);
-      if (cMMin !== null) {
+      if (cMMin !== null && tableCols.includes('liquida_5')) {
         query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
       }
       const cBMin = parseSafeNumber(cardBeneficioMin);
-      if (cBMin !== null) {
+      if (cBMin !== null && tableCols.includes('beneficio_liquida_5')) {
         query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
       }
 
       // 4. ITENS DE CRÉDITO (UNIFICADO PARA CARTÕES)
-      if (loanBanks.length > 0) query = query.in('banco', loanBanks);
+      if (loanBanks.length > 0 && tableCols.includes('banco')) query = query.in('banco', loanBanks);
       
       // Lógica de Interseção para Filtros de Cartão (Tipo e Banco)
       const hasCardTypeFilter = cardTypes.length > 0 && !cardTypes.includes('__ACTIVE__') || (cardTypes.length > 1);
       const hasCardBankFilter = cardBanks.length > 0;
 
-      if (hasCardTypeFilter || hasCardBankFilter) {
+      if ((hasCardTypeFilter || hasCardBankFilter) && tableCols.includes('tipo_prefix') && tableCols.includes('banco')) {
         // Remove o marcador técnico da lista se estiver presente para não sujar a lógica
         const cleanCardTypes = cardTypes.filter(t => t !== '__ACTIVE__');
         
@@ -452,8 +485,8 @@ export default function NewCampaignPage() {
 
       const pMin = parseInt(loanPrazoMin);
       const pMax = parseInt(loanPrazoMax);
-      if (!isNaN(pMin)) query = query.gte('prazo', pMin);
-      if (!isNaN(pMax)) query = query.lte('prazo', pMax);
+      if (!isNaN(pMin) && tableCols.includes('prazo')) query = query.gte('prazo', pMin);
+      if (!isNaN(pMax) && tableCols.includes('prazo')) query = query.lte('prazo', pMax);
 
       const { count, error } = await query;
 
@@ -536,24 +569,26 @@ export default function NewCampaignPage() {
         // Aplicar filtros equivalentes ao calculateAudience
         const mMinNum = parseSafeNumber(filters.margemMin);
         const mMaxNum = parseSafeNumber(filters.margemMax);
-        if (mMinNum !== null || mMaxNum !== null) {
+        const tableCols = TABLE_COLUMNS[tableName] || TABLE_COLUMNS['base_consulta_siape'];
+
+        if ((mMinNum !== null || mMaxNum !== null) && tableCols.includes('margem_35')) {
           query = query.not("margem_35", "is", null);
           if (mMinNum !== null) query = query.gte("margem_35", mMinNum);
           if (mMaxNum !== null) query = query.lte("margem_35", mMaxNum);
         }
 
-        if (filters.orgaos.length > 0) {
+        if (filters.orgaos.length > 0 && tableCols.includes('orgao')) {
           const codeFilters = Object.entries(ORGAOS_MAPPING)
             .filter(([, name]) => filters.orgaos.includes(name))
             .map(([code]) => code);
           const combinedOrgaos = Array.from(new Set([...filters.orgaos, ...codeFilters]));
           if (combinedOrgaos.length > 0) query = query.in('orgao', combinedOrgaos);
         }
-        if (filters.situacoes.length > 0) query = query.in('situacao_funcional', filters.situacoes);
-        if (filters.regimes.length > 0) query = query.in('regime_juridico', filters.regimes);
-        if (filters.ufs.length > 0) query = query.in('uf', filters.ufs);
+        if (filters.situacoes.length > 0 && tableCols.includes('situacao_funcional')) query = query.in('situacao_funcional', filters.situacoes);
+        if (filters.regimes.length > 0 && tableCols.includes('regime_juridico')) query = query.in('regime_juridico', filters.regimes);
+        if (filters.ufs.length > 0 && tableCols.includes('uf')) query = query.in('uf', filters.ufs);
 
-        if (filters.idadeMin) {
+        if (filters.idadeMin && tableCols.includes('data_nascimento')) {
           const ageMin = parseInt(filters.idadeMin);
           if (!isNaN(ageMin)) {
             const d = new Date();
@@ -562,7 +597,7 @@ export default function NewCampaignPage() {
             query = query.lte('data_nascimento', dateStr);
           }
         }
-        if (filters.idadeMax) {
+        if (filters.idadeMax && tableCols.includes('data_nascimento')) {
           const ageMax = parseInt(filters.idadeMax);
           if (!isNaN(ageMax)) {
             const d = new Date();
@@ -574,25 +609,25 @@ export default function NewCampaignPage() {
         }
 
         const sMin = parseSafeNumber(filters.saldoMin);
-        if (sMin !== null) {
+        if (sMin !== null && tableCols.includes('saldo_70')) {
           query = query.not('saldo_70', 'is', null).gte('saldo_70', sMin);
         }
         
         const cMMin = parseSafeNumber(filters.cardMargemMin);
-        if (cMMin !== null) {
+        if (cMMin !== null && tableCols.includes('liquida_5')) {
           query = query.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
         }
         const cBMin = parseSafeNumber(filters.cardBeneficioMin);
-        if (cBMin !== null) {
+        if (cBMin !== null && tableCols.includes('beneficio_liquida_5')) {
           query = query.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
         }
 
-        if (filters.loanBanks.length > 0) query = query.in('banco', filters.loanBanks);
+        if (filters.loanBanks.length > 0 && tableCols.includes('banco')) query = query.in('banco', filters.loanBanks);
         
         const hasCardTypeFilter = filters.cardTypes.length > 0 && !filters.cardTypes.includes('__ACTIVE__') || (filters.cardTypes.length > 1);
         const hasCardBankFilter = filters.cardBanks.length > 0;
 
-        if (hasCardTypeFilter || hasCardBankFilter) {
+        if ((hasCardTypeFilter || hasCardBankFilter) && tableCols.includes('tipo_prefix') && tableCols.includes('banco')) {
           const cleanCardTypes = filters.cardTypes.filter(t => t !== '__ACTIVE__');
           const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
             .filter(([, info]) => {
@@ -611,8 +646,8 @@ export default function NewCampaignPage() {
 
         const pMin = parseInt(filters.loanPrazoMin);
         const pMax = parseInt(filters.loanPrazoMax);
-        if (!isNaN(pMin)) query = query.gte('prazo', pMin);
-        if (!isNaN(pMax)) query = query.lte('prazo', pMax);
+        if (!isNaN(pMin) && tableCols.includes('prazo')) query = query.gte('prazo', pMin);
+        if (!isNaN(pMax) && tableCols.includes('prazo')) query = query.lte('prazo', pMax);
 
         // Keyset Pagination for fast index lookups and preventing offsets timeouts
         if (lastCpf) {

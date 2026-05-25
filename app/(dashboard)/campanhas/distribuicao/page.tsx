@@ -74,7 +74,9 @@ export default function DistribuicaoCampanhaPage() {
   const canStart = !isAdmin && !isDeveloper && (
     perfil?.role === 'Corretor' || 
     perfil?.role === 'Estágio' || 
-    perfil?.role === 'Estagio'
+    perfil?.role === 'Estagio' ||
+    perfil?.role === 'Processo Seletivo' ||
+    perfil?.role === 'PROCESSO SELETIVO'
   );
 
   const isSupervisor = perfil?.role === 'Supervisor';

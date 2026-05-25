@@ -506,30 +506,59 @@ function NewProposalForm() {
         }
 
         // Busca inteligente nas tabelas de consulta rápida (Split Tables Optimization)
-        let targetTable = 'base_consulta_rapida'
-        const conv = selection.convenio?.toUpperCase()
+        const conv = selection.convenio?.toUpperCase() || ""
+        let targetTable = ""
         
         if (conv === 'SIAPE') targetTable = 'base_consulta_siape'
-        else if (conv?.includes('GOVERNO SP')) targetTable = 'base_consulta_governo_sp'
-        else if (conv?.includes('PREFEITURA SP')) targetTable = 'base_consulta_prefeitura_sp'
-        else if (conv?.includes('GOVERNO PI')) targetTable = 'base_consulta_governo_pi'
-        else if (conv?.includes('GOVERNO MA')) targetTable = 'base_consulta_governo_ma'
+        else if (conv.includes('GOVERNO SP') || conv.includes('SÃO PAULO')) targetTable = 'base_consulta_governo_sp'
+        else if (conv.includes('PREFEITURA SP')) targetTable = 'base_consulta_prefeitura_sp'
+        else if (conv.includes('GOVERNO PI') || conv.includes('PIAUÍ')) targetTable = 'base_consulta_governo_pi'
+        else if (conv.includes('GOVERNO MA') || conv.includes('MARANHÃO')) targetTable = 'base_consulta_governo_ma'
+        else if (conv.includes('GOVERNO RR') || conv.includes('RORAIMA')) targetTable = 'base_consulta_governo_rr'
 
-        const { data, error } = await supabase
-          .from(targetTable)
-          .select('*')
-          .eq('cpf', cleanCPF)
-          .maybeSingle()
+        let data = null
+        let error = null
 
-        // Se não encontrou na tabela especializada (ou se ela ainda não existe), tenta na global
-        if ((!data || error) && targetTable !== 'base_consulta_rapida') {
-          const { data: globalData, error: globalErr } = await supabase
-            .from('base_consulta_rapida')
+        if (targetTable) {
+          const { data: resData, error: resError } = await supabase
+            .from(targetTable)
             .select('*')
             .eq('cpf', cleanCPF)
             .maybeSingle()
+          data = resData
+          error = resError
+        }
+
+        // Se não encontrou na tabela especializada, tenta uma busca paralela nas 6 split tables
+        if (!data || error) {
+          const splitTables = [
+            'base_consulta_siape',
+            'base_consulta_governo_sp',
+            'base_consulta_prefeitura_sp',
+            'base_consulta_governo_pi',
+            'base_consulta_governo_ma',
+            'base_consulta_governo_rr'
+          ];
           
-          if (!globalErr && globalData) {
+          const results = await Promise.all(
+            splitTables.map(async (table) => {
+              try {
+                const { data: rowData, error: rowError } = await supabase
+                  .from(table)
+                  .select('*')
+                  .eq('cpf', cleanCPF)
+                  .maybeSingle()
+                if (!rowError && rowData) return rowData;
+              } catch (err) {
+                console.warn(`Erro na tabela paralela ${table}:`, err);
+              }
+              return null;
+            })
+          );
+
+          const globalData = results.find(r => r !== null) || null;
+          
+          if (globalData) {
             setFormData(prev => ({ 
               ...prev, 
               matricula: globalData.numero_matricula || prev.matricula || "",
@@ -538,7 +567,7 @@ function NewProposalForm() {
               tel_1: prev.tel_1 || globalData.telefone_1 || "",
               tel_2: prev.tel_2 || globalData.telefone_2 || "",
               tel_3: prev.tel_3 || globalData.telefone_3 || "",
-              email: prev.email || globalData.email || ""
+              email: prev.email || (globalData as { email?: string }).email || ""
             }))
             toast.success("Dados básicos encontrados.");
             return

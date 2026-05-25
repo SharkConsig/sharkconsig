@@ -373,7 +373,7 @@ export default function CampanhaAtendimentoPage() {
         'prefeitura_sp': 'base_consulta_prefeitura_sp',
         'governo_pi': 'base_consulta_governo_pi',
         'governo_ma': 'base_consulta_governo_ma',
-        'governo_rr': 'base_consulta_rapida',
+        'governo_rr': 'base_consulta_governo_rr',
       }
 
       if (convenioKey && TABLE_MAP[convenioKey]) {
@@ -387,7 +387,7 @@ export default function CampanhaAtendimentoPage() {
       } else if (campaignName.includes("GOVERNO MA")) {
         table = 'base_consulta_governo_ma'
       } else if (campaignName.includes("RORAIMA") || campaignName.includes("RR")) {
-        table = 'base_consulta_rapida'
+        table = 'base_consulta_governo_rr'
       }
       
       let data = null;

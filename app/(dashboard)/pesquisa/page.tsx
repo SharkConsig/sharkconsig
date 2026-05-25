@@ -354,16 +354,35 @@ export default function SearchClientPage() {
         }
       }
 
-      const { data: quickData, error: quickError } = await withRetry(async () => 
-        await supabase
-          .from('base_consulta_rapida')
-          .select('*')
-          .or(searchTerms.join(','))
-          .limit(1)
-          .maybeSingle()
-      )
+      const splitTables = [
+        { name: 'base_consulta_siape', convenio: 'siape' },
+        { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
+        { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
+        { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
+        { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
+        { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
+      ];
 
-      if (quickError) throw quickError
+      const results = await Promise.all(
+        splitTables.map(async (t) => {
+          try {
+            const { data, error } = await supabase
+              .from(t.name)
+              .select('*')
+              .or(searchTerms.join(','))
+              .limit(1)
+              .maybeSingle();
+            if (!error && data) {
+              return { ...data, convenio: t.convenio, origem: t.convenio };
+            }
+          } catch (e) {
+            console.warn(`Erro na tabela ${t.name}:`, e);
+          }
+          return null;
+        })
+      );
+
+      const quickData = results.find(r => r !== null) || null;
 
       let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null = null
       let resolvedCpf = cleanCPF
@@ -445,16 +464,35 @@ export default function SearchClientPage() {
         }
       }
 
-      const { data: quickData, error: quickError } = await withRetry(async () => 
-        await supabase
-          .from('base_consulta_rapida')
-          .select('convenio, cpf')
-          .or(searchTerms.join(','))
-          .limit(1)
-          .maybeSingle()
-      )
+      const splitTables = [
+        { name: 'base_consulta_siape', convenio: 'siape' },
+        { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
+        { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
+        { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
+        { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
+        { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
+      ];
 
-      if (quickError) console.warn("Erro na consulta rápida:", quickError)
+      const results = await Promise.all(
+        splitTables.map(async (t) => {
+          try {
+            const { data, error } = await supabase
+              .from(t.name)
+              .select('cpf')
+              .or(searchTerms.join(','))
+              .limit(1)
+              .maybeSingle();
+            if (!error && data) {
+              return { ...data, convenio: t.convenio };
+            }
+          } catch (e) {
+            console.warn(`Erro na tabela ${t.name}:`, e);
+          }
+          return null;
+        })
+      );
+
+      const quickData = results.find(r => r !== null) || null;
 
       const targetConvenio = quickData?.convenio as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | undefined
       const finalCpf = quickData?.cpf || cleanCPF

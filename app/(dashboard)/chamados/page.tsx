@@ -269,7 +269,7 @@ export default function TicketsPage() {
       }
 
       // Aplicar filtros de permissão baseados na Role
-      if (perfil.role === 'Corretor' || perfil.role === 'Estágio') {
+      if (perfil.role === 'Corretor' || perfil.role === 'Estágio' || perfil.role === 'Processo Seletivo' || perfil.role === 'PROCESSO SELETIVO') {
         query = query.eq('user_id', user.id)
       } else if (perfil.role === 'Supervisor') {
         try {

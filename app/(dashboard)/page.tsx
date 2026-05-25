@@ -402,7 +402,7 @@ export default function DashboardPage() {
 
         if (targetSupervisorId || isAdmin || isOperational) {
           const team = (isAdmin || isOperational)
-            ? allUsers.filter((u: User) => u.funcao === 'Corretor' || u.funcao === 'Supervisor')
+            ? allUsers.filter((u: User) => u.funcao === 'Corretor' || u.funcao === 'Supervisor' || u.funcao === 'Estágio' || u.funcao === 'Estagio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO')
             : allUsers.filter((u: User) => 
                 u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId
               )
