@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { Card, CardContent } from "@/components/ui/card"
@@ -443,7 +444,7 @@ export default function NewCampaignPage() {
     return q;
   };
 
-  const applyCardFilters = (q: any, f: typeof filters, cols: string[]) => {
+  const applyCardFilters = (q: any, f: typeof filters) => {
     const hasCardTypeFilter = f.cardTypes.length > 0 && !f.cardTypes.includes('__ACTIVE__') || (f.cardTypes.length > 1);
     const hasCardBankFilter = f.cardBanks.length > 0;
     
@@ -484,35 +485,82 @@ export default function NewCampaignPage() {
 
       let totalCount = 0;
 
-      if (hasLoanFilters && hasCardFilters) {
-        // Consultas em paralelo para evitar lentidão e timeout do OR com filtro anidado!
-        let query1 = supabase.from(tableName).select('cpf', { count: 'exact', head: true });
-        query1 = applySharedFilters(query1, filters, tableCols);
-        query1 = applyLoanFilters(query1, filters, tableCols);
-
-        let query2 = supabase.from(tableName).select('cpf', { count: 'exact', head: true });
-        query2 = applySharedFilters(query2, filters, tableCols);
-        query2 = applyCardFilters(query2, filters, tableCols);
-
-        const [res1, res2] = await Promise.all([query1, query2]);
-
-        if (res1.error) throw res1.error;
-        if (res2.error) throw res2.error;
-
-        totalCount = (res1.count || 0) + (res2.count || 0);
-      } else {
-        let query = supabase.from(tableName).select('cpf', { count: 'exact', head: true });
-        query = applySharedFilters(query, filters, tableCols);
-
-        if (hasLoanFilters) {
-          query = applyLoanFilters(query, filters, tableCols);
-        } else if (hasCardFilters) {
-          query = applyCardFilters(query, filters, tableCols);
+      const executeQueryWithFallback = async (queryBuilderFn: (countType: 'exact' | 'estimated' | 'planned') => any) => {
+        // 1. Tentar exact count com timeout de 4 segundos
+        try {
+          const controller = new AbortController();
+          const q = queryBuilderFn('exact').abortSignal(controller.signal);
+          const timeoutId = setTimeout(() => controller.abort(), 4000);
+          const res = await q;
+          clearTimeout(timeoutId);
+          if (res.error) throw res.error;
+          return res.count || 0;
+        } catch (err) {
+          console.warn("Exact count falhou ou deu timeout, tentando estimated...", err);
+          
+          // 2. Tentar estimated count com timeout de 4 segundos
+          try {
+            const controller = new AbortController();
+            const q = queryBuilderFn('estimated').abortSignal(controller.signal);
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
+            const res = await q;
+            clearTimeout(timeoutId);
+            if (res.error) throw res.error;
+            return res.count || 0;
+          } catch (err2) {
+            console.warn("Estimated count falhou ou deu timeout, tentando planned...", err2);
+            
+            // 3. Tentar planned count com timeout de 4 segundos
+            try {
+              const controller = new AbortController();
+              const q = queryBuilderFn('planned').abortSignal(controller.signal);
+              const timeoutId = setTimeout(() => controller.abort(), 4000);
+              const res = await q;
+              clearTimeout(timeoutId);
+              if (res.error) throw res.error;
+              return res.count || 0;
+            } catch (err3) {
+              console.error("Todos os métodos de contagem falharam:", err3);
+              throw err3;
+            }
+          }
         }
+      };
 
-        const { count, error } = await query;
-        if (error) throw error;
-        totalCount = count || 0;
+      if (hasLoanFilters && hasCardFilters) {
+        const getQuery1 = (cnt: 'exact' | 'estimated' | 'planned') => {
+          let q = supabase.from(tableName).select('cpf', { count: cnt, head: true });
+          q = applySharedFilters(q, filters, tableCols);
+          q = applyLoanFilters(q, filters, tableCols);
+          return q;
+        };
+
+        const getQuery2 = (cnt: 'exact' | 'estimated' | 'planned') => {
+          let q = supabase.from(tableName).select('cpf', { count: cnt, head: true });
+          q = applySharedFilters(q, filters, tableCols);
+          q = applyCardFilters(q, filters);
+          return q;
+        };
+
+        const [count1, count2] = await Promise.all([
+          executeQueryWithFallback(getQuery1),
+          executeQueryWithFallback(getQuery2)
+        ]);
+
+        totalCount = count1 + count2;
+      } else {
+        const getQuery = (cnt: 'exact' | 'estimated' | 'planned') => {
+          let q = supabase.from(tableName).select('cpf', { count: cnt, head: true });
+          q = applySharedFilters(q, filters, tableCols);
+          if (hasLoanFilters) {
+            q = applyLoanFilters(q, filters, tableCols);
+          } else if (hasCardFilters) {
+            q = applyCardFilters(q, filters);
+          }
+          return q;
+        };
+
+        totalCount = await executeQueryWithFallback(getQuery);
       }
 
       setEstimatedAudience(totalCount);
@@ -587,7 +635,7 @@ export default function NewCampaignPage() {
           if (filterType === 'loan') {
             query = applyLoanFilters(query, filters, tableCols);
           } else if (filterType === 'card') {
-            query = applyCardFilters(query, filters, tableCols);
+            query = applyCardFilters(query, filters);
           }
 
           if (lastCpf) {
