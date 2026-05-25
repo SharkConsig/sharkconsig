@@ -947,11 +947,67 @@ export default function DistribuicaoCampanhaPage() {
                         
                         return (
                           <tr key={`${client.cpf}-${idx}`} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="px-4 py-3 font-mono text-slate-600 font-semibold tracking-wider whitespace-nowrap text-[11px]">
-                              {formattedCpf}
+                            <td className="px-4 py-3 font-mono text-[11px] whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const textToCopy = client.cpf ? client.cpf.replace(/\D/g, "") : "";
+                                  if (!textToCopy) return;
+                                  if (navigator?.clipboard?.writeText) {
+                                    navigator.clipboard.writeText(textToCopy);
+                                    toast.success(`CPF copiado: ${formattedCpf}`);
+                                  } else {
+                                    try {
+                                      const textarea = document.createElement("textarea");
+                                      textarea.value = textToCopy;
+                                      textarea.style.position = "fixed";
+                                      document.body.appendChild(textarea);
+                                      textarea.select();
+                                      document.execCommand("copy");
+                                      document.body.removeChild(textarea);
+                                      toast.success(`CPF copiado: ${formattedCpf}`);
+                                    } catch {
+                                      toast.error("Erro ao copiar CPF.");
+                                    }
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 text-slate-600 hover:text-sky-600 focus:text-sky-600 transition-colors font-semibold font-mono cursor-pointer border-none bg-transparent p-0 text-left focus:outline-none group"
+                                title="Clique para copiar CPF limpo"
+                              >
+                                <Copy className="w-3 h-3 text-slate-400 group-hover:text-sky-500 group-focus:text-sky-500 transition-colors" />
+                                <span>{formattedCpf}</span>
+                              </button>
                             </td>
-                            <td className="px-4 py-3 font-black text-slate-800 capitalize text-[11px]">
-                              {client.nome.toLowerCase()}
+                            <td className="px-4 py-3 text-[11px]">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const textToCopy = client.nome ? client.nome.toUpperCase() : "";
+                                  if (!textToCopy) return;
+                                  if (navigator?.clipboard?.writeText) {
+                                    navigator.clipboard.writeText(textToCopy);
+                                    toast.success(`Nome copiado: ${textToCopy}`);
+                                  } else {
+                                    try {
+                                      const textarea = document.createElement("textarea");
+                                      textarea.value = textToCopy;
+                                      textarea.style.position = "fixed";
+                                      document.body.appendChild(textarea);
+                                      textarea.select();
+                                      document.execCommand("copy");
+                                      document.body.removeChild(textarea);
+                                      toast.success(`Nome copiado: ${textToCopy}`);
+                                    } catch {
+                                      toast.error("Erro ao copiar nome.");
+                                    }
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 text-slate-800 hover:text-sky-600 focus:text-sky-600 transition-colors font-black uppercase text-left cursor-pointer border-none bg-transparent p-0 focus:outline-none group"
+                                title="Clique para copiar nome"
+                              >
+                                <Copy className="w-3 h-3 text-slate-400 group-hover:text-sky-500 group-focus:text-sky-500 transition-colors flex-shrink-0" />
+                                <span className="capitalize">{client.nome.toLowerCase()}</span>
+                              </button>
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex flex-col gap-1">

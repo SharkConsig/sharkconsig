@@ -304,6 +304,7 @@ export default function CampanhaAtendimentoPage() {
 
   const loadNextLead = useCallback(async (camp: Campaign, offset: number) => {
     if (!user) return
+    setIsLoading(true)
     setCurrentLead(null)
     setRegistrations([])
     setActiveRegIndex(0)
@@ -551,6 +552,8 @@ export default function CampanhaAtendimentoPage() {
       console.error("Erro ao carregar lead:", error)
       const errorMsg = error?.message || "Erro ao carregar próximo cliente."
       toast.error(errorMsg)
+    } finally {
+      setIsLoading(false)
     }
   }, [user])
 
