@@ -246,14 +246,50 @@ export default function CampaignsPage() {
       const filters = campaign.filtros
       const allCsvRows: string[] = []
       const uniqueRowsKeys = new Set()
+
+      // Determinar tabela de consulta rápida otimizada e convênio
+      let targetTable = 'base_consulta_siape';
+      const campaignName = (campaign.nome || "").toUpperCase();
+      const convenioKey = campaign.convenio || campaign.filtros?.convenio;
+
+      const TABLE_MAP: Record<string, string> = {
+        'siape': 'base_consulta_siape',
+        'governo_sp': 'base_consulta_governo_sp',
+        'prefeitura_sp': 'base_consulta_prefeitura_sp',
+        'governo_pi': 'base_consulta_governo_pi',
+        'governo_ma': 'base_consulta_governo_ma',
+        'governo_rr': 'base_consulta_governo_rr',
+      };
+
+      if (convenioKey && TABLE_MAP[convenioKey]) {
+        targetTable = TABLE_MAP[convenioKey];
+      } else if (campaignName.includes('GOVERNO SP')) {
+        targetTable = 'base_consulta_governo_sp';
+      } else if (campaignName.includes('PREFEITURA SP')) {
+        targetTable = 'base_consulta_prefeitura_sp';
+      } else if (campaignName.includes('GOVERNO PI')) {
+        targetTable = 'base_consulta_governo_pi';
+      } else if (campaignName.includes('GOVERNO MA')) {
+        targetTable = 'base_consulta_governo_ma';
+      } else if (campaignName.includes('RORAIMA') || campaignName.includes('RR')) {
+        targetTable = 'base_consulta_governo_rr';
+      }
+
+      const isGovPi = targetTable === 'base_consulta_governo_pi';
       
-      const headers = [
-        "CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3", 
-        "MATRÍCULA", "ÓRGÃO", "SITUAÇÃO FUNCIONAL", "SALÁRIO", "INSTITUIDOR", 
-        "REGIME JURÍDICO", "UF", "SALDO 70%", "MARGEM 35%", "BRUTA 5%", 
-        "UTILIZADA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO UTILIZADA 5%", 
-        "BENEFÍCIO LÍQUIDA 5%", "BANCO", "PRAZO", "TIPO"
-      ].map(h => `"${h}"`).join(",")
+      const headers = isGovPi
+        ? [
+            "CPF", "NOME", "MATRÍCULA", "VÍNCULO", "DATA NASCIMENTO", 
+            "TELEFONE 1", "TELEFONE 2", "TELEFONE 3", "ÓRGÃO", 
+            "MARGEM DISPONÍVEL EMPRÉSTIMO", "MARGEM CARTÃO CONSIGNADO", "MARGEM CARTÃO BENEFÍCIO"
+          ].map(h => `"${h}"`).join(",")
+        : [
+            "CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3", 
+            "MATRÍCULA", "ÓRGÃO", "SITUAÇÃO FUNCIONAL", "SALÁRIO", "INSTITUIDOR", 
+            "REGIME JURÍDICO", "UF", "SALDO 70%", "MARGEM 35%", "BRUTA 5%", 
+            "UTILIZADA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO UTILIZADA 5%", 
+            "BENEFÍCIO LÍQUIDA 5%", "BANCO", "PRAZO", "TIPO"
+          ].map(h => `"${h}"`).join(",")
       
       allCsvRows.push(headers)
       
@@ -298,37 +334,8 @@ export default function CampaignsPage() {
           break;
         }
 
-        // Determinar tabela de consulta rápida otimizada
-        let targetTable = 'base_consulta_siape';
-        const campaignName = (campaign.nome || "").toUpperCase();
-        const convenioKey = campaign.convenio || campaign.filtros?.convenio;
-
-        const TABLE_MAP: Record<string, string> = {
-          'siape': 'base_consulta_siape',
-          'governo_sp': 'base_consulta_governo_sp',
-          'prefeitura_sp': 'base_consulta_prefeitura_sp',
-          'governo_pi': 'base_consulta_governo_pi',
-          'governo_ma': 'base_consulta_governo_ma',
-          'governo_rr': 'base_consulta_governo_rr',
-        };
-
-        if (convenioKey && TABLE_MAP[convenioKey]) {
-          targetTable = TABLE_MAP[convenioKey];
-        } else if (campaignName.includes('GOVERNO SP')) {
-          targetTable = 'base_consulta_governo_sp';
-        } else if (campaignName.includes('PREFEITURA SP')) {
-          targetTable = 'base_consulta_prefeitura_sp';
-        } else if (campaignName.includes('GOVERNO PI')) {
-          targetTable = 'base_consulta_governo_pi';
-        } else if (campaignName.includes('GOVERNO MA')) {
-          targetTable = 'base_consulta_governo_ma';
-        } else if (campaignName.includes('RORAIMA') || campaignName.includes('RR')) {
-          targetTable = 'base_consulta_governo_rr';
-        }
-
-        const isGovPi = targetTable === 'base_consulta_governo_pi';
         const columnsToSelect = isGovPi
-          ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_cartao_consignado, margem_cartao_beneficio"
+          ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio"
           : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
 
         const { data: bcrData, error: bcrError } = await withRetry(() =>
@@ -336,17 +343,7 @@ export default function CampaignsPage() {
         );
         if (bcrError) throw bcrError;
 
-        let mappedBcrData = bcrData || [];
-        if (isGovPi) {
-          mappedBcrData = (bcrData || []).map((row: any) => ({
-            ...row,
-            numero_matricula: row.matricula,
-            situacao_funcional: row.vinculo,
-            uf: 'PI',
-            liquida_5: row.margem_cartao_consignado,
-            beneficio_liquida_5: row.margem_cartao_beneficio,
-          }));
-        }
+        const mappedBcrData = bcrData || [];
 
         interface ICampaignMembroRow {
           cpf: string;
@@ -375,6 +372,21 @@ export default function CampaignsPage() {
           tipo?: string;
         }
 
+        interface IGovPiRow {
+          cpf: string;
+          nome: string;
+          matricula?: string;
+          vinculo?: string;
+          data_nascimento?: string;
+          telefone_1?: string;
+          telefone_2?: string;
+          telefone_3?: string;
+          orgao?: string;
+          margem_disponivel_emprestimo?: number | string | null;
+          margem_cartao_consignado?: number | string | null;
+          margem_cartao_beneficio?: number | string | null;
+        }
+
         // O(N) Maps lookup para preservar a ordem exata de ordem_fila sem loops lineares complexos
         const bcrMap = new Map<string, ICampaignMembroRow>(
           mappedBcrData.map((row) => [row.cpf as string, row as unknown as ICampaignMembroRow])
@@ -393,15 +405,34 @@ export default function CampaignsPage() {
           if (uniqueRowsKeys.has(key)) return
           uniqueRowsKeys.add(key)
 
-          const csvRow = [
-            row.cpf, row.nome, row.data_nascimento || "",
-            row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "", 
-            row.numero_matricula || "", row.orgao || "", row.situacao_funcional || "",
-            row.salario || 0, row.instituidor_nome || "", row.regime_juridico || "", row.uf || "",
-            row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
-            row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0,
-            row.banco || "", row.prazo || "", row.tipo || ""
-          ].map(val => {
+          const govRow = row as unknown as IGovPiRow;
+
+          const csvFields = isGovPi
+            ? [
+                govRow.cpf,
+                govRow.nome,
+                govRow.matricula || "",
+                govRow.vinculo || "",
+                govRow.data_nascimento || "",
+                govRow.telefone_1 || "",
+                govRow.telefone_2 || "",
+                govRow.telefone_3 || "",
+                govRow.orgao || "",
+                govRow.margem_disponivel_emprestimo ?? "",
+                govRow.margem_cartao_consignado ?? "",
+                govRow.margem_cartao_beneficio ?? ""
+              ]
+            : [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "", 
+                row.numero_matricula || "", row.orgao || "", row.situacao_funcional || "",
+                row.salario || 0, row.instituidor_nome || "", row.regime_juridico || "", row.uf || "",
+                row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
+                row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0,
+                row.banco || "", row.prazo || "", row.tipo || ""
+              ];
+
+          const csvRow = csvFields.map(val => {
             const clean = String(val === null || val === undefined ? "" : val).replace(/"/g, '""');
             return `"${clean}"`;
           }).join(",")

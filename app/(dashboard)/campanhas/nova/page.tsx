@@ -170,18 +170,9 @@ export default function NewCampaignPage() {
       let ufs: string[] = [];
 
       if (activeConvenio === 'governo_pi') {
-        const { data: orgaosData } = await supabase
-          .from(tableName)
-          .select('orgao')
-          .limit(1000);
-        
-        const { data: vinculoData } = await supabase
-          .from(tableName)
-          .select('vinculo')
-          .limit(1000);
-
-        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
-        situacoes = Array.from(new Set(vinculoData?.map((i: any) => i.vinculo).filter(Boolean) || [])).sort() as string[];
+        // No dynamically loaded filter options are needed since Órgão and Vínculo are removed for GOVERNO PIAUÍ campaigns
+        orgaos = [];
+        situacoes = [];
       } else {
         const { data: orgaosData } = await supabase
           .from(tableName)
@@ -884,7 +875,7 @@ export default function NewCampaignPage() {
           </Card>
 
           {filterSections.map((section) => {
-            if (activeConvenio === 'governo_pi' && (section.id === "3" || section.id === "4")) return null;
+            if (activeConvenio === 'governo_pi') return null;
             const category = CATEGORY_MAP[section.id] as keyof typeof filters;
             const hasSelectedFilters = category && (filters[category] as string[]).length > 0;
 

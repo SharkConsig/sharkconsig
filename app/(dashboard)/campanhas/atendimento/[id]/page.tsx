@@ -176,6 +176,11 @@ interface Registration {
   uf: string | null;
   instituidores?: Instituidor[];
   itens_credito?: Contract[];
+  matricula?: string;
+  vinculo?: string;
+  margem_disponivel_emprestimo?: number;
+  margem_cartao_consignado?: number;
+  margem_cartao_beneficio?: number;
 }
 
 interface ClientData {
@@ -312,56 +317,11 @@ export default function CampanhaAtendimentoPage() {
     setShowSensitiveData(false)
 
     try {
-      let targetCpf: string | null = null
+      const targetCpf: string | null = null
 
-      // Try stateful Round Robin database-backed queue via Postgres RPC
-      try {
-        // Race the RPC call against a 2.5s client-side timeout to avoid freezing on Postgres locked state or heavy scans
-        const rpcPromise = supabase.rpc('obter_proximo_cliente_campanha', {
-          p_campanha_id: camp.id,
-          p_corretor_id: user.id
-        })
-        
-        const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) => {
-          setTimeout(() => reject(new Error("RPC Timeout")), 2500)
-        })
-
-        const { data: rpcData, error: rpcError } = await Promise.race([
-          rpcPromise,
-          timeoutPromise as any
-        ])
-        
-        if (!rpcError && rpcData) {
-          targetCpf = rpcData as string;
-          console.log("Stateful Round Robin lead CPF loaded via RPC:", targetCpf);
-        } else {
-          console.warn("RPC skipped or returned null, falling back to query checks", rpcError);
-        }
-      } catch (rpcErr) {
-        console.warn("RPC failed or timed out, falling back to standard code logic:", rpcErr);
-      }
-
-      // Stateful fallback logic: check manually for any active incomplete claim in campanha_vinculos
-      if (!targetCpf) {
-        try {
-          const { data: activeClaim } = await supabase
-            .from('campanha_vinculos')
-            .select('cliente_cpf')
-            .eq('campanha_id', camp.id)
-            .eq('corretor_id', user.id)
-            .eq('completed', false)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-
-          if (activeClaim?.cliente_cpf) {
-            targetCpf = activeClaim.cliente_cpf;
-            console.log("Active incomplete lead reclaimed from database state:", targetCpf);
-          }
-        } catch (claimErr) {
-          console.warn("Claim search table error:", claimErr);
-        }
-      }
+      // Always use the highly robust, fast, and bug-free mathematical round-robin queue from campanha_membros (same logic as SIAPE).
+      // This completely avoids Postgres locks, timeouts, and stateful lead-claiming synchronization bugs.
+      console.log("Applying mathematical round robin lead delivery logic from campanha_membros...");
 
       // Determine table
       let table = 'base_consulta_siape'
@@ -530,6 +490,11 @@ export default function CampanhaAtendimentoPage() {
             orgao: data.orgao,
             regime_juridico: data.regime_juridico,
             uf: isGovPi ? 'PI' : data.uf,
+            matricula: isGovPi ? (data.matricula || '---') : undefined,
+            vinculo: isGovPi ? (data.vinculo || '---') : undefined,
+            margem_disponivel_emprestimo: isGovPi ? data.margem_disponivel_emprestimo : undefined,
+            margem_cartao_consignado: isGovPi ? data.margem_cartao_consignado : undefined,
+            margem_cartao_beneficio: isGovPi ? data.margem_cartao_beneficio : undefined,
             instituidores: [{
                id: 'main',
                nome: data.orgao,
@@ -1033,75 +998,186 @@ export default function CampanhaAtendimentoPage() {
                 {activeReg && (
                   <Card className="card-shadow border border-slate-200 rounded-tl-none">
                     <CardContent className="p-8 space-y-12">
-                      <div className="space-y-10">
-                        <div className="flex items-center gap-3">
-                          <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                          <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações Funcionais</h3>
-                        </div>
+                      {activeReg.uf === 'PI' ? (
+                        <>
+                          {/* Governo PI - Visual Layout equal to ACESSAR CLIENTE modal */}
+                          <div className="space-y-10 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest font-sans font-medium tracking-tight">
+                                INFORMAÇÕES DA MATRÍCULA (GOVERNO PIAUÍ)
+                              </h3>
+                            </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-y-10 gap-x-12">
-                          <InfoCard label="Matrícula" value={activeReg.numero_matricula} />
-                          <InfoCard label="Situação" value={activeReg.situacao_funcional} />
-                          <InfoCard label="Salário" value={formatCurrency(activeReg.salario)} />
-                          <InfoCard label="Vínculo / Instituidor" value={activeReg.currentInstituidor} />
-                          <InfoCard label="Regime" value={activeReg.regime_juridico} />
-                          <InfoCard label="Estado (UF)" value={activeReg.uf} />
-                        </div>
-                      </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-left">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase">{activeReg.vinculo || "NÃO INFORMADO"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "---"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
 
-                      {/* Margens */}
-                      {activeInst && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {/* Row 1 */}
-                          <MarginCard label="Saldo 70%" value={formatCurrency(activeInst.saldo_70)} type="neutral" />
-                          <MarginCard 
-                            label="Margem 35%" 
-                            value={formatCurrency(activeInst.margem_35)} 
-                            type={(activeInst.margem_35 || 0) > 0 ? "success" : "danger"}
-                            status={(activeInst.margem_35 || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                          />
-                          <MarginCard 
-                            label="Soma das Margens Líquidas" 
-                            value={formatCurrency(
-                              (activeInst.margem_35 || 0) + 
-                              (activeInst.liquida_5 || 0) + 
-                              (activeInst.beneficio_liquida_5 || 0)
-                            )} 
-                            type="warning" 
-                          />
-                          
-                          {/* Row 2 */}
-                          <MarginCard label="Bruta 5%" value={formatCurrency(activeInst.bruta_5)} type="neutral" />
-                          <MarginCard 
-                             label="Utilizada 5%" 
-                             value={getUtilizadaStatus(activeInst.bruta_5, activeInst.liquida_5)} 
-                             type={getUtilizadaStatus(activeInst.bruta_5, activeInst.liquida_5) === "SIM" ? "danger" : "success"}
-                          />
-                          <MarginCard 
-                            label="Líquida 5%" 
-                            value={formatCurrency(activeInst.liquida_5)} 
-                            type={getUtilizadaStatus(activeInst.bruta_5, activeInst.liquida_5) === "SIM" ? "danger" : "success"}
-                            status={getUtilizadaStatus(activeInst.bruta_5, activeInst.liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
-                          />
+                          {/* Margens Grid PI - Side-by-side as shown in ACESSAR CLIENTE */}
+                          {(() => {
+                            const valConsig = activeReg.margem_disponivel_emprestimo ?? 0;
+                            const valCard = activeReg.margem_cartao_consignado ?? 0;
+                            const valBenef = activeReg.margem_cartao_beneficio ?? 0;
 
-                          {/* Row 3 */}
-                          <MarginCard label="Benefício Bruta 5%" value={formatCurrency(activeInst.beneficio_bruta_5)} type="neutral" />
-                          <MarginCard 
-                             label="Benefício Utilizada 5%" 
-                             value={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5)} 
-                             type={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5) === "SIM" ? "danger" : "success"}
-                          />
-                          <MarginCard 
-                            label="Benefício Líquida 5%" 
-                            value={formatCurrency(activeInst.beneficio_liquida_5)} 
-                            type={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5) === "SIM" ? "danger" : "success"}
-                            status={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
-                          />
-                        </div>
+                            const isConsigAvailable = valConsig > 0;
+                            const isCardAvailable = valCard > 0;
+                            const isBenefAvailable = valBenef > 0;
+
+                            return (
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                {/* Margem Disponível Empréstimo */}
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isConsigAvailable ? "bg-blue-50/70 border-blue-100" : "bg-red-50/75 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
+                                    MARGEM DISPONÍVEL EMPRÉSTIMO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1 text-blue-700", !isConsigAvailable && "text-red-700")}>
+                                      {formatCurrency(valConsig)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
+                                        {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Margem Cartão Consignado */}
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isCardAvailable ? "bg-emerald-50/70 border-emerald-100" : "bg-red-50/75 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600 truncate")}>
+                                    MARGEM CARTÃO CONSIGNADO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1 text-emerald-700", !isCardAvailable && "text-red-700")}>
+                                      {formatCurrency(valCard)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isCardAvailable ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
+                                        {isCardAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Margem Cartão Benefício */}
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isBenefAvailable ? "bg-purple-50/70 border-purple-100" : "bg-red-50/75 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600 truncate")}>
+                                    MARGEM CARTÃO BENEFÍCIO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1 text-purple-700", !isBenefAvailable && "text-red-700")}>
+                                      {formatCurrency(valBenef)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isBenefAvailable ? "bg-purple-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600")}>
+                                        {isBenefAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </>
+                      ) : (
+                        <>
+                          <div className="space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações Funcionais</h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-y-10 gap-x-12">
+                              <InfoCard label="Matrícula" value={activeReg.numero_matricula} />
+                              <InfoCard label="Situação" value={activeReg.situacao_funcional} />
+                              <InfoCard label="Salário" value={formatCurrency(activeReg.salario)} />
+                              <InfoCard label="Vínculo / Instituidor" value={activeReg.currentInstituidor} />
+                              <InfoCard label="Regime" value={activeReg.regime_juridico} />
+                              <InfoCard label="Estado (UF)" value={activeReg.uf} />
+                            </div>
+                          </div>
+
+                          {/* Margens */}
+                          {activeInst && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {/* Row 1 */}
+                              <MarginCard label="Saldo 70%" value={formatCurrency(activeInst.saldo_70)} type="neutral" />
+                              <MarginCard 
+                                label="Margem 35%" 
+                                value={formatCurrency(activeInst.margem_35)} 
+                                type={(activeInst.margem_35 || 0) > 0 ? "success" : "danger"}
+                                status={(activeInst.margem_35 || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                              />
+                              <MarginCard 
+                                label="Soma das Margens Líquidas" 
+                                value={formatCurrency(
+                                  (activeInst.margem_35 || 0) + 
+                                  (activeInst.liquida_5 || 0) + 
+                                  (activeInst.beneficio_liquida_5 || 0)
+                                )} 
+                                type="warning" 
+                              />
+                              
+                              {/* Row 2 */}
+                              <MarginCard label="Bruta 5%" value={formatCurrency(activeInst.bruta_5)} type="neutral" />
+                              <MarginCard 
+                                 label="Utilizada 5%" 
+                                 value={getUtilizadaStatus(activeInst.bruta_5, activeInst.liquida_5)} 
+                                 type={getUtilizadaStatus(activeInst.bruta_5, activeInst.liquida_5) === "SIM" ? "danger" : "success"}
+                              />
+                              <MarginCard 
+                                label="Líquida 5%" 
+                                value={formatCurrency(activeInst.liquida_5)} 
+                                type={getUtilizadaStatus(activeInst.bruta_5, activeInst.liquida_5) === "SIM" ? "danger" : "success"}
+                                status={getUtilizadaStatus(activeInst.bruta_5, activeInst.liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
+                              />
+
+                              {/* Row 3 */}
+                              <MarginCard label="Benefício Bruta 5%" value={formatCurrency(activeInst.beneficio_bruta_5)} type="neutral" />
+                              <MarginCard 
+                                 label="Benefício Utilizada 5%" 
+                                 value={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5)} 
+                                 type={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5) === "SIM" ? "danger" : "success"}
+                              />
+                              <MarginCard 
+                                label="Benefício Líquida 5%" 
+                                value={formatCurrency(activeInst.beneficio_liquida_5)} 
+                                type={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5) === "SIM" ? "danger" : "success"}
+                                status={getUtilizadaStatus(activeInst.beneficio_bruta_5, activeInst.beneficio_liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
+                              />
+                            </div>
+                          )}
+                        </>
                       )}
 
                       {/* Contratos Section (SIAPE) */}
-                      {activeInst && (
+                      {activeInst && activeReg.uf !== 'PI' && (
                         <div className="space-y-10 border-t border-slate-100 pt-8">
                           {/* Contratos de Empréstimo */}
                           {(() => {
