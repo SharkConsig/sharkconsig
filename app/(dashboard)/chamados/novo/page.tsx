@@ -225,7 +225,7 @@ function NewTicketForm() {
     if (conv === "GOVERNO PIAUÍ") {
       if (field === 'liquida5') return "MARGEM CARTÃO CONSIGNADO";
       if (field === 'beneficio5') return "MARGEM CARTÃO BENEFÍCIO";
-      if (field === 'margem') return ""; // Hidden for PI
+      if (field === 'margem') return "MARGEM DISPONÍVEL EMPRÉSTIMO";
     }
 
     if (conv === "GOVERNO SP" || conv === "PREFEITURA SP") {

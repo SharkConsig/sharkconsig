@@ -244,6 +244,16 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
         setClient(govPiData)
         setClientType('governo_pi')
 
+        interface BasePiData {
+          matricula?: string;
+          vinculo?: string;
+          orgao?: string;
+          margem_disponivel_emprestimo?: number;
+          margem_cartao_consignado?: number;
+          margem_cartao_beneficio?: number;
+          [key: string]: unknown;
+        }
+
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('governo_pi_identificacoes')
@@ -254,8 +264,87 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
             .eq('cliente_id', (govPiData as ClientData).id)
         )
 
+        // Robust fallback: query base_consulta_governo_pi directly by CPF
+        const { data: basePiData } = await withRetry<BasePiData | null>(async () =>
+          await supabase
+            .from('base_consulta_governo_pi')
+            .select('*')
+            .eq('cpf', paddedCpf)
+            .maybeSingle()
+        )
+
         if (idError) console.error("Erro ao buscar identificações Governo PI:", idError)
-        setRegistrations((idData as Registration[]) || [])
+        
+        let mappedIdData: Registration[] = (idData || []) as unknown as Registration[];
+
+        if (basePiData) {
+          if (mappedIdData.length === 0) {
+            mappedIdData = [{
+              id: 'pseudo-pi',
+              numero_matricula: basePiData.matricula || '---',
+              matricula: basePiData.matricula || '---',
+              vinculo: basePiData.vinculo || '---',
+              situacao_funcional: null,
+              salario: null,
+              orgao: basePiData.orgao || '---',
+              regime_juridico: null,
+              uf: 'PI',
+              governo_pi_lotacoes: [{
+                orgao: basePiData.orgao || '---',
+                lotacao: basePiData.orgao || '---',
+                margem_disponivel_emprestimo: basePiData.margem_disponivel_emprestimo,
+                margem_cartao_consignado: basePiData.margem_cartao_consignado,
+                margem_cartao_beneficio: basePiData.margem_cartao_beneficio,
+              }]
+            }];
+          } else {
+            mappedIdData = mappedIdData.map(reg => {
+              const currentLotacoes = reg.governo_pi_lotacoes;
+              const hasMargins = Array.isArray(currentLotacoes)
+                ? currentLotacoes.length > 0 && currentLotacoes[0].margem_disponivel_emprestimo !== undefined
+                : currentLotacoes && currentLotacoes.margem_disponivel_emprestimo !== undefined;
+              
+              if (!hasMargins) {
+                return {
+                  ...reg,
+                  governo_pi_lotacoes: [{
+                    orgao: basePiData.orgao || (Array.isArray(currentLotacoes) ? currentLotacoes[0]?.orgao : currentLotacoes?.orgao) || '---',
+                    lotacao: basePiData.orgao || (Array.isArray(currentLotacoes) ? currentLotacoes[0]?.lotacao : currentLotacoes?.lotacao) || '---',
+                    margem_disponivel_emprestimo: basePiData.margem_disponivel_emprestimo,
+                    margem_cartao_consignado: basePiData.margem_cartao_consignado,
+                    margem_cartao_beneficio: basePiData.margem_cartao_beneficio
+                  }]
+                };
+              } else {
+                const resolvedLot = Array.isArray(currentLotacoes) ? currentLotacoes[0] : currentLotacoes;
+                return {
+                  ...reg,
+                  governo_pi_lotacoes: [{
+                    orgao: resolvedLot?.orgao || basePiData.orgao || '---',
+                    lotacao: resolvedLot?.lotacao || basePiData.orgao || '---',
+                    margem_disponivel_emprestimo: resolvedLot?.margem_disponivel_emprestimo !== undefined ? resolvedLot.margem_disponivel_emprestimo : basePiData.margem_disponivel_emprestimo,
+                    margem_cartao_consignado: resolvedLot?.margem_cartao_consignado !== undefined ? resolvedLot.margem_cartao_consignado : basePiData.margem_cartao_consignado,
+                    margem_cartao_beneficio: resolvedLot?.margem_cartao_beneficio !== undefined ? resolvedLot.margem_cartao_beneficio : basePiData.margem_cartao_beneficio
+                  }]
+                };
+              }
+            });
+          }
+        } else {
+          mappedIdData = mappedIdData.map(reg => {
+            const currentLotacoes = reg.governo_pi_lotacoes;
+            const resolvedLot = Array.isArray(currentLotacoes) ? currentLotacoes[0] : currentLotacoes;
+            if (resolvedLot) {
+              return {
+                ...reg,
+                governo_pi_lotacoes: [resolvedLot]
+              };
+            }
+            return reg;
+          });
+        }
+
+        setRegistrations(mappedIdData)
         setIsLoading(false)
         return
       }
@@ -841,9 +930,128 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                               );
                             })()}
                           </>
-                        ) : clientType === 'governo_pi' || clientType === 'governo_ma' ? (
+                        ) : clientType === 'governo_pi' ? (
                           <>
-                            {/* Governo PI ou MA */}
+                            {/* Governo PI */}
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase">{activeReg.vinculo || "NÃO INFORMADO"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {(() => {
+                                    const ensureArray = (val: unknown): Lotacao[] => {
+                                      if (!val) return [];
+                                      if (Array.isArray(val)) return val as Lotacao[];
+                                      return [val] as Lotacao[];
+                                    };
+                                    const lotacoes = ensureArray(activeReg.governo_pi_lotacoes);
+                                    return lotacoes?.[0]?.orgao || "---";
+                                  })()}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Margens Grid PI - Side-by-side as shown in ACESSAR CLIENTE */}
+                            {(() => {
+                              const ensureArray = (val: unknown): Lotacao[] => {
+                                if (!val) return [];
+                                if (Array.isArray(val)) return val as Lotacao[];
+                                return [val] as Lotacao[];
+                              };
+                              const lotacoes = ensureArray(activeReg.governo_pi_lotacoes);
+                              const lotacao = lotacoes?.[0];
+                              if (!lotacao) return (
+                                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase">Dados de margens não encontrados</p>
+                                </div>
+                              );
+                              
+                              const valConsig = lotacao.margem_disponivel_emprestimo ?? lotacao.margem_emprestimo_consignado ?? 0;
+                              const valCard = lotacao.margem_cartao_consignado ?? 0;
+                              const valBenef = lotacao.margem_cartao_beneficio ?? 0;
+
+                              const isConsigAvailable = valConsig > 0;
+                              const isCardAvailable = valCard > 0;
+                              const isBenefAvailable = valBenef > 0;
+
+                              return (
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                  {/* Margem Disponível Empréstimo */}
+                                  <div className={cn(
+                                    "p-5 border rounded-2xl space-y-3",
+                                    isConsigAvailable ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                                  )}>
+                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
+                                      MARGEM DISPONÍVEL EMPRÉSTIMO
+                                    </p>
+                                    <div className="flex flex-col">
+                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isConsigAvailable ? "text-blue-700" : "text-red-700 font-bold")}>
+                                        {formatCurrency(valConsig)}
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
+                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
+                                          {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Margem Cartão Consignado */}
+                                  <div className={cn(
+                                    "p-5 border rounded-2xl space-y-3",
+                                    isCardAvailable ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                                  )}>
+                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600 truncate")}>
+                                      MARGEM CARTÃO CONSIGNADO
+                                    </p>
+                                    <div className="flex flex-col">
+                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isCardAvailable ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                        {formatCurrency(valCard)}
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <div className={cn("w-2 h-2 rounded-full", isCardAvailable ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
+                                          {isCardAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Margem Cartão Benefício */}
+                                  <div className={cn(
+                                    "p-5 border rounded-2xl space-y-3",
+                                    isBenefAvailable ? "bg-purple-50 border-purple-100" : "bg-red-50 border-red-100"
+                                  )}>
+                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600 truncate")}>
+                                      MARGEM CARTÃO BENEFÍCIO
+                                    </p>
+                                    <div className="flex flex-col">
+                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isBenefAvailable ? "text-purple-700" : "text-red-700 font-bold")}>
+                                        {formatCurrency(valBenef)}
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <div className={cn("w-2 h-2 rounded-full", isBenefAvailable ? "bg-purple-500" : "bg-red-500")}></div>
+                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600")}>
+                                          {isBenefAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </>
+                        ) : clientType === 'governo_ma' ? (
+                          <>
+                            {/* Governo MA */}
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                               <div className="space-y-1">
                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
@@ -856,21 +1064,21 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                               <div className="space-y-1">
                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
                                 <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.governo_pi_lotacoes?.[0]?.orgao || activeReg.governo_ma_lotacoes?.[0]?.orgao || "---"}
+                                  {activeReg.governo_ma_lotacoes?.[0]?.orgao || "---"}
                                 </p>
                               </div>
                             </div>
 
-                            {/* Margens Grid PI / MA - Layout image.png */}
+                            {/* Margens Grid MA */}
                             {(() => {
-                              const lotacao = activeReg.governo_pi_lotacoes?.[0] || activeReg.governo_ma_lotacoes?.[0];
+                              const lotacao = activeReg.governo_ma_lotacoes?.[0];
                               if (!lotacao) return (
                                 <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed">
                                   <p className="text-[10px] font-bold text-slate-400 uppercase">Dados de margens não encontrados</p>
                                 </div>
                               );
                               
-                              const isConsigAvailable = (lotacao.margem_emprestimo_consignado || lotacao.margem_disponivel_emprestimo || 0) > 0;
+                              const isConsigAvailable = (lotacao.margem_emprestimo_consignado || 0) > 0;
                               const isCardAvailable = (lotacao.margem_cartao_consignado || 0) > 0;
                               const isBenefAvailable = (lotacao.margem_cartao_beneficio || 0) > 0;
 
@@ -878,7 +1086,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                 {
                                   title: "EMPRÉSTIMO CONSIGNADO",
                                   color: "bg-blue-500",
-                                  value: lotacao.margem_emprestimo_consignado ?? lotacao.margem_disponivel_emprestimo,
+                                  value: lotacao.margem_emprestimo_consignado,
                                   isAvailable: isConsigAvailable,
                                   bgColor: "bg-[#f0f7ff]",
                                   borderColor: "border-blue-100",
