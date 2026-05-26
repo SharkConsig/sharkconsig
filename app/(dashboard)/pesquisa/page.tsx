@@ -130,6 +130,12 @@ export default function SearchClientPage() {
     type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr',
     clientData: ClientData
   ): Promise<Registration[]> => {
+    const ensureArray = (val: unknown): Record<string, unknown>[] => {
+      if (!val) return []
+      if (Array.isArray(val)) return val as Record<string, unknown>[]
+      return [val] as unknown as Record<string, unknown>[]
+    }
+
     if (type === 'siape') {
       const { data: regData, error: regError } = await withRetry(async () => 
         await supabase.from('matriculas').select('*, instituidores(*, itens_credito(*))').eq('cliente_cpf', clientData.cpf)
@@ -141,111 +147,126 @@ export default function SearchClientPage() {
         await supabase.from('governo_sp_identificacoes').select('*, governo_sp_lotacoes(*)').eq('cliente_id', clientData.id)
       )
       if (regError) throw regError
-      return (regData || []).map((r: Record<string, unknown>) => ({
-        ...r,
-        id: r.id as string,
-        numero_matricula: (r.rs_pv_ex as string) || '---',
-        identificacao: (r.rs_pv_ex as string) || '---',
-        situacao_funcional: r.situacao_funcional as string | null,
-        salario: 0,
-        orgao: r.secretaria as string | null,
-        regime_juridico: r.regime_juridico as string | null,
-        uf: 'SP',
-        governo_sp_lotacoes: (r.governo_sp_lotacoes || []) as unknown[],
-        instituidores: ((r.governo_sp_lotacoes || []) as Record<string, unknown>[]).map((l) => ({
-          id: l.id as string,
-          nome: null,
-          itens_credito: []
-        }))
-      })) as unknown as Registration[]
+      return (regData || []).map((r: Record<string, unknown>) => {
+        const lotacoes = ensureArray(r.governo_sp_lotacoes)
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.rs_pv_ex as string) || '---',
+          identificacao: (r.rs_pv_ex as string) || '---',
+          situacao_funcional: r.situacao_funcional as string | null,
+          salario: 0,
+          orgao: r.secretaria as string | null,
+          regime_juridico: r.regime_juridico as string | null,
+          uf: 'SP',
+          governo_sp_lotacoes: lotacoes,
+          instituidores: lotacoes.map((l) => ({
+            id: l.id as string,
+            nome: null,
+            itens_credito: []
+          }))
+        }
+      }) as unknown as Registration[]
     } else if (type === 'prefeitura_sp') {
       const { data: regData, error: regError } = await withRetry(async () => 
         await supabase.from('prefeitura_sp_identificacoes').select('*, prefeitura_sp_lotacoes(*)').eq('cliente_id', clientData.id)
       )
       if (regError) throw regError
-      return (regData || []).map((r: Record<string, unknown>) => ({
-        ...r,
-        id: r.id as string,
-        numero_matricula: (r.rf as string) || '---',
-        identificacao: (r.rf as string) || '---',
-        situacao_funcional: r.situacao_funcional as string | null,
-        salario: 0,
-        orgao: r.secretaria as string | null,
-        regime_juridico: r.regime_juridico as string | null,
-        uf: 'SP',
-        prefeitura_sp_lotacoes: (r.prefeitura_sp_lotacoes || []) as unknown[],
-        instituidores: ((r.prefeitura_sp_lotacoes || []) as Record<string, unknown>[]).map((l) => ({
-          id: l.id as string,
-          nome: null,
-          itens_credito: []
-        }))
-      })) as unknown as Registration[]
+      return (regData || []).map((r: Record<string, unknown>) => {
+        const lotacoes = ensureArray(r.prefeitura_sp_lotacoes)
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.rf as string) || '---',
+          identificacao: (r.rf as string) || '---',
+          situacao_funcional: r.situacao_funcional as string | null,
+          salario: 0,
+          orgao: r.secretaria as string | null,
+          regime_juridico: r.regime_juridico as string | null,
+          uf: 'SP',
+          prefeitura_sp_lotacoes: lotacoes,
+          instituidores: lotacoes.map((l) => ({
+            id: l.id as string,
+            nome: null,
+            itens_credito: []
+          }))
+        }
+      }) as unknown as Registration[]
     } else if (type === 'governo_pi') {
       const { data: regData, error: regError } = await withRetry(async () => 
         await supabase.from('governo_pi_identificacoes').select('*, governo_pi_lotacoes(*)').eq('cliente_id', clientData.id)
       )
       if (regError) throw regError
-      return (regData || []).map((r: Record<string, unknown>) => ({
-        ...r,
-        id: r.id as string,
-        numero_matricula: (r.matricula as string) || '---',
-        matricula: (r.matricula as string) || '---',
-        situacao_funcional: r.situacao_funcional as string | null,
-        salario: 0,
-        orgao: r.secretaria as string | null,
-        regime_juridico: r.regime_juridico as string | null,
-        uf: 'PI',
-        governo_pi_lotacoes: (r.governo_pi_lotacoes || []) as unknown[],
-        instituidores: ((r.governo_pi_lotacoes || []) as Record<string, unknown>[]).map((l) => ({
-          id: l.id as string,
-          nome: null,
-          itens_credito: []
-        }))
-      })) as unknown as Registration[]
+      return (regData || []).map((r: Record<string, unknown>) => {
+        const lotacoes = ensureArray(r.governo_pi_lotacoes)
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          situacao_funcional: r.situacao_funcional as string | null,
+          salario: 0,
+          orgao: r.secretaria as string | null,
+          regime_juridico: r.regime_juridico as string | null,
+          uf: 'PI',
+          governo_pi_lotacoes: lotacoes,
+          instituidores: lotacoes.map((l) => ({
+            id: l.id as string,
+            nome: null,
+            itens_credito: []
+          }))
+        }
+      }) as unknown as Registration[]
     } else if (type === 'governo_ma') {
       const { data: regData, error: regError } = await withRetry(async () => 
         await supabase.from('governo_ma_identificacoes').select('*, governo_ma_lotacoes(*)').eq('cliente_id', clientData.id)
       )
       if (regError) throw regError
-      return (regData || []).map((r: Record<string, unknown>) => ({
-        ...r,
-        id: r.id as string,
-        numero_matricula: (r.matricula as string) || '---',
-        matricula: (r.matricula as string) || '---',
-        situacao_funcional: r.situacao_funcional as string | null,
-        salario: 0,
-        orgao: r.secretaria as string | null,
-        regime_juridico: r.regime_juridico as string | null,
-        uf: 'MA',
-        governo_ma_lotacoes: (r.governo_ma_lotacoes || []) as unknown[],
-        instituidores: ((r.governo_ma_lotacoes || []) as Record<string, unknown>[]).map((l) => ({
-          id: l.id as string,
-          nome: null,
-          itens_credito: []
-        }))
-      })) as unknown as Registration[]
+      return (regData || []).map((r: Record<string, unknown>) => {
+        const lotacoes = ensureArray(r.governo_ma_lotacoes)
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          situacao_funcional: r.situacao_funcional as string | null,
+          salario: 0,
+          orgao: r.secretaria as string | null,
+          regime_juridico: r.regime_juridico as string | null,
+          uf: 'MA',
+          governo_ma_lotacoes: lotacoes,
+          instituidores: lotacoes.map((l) => ({
+            id: l.id as string,
+            nome: null,
+            itens_credito: []
+          }))
+        }
+      }) as unknown as Registration[]
     } else if (type === 'governo_rr') {
       const { data: regData, error: regError } = await withRetry(async () => 
         await supabase.from('governo_rr_matriculas').select('*, governo_rr_instituidores(*)').eq('cliente_id', clientData.id)
       )
       if (regError) throw regError
-      return (regData || []).map((r: Record<string, unknown>) => ({
-        ...r,
-        id: r.id as string,
-        numero_matricula: (r.matricula as string) || '---',
-        matricula: (r.matricula as string) || '---',
-        situacao_funcional: r.situacao_funcional as string | null,
-        salario: 0,
-        orgao: r.secretaria as string | null,
-        regime_juridico: r.regime_juridico as string | null,
-        uf: 'RR',
-        governo_rr_instituidores: (r.governo_rr_instituidores || []) as unknown[],
-        instituidores: ((r.governo_rr_instituidores || []) as Record<string, unknown>[]).map((l) => ({
-          id: l.id as string,
-          nome: null,
-          itens_credito: []
-        }))
-      })) as unknown as Registration[]
+      return (regData || []).map((r: Record<string, unknown>) => {
+        const instituidores = ensureArray(r.governo_rr_instituidores)
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          situacao_funcional: r.situacao_funcional as string | null,
+          salario: 0,
+          orgao: r.secretaria as string | null,
+          regime_juridico: r.regime_juridico as string | null,
+          uf: 'RR',
+          governo_rr_instituidores: instituidores,
+          instituidores: instituidores.map((l) => ({
+            id: l.id as string,
+            nome: null,
+            itens_credito: []
+          }))
+        }
+      }) as unknown as Registration[]
     }
     return []
   }
@@ -1688,7 +1709,28 @@ export default function SearchClientPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {/* Margem Disponível Empréstimo */}
+                            <div className={cn(
+                              "p-5 border rounded-2xl space-y-3",
+                              (lotacao.margem_disponivel_emprestimo || 0) > 0 ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                            )}>
+                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_disponivel_emprestimo || 0) > 0 ? "text-blue-600" : "text-red-600 truncate")}>
+                                MARGEM DISPONÍVEL EMPRÉSTIMO
+                              </p>
+                              <div className="flex flex-col">
+                                <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", (lotacao.margem_disponivel_emprestimo || 0) > 0 ? "text-blue-700" : "text-red-700 font-bold")}>
+                                  {formatCurrency(lotacao.margem_disponivel_emprestimo)}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className={cn("w-2 h-2 rounded-full", (lotacao.margem_disponivel_emprestimo || 0) > 0 ? "bg-blue-500" : "bg-red-500")}></div>
+                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_disponivel_emprestimo || 0) > 0 ? "text-blue-600" : "text-red-600")}>
+                                    {(lotacao.margem_disponivel_emprestimo || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
                             {/* Margem Cartão Consignado */}
                             <div className={cn(
                               "p-5 border rounded-2xl space-y-3",
@@ -1745,7 +1787,7 @@ export default function SearchClientPage() {
                                   tel1: unmaskPhone(client.telefone_1),
                                   tel2: unmaskPhone(client.telefone_2),
                                   tel3: unmaskPhone(client.telefone_3),
-                                  margem: "R$ 0,00", // GOV PI logic might vary, using empty for now or specific field
+                                  margem: formatCurrency(lotacao.margem_disponivel_emprestimo),
                                   liquida5: formatCurrency(lotacao.margem_cartao_consignado),
                                   beneficio5: formatCurrency(lotacao.margem_cartao_beneficio),
                                   convenio: "GOVERNO PIAUÍ",

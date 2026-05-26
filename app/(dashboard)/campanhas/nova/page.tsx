@@ -110,7 +110,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   ],
   'base_consulta_governo_pi': [
     'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
-    'matricula', 'vinculo', 'orgao', 'margem_cartao_consignado', 'margem_cartao_beneficio'
+    'matricula', 'vinculo', 'orgao', 'margem_disponivel_emprestimo', 'margem_cartao_consignado', 'margem_cartao_beneficio'
   ],
   'base_consulta_governo_ma': [
     'cpf', 'nome', 'data_nascimento', 'telefone_1', 
@@ -162,40 +162,63 @@ export default function NewCampaignPage() {
       const tableName = TABLE_MAP[activeConvenio];
       if (!tableName) return;
 
-      setIsCalculating(true) // Use loading state while fetching options
+      setIsCalculating(true); // Use loading state while fetching options
 
-      // Fetch distinct values for the current convenio
-      // In a real database with millions of rows, we should use a dedicated RPC for distinct values
-      const { data: orgaosData } = await supabase
-        .from(tableName)
-        .select('orgao')
-        .limit(1000) // Safety limit for dev, in production we use RPC
-      
-      const { data: situacoesData } = await supabase
-        .from(tableName)
-        .select('situacao_funcional')
-        .limit(1000)
+      let orgaos: string[] = [];
+      let situacoes: string[] = [];
+      let regimes: string[] = [];
+      let ufs: string[] = [];
 
-      const { data: regimesData } = await supabase
-        .from(tableName)
-        .select('regime_juridico')
-        .limit(1000)
-      
-      const { data: ufsData } = await supabase
-        .from(tableName)
-        .select('uf')
-        .limit(1000)
+      if (activeConvenio === 'governo_pi') {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: vinculoData } = await supabase
+          .from(tableName)
+          .select('vinculo')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(vinculoData?.map((i: any) => i.vinculo).filter(Boolean) || [])).sort() as string[];
+      } else {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: situacoesData } = await supabase
+          .from(tableName)
+          .select('situacao_funcional')
+          .limit(1000);
+
+        const { data: regimesData } = await supabase
+          .from(tableName)
+          .select('regime_juridico')
+          .limit(1000);
+        
+        const { data: ufsData } = await supabase
+          .from(tableName)
+          .select('uf')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao_funcional).filter(Boolean) || [])).sort() as string[];
+        regimes = Array.from(new Set(regimesData?.map(i => i.regime_juridico).filter(Boolean) || [])).sort() as string[];
+        ufs = Array.from(new Set(ufsData?.map(i => i.uf).filter(Boolean) || [])).sort() as string[];
+      }
 
       setDynamicOptions({
-        orgaos: Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort(),
-        situacoes: Array.from(new Set(situacoesData?.map(i => i.situacao_funcional).filter(Boolean) || [])).sort(),
-        regimes: Array.from(new Set(regimesData?.map(i => i.regime_juridico).filter(Boolean) || [])).sort(),
-        ufs: Array.from(new Set(ufsData?.map(i => i.uf).filter(Boolean) || [])).sort()
-      })
+        orgaos,
+        situacoes,
+        regimes,
+        ufs
+      });
     } catch (err) {
-      console.error("Erro ao buscar opções dinâmicas:", err)
+      console.error("Erro ao buscar opções dinâmicas:", err);
     } finally {
-      setIsCalculating(false)
+      setIsCalculating(false);
     }
   }, [activeConvenio])
 
@@ -372,14 +395,20 @@ export default function NewCampaignPage() {
   };
 
   const applySharedFilters = (q: any, f: typeof filters, cols: string[]) => {
-    // Filtros de Margem 35% no topo para priorizar o uso do índice
+    // Filtros de Margem 35% / Margem Disponível Empréstimo no topo para priorizar o uso do índice
     const mMinNum = parseSafeNumber(f.margemMin);
     const mMaxNum = parseSafeNumber(f.margemMax);
     
-    if ((mMinNum !== null || mMaxNum !== null) && cols.includes('margem_35')) {
-      q = q.not("margem_35", "is", null);
-      if (mMinNum !== null) q = q.gte("margem_35", mMinNum);
-      if (mMaxNum !== null) q = q.lte("margem_35", mMaxNum);
+    if (mMinNum !== null || mMaxNum !== null) {
+      if (cols.includes('margem_35')) {
+        q = q.not("margem_35", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_35", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_35", mMaxNum);
+      } else if (cols.includes('margem_disponivel_emprestimo')) {
+        q = q.not("margem_disponivel_emprestimo", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_disponivel_emprestimo", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_disponivel_emprestimo", mMaxNum);
+      }
     }
 
     // 1. Filtros de Matrícula
@@ -855,8 +884,13 @@ export default function NewCampaignPage() {
           </Card>
 
           {filterSections.map((section) => {
+            if (activeConvenio === 'governo_pi' && (section.id === "3" || section.id === "4")) return null;
             const category = CATEGORY_MAP[section.id] as keyof typeof filters;
             const hasSelectedFilters = category && (filters[category] as string[]).length > 0;
+
+            const sectionTitle = activeConvenio === 'governo_pi' && section.id === "2"
+              ? "3. VÍNCULO"
+              : section.title;
 
             return (
               <Card 
@@ -882,7 +916,7 @@ export default function NewCampaignPage() {
                         "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
                         hasSelectedFilters ? "text-blue-600" : "text-slate-400"
                       )}>
-                        {section.title}
+                        {sectionTitle}
                       </h3>
                     </div>
                     <div className="flex gap-4">
@@ -975,7 +1009,9 @@ export default function NewCampaignPage() {
                   <h3 className={cn(
                     "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
                     (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
-                  )}>6. MARGEM 35%</h3>
+                  )}>
+                    {activeConvenio === 'governo_pi' ? "6. MARGEM DISPONÍVEL EMPRÉSTIMO" : "6. MARGEM 35%"}
+                  </h3>
                 </div>
                 <button 
                   onClick={() => setFilters(prev => ({ ...prev, margemMin: "", margemMax: "" }))}
@@ -1016,328 +1052,395 @@ export default function NewCampaignPage() {
             </CardContent>
           </Card>
 
-          {/* 7. SALDO 70% */}
-          <Card className={cn(
-            "card-shadow transition-all duration-300",
-            (filters.saldoMin || filters.saldoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
-          )}>
-            <CardContent className="p-6 lg:p-8 space-y-6">
-              <div className="flex items-center justify-between">
+          {activeConvenio !== 'governo_pi' && (
+            /* 7. SALDO 70% */
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.saldoMin || filters.saldoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      (filters.saldoMin || filters.saldoMax) ? "bg-blue-100" : "bg-slate-50"
+                    )}>
+                      <Landmark className={cn(
+                        "w-4 h-4 transition-colors",
+                        (filters.saldoMin || filters.saldoMax) ? "text-blue-600" : "text-slate-400"
+                      )} />
+                    </div>
+                    <h3 className={cn(
+                      "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                      (filters.saldoMin || filters.saldoMax) ? "text-blue-600" : "text-slate-400"
+                    )}>7. SALDO 70%</h3>
+                  </div>
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, saldoMin: "", saldoMax: "" }))}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                  >
+                    Limpar
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Mínimo</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="0,00" 
+                        inputMode="decimal"
+                        value={filters.saldoMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, saldoMin: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+
+          {/* 8. EMPRÉSTIMOS */}
+          {activeConvenio !== 'governo_pi' && (
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-8">
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                    (filters.saldoMin || filters.saldoMax) ? "bg-blue-100" : "bg-slate-50"
+                    (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "bg-blue-100" : "bg-slate-50"
                   )}>
-                    <Landmark className={cn(
+                    <CreditCard className={cn(
                       "w-4 h-4 transition-colors",
-                      (filters.saldoMin || filters.saldoMax) ? "text-blue-600" : "text-slate-400"
+                      (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "text-blue-600" : "text-slate-400"
                     )} />
                   </div>
                   <h3 className={cn(
                     "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
-                    (filters.saldoMin || filters.saldoMax) ? "text-blue-600" : "text-slate-400"
-                  )}>7. SALDO 70%</h3>
-                </div>
-                <button 
-                  onClick={() => setFilters(prev => ({ ...prev, saldoMin: "", saldoMax: "" }))}
-                  className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
-                >
-                  Limpar
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Mínimo</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                    <Input 
-                      className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                      placeholder="0,00" 
-                      inputMode="decimal"
-                      value={filters.saldoMin}
-                      onChange={(e) => setFilters(prev => ({ ...prev, saldoMin: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-
-          {/* 8. EMPRÉSTIMOS */}
-          <Card className={cn(
-            "card-shadow transition-all duration-300",
-            (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
-          )}>
-            <CardContent className="p-6 lg:p-8 space-y-8">
-              <div className="flex items-center gap-3">
-                <div className={cn(
-                  "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                  (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "bg-blue-100" : "bg-slate-50"
-                )}>
-                  <CreditCard className={cn(
-                    "w-4 h-4 transition-colors",
                     (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "text-blue-600" : "text-slate-400"
-                  )} />
+                  )}>8. EMPRÉSTIMOS</h3>
                 </div>
-                <h3 className={cn(
-                  "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
-                  (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "text-blue-600" : "text-slate-400"
-                )}>8. EMPRÉSTIMOS</h3>
-              </div>
 
-              <div className="space-y-6 bg-slate-50/30 p-5 rounded-xl border border-slate-100/50">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <h4 className="text-[9px] font-bold text-slate-900 uppercase tracking-widest">Banco</h4>
-                    <p className="text-[8px] text-slate-400 font-medium">Selecione os bancos para filtrar os contratos</p>
+                <div className="space-y-6 bg-slate-50/30 p-5 rounded-xl border border-slate-100/50">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h4 className="text-[9px] font-bold text-slate-900 uppercase tracking-widest">Banco</h4>
+                      <p className="text-[8px] text-slate-400 font-medium">Selecione os bancos para filtrar os contratos</p>
+                    </div>
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => selectAll("loanBanks", loanBanksList)}
+                        className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors"
+                      >
+                        Selecionar Todos
+                      </button>
+                      <button 
+                        onClick={() => clearAll("loanBanks", loanBanksList)}
+                        className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                      >
+                        Limpar
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-4">
+                  <div className="space-y-4">
+                    <Input 
+                      placeholder="Localizar banco..." 
+                      icon={<Search className="w-4 h-4" />}
+                      className="bg-white border-slate-200 h-10 text-[12px] shadow-sm focus:ring-2 focus:ring-primary/10"
+                      value={searchQueries["loan_banks"] || ""}
+                      onChange={(e) => handleSearch("loan_banks", e.target.value)}
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-52 overflow-y-auto pr-2 custom-scrollbar">
+                      {getFilteredOptions(loanBanksList, "loan_banks").map((bank) => (
+                        <button 
+                          key={bank}
+                          title={bank}
+                          onClick={() => toggleFilter("loanBanks", bank)}
+                          className={cn(
+                            "flex items-center justify-between px-4 py-3.5 border rounded-xl text-[10px] font-bold transition-all uppercase tracking-tight text-left",
+                            filters.loanBanks.includes(bank) 
+                              ? "bg-primary border-primary text-white shadow-md shadow-primary/20 scale-[0.98]" 
+                              : "bg-white border-slate-100 text-slate-500 hover:border-primary/30 hover:bg-slate-50/50"
+                          )}
+                        >
+                          <span className="truncate mr-2">{bank}</span>
+                          {filters.loanBanks.includes(bank) && <Check className="w-3 h-3 flex-shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6 bg-slate-50/30 p-5 rounded-xl border border-slate-100/50 hover:border-slate-200/50 transition-all duration-300 group">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h4 className="text-[9px] font-bold text-slate-900 uppercase tracking-widest group-hover:text-primary transition-colors">Prazo (Meses)</h4>
+                      <p className="text-[8px] text-slate-400 font-medium">Defina o intervalo de meses dos contratos</p>
+                    </div>
                     <button 
-                      onClick={() => selectAll("loanBanks", loanBanksList)}
-                      className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors"
+                      onClick={() => setFilters(prev => ({ ...prev, loanPrazoMin: "", loanPrazoMax: "" }))}
+                      className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors flex items-center gap-1.5"
                     >
-                      Selecionar Todos
-                    </button>
-                    <button 
-                      onClick={() => clearAll("loanBanks", loanBanksList)}
-                      className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
-                    >
+                      <X className="w-2.5 h-2.5" />
                       Limpar
                     </button>
                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-2.5">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                        Prazo Mínimo
+                      </label>
+                      <div className="relative group/input">
+                        <Input 
+                          className="h-11 bg-white border-slate-200 text-[12px] shadow-sm focus:ring-2 focus:ring-primary/10 transition-all group-hover/input:border-slate-300" 
+                          placeholder="Ex: 12" 
+                          type="number"
+                          value={filters.loanPrazoMin}
+                          onChange={(e) => setFilters(prev => ({ ...prev, loanPrazoMin: e.target.value }))}
+                        />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                          <div className="w-[1px] h-4 bg-slate-100" />
+                          <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">Meses</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2.5">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                        Prazo Máximo
+                      </label>
+                      <div className="relative group/input">
+                        <Input 
+                          className="h-11 bg-white border-slate-200 text-[12px] shadow-sm focus:ring-2 focus:ring-primary/10 transition-all group-hover/input:border-slate-300" 
+                          placeholder="Ex: 96" 
+                          type="number"
+                          value={filters.loanPrazoMax}
+                          onChange={(e) => setFilters(prev => ({ ...prev, loanPrazoMax: e.target.value }))}
+                        />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                          <div className="w-[1px] h-4 bg-slate-100" />
+                          <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">Meses</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-4">
-                  <Input 
-                    placeholder="Localizar banco..." 
-                    icon={<Search className="w-4 h-4" />}
-                    className="bg-white border-slate-200 h-10 text-[12px] shadow-sm focus:ring-2 focus:ring-primary/10"
-                    value={searchQueries["loan_banks"] || ""}
-                    onChange={(e) => handleSearch("loan_banks", e.target.value)}
-                  />
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-52 overflow-y-auto pr-2 custom-scrollbar">
-                    {getFilteredOptions(loanBanksList, "loan_banks").map((bank) => (
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 9. CARTÕES */}
+          {activeConvenio !== 'governo_pi' ? (
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-8">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "bg-blue-100" : "bg-slate-50"
+                    )}>
+                      <CreditCard className={cn(
+                        "w-4 h-4 transition-colors",
+                        (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
+                      )} />
+                    </div>
+                    <h3 className={cn(
+                      "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                      (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
+                    )}>9. CARTÕES</h3>
+                  </div>
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "" }))}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                  >
+                    Limpar
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Líquida 5% (Mínima)</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="Ex: 100,00" 
+                        inputMode="decimal"
+                        value={filters.cardMargemMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício Líquida 5% (Mínima)</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="Ex: 100,00" 
+                        inputMode="decimal"
+                        value={filters.cardBeneficioMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div id="tipo-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-blue-50/10 p-4 rounded-xl shadow-sm border border-blue-100/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Tipo de Cartão</h4>
+                    </div>
+                    <div className="flex gap-3">
                       <button 
-                        key={bank}
-                        title={bank}
-                        onClick={() => toggleFilter("loanBanks", bank)}
+                        onClick={() => selectAll("cardTypes", CARD_TYPES)}
+                        className="text-[9px] font-bold text-primary uppercase tracking-widest hover:text-primary/80 transition-colors px-2 py-1 rounded-md bg-primary/5 hover:bg-primary/10"
+                      >
+                        Todos
+                      </button>
+                      <button 
+                        onClick={() => clearAll("cardTypes", CARD_TYPES)}
+                        className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-slate-50 hover:bg-slate-100"
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {CARD_TYPES.map((type) => (
+                      <button 
+                        key={type}
+                        onClick={() => toggleFilter("cardTypes", type)}
                         className={cn(
-                          "flex items-center justify-between px-4 py-3.5 border rounded-xl text-[10px] font-bold transition-all uppercase tracking-tight text-left",
-                          filters.loanBanks.includes(bank) 
-                            ? "bg-primary border-primary text-white shadow-md shadow-primary/20 scale-[0.98]" 
+                           "flex items-center justify-between px-4 py-3.5 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
+                          filters.cardTypes.includes(type) 
+                            ? "bg-primary border-primary text-white shadow-lg shadow-primary/20 ring-2 ring-primary/10" 
                             : "bg-white border-slate-100 text-slate-500 hover:border-primary/30 hover:bg-slate-50/50"
                         )}
                       >
-                        <span className="truncate mr-2">{bank}</span>
-                        {filters.loanBanks.includes(bank) && <Check className="w-3 h-3 flex-shrink-0" />}
+                        <span className="truncate mr-2">{type}</span>
+                        {filters.cardTypes.includes(type) && <Check className="w-3.5 h-3.5" />}
                       </button>
                     ))}
                   </div>
                 </div>
-              </div>
 
-              <div className="space-y-6 bg-slate-50/30 p-5 rounded-xl border border-slate-100/50 hover:border-slate-200/50 transition-all duration-300 group">
+                <div id="banco-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-indigo-50/10 p-5 rounded-2xl mt-6 border border-indigo-100/30 shadow-sm transition-all hover:shadow-md">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Banco do Cartão</h4>
+                    </div>
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={() => selectAll("cardBanks", CARD_BANKS)}
+                        className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100/50"
+                      >
+                        Todos
+                      </button>
+                      <button 
+                        onClick={() => clearAll("cardBanks", CARD_BANKS)}
+                        className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-white hover:bg-slate-50"
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+                  <Input 
+                    placeholder="Localizar banco..." 
+                    icon={<Search className="w-4 h-4" />}
+                    className="bg-slate-50/30 border-slate-100 h-9 text-[12px]"
+                    value={searchQueries["card_banks"] || ""}
+                    onChange={(e) => handleSearch("card_banks", e.target.value)}
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                    {getFilteredOptions(CARD_BANKS, "card_banks").map((bank) => (
+                      <button 
+                        key={bank}
+                        title={bank}
+                        onClick={() => toggleFilter("cardBanks", bank)}
+                        className={cn(
+                          "flex items-center justify-between px-4 py-3 border rounded-lg text-[10px] font-bold transition-all uppercase tracking-tight text-left",
+                          filters.cardBanks.includes(bank) 
+                            ? "bg-primary border-primary text-white shadow-lg shadow-primary/20" 
+                            : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary hover:text-primary"
+                        )}
+                      >
+                        <span className="truncate mr-2">{bank}</span>
+                        {filters.cardBanks.includes(bank) && <Check className="w-3 h-3 flex-shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            /* 4. MARGEM DOS CARTÕES (For Governo Piauí) */
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.cardMargemMin || filters.cardBeneficioMin) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-6">
                 <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <h4 className="text-[9px] font-bold text-slate-900 uppercase tracking-widest group-hover:text-primary transition-colors">Prazo (Meses)</h4>
-                    <p className="text-[8px] text-slate-400 font-medium">Defina o intervalo de meses dos contratos</p>
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      (filters.cardMargemMin || filters.cardBeneficioMin) ? "bg-blue-100" : "bg-slate-50"
+                    )}>
+                      <CreditCard className={cn(
+                        "w-4 h-4 transition-colors",
+                        (filters.cardMargemMin || filters.cardBeneficioMin) ? "text-blue-600" : "text-slate-400"
+                      )} />
+                    </div>
+                    <h3 className={cn(
+                      "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                      (filters.cardMargemMin || filters.cardBeneficioMin) ? "text-blue-600" : "text-slate-400"
+                    )}>4. MARGEM DOS CARTÕES</h3>
                   </div>
                   <button 
-                    onClick={() => setFilters(prev => ({ ...prev, loanPrazoMin: "", loanPrazoMax: "" }))}
-                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors flex items-center gap-1.5"
+                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "" }))}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
                   >
-                    <X className="w-2.5 h-2.5" />
                     Limpar
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-2.5">
-                    <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                      Prazo Mínimo
-                    </label>
-                    <div className="relative group/input">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO CONSIGNADO (Mínima)</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
                       <Input 
-                        className="h-11 bg-white border-slate-200 text-[12px] shadow-sm focus:ring-2 focus:ring-primary/10 transition-all group-hover/input:border-slate-300" 
-                        placeholder="Ex: 12" 
-                        type="number"
-                        value={filters.loanPrazoMin}
-                        onChange={(e) => setFilters(prev => ({ ...prev, loanPrazoMin: e.target.value }))}
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="Ex: 100,00" 
+                        inputMode="decimal"
+                        value={filters.cardMargemMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
                       />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                        <div className="w-[1px] h-4 bg-slate-100" />
-                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">Meses</span>
-                      </div>
                     </div>
                   </div>
-                  <div className="space-y-2.5">
-                    <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                      Prazo Máximo
-                    </label>
-                    <div className="relative group/input">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO BENEFÍCIO (Mínima)</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
                       <Input 
-                        className="h-11 bg-white border-slate-200 text-[12px] shadow-sm focus:ring-2 focus:ring-primary/10 transition-all group-hover/input:border-slate-300" 
-                        placeholder="Ex: 96" 
-                        type="number"
-                        value={filters.loanPrazoMax}
-                        onChange={(e) => setFilters(prev => ({ ...prev, loanPrazoMax: e.target.value }))}
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="Ex: 100,00" 
+                        inputMode="decimal"
+                        value={filters.cardBeneficioMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
                       />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                        <div className="w-[1px] h-4 bg-slate-100" />
-                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">Meses</span>
-                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 9. CARTÕES */}
-          <Card className={cn(
-            "card-shadow transition-all duration-300",
-            (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
-          )}>
-            <CardContent className="p-6 lg:p-8 space-y-8">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                    (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "bg-blue-100" : "bg-slate-50"
-                  )}>
-                    <CreditCard className={cn(
-                      "w-4 h-4 transition-colors",
-                      (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
-                    )} />
-                  </div>
-                  <h3 className={cn(
-                    "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
-                    (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
-                  )}>9. CARTÕES</h3>
-                </div>
-                <button 
-                  onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "" }))}
-                  className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
-                >
-                  Limpar
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Líquida 5% (Mínima)</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                    <Input 
-                      className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                      placeholder="Ex: 100,00" 
-                      inputMode="decimal"
-                      value={filters.cardMargemMin}
-                      onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício Líquida 5% (Mínima)</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                    <Input 
-                      className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                      placeholder="Ex: 100,00" 
-                      inputMode="decimal"
-                      value={filters.cardBeneficioMin}
-                      onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div id="tipo-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-blue-50/10 p-4 rounded-xl shadow-sm border border-blue-100/30">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Tipo de Cartão</h4>
-                  </div>
-                  <div className="flex gap-3">
-                    <button 
-                      onClick={() => selectAll("cardTypes", CARD_TYPES)}
-                      className="text-[9px] font-bold text-primary uppercase tracking-widest hover:text-primary/80 transition-colors px-2 py-1 rounded-md bg-primary/5 hover:bg-primary/10"
-                    >
-                      Todos
-                    </button>
-                    <button 
-                      onClick={() => clearAll("cardTypes", CARD_TYPES)}
-                      className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-slate-50 hover:bg-slate-100"
-                    >
-                      Limpar
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {CARD_TYPES.map((type) => (
-                    <button 
-                      key={type}
-                      onClick={() => toggleFilter("cardTypes", type)}
-                      className={cn(
-                         "flex items-center justify-between px-4 py-3.5 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
-                        filters.cardTypes.includes(type) 
-                          ? "bg-primary border-primary text-white shadow-lg shadow-primary/20 ring-2 ring-primary/10" 
-                          : "bg-white border-slate-100 text-slate-500 hover:border-primary/30 hover:bg-slate-50/50"
-                      )}
-                    >
-                      <span className="truncate mr-2">{type}</span>
-                      {filters.cardTypes.includes(type) && <Check className="w-3.5 h-3.5" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div id="banco-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-indigo-50/10 p-5 rounded-2xl mt-6 border border-indigo-100/30 shadow-sm transition-all hover:shadow-md">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Banco do Cartão</h4>
-                  </div>
-                  <div className="flex gap-3">
-                    <button 
-                      onClick={() => selectAll("cardBanks", CARD_BANKS)}
-                      className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100/50"
-                    >
-                      Todos
-                    </button>
-                    <button 
-                      onClick={() => clearAll("cardBanks", CARD_BANKS)}
-                      className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-white hover:bg-slate-50"
-                    >
-                      Limpar
-                    </button>
-                  </div>
-                </div>
-                <Input 
-                  placeholder="Localizar banco..." 
-                  icon={<Search className="w-4 h-4" />}
-                  className="bg-slate-50/30 border-slate-100 h-9 text-[12px]"
-                  value={searchQueries["card_banks"] || ""}
-                  onChange={(e) => handleSearch("card_banks", e.target.value)}
-                />
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                  {getFilteredOptions(CARD_BANKS, "card_banks").map((bank) => (
-                    <button 
-                      key={bank}
-                      title={bank}
-                      onClick={() => toggleFilter("cardBanks", bank)}
-                      className={cn(
-                        "flex items-center justify-between px-4 py-3 border rounded-lg text-[10px] font-bold transition-all uppercase tracking-tight text-left",
-                        filters.cardBanks.includes(bank) 
-                          ? "bg-primary border-primary text-white shadow-lg shadow-primary/20" 
-                          : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary hover:text-primary"
-                      )}
-                    >
-                      <span className="truncate mr-2">{bank}</span>
-                      {filters.cardBanks.includes(bank) && <Check className="w-3 h-3 flex-shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Summary Sidebar */}

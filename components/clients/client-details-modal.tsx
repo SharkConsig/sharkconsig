@@ -90,6 +90,7 @@ interface Lotacao {
   mb_cartao_beneficio?: number;
   md_cartao_beneficio?: number;
   margem_emprestimo_consignado?: number;
+  margem_disponivel_emprestimo?: number;
   margem_cartao_consignado?: number;
   margem_cartao_beneficio?: number;
   [key: string]: unknown;
@@ -869,7 +870,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                 </div>
                               );
                               
-                              const isConsigAvailable = (lotacao.margem_emprestimo_consignado || 0) > 0;
+                              const isConsigAvailable = (lotacao.margem_emprestimo_consignado || lotacao.margem_disponivel_emprestimo || 0) > 0;
                               const isCardAvailable = (lotacao.margem_cartao_consignado || 0) > 0;
                               const isBenefAvailable = (lotacao.margem_cartao_beneficio || 0) > 0;
 
@@ -877,7 +878,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                 {
                                   title: "EMPRÉSTIMO CONSIGNADO",
                                   color: "bg-blue-500",
-                                  value: lotacao.margem_emprestimo_consignado,
+                                  value: lotacao.margem_emprestimo_consignado ?? lotacao.margem_disponivel_emprestimo,
                                   isAvailable: isConsigAvailable,
                                   bgColor: "bg-[#f0f7ff]",
                                   borderColor: "border-blue-100",

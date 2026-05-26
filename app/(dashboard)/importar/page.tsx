@@ -36,6 +36,51 @@ interface Batch {
 
 import { useAuth } from "@/context/auth-context"
 
+const normalizeHeaderKey = (key: string): string => {
+  return normalizeText(key)
+    .replace(/[^A-Za-z0-9]/g, "")
+    .toLowerCase();
+};
+
+const getRequiredHeadersKeysForType = (type: string): string[][] => {
+  if (type === "SIAPE") {
+    return [["cpf"], ["matricula"], ["orgao"], ["situacaofuncional"]];
+  }
+  if (type === "CONTRATOS") {
+    return [["cpf"], ["numerodocontrato", "numcontrato", "contrato"], ["banco"], ["parcela"], ["orgao"]];
+  }
+  if (type === "GOVERNO_SP") {
+    return [["cpf"], ["identificacao"], ["lotacao"], ["orgao"], ["tipovinculo", "vinculo"]];
+  }
+  if (type === "PREFEITURA_SP") {
+    return [["cpf"], ["identificacao"], ["lotacao"], ["orgao"], ["tipovinculo", "vinculo"]];
+  }
+  if (type === "GOVERNO_PI") {
+    return [["cpf"], ["matricula"], ["orgao"], ["margemdisponivelemprestimo", "margemdisponivel", "margememprestimo", "margememprestimoconsignado"]];
+  }
+  if (type === "GOVERNO_MA") {
+    return [["cpf"], ["matricula"], ["orgao"], ["margememprestimoconsignado", "margemdisponivelemprestimo", "margememprestimo", "margemdisponivel"]];
+  }
+  if (type === "GOVERNO_RR") {
+    return [["cpf"], ["matricula"], ["origem"], ["regimecontratacao", "regime"]];
+  }
+  return [];
+};
+
+const checkRequiredHeaders = (actualHeaders: string[], type: string): boolean => {
+  const normActual = actualHeaders.map(h => normalizeHeaderKey(h));
+  const expectedAlternatives = getRequiredHeadersKeysForType(type);
+  
+  for (const alternatives of expectedAlternatives) {
+    const hasAny = alternatives.some(alt => normActual.includes(alt));
+    if (!hasAny) {
+      console.warn(`[VALIDAÇÃO] Falta de cabeçalho compatível com:`, alternatives);
+      return false;
+    }
+  }
+  return true;
+};
+
 
 
 export default function ImportBatchPage() {
@@ -1003,20 +1048,29 @@ export default function ImportBatchPage() {
   };
 
   const processGovernoPiChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
-    // 1. Normalização
-    const normalizedRows = results.map(row => ({
-      cpf: normalizeCPF(row.cpf || ""),
-      nome: normalizeText(row.nome || ""),
-      data_nascimento: normalizeDate(row.data_nascimento || ""),
-      matricula: normalizeText(row.matricula || ""),
-      vinculo: normalizeText(row.vinculo || ""),
-      telefone_1: normalizePhone(row.telefone_1 || row.telefone || ""),
-      telefone_2: normalizePhone(row.telefone_2 || ""),
-      telefone_3: normalizePhone(row.telefone_3 || ""),
-      orgao: normalizeText(row.orgao || ""),
-      margem_cartao_consignado: normalizeMoney(row.margem_cartao_consignado),
-      margem_cartao_beneficio: normalizeMoney(row.margem_cartao_beneficio)
-    })).filter(r => r.cpf && r.cpf.length > 0);
+    // 1. Normalização das Chaves e Valores do CSV com suporte flexível
+    const normalizedRows = results.map(rawRow => {
+      const row: Record<string, string | undefined> = {};
+      Object.keys(rawRow).forEach(key => {
+        const normKey = normalizeHeaderKey(key);
+        row[normKey] = rawRow[key];
+      });
+
+      return {
+        cpf: normalizeCPF(row["cpf"] || ""),
+        nome: normalizeText(row["nome"] || ""),
+        data_nascimento: normalizeDate(row["datanascimento"] || row["datadenascimento"] || ""),
+        matricula: normalizeText(row["matricula"] || ""),
+        vinculo: normalizeText(row["vinculo"] || row["tipovinculo"] || row["situacaofuncional"] || ""),
+        telefone_1: normalizePhone(row["telefone1"] || row["telefone"] || ""),
+        telefone_2: normalizePhone(row["telefone2"] || ""),
+        telefone_3: normalizePhone(row["telefone3"] || ""),
+        orgao: normalizeText(row["orgao"] || ""),
+        margem_disponivel_emprestimo: normalizeMoney(row["margemdisponivelemprestimo"] || row["margemdisponivel"] || row["margememprestimo"] || row["margememprestimoconsignado"]),
+        margem_cartao_consignado: normalizeMoney(row["margemcartaoconsignado"] || row["margemcartao"] || row["margemcartaoconsignavel5"] || row["margemrcc"] || row["rcc"]),
+        margem_cartao_beneficio: normalizeMoney(row["margemcartaobeneficio"] || row["margembeneficio"] || row["margemcartaobeneficio5"] || row["margem5"])
+      };
+    }).filter(r => r.cpf && r.cpf.length > 0);
 
     if (normalizedRows.length === 0) return;
 
@@ -1098,26 +1152,46 @@ export default function ImportBatchPage() {
 
     const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, matricula: string}) => [`${id.cliente_id}_${id.matricula}`, id.id]));
 
-    // --- PASSO 3: Inserir Lotações (Margins) ---
-    const lotacaoRows = normalizedRows.map(row => {
+    // --- PASSO 3: Inserir Lotações (Margins) com UPSERT (Mesclagem Inteligente de Dados como SIAPE) ---
+    const identIds = Array.from(keyToIdentId.values());
+    const existingLotacoesRaw = await fetchInBatches<Record<string, unknown>>('governo_pi_lotacoes', 'identificacao_id', identIds);
+    const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
+
+    const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+
+    normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
-      
-      if (!identId) return null;
+      if (!identId) return;
 
-      return {
+      const existingLot = existingLotacoesMap.get(identId);
+      const currentInMap = lotacoesToUpsertMap.get(identId);
+
+      // Órgão é preservado se vier vazio no CSV
+      const orgao = row.orgao || (currentInMap?.orgao as string) || (existingLot?.orgao as string) || null;
+
+      // Margens podem ser atualizadas ou sobrescritas por novos valores (mesmo nulos) seguindo a regra do SIAPE
+      const margem_disponivel_emprestimo = row.margem_disponivel_emprestimo !== undefined ? row.margem_disponivel_emprestimo : (currentInMap?.margem_disponivel_emprestimo ?? existingLot?.margem_disponivel_emprestimo ?? null);
+      const margem_cartao_consignado = row.margem_cartao_consignado !== undefined ? row.margem_cartao_consignado : (currentInMap?.margem_cartao_consignado ?? existingLot?.margem_cartao_consignado ?? null);
+      const margem_cartao_beneficio = row.margem_cartao_beneficio !== undefined ? row.margem_cartao_beneficio : (currentInMap?.margem_cartao_beneficio ?? existingLot?.margem_cartao_beneficio ?? null);
+
+      lotacoesToUpsertMap.set(identId, {
         identificacao_id: identId,
-        orgao: row.orgao,
-        margem_cartao_consignado: row.margem_cartao_consignado,
-        margem_cartao_beneficio: row.margem_cartao_beneficio,
+        orgao,
+        margem_disponivel_emprestimo,
+        margem_cartao_consignado,
+        margem_cartao_beneficio,
         lote_id: loteId,
         updated_at: new Date().toISOString()
-      };
-    }).filter(Boolean);
+      });
+    });
+
+    const lotacaoRows = Array.from(lotacoesToUpsertMap.values());
 
     if (lotacaoRows.length > 0) {
       const { error: lotErr } = await withRetry(async () => {
-        return await supabase.from('governo_pi_lotacoes').insert(lotacaoRows);
+        return await supabase.from('governo_pi_lotacoes')
+          .upsert(lotacaoRows, { onConflict: 'identificacao_id' });
       });
       if (lotErr) throw new Error(`Erro ao salvar lotações Governo Piauí: ${lotErr.message}`);
     }
@@ -1384,61 +1458,35 @@ export default function ImportBatchPage() {
         return;
       }
 
-      // Validação de cabeçalhos (Trava de segurança)
-      const validateHeaders = () => {
-        return new Promise<boolean>((resolve) => {
-          Papa.parse(selectedFile, {
-            preview: 2, // Check a bit more for delimiter detection
-            header: true,
-            encoding: "ISO-8859-1",
-            complete: (results) => {
-              let headers = results.meta.fields || [];
-              
-              // Se detectou apenas uma coluna que contém ponto e vírgula, provavelmente errou o delimitador
-              if (headers.length === 1 && headers[0].includes(';')) {
-                headers = headers[0].split(';');
-              }
-
-              console.log(`[VALIDAÇÃO] Cabeçalhos encontrados para ${type}:`, headers);
-              
-              const normalizedHeaders = headers.map(h => normalizeText(h));
-              
-              const checkRequired = (required: string[]) => {
-                const missing = required.filter(h => !normalizedHeaders.includes(normalizeText(h)));
-                if (missing.length > 0) {
-                  console.warn(`[VALIDAÇÃO] Faltam cabeçalhos para ${type}:`, missing);
-                  return false;
-                }
-                return true;
-              };
-
-              if (type === "SIAPE") {
-                resolve(checkRequired(["cpf", "matricula", "orgao", "situacao_funcional"]));
-              } else if (type === "CONTRATOS") {
-                resolve(checkRequired(["cpf", "numero_do_contrato", "banco", "parcela", "orgao"]));
-              } else if (type === "GOVERNO_SP") {
-                resolve(checkRequired(["cpf", "identificacao", "lotacao", "orgao", "tipo_vinculo"]));
-              } else if (type === "PREFEITURA_SP") {
-                resolve(checkRequired(["cpf", "identificacao", "lotacao", "orgao", "tipo_vinculo"]));
-              } else if (type === "GOVERNO_PI") {
-                resolve(checkRequired(["cpf", "matricula", "orgao", "margem_cartao_consignado"]));
-              } else if (type === "GOVERNO_MA") {
-                resolve(checkRequired(["cpf", "matricula", "orgao", "margem_emprestimo_consignado"]));
-              } else if (type === "GOVERNO_RR") {
-                resolve(checkRequired(["cpf", "matricula", "origem", "regime_contratacao"]));
-              } else {
-                resolve(false);
-              }
-            },
-            error: (err) => {
-              console.error("[VALIDAÇÃO] Erro ao ler cabeçalhos:", err);
-              resolve(false);
+      // Validação de cabeçalhos (Trava de segurança via FileReader Slice anti-permission-lock)
+      const readHeaders = (): Promise<string[]> => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const text = e.target?.result as string;
+            const firstLine = text.split(/\r?\n/)[0] || "";
+            
+            // Detecta delimitador e faz o parsing
+            const parseResult = Papa.parse<string[]>(firstLine, { header: false });
+            let headers = parseResult.data[0] || [];
+            
+            if (headers.length === 1 && headers[0].includes(';')) {
+              headers = headers[0].split(';');
             }
-          });
+            resolve(headers);
+          };
+          reader.onerror = () => {
+            resolve([]);
+          };
+          const blob = selectedFile.slice(0, 10240); // Slice super rápido de 10KB
+          reader.readAsText(blob, "ISO-8859-1");
         });
       };
 
-      const isModelValid = await validateHeaders();
+      const headers = await readHeaders();
+      console.log(`[VALIDAÇÃO] Cabeçalhos encontrados para ${type}:`, headers);
+
+      const isModelValid = checkRequiredHeaders(headers, type);
       if (!isModelValid) {
         setImportError(`O arquivo selecionado não corresponde ao modelo ${type}. Por favor, selecione a origem correta ou verifique o arquivo.`);
         return;
@@ -1665,7 +1713,7 @@ export default function ImportBatchPage() {
       headers = "cpf,nome,data_nascimento,identificacao,data_nomeacao,lotacao,orgao,tipo_vinculo,mb_consignacoes,md_consignacoes,mb_cartao_beneficio,md_cartao_beneficio,telefone_1,telefone_2,telefone_3";
       filename = "modelo_prefeitura_sp.csv";
     } else if (type === 'governo_pi') {
-      headers = "cpf,nome,matricula,vinculo,data_nascimento,telefone_1,telefone_2,telefone_3,orgao,margem_cartao_consignado,margem_cartao_beneficio";
+      headers = "cpf,nome,matricula,vinculo,data_nascimento,telefone_1,telefone_2,telefone_3,orgao,margem_disponivel_emprestimo,margem_cartao_consignado,margem_cartao_beneficio";
       filename = "modelo_governo_pi.csv";
     } else if (type === 'governo_ma') {
       headers = "cpf,nome,matricula,vinculo,data_nascimento,telefone_1,telefone_2,telefone_3,orgao,margem_emprestimo_consignado,margem_cartao_consignado,margem_cartao_beneficio";
