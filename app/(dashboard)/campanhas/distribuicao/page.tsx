@@ -203,54 +203,65 @@ export default function DistribuicaoCampanhaPage() {
     }
   };
 
+  const refreshMonitoringData = useCallback(async (campaignId: string, silent = false) => {
+    if (!silent) {
+      setIsLoadingMonitoring(true);
+    }
+    try {
+      const { data: attendances, error: fetchError } = await supabase
+        .from('campanha_atendimentos')
+        .select('*')
+        .eq('campanha_id', campaignId);
+
+      if (fetchError) throw fetchError;
+
+      const brokerStats: Record<string, { total: number; tabulacoes: Record<string, number>; last_active: string | null }> = {};
+
+      attendances?.forEach((att) => {
+        const brokerId = att.corretor_id || 'unknown';
+        if (!brokerStats[brokerId]) {
+          brokerStats[brokerId] = {
+            total: 0,
+            tabulacoes: {},
+            last_active: null
+          };
+        }
+
+        brokerStats[brokerId].total += 1;
+        
+        const tab = att.tabulacao || 'Não tabulado';
+        brokerStats[brokerId].tabulacoes[tab] = (brokerStats[brokerId].tabulacoes[tab] || 0) + 1;
+
+        if (att.created_at) {
+          if (!brokerStats[brokerId].last_active || new Date(att.created_at) > new Date(brokerStats[brokerId].last_active)) {
+            brokerStats[brokerId].last_active = att.created_at;
+          }
+        }
+      });
+
+      setMonitoringData(prev => ({
+        ...prev,
+        [campaignId]: brokerStats
+      }));
+    } catch (err) {
+      console.error("Erro ao carregar monitoramento:", err);
+      if (!silent) {
+        toast.error("Erro ao carregar dados de monitoramento.");
+      }
+    } finally {
+      if (!silent) {
+        setIsLoadingMonitoring(false);
+      }
+    }
+  }, []);
+
   const toggleCampaignExpansion = async (campaignId: string) => {
     if (expandedCampaignId === campaignId) {
       setExpandedCampaignId(null);
     } else {
       setExpandedCampaignId(campaignId);
-      setIsLoadingMonitoring(true);
-      try {
-        const { data: attendances, error: fetchError } = await supabase
-          .from('campanha_atendimentos')
-          .select('*')
-          .eq('campanha_id', campaignId);
-
-        if (fetchError) throw fetchError;
-
-        const brokerStats: Record<string, { total: number; tabulacoes: Record<string, number>; last_active: string | null }> = {};
-
-        attendances?.forEach((att) => {
-          const brokerId = att.corretor_id || 'unknown';
-          if (!brokerStats[brokerId]) {
-            brokerStats[brokerId] = {
-              total: 0,
-              tabulacoes: {},
-              last_active: null
-            };
-          }
-
-          brokerStats[brokerId].total += 1;
-          
-          const tab = att.tabulacao || 'Não tabulado';
-          brokerStats[brokerId].tabulacoes[tab] = (brokerStats[brokerId].tabulacoes[tab] || 0) + 1;
-
-          if (att.created_at) {
-            if (!brokerStats[brokerId].last_active || new Date(att.created_at) > new Date(brokerStats[brokerId].last_active)) {
-              brokerStats[brokerId].last_active = att.created_at;
-            }
-          }
-        });
-
-        setMonitoringData(prev => ({
-          ...prev,
-          [campaignId]: brokerStats
-        }));
-      } catch (err) {
-        console.error("Erro ao carregar monitoramento:", err);
-        toast.error("Erro ao carregar dados de monitoramento.");
-      } finally {
-        setIsLoadingMonitoring(false);
-      }
+      const isAlreadyMonitoring = !!monitoringData[campaignId];
+      await refreshMonitoringData(campaignId, isAlreadyMonitoring);
     }
   };
   
@@ -292,10 +303,12 @@ export default function DistribuicaoCampanhaPage() {
     // Access is controlled by sidebar and supabase policies
   }, [perfil, isAdmin, isDeveloper, router])
 
-  const fetchCampaigns = useCallback(async () => {
+  const fetchCampaigns = useCallback(async (silent = false) => {
     if (!user || !perfil) return
-    setIsLoading(true)
-    setError(null)
+    if (!silent) {
+      setIsLoading(true)
+      setError(null)
+    }
     try {
       const query = supabase.from('campanhas').select('*')
       
@@ -353,16 +366,32 @@ export default function DistribuicaoCampanhaPage() {
       }
     } catch (err: unknown) {
       console.error("Erro ao buscar campanhas distribuídas:", err)
-      const errorMsg = err instanceof Error ? err.message : "Erro desconhecido";
-      setError(errorMsg)
+      if (!silent) {
+        const errorMsg = err instanceof Error ? err.message : "Erro desconhecido";
+        setError(errorMsg)
+      }
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
     }
   }, [user, perfil, isAdmin, isDeveloper])
 
   useEffect(() => {
     fetchCampaigns()
   }, [fetchCampaigns])
+
+  // Polling interval to auto-refresh campaign and monitoring stats in near real-time (every 5 seconds)
+  useEffect(() => {
+    if (!expandedCampaignId) return;
+
+    const intervalId = setInterval(() => {
+      fetchCampaigns(true);
+      refreshMonitoringData(expandedCampaignId, true);
+    }, 5000);
+
+    return () => clearInterval(intervalId);
+  }, [expandedCampaignId, fetchCampaigns, refreshMonitoringData]);
 
   useEffect(() => {
     const fetchAllUsers = async () => {

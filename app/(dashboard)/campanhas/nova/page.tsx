@@ -109,9 +109,8 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'margem_35', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
   ],
   'base_consulta_governo_pi': [
-    'cpf', 'nome', 'data_nascimento', 'telefone_1', 
-    'numero_matricula', 'orgao', 'situacao_funcional', 
-    'margem_35', 'bruta_5', 'liquida_5', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'matricula', 'vinculo', 'orgao', 'margem_cartao_consignado', 'margem_cartao_beneficio'
   ],
   'base_consulta_governo_ma': [
     'cpf', 'nome', 'data_nascimento', 'telefone_1', 
@@ -391,7 +390,13 @@ export default function NewCampaignPage() {
       const combinedOrgaos = Array.from(new Set([...f.orgaos, ...codeFilters]));
       if (combinedOrgaos.length > 0) q = q.in('orgao', combinedOrgaos);
     }
-    if (f.situacoes.length > 0 && cols.includes('situacao_funcional')) q = q.in('situacao_funcional', f.situacoes);
+    if (f.situacoes.length > 0) {
+      if (cols.includes('situacao_funcional')) {
+        q = q.in('situacao_funcional', f.situacoes);
+      } else if (cols.includes('vinculo')) {
+        q = q.in('vinculo', f.situacoes);
+      }
+    }
     if (f.regimes.length > 0 && cols.includes('regime_juridico')) q = q.in('regime_juridico', f.regimes);
     if (f.ufs.length > 0 && cols.includes('uf')) q = q.in('uf', f.ufs);
 
@@ -422,12 +427,20 @@ export default function NewCampaignPage() {
     }
     
     const cMMin = parseSafeNumber(f.cardMargemMin);
-    if (cMMin !== null && cols.includes('liquida_5')) {
-      q = q.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+    if (cMMin !== null) {
+      if (cols.includes('liquida_5')) {
+        q = q.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+      } else if (cols.includes('margem_cartao_consignado')) {
+        q = q.not('margem_cartao_consignado', 'is', null).gte('margem_cartao_consignado', cMMin);
+      }
     }
     const cBMin = parseSafeNumber(f.cardBeneficioMin);
-    if (cBMin !== null && cols.includes('beneficio_liquida_5')) {
-      q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+    if (cBMin !== null) {
+      if (cols.includes('beneficio_liquida_5')) {
+        q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+      } else if (cols.includes('margem_cartao_beneficio')) {
+        q = q.not('margem_cartao_beneficio', 'is', null).gte('margem_cartao_beneficio', cBMin);
+      }
     }
 
     return q;

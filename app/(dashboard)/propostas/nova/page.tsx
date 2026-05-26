@@ -561,7 +561,7 @@ function NewProposalForm() {
           if (globalData) {
             setFormData(prev => ({ 
               ...prev, 
-              matricula: globalData.numero_matricula || prev.matricula || "",
+              matricula: globalData.matricula || globalData.numero_matricula || prev.matricula || "",
               nascimento: prev.nascimento || (globalData.data_nascimento ? fromInputDate(globalData.data_nascimento) : ""),
               nome: prev.nome || globalData.nome || "",
               tel_1: prev.tel_1 || globalData.telefone_1 || "",
@@ -577,7 +577,7 @@ function NewProposalForm() {
         if (!error && data) {
           setFormData(prev => ({ 
             ...prev, 
-            matricula: data.numero_matricula || prev.matricula || "",
+            matricula: data.matricula || data.numero_matricula || prev.matricula || "",
             nascimento: prev.nascimento || (data.data_nascimento ? fromInputDate(data.data_nascimento) : ""),
             nome: prev.nome || data.nome || "",
             tel_1: prev.tel_1 || data.telefone_1 || "",

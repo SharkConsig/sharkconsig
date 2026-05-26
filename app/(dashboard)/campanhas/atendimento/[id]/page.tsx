@@ -521,14 +521,15 @@ export default function CampanhaAtendimentoPage() {
           setRegistrations(regData || [])
         } else {
           // Wrapped generic data
+          const isGovPi = table === 'base_consulta_governo_pi';
           setRegistrations([{
             id: data.id || data.cpf,
-            numero_matricula: data.numero_matricula || '---',
-            situacao_funcional: data.situacao_funcional,
-            salario: data.salario,
+            numero_matricula: isGovPi ? (data.matricula || '---') : (data.numero_matricula || '---'),
+            situacao_funcional: isGovPi ? data.vinculo : data.situacao_funcional,
+            salario: data.salario || 0,
             orgao: data.orgao,
             regime_juridico: data.regime_juridico,
-            uf: data.uf,
+            uf: isGovPi ? 'PI' : data.uf,
             instituidores: [{
                id: 'main',
                nome: data.orgao,
@@ -536,10 +537,10 @@ export default function CampanhaAtendimentoPage() {
                margem_35: data.margem_35,
                bruta_5: data.bruta_5,
                utilizada_5: data.utilizada_5,
-               liquida_5: data.liquida_5,
+               liquida_5: isGovPi ? data.margem_cartao_consignado : data.liquida_5,
                beneficio_bruta_5: data.beneficio_bruta_5,
                beneficio_utilizada_5: data.beneficio_utilizada_5,
-               beneficio_liquida_5: data.beneficio_liquida_5,
+               beneficio_liquida_5: isGovPi ? data.margem_cartao_beneficio : data.beneficio_liquida_5,
                itens_credito: []
             }]
           } as unknown as Registration])

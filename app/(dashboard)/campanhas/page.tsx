@@ -326,12 +326,27 @@ export default function CampaignsPage() {
           targetTable = 'base_consulta_governo_rr';
         }
 
-        const columnsToSelect = "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
+        const isGovPi = targetTable === 'base_consulta_governo_pi';
+        const columnsToSelect = isGovPi
+          ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_cartao_consignado, margem_cartao_beneficio"
+          : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
 
         const { data: bcrData, error: bcrError } = await withRetry(() =>
           supabase.from(targetTable).select(columnsToSelect).in('cpf', cpfs)
         );
         if (bcrError) throw bcrError;
+
+        let mappedBcrData = bcrData || [];
+        if (isGovPi) {
+          mappedBcrData = (bcrData || []).map((row: any) => ({
+            ...row,
+            numero_matricula: row.matricula,
+            situacao_funcional: row.vinculo,
+            uf: 'PI',
+            liquida_5: row.margem_cartao_consignado,
+            beneficio_liquida_5: row.margem_cartao_beneficio,
+          }));
+        }
 
         interface ICampaignMembroRow {
           cpf: string;
@@ -362,7 +377,7 @@ export default function CampaignsPage() {
 
         // O(N) Maps lookup para preservar a ordem exata de ordem_fila sem loops lineares complexos
         const bcrMap = new Map<string, ICampaignMembroRow>(
-          (bcrData || []).map((row) => [row.cpf as string, row as unknown as ICampaignMembroRow])
+          mappedBcrData.map((row) => [row.cpf as string, row as unknown as ICampaignMembroRow])
         );
 
         const sortedBatchData: ICampaignMembroRow[] = [];
