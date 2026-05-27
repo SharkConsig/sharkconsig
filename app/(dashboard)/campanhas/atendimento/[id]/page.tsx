@@ -311,6 +311,77 @@ export default function CampanhaAtendimentoPage() {
   const hasRegisteredSession = useRef(false)
   const hasRegisteredExit = useRef(false)
 
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!userId || !campaignId) return;
+      if (hasRegisteredSession.current && !hasRegisteredExit.current) {
+        hasRegisteredExit.current = true;
+
+        // Fire both updates as quickly as possible
+        supabase.from('campanha_atendimentos').insert({
+          campanha_id: campaignId,
+          corretor_id: userId,
+          cliente_cpf: '00000000000',
+          tabulacao: 'SAIU'
+        }).then(() => {
+          supabase.from('campanhas').select('filtros').eq('id', campaignId).maybeSingle().then(({ data: latestCamp }) => {
+            if (latestCamp) {
+              const currentSessoes = latestCamp.filtros?.sessoes_corretores || {};
+              const nowIso = new Date().toISOString();
+              const updatedFiltros = {
+                ...(latestCamp.filtros || {}),
+                sessoes_corretores: {
+                  ...currentSessoes,
+                  [userId]: {
+                    ...(currentSessoes[userId] || {}),
+                    saiu: nowIso
+                  }
+                }
+              };
+              supabase.from('campanhas').update({ filtros: updatedFiltros }).eq('id', campaignId).then(() => {});
+            }
+          });
+        });
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+
+      // On component unmount (e.g. user clicks another sidebar page link or navigates away)
+      if (userId && campaignId && hasRegisteredSession.current && !hasRegisteredExit.current) {
+        hasRegisteredExit.current = true;
+
+        supabase.from('campanha_atendimentos').insert({
+          campanha_id: campaignId,
+          corretor_id: userId,
+          cliente_cpf: '00000000000',
+          tabulacao: 'SAIU'
+        }).then(() => {
+          supabase.from('campanhas').select('filtros').eq('id', campaignId).maybeSingle().then(({ data: latestCamp }) => {
+            if (latestCamp) {
+              const currentSessoes = latestCamp.filtros?.sessoes_corretores || {};
+              const nowIso = new Date().toISOString();
+              const updatedFiltros = {
+                ...(latestCamp.filtros || {}),
+                sessoes_corretores: {
+                  ...currentSessoes,
+                  [userId]: {
+                    ...(currentSessoes[userId] || {}),
+                    saiu: nowIso
+                  }
+                }
+              };
+              supabase.from('campanhas').update({ filtros: updatedFiltros }).eq('id', campaignId).then(() => {});
+            }
+          });
+        });
+      }
+    };
+  }, [userId, campaignId]);
+
   const loadNextLead = useCallback(async (camp: Campaign, offset: number) => {
     if (!userId) return
     setIsLoading(true)

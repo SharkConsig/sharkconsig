@@ -40,6 +40,52 @@ export function Header({ title }: HeaderProps) {
   }, [isDropdownOpen])
 
   const handleLogout = async () => {
+    // Se o usuário possuir ID, varrer campanhas para fechar qualquer sessão que tenha ficado aberta (seja qual for a página atual)
+    if (user?.id) {
+      try {
+        const { data: activeCamps } = await supabase
+          .from('campanhas')
+          .select('id, filtros');
+        
+        if (activeCamps) {
+          for (const campaign of activeCamps) {
+            const sessao = campaign.filtros?.sessoes_corretores?.[user.id];
+            const hasOpenSession = sessao && sessao.entrou && !sessao.saiu;
+            
+            if (hasOpenSession) {
+              const nowIso = new Date().toISOString();
+              // 1. Inserir registro de saída em campanha_atendimentos
+              await supabase.from('campanha_atendimentos').insert({
+                campanha_id: campaign.id,
+                corretor_id: user.id,
+                cliente_cpf: '00000000000',
+                tabulacao: 'SAIU'
+              });
+
+              // 2. Atualizar filtros legado na tabela campanhas
+              const currentSessoes = campaign.filtros?.sessoes_corretores || {};
+              const updatedFiltros = {
+                ...(campaign.filtros || {}),
+                sessoes_corretores: {
+                  ...currentSessoes,
+                  [user.id]: {
+                    ...(currentSessoes[user.id] || {}),
+                    saiu: nowIso
+                  }
+                }
+              };
+              await supabase
+                .from('campanhas')
+                .update({ filtros: updatedFiltros })
+                .eq('id', campaign.id);
+            }
+          }
+        }
+      } catch (exitErr) {
+        console.error("Erro ao registrar saída das campanhas ativas no logout:", exitErr);
+      }
+    }
+
     // Limpa localmente primeiro para ser instantâneo e evitar problemas de rede
     if (typeof window !== 'undefined') {
       try {

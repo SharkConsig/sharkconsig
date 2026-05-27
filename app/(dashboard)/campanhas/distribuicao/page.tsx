@@ -14,7 +14,8 @@ import {
   X,
   ChevronDown,
   ChevronUp,
-  Copy
+  Copy,
+  FileSpreadsheet
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { supabase } from "@/lib/supabase"
@@ -23,6 +24,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
+import ExcelJS from "exceljs"
+import { saveAs } from "file-saver"
 
 interface Campaign {
   id: string;
@@ -116,6 +119,136 @@ export default function DistribuicaoCampanhaPage() {
   const [isLoadingClients, setIsLoadingClients] = useState<boolean>(false);
   const [clientsError, setClientsError] = useState<string | null>(null);
 
+  const [exportDropdownCampaignId, setExportDropdownCampaignId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState<string | null>(null);
+
+  const handleExportTabulation = async (campaign: Campaign, tabName: string) => {
+    const key = `${campaign.id}-${tabName}`;
+    setIsExporting(key);
+    
+    try {
+      const { data: atendimentos, error: attErr } = await supabase
+        .from('campanha_atendimentos')
+        .select('cliente_cpf, corretor_id, created_at')
+        .eq('campanha_id', campaign.id)
+        .eq('tabulacao', tabName)
+        .neq('cliente_cpf', '00000000000');
+      
+      if (attErr) throw attErr;
+
+      if (!atendimentos || atendimentos.length === 0) {
+        toast.error(`Nenhum cliente encontrado com a tabulação "${tabName}" nesta campanha.`);
+        setIsExporting(null);
+        return;
+      }
+
+      const cpfToAtendimentoMap = new Map<string, { brokerId: string; date: string }>();
+      atendimentos.forEach(a => {
+        if (a.cliente_cpf) {
+          const existing = cpfToAtendimentoMap.get(a.cliente_cpf);
+          if (!existing || new Date(a.created_at) > new Date(existing.date)) {
+            cpfToAtendimentoMap.set(a.cliente_cpf, {
+              brokerId: a.corretor_id || '',
+              date: a.created_at
+            });
+          }
+        }
+      });
+
+      const uniqueCpfs = Array.from(cpfToAtendimentoMap.keys());
+
+      const cNameUpper = campaign.nome.toUpperCase();
+      const convenioKey = campaign.filtros?.convenio;
+
+      const TABLE_MAP: Record<string, string> = {
+        'siape': 'base_consulta_siape',
+        'governo_sp': 'base_consulta_governo_sp',
+        'prefeitura_sp': 'base_consulta_prefeitura_sp',
+        'governo_pi': 'base_consulta_governo_pi',
+        'governo_ma': 'base_consulta_governo_ma',
+        'governo_rr': 'base_consulta_governo_rr',
+      };
+
+      let targetTable = 'base_consulta_siape';
+      if (convenioKey && TABLE_MAP[convenioKey]) {
+        targetTable = TABLE_MAP[convenioKey];
+      } else if (cNameUpper.includes('GOVERNO SP')) {
+        targetTable = 'base_consulta_governo_sp';
+      } else if (cNameUpper.includes('PREFEITURA SP')) {
+        targetTable = 'base_consulta_prefeitura_sp';
+      } else if (cNameUpper.includes('GOVERNO PI')) {
+        targetTable = 'base_consulta_governo_pi';
+      } else if (cNameUpper.includes('GOVERNO MA')) {
+        targetTable = 'base_consulta_governo_ma';
+      } else if (cNameUpper.includes('RORAIMA') || cNameUpper.includes('RR')) {
+        targetTable = 'base_consulta_governo_rr';
+      }
+
+      const clientsBatchList: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
+      const batchSize = 500;
+      for (let i = 0; i < uniqueCpfs.length; i += batchSize) {
+        const batchCpfs = uniqueCpfs.slice(i, i + batchSize);
+        const { data: clientDetails, error: clientErr } = await supabase
+          .from(targetTable)
+          .select('cpf, nome, telefone_1, telefone_2, telefone_3')
+          .in('cpf', batchCpfs);
+
+        if (clientErr) throw clientErr;
+        if (clientDetails) {
+          clientsBatchList.push(...clientDetails);
+        }
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet(`Tabulação - ${tabName.substring(0, 20)}`);
+
+      worksheet.columns = [
+        { header: 'CPF CLIENTE', key: 'cpf', width: 20 },
+        { header: 'NOME CLIENTE', key: 'nome', width: 40 },
+        { header: 'TELEFONE 1', key: 'tel1', width: 20 },
+        { header: 'TELEFONE 2', key: 'tel2', width: 20 },
+        { header: 'TELEFONE 3', key: 'tel3', width: 20 },
+        { header: 'CORRETOR', key: 'corretor', width: 30 },
+        { header: 'DATA ATENDIMENTO', key: 'data', width: 25 },
+      ];
+
+      uniqueCpfs.forEach(cpf => {
+        const detail = clientsBatchList.find(c => c.cpf === cpf);
+        const attInfo = cpfToAtendimentoMap.get(cpf);
+        const brokerUser = allUsers.find(u => u.id === attInfo?.brokerId);
+
+        worksheet.addRow({
+          cpf,
+          nome: detail?.nome || 'CHAVE NÃO LOCALIZADA NO BANCO',
+          tel1: detail?.telefone_1 || '',
+          tel2: detail?.telefone_2 || '',
+          tel3: detail?.telefone_3 || '',
+          corretor: brokerUser?.nome || 'Não identificado',
+          data: attInfo?.date ? new Date(attInfo.date).toLocaleString('pt-BR') : '',
+        });
+      });
+
+      worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1C2643' }
+      };
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      
+      const fileNameStr = `Export_${campaign.nome.replace(/\s+/g, '_')}_${tabName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      saveAs(blob, fileNameStr);
+      toast.success("Excel gerado e baixado com sucesso!");
+    } catch (err) {
+      console.error("Erro ao exportar:", err);
+      toast.error("Ocorreu um erro ao exportar a planilha.");
+    } finally {
+      setIsExporting(null);
+    }
+  };
+
   const fetchBrokerHistory = async (campaignId: string, brokerId: string) => {
     try {
       const { data, error } = await supabase
@@ -135,6 +268,13 @@ export default function DistribuicaoCampanhaPage() {
       const builtHistory: { entrou: string; saiu?: string | null }[] = [];
       sorted.forEach(row => {
         if (row.tabulacao === 'ENTROU') {
+          // Se o último ainda estiver aberto, fecha-o automaticamente no momento do novo login/entrada (auto-close)
+          if (builtHistory.length > 0) {
+            const lastIndex = builtHistory.length - 1;
+            if (!builtHistory[lastIndex].saiu) {
+              builtHistory[lastIndex].saiu = row.created_at;
+            }
+          }
           builtHistory.push({ entrou: row.created_at, saiu: null });
         } else if (row.tabulacao === 'SAIU') {
           if (builtHistory.length > 0) {
@@ -717,13 +857,87 @@ export default function DistribuicaoCampanhaPage() {
                                       const stats = monitoringData[campaign.id] || {};
                                       const totalTrabalhados = matchedBrokers.reduce((acc, b) => acc + (stats[b.id]?.total || 0), 0);
                                       return (
-                                        <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-4 relative">
                                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                                             {brokersDef.length} corretores selecionados
                                           </span>
                                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider border-l border-slate-200 pl-4">
                                             {totalTrabalhados} clientes trabalhados
                                           </span>
+
+                                          {(isAdmin || isDeveloper || isOperational || isSupervisor) && (
+                                            <div className="relative flex items-center border-l border-slate-200 pl-4">
+                                              <button
+                                                onClick={() => {
+                                                  setExportDropdownCampaignId(exportDropdownCampaignId === campaign.id ? null : campaign.id);
+                                                }}
+                                                className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold text-slate-600 uppercase tracking-wider hover:bg-slate-100 hover:text-slate-900 rounded-lg transition-all duration-150 border border-slate-200/80 bg-white shadow-sm cursor-pointer"
+                                                id={`btn-export-${campaign.id}`}
+                                                title="Exportar clientes por tabulação"
+                                              >
+                                                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                                                <span>Exportar</span>
+                                                <ChevronDown className="w-3 h-3 text-slate-400" />
+                                              </button>
+
+                                              {exportDropdownCampaignId === campaign.id && (
+                                                <>
+                                                  {/* Backdrop standard overlay to dismiss on click */}
+                                                  <div 
+                                                    className="fixed inset-0 z-40" 
+                                                    onClick={() => setExportDropdownCampaignId(null)}
+                                                  />
+                                                  
+                                                  <div className="absolute right-0 top-full mt-1.5 w-60 bg-white border border-slate-300 shadow-2xl rounded-xl p-2.5 z-50 animate-in fade-in-50 slide-in-from-top-1 duration-150 max-h-64 flex flex-col">
+                                                    <p className="text-[9px] font-black uppercase text-slate-400 px-2 py-1.5 border-b border-slate-100 tracking-wider">
+                                                      Selecione a Tabulação
+                                                    </p>
+                                                    <div className="overflow-y-auto mt-1.5 space-y-0.5 flex-1 pr-1 scrollbar-thin">
+                                                      {(() => {
+                                                        const appliedSet = new Set<string>();
+                                                        const bStats = stats;
+                                                        Object.values(bStats).forEach((bStat) => {
+                                                          if (bStat.tabulacoes) {
+                                                            Object.keys(bStat.tabulacoes).forEach(tab => {
+                                                              if (tab && tab !== 'Não tabulado') {
+                                                                appliedSet.add(tab);
+                                                              }
+                                                            });
+                                                          }
+                                                        });
+                                                        
+                                                        const defaultTabs = ["CLIENTE CHAMADO", "NÃO EXISTE WHATSAPP", "WHATSAPP DIVERGENTE"];
+                                                        const allAvailableTabs = Array.from(new Set([...defaultTabs, ...Array.from(appliedSet)]));
+
+                                                        return allAvailableTabs.map((tabName) => {
+                                                          const key = `${campaign.id}-${tabName}`;
+                                                          const isCurrentExporting = isExporting === key;
+                                                          return (
+                                                            <button
+                                                              key={tabName}
+                                                              disabled={!!isExporting}
+                                                              onClick={async () => {
+                                                                await handleExportTabulation(campaign, tabName);
+                                                                setExportDropdownCampaignId(null);
+                                                              }}
+                                                              className="w-full text-left px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-wide text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors flex items-center justify-between disabled:opacity-50 cursor-pointer"
+                                                            >
+                                                              <span className="truncate pr-2">{tabName}</span>
+                                                              {isCurrentExporting ? (
+                                                                <Loader2 className="w-3 h-3 animate-spin text-slate-400 flex-shrink-0" />
+                                                              ) : (
+                                                                <FileSpreadsheet className="w-3.5 h-3.5 text-slate-400 hover:text-emerald-600 transition-colors flex-shrink-0" />
+                                                              )}
+                                                            </button>
+                                                          );
+                                                        });
+                                                      })()}
+                                                    </div>
+                                                  </div>
+                                                </>
+                                              )}
+                                            </div>
+                                          )}
                                         </div>
                                       );
                                     })()}

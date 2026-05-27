@@ -213,13 +213,63 @@ export async function DELETE(request: Request) {
     }
 
     // 2. Limpar referências em tabelas que podem ter foreign keys sem CASCADE
-    await Promise.all([
-      supabaseAdmin.from('campanhas').delete().eq('user_id', id),
-      supabaseAdmin.from('lotes').delete().eq('user_id', id),
-      // Nos chamados e propostas que NÃO foram transferidos (ou se não houve transferência), setar NULL para evitar erro de FK
-      supabaseAdmin.from('chamados').update({ user_id: null }).eq('user_id', id),
-      supabaseAdmin.from('propostas').update({ corretor_id: null }).eq('corretor_id', id)
-    ])
+    const operations = [
+      {
+        name: 'Deletar campanhas onde o usuário é dono',
+        query: supabaseAdmin.from('campanhas').delete().eq('user_id', id)
+      },
+      {
+        name: 'Definir null para criado_por em campanhas',
+        query: supabaseAdmin.from('campanhas').update({ criado_por: null }).eq('criado_por', id)
+      },
+      {
+        name: 'Deletar lotes importados pelo usuário',
+        query: supabaseAdmin.from('lotes').delete().eq('user_id', id)
+      },
+      {
+        name: 'Definir null em chamados não transferidos',
+        query: supabaseAdmin.from('chamados').update({ user_id: null }).eq('user_id', id)
+      },
+      {
+        name: 'Definir null em propostas não transferidas',
+        query: supabaseAdmin.from('propostas').update({ corretor_id: null }).eq('corretor_id', id)
+      },
+      {
+        name: 'Definir null em atendimentos da campanha',
+        query: supabaseAdmin.from('campanha_atendimentos').update({ corretor_id: null }).eq('corretor_id', id)
+      },
+      {
+        name: 'Definir null no histórico de propostas',
+        query: supabaseAdmin.from('historico_propostas').update({ usuario_id: null }).eq('usuario_id', id)
+      },
+      {
+        name: 'Deletar mensagens de chamado',
+        query: supabaseAdmin.from('mensagens_chamado').delete().eq('user_id', id)
+      },
+      {
+        name: 'Deletar participante em campanhas',
+        query: supabaseAdmin.from('campanha_participantes').delete().eq('user_id', id)
+      }
+    ];
+
+    const results = await Promise.all(operations.map(op => op.query));
+    
+    for (let i = 0; i < operations.length; i++) {
+      const res = results[i];
+      const op = operations[i];
+      if (res && typeof res === 'object' && 'error' in res && res.error) {
+        const err = res.error as { code?: string; message: string; details?: string };
+        // Se a tabela não existir (código 42P01), podemos ignorar com segurança
+        if (err.code === '42P01') {
+          console.warn(`[Limpeza de Usuário] Tabela ignorada (${op.name} - 42P01):`, err.message);
+          continue;
+        }
+        console.error(`[Limpeza de Usuário] Erro em '${op.name}':`, err);
+        throw new Error(`Erro na operação '${op.name}': ${err.message} (${err.details || ''})`);
+      } else {
+        console.log(`[Limpeza de Usuário] Sucesso: '${op.name}'`);
+      }
+    }
 
     // 3. Deletar do Auth
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id)
