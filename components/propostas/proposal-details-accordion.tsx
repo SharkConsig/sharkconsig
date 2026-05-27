@@ -259,7 +259,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       }
     }
     fetchHistory()
-  }, [activeTab, proposal.id_lead])
+  }, [activeTab, proposal.id_lead, proposal.updated_at])
 
   const formatDateDisplay = (dateStr: string | null | undefined) => {
     if (!dateStr) return "";
@@ -324,7 +324,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     outros_2: null
   })
 
-  const [existingAttachments] = useState<{ [key: string]: string | null }>({
+  const [existingAttachments, setExistingAttachments] = useState<{ [key: string]: string | null }>({
     frente: (proposal.arquivo_rg_frente as string) || null,
     verso: (proposal.arquivo_rg_verso as string) || null,
     contracheque: (proposal.arquivo_contracheque as string) || null,
@@ -335,6 +335,71 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
 
   const [isSearchingCEP, setIsSearchingCEP] = useState(false)
   const [pastedImages, setPastedImages] = useState<File[]>([])
+
+  // Sincronizar o estado interno do formulário e anexos quando a proposta recebida por prop mudar (atualizações em tempo real)
+  useEffect(() => {
+    setFormData({
+      nome: proposal.nome_cliente || "",
+      cpf: proposal.cliente_cpf || "",
+      nascimento: formatDateDisplay(proposal.data_nascimento),
+      idLead: proposal.id_lead || "",
+      origem: proposal.origem?.toUpperCase() || "",
+      matricula: proposal.matricula || "",
+      naturalidade: proposal.naturalidade || "",
+      uf_naturalidade: proposal.uf_naturalidade || "",
+      identidade: proposal.identidade || "",
+      orgao_emissor: proposal.orgao_emissor || "",
+      uf_emissao: proposal.uf_emissao || "",
+      data_emissao: formatDateDisplay(proposal.data_emissao),
+      nome_pai: proposal.nome_pai || "",
+      nome_mae: proposal.nome_mae || "",
+      tel_1: proposal.tel_residencial_1 || "",
+      tel_2: proposal.tel_residencial_2 || "",
+      tel_3: proposal.tel_comercial || "",
+      email: proposal.email || "",
+      cep: proposal.cep || "",
+      endereco: proposal.endereco || "",
+      numero: proposal.numero || "",
+      complemento: proposal.complemento || "",
+      bairro: proposal.bairro || "",
+      cidade: proposal.cidade || "",
+      uf: proposal.uf || "",
+      banco_cliente: proposal.banco_cliente || "",
+      chave_pix: proposal.chave_pix || "",
+      conta: proposal.conta || "",
+      agencia: proposal.agencia || "",
+      dv: proposal.dv || "",
+      tipo_conta: proposal.tipo_conta || "",
+      valor_parcela: (proposal.valor_parcela !== undefined && proposal.valor_parcela !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_parcela) : "",
+      valor_operacao_operacional: (proposal.valor_operacao_operacional !== undefined && proposal.valor_operacao_operacional !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_operacao_operacional) : "",
+      valor_cliente_operacional: (proposal.valor_cliente_operacional !== undefined && proposal.valor_cliente_operacional !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_cliente_operacional) : "",
+      valor_producao_operacional: (proposal.valor_producao_operacional !== undefined && proposal.valor_producao_operacional !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao_operacional) : "",
+      margem_utilizada: (proposal.margem_utilizada !== undefined && proposal.margem_utilizada !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.margem_utilizada) : "",
+      coeficiente_prazo: proposal.coeficiente_prazo || "",
+      valor_producao: (proposal.valor_producao !== undefined && proposal.valor_producao !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(proposal.valor_producao) : "",
+      observacoes: proposal.observacoes || ""
+    });
+
+    setExistingAttachments({
+      frente: (proposal.arquivo_rg_frente as string) || null,
+      verso: (proposal.arquivo_rg_verso as string) || null,
+      contracheque: (proposal.arquivo_contracheque as string) || null,
+      extrato: (proposal.arquivo_extrato as string) || null,
+      outros: (proposal.arquivo_outros as string) || null,
+      outros_2: (proposal.arquivo_outros_2 as string) || null
+    });
+
+    setSelectedFiles({
+      frente: null,
+      verso: null,
+      contracheque: null,
+      extrato: null,
+      outros: null,
+      outros_2: null
+    });
+
+    setPastedImages([]);
+  }, [proposal]);
 
   // Sincronizar selectedCoefValue e selectedPrazoValue quando coeficiente_prazo mudar
   useEffect(() => {

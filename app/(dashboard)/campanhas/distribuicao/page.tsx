@@ -61,7 +61,7 @@ interface BrokerUser {
 
 export default function DistribuicaoCampanhaPage() {
   const router = useRouter()
-  const { user, perfil, isAdmin, isDeveloper } = useAuth()
+  const { user, perfil, isAdmin, isDeveloper, isOperational } = useAuth()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -72,7 +72,7 @@ export default function DistribuicaoCampanhaPage() {
   const [allUsers, setAllUsers] = useState<BrokerUser[]>([])
   const [selectedCampaignForTeam, setSelectedCampaignForTeam] = useState<Campaign | null>(null)
 
-  const canStart = !isAdmin && !isDeveloper && (
+  const canStart = !isAdmin && !isDeveloper && !isOperational && (
     perfil?.role === 'Corretor' || 
     perfil?.role === 'Estágio' || 
     perfil?.role === 'Estagio' ||
@@ -326,7 +326,7 @@ export default function DistribuicaoCampanhaPage() {
         const isDistributed = (Array.isArray(distribution) && distribution.length > 0) || 
                              (Array.isArray(brokers) && brokers.length > 0)
         
-        if (!isAdmin && !isDeveloper) {
+        if (!isAdmin && !isDeveloper && !isOperational) {
           if (c.filtros?.ativa === false) return false;
           if (!isDistributed) return false;
           
@@ -375,7 +375,7 @@ export default function DistribuicaoCampanhaPage() {
         setIsLoading(false)
       }
     }
-  }, [user, perfil, isAdmin, isDeveloper])
+  }, [user, perfil, isAdmin, isDeveloper, isOperational])
 
   useEffect(() => {
     fetchCampaigns()
@@ -573,7 +573,7 @@ export default function DistribuicaoCampanhaPage() {
                                   </Button>
                                 )}
 
-                                {(isSupervisor || isAdmin || isDeveloper) && (
+                                {(isSupervisor || isAdmin || isDeveloper || isOperational) && (
                                   <Button 
                                     onClick={() => toggleCampaignExpansion(campaign.id)}
                                     className={cn(
