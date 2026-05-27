@@ -100,7 +100,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   ],
   'base_consulta_governo_sp': [
     'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3', 
-    'numero_matricula', 'orgao', 'situacao_funcional', 'regime_juridico', 
+    'identificacao', 'orgao', 'situacao_funcional', 'regime_juridico', 
     'margem_35', 'bruta_5', 'liquida_5', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
   ],
   'base_consulta_prefeitura_sp': [

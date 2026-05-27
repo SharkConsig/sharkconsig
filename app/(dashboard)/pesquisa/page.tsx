@@ -152,8 +152,8 @@ export default function SearchClientPage() {
         return {
           ...r,
           id: r.id as string,
-          numero_matricula: (r.rs_pv_ex as string) || '---',
-          identificacao: (r.rs_pv_ex as string) || '---',
+          numero_matricula: (r.identificacao as string) || '---',
+          identificacao: (r.identificacao as string) || '---',
           situacao_funcional: r.situacao_funcional as string | null,
           salario: 0,
           orgao: r.secretaria as string | null,

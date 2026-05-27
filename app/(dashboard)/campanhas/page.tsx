@@ -334,9 +334,12 @@ export default function CampaignsPage() {
           break;
         }
 
+        const isGovSp = targetTable === 'base_consulta_governo_sp';
         const columnsToSelect = isGovPi
           ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio"
-          : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
+          : isGovSp
+            ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, salario, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5"
+            : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
 
         const { data: bcrData, error: bcrError } = await withRetry(() =>
           supabase.from(targetTable).select(columnsToSelect).in('cpf', cpfs)
@@ -425,7 +428,7 @@ export default function CampaignsPage() {
             : [
                 row.cpf, row.nome, row.data_nascimento || "",
                 row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "", 
-                row.numero_matricula || "", row.orgao || "", row.situacao_funcional || "",
+                row.numero_matricula || (row as unknown as { identificacao?: string }).identificacao || "", row.orgao || "", row.situacao_funcional || "",
                 row.salario || 0, row.instituidor_nome || "", row.regime_juridico || "", row.uf || "",
                 row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
                 row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0,

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
@@ -307,6 +307,9 @@ export default function CampanhaAtendimentoPage() {
   // Stats
   const [completedCount, setCompletedCount] = useState(0)
 
+  const hasRegisteredSession = useRef(false)
+  const hasRegisteredExit = useRef(false)
+
   const loadNextLead = useCallback(async (camp: Campaign, offset: number) => {
     if (!user) return
     setIsLoading(true)
@@ -484,7 +487,9 @@ export default function CampanhaAtendimentoPage() {
           const isGovPi = table === 'base_consulta_governo_pi';
           setRegistrations([{
             id: data.id || data.cpf,
-            numero_matricula: isGovPi ? (data.matricula || '---') : (data.numero_matricula || '---'),
+            numero_matricula: isGovPi 
+              ? (data.matricula || '---') 
+              : (data.identificacao || data.numero_matricula || '---'),
             situacao_funcional: isGovPi ? data.vinculo : data.situacao_funcional,
             salario: data.salario || 0,
             orgao: data.orgao,
@@ -566,25 +571,39 @@ export default function CampanhaAtendimentoPage() {
       console.log("Campanha carregada com sucesso:", campaignData.nome)
 
       // Registrar horário de entrada
-      try {
-        const currentSessoes = campaignData.filtros?.sessoes_corretores || {};
-        const updatedFiltros = {
-          ...(campaignData.filtros || {}),
-          sessoes_corretores: {
-            ...currentSessoes,
-            [user.id]: {
-              ...(currentSessoes[user.id] || {}),
-              entrou: new Date().toISOString(),
-              saiu: null
+      if (!hasRegisteredSession.current) {
+        hasRegisteredSession.current = true;
+        try {
+          // Registrar na tabela campanha_atendimentos
+          await supabase.from('campanha_atendimentos').insert({
+            campanha_id: campaignId,
+            corretor_id: user.id,
+            cliente_cpf: '00000000000',
+            tabulacao: 'ENTROU'
+          });
+          console.log("Horário de entrada registrado no banco (campanha_atendimentos)!");
+
+          // Atualizar filtros legado para compatibilidade visual instantânea
+          const currentSessoes = campaignData.filtros?.sessoes_corretores || {};
+          const nowIso = new Date().toISOString();
+          const updatedFiltros = {
+            ...(campaignData.filtros || {}),
+            sessoes_corretores: {
+              ...currentSessoes,
+              [user.id]: {
+                ...currentSessoes[user.id],
+                entrou: nowIso,
+                saiu: null
+              }
             }
-          }
-        };
-        await supabase
-          .from('campanhas')
-          .update({ filtros: updatedFiltros })
-          .eq('id', campaignId);
-      } catch (entryTimeErr) {
-        console.error("Erro ao registrar horário de entrada:", entryTimeErr);
+          };
+          await supabase
+            .from('campanhas')
+            .update({ filtros: updatedFiltros })
+            .eq('id', campaignId);
+        } catch (entryTimeErr) {
+          console.error("Erro ao registrar horário de entrada:", entryTimeErr);
+        }
       }
 
       // 2. Count progress for this broker
@@ -672,32 +691,7 @@ export default function CampanhaAtendimentoPage() {
     }
   }
 
-  // Salvar hora de saída ao desmontar a página (caso mude de rota pelo menu lateral)
-  useEffect(() => {
-    return () => {
-      if (user?.id && campaignId) {
-        // Disparar atualização em background
-        supabase.from('campanhas').select('filtros').eq('id', campaignId).maybeSingle().then(({ data }) => {
-          if (data) {
-            const currentSessoes = data.filtros?.sessoes_corretores || {}
-            const updatedFiltros = {
-              ...(data.filtros || {}),
-              sessoes_corretores: {
-                ...currentSessoes,
-                [user.id]: {
-                  ...(currentSessoes[user.id] || {}),
-                  saiu: new Date().toISOString()
-                }
-              }
-            }
-            supabase.from('campanhas').update({ filtros: updatedFiltros }).eq('id', campaignId).then(() => {
-              console.log("Horário de saída registrado via unmount")
-            })
-          }
-        })
-      }
-    }
-  }, [user?.id, campaignId])
+
 
   const handleExit = async () => {
     if (!campaign || !user) {
@@ -743,32 +737,46 @@ export default function CampanhaAtendimentoPage() {
     }
 
     // Registrar horário de saída
-    try {
-      const { data: latestCamp } = await supabase
-        .from('campanhas')
-        .select('filtros')
-        .eq('id', campaign.id)
-        .maybeSingle()
+    if (!hasRegisteredExit.current) {
+      hasRegisteredExit.current = true;
+      try {
+        // Registrar na tabela campanha_atendimentos
+        await supabase.from('campanha_atendimentos').insert({
+          campanha_id: campaign.id,
+          corretor_id: user.id,
+          cliente_cpf: '00000000000',
+          tabulacao: 'SAIU'
+        });
+        console.log("Horário de saída registrado no banco (campanha_atendimentos)!");
 
-      if (latestCamp) {
-        const currentSessoes = latestCamp.filtros?.sessoes_corretores || {}
-        const updatedFiltros = {
-          ...(latestCamp.filtros || {}),
-          sessoes_corretores: {
-            ...currentSessoes,
-            [user.id]: {
-              ...(currentSessoes[user.id] || {}),
-              saiu: new Date().toISOString()
-            }
-          }
-        }
-        await supabase
+        // Atualizar filtros legado para compatibilidade visual instantânea
+        const { data: latestCamp } = await supabase
           .from('campanhas')
-          .update({ filtros: updatedFiltros })
+          .select('filtros')
           .eq('id', campaign.id)
+          .maybeSingle();
+
+        if (latestCamp) {
+          const currentSessoes = latestCamp.filtros?.sessoes_corretores || {};
+          const nowIso = new Date().toISOString();
+          const updatedFiltros = {
+            ...(latestCamp.filtros || {}),
+            sessoes_corretores: {
+              ...currentSessoes,
+              [user.id]: {
+                ...(currentSessoes[user.id] || {}),
+                saiu: nowIso
+              }
+            }
+          };
+          await supabase
+            .from('campanhas')
+            .update({ filtros: updatedFiltros })
+            .eq('id', campaign.id);
+        }
+      } catch (exitTimeErr) {
+        console.error("Erro ao registrar horário de saída:", exitTimeErr);
       }
-    } catch (exitTimeErr) {
-      console.error("Erro ao registrar horário de saída:", exitTimeErr)
     }
 
     toast.success("Atendimento registrado! Saindo...")
