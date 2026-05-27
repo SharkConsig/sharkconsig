@@ -68,6 +68,7 @@ export default function DistribuicaoCampanhaPage() {
   const [searchQuery, setSearchQuery] = useState("")
   
   const [startedCampaigns, setStartedCampaigns] = useState<string[]>([])
+  const [workedCounts, setWorkedCounts] = useState<Record<string, number>>({})
   const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null)
   const [allUsers, setAllUsers] = useState<BrokerUser[]>([])
   const [selectedCampaignForTeam, setSelectedCampaignForTeam] = useState<Campaign | null>(null)
@@ -432,6 +433,30 @@ export default function DistribuicaoCampanhaPage() {
         // Table might not exist yet if migration didn't run, ignore silenty
         console.warn("Could not fetch campaign progress:", err)
       }
+
+      // Fetch worked counts for all active campaigns
+      try {
+        const campaignIds = filteredData.map(c => c.id)
+        if (campaignIds.length > 0) {
+          const { data: countRecords } = await supabase
+            .from('campanha_atendimentos')
+            .select('campanha_id')
+            .in('campanha_id', campaignIds)
+            .neq('cliente_cpf', '00000000000')
+
+          const counts: Record<string, number> = {}
+          if (countRecords) {
+            countRecords.forEach(r => {
+              counts[r.campanha_id] = (counts[r.campanha_id] || 0) + 1
+            })
+          }
+          setWorkedCounts(counts)
+        } else {
+          setWorkedCounts({})
+        }
+      } catch (countErr) {
+        console.warn("Could not fetch campaign worked counts:", countErr)
+      }
     } catch (err: unknown) {
       console.error("Erro ao buscar campanhas distribuídas:", err)
       if (!silent) {
@@ -520,6 +545,7 @@ export default function DistribuicaoCampanhaPage() {
                      <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Campanha</th>
                      <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Convênio</th>
                      <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest text-center">Público</th>
+                      <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest text-center">À Trabalhar</th>
                      <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest text-center">Status</th>
                      <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest text-right">Ação</th>
                    </tr>
@@ -527,7 +553,7 @@ export default function DistribuicaoCampanhaPage() {
                  <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={6} className="px-8 py-20 text-center">
+                      <td colSpan={7} className="px-8 py-20 text-center">
                         <div className="flex flex-col items-center gap-4">
                           <Loader2 className="w-10 h-10 text-primary animate-spin" />
                           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">Carregando campanhas liberadas...</p>
@@ -536,7 +562,7 @@ export default function DistribuicaoCampanhaPage() {
                     </tr>
                   ) : error ? (
                     <tr>
-                      <td colSpan={6} className="px-8 py-20 text-center">
+                      <td colSpan={7} className="px-8 py-20 text-center">
                         <div className="flex flex-col items-center justify-center gap-4 bg-red-50/30">
                           <Info className="w-10 h-10 text-red-400" />
                           <p className="text-sm font-bold text-red-500 uppercase tracking-widest text-center px-8">
@@ -550,7 +576,7 @@ export default function DistribuicaoCampanhaPage() {
                     </tr>
                   ) : filteredCampaigns.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-8 py-20 text-center">
+                      <td colSpan={7} className="px-8 py-20 text-center">
                         <div className="flex flex-col items-center justify-center text-center">
                           <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
                             <Users className="w-8 h-8 text-slate-300" />
@@ -595,6 +621,21 @@ export default function DistribuicaoCampanhaPage() {
                                 </span>
                                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">CPFs</span>
                               </div>
+                            </td>
+                            <td className="px-8 py-5 text-center">
+                              {(() => {
+                                const totalWorked = workedCounts[campaign.id] || 0;
+                                const publico = campaign.publico_estimado || 0;
+                                const toWork = Math.max(0, publico - totalWorked);
+                                return (
+                                  <div className="flex flex-col items-center">
+                                    <span className="text-[12.5px] font-black text-[#1C2643] tracking-tight">
+                                      {toWork.toLocaleString('pt-BR')}
+                                    </span>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">CPFs</span>
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className="px-8 py-5 text-center">
                               {campaign.filtros?.ativa === false ? (
@@ -661,7 +702,7 @@ export default function DistribuicaoCampanhaPage() {
 
                           {isExpanded && (
                             <tr className="bg-slate-50/50">
-                              <td colSpan={6} className="px-8 pb-6 pt-2">
+                              <td colSpan={7} className="px-8 pb-6 pt-2">
                                 <div className="bg-white rounded-2xl p-6 border border-slate-200/60 shadow-md space-y-4 animate-in slide-in-from-top-2 duration-200">
                                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                                     <div className="flex items-center gap-2">
@@ -670,9 +711,22 @@ export default function DistribuicaoCampanhaPage() {
                                         Acompanhamento de Execução da Campanha
                                       </span>
                                     </div>
-                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                                      {campaign.filtros?.corretores_selecionados?.length || 0} corretores selecionados
-                                    </span>
+                                    {(() => {
+                                      const brokersDef = campaign.filtros?.corretores_selecionados || [];
+                                      const matchedBrokers = allUsers.filter(u => brokersDef.includes(u.id));
+                                      const stats = monitoringData[campaign.id] || {};
+                                      const totalTrabalhados = matchedBrokers.reduce((acc, b) => acc + (stats[b.id]?.total || 0), 0);
+                                      return (
+                                        <div className="flex items-center gap-4">
+                                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                            {brokersDef.length} corretores selecionados
+                                          </span>
+                                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider border-l border-slate-200 pl-4">
+                                            {totalTrabalhados} clientes trabalhados
+                                          </span>
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
 
                                   {isLoadingMonitoring && !monitoringData[campaign.id] ? (

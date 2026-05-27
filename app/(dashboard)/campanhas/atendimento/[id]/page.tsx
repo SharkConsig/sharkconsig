@@ -290,6 +290,7 @@ export default function CampanhaAtendimentoPage() {
   const params = useParams()
   const router = useRouter()
   const { user } = useAuth()
+  const userId = user?.id
   
   const campaignId = params.id as string
   
@@ -306,12 +307,12 @@ export default function CampanhaAtendimentoPage() {
   
   // Stats
   const [completedCount, setCompletedCount] = useState(0)
-
+  
   const hasRegisteredSession = useRef(false)
   const hasRegisteredExit = useRef(false)
 
   const loadNextLead = useCallback(async (camp: Campaign, offset: number) => {
-    if (!user) return
+    if (!userId) return
     setIsLoading(true)
     setCurrentLead(null)
     setRegistrations([])
@@ -367,7 +368,7 @@ export default function CampanhaAtendimentoPage() {
         const filters = camp.filtros
         const brokers = filters.corretores_selecionados || []
         const numBrokers = brokers.length || 1
-        const myIndex = brokers.indexOf(user.id)
+        const myIndex = brokers.indexOf(userId)
         const brokerRelIndex = myIndex === -1 ? 0 : myIndex // Fallback to 0 if not explicitly listed
 
         const globalOffset = (offset * numBrokers) + brokerRelIndex
@@ -447,7 +448,7 @@ export default function CampanhaAtendimentoPage() {
           try {
             await supabase.from('campanha_vinculos').insert({
               campanha_id: camp.id,
-              corretor_id: user.id,
+              corretor_id: userId,
               cliente_cpf: data.cpf,
               completed: false,
               indice: globalOffset
@@ -526,11 +527,11 @@ export default function CampanhaAtendimentoPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [user])
+  }, [userId])
 
   const fetchCampaignAndProgress = useCallback(async () => {
-    if (!user || !campaignId) {
-      console.warn("fetchCampaignAndProgress abortado: user ou campaignId ausente", { userId: user?.id, campaignId })
+    if (!userId || !campaignId) {
+      console.warn("fetchCampaignAndProgress abortado: userId ou campaignId ausente", { userId, campaignId })
       return
     }
     
@@ -577,7 +578,7 @@ export default function CampanhaAtendimentoPage() {
           // Registrar na tabela campanha_atendimentos
           await supabase.from('campanha_atendimentos').insert({
             campanha_id: campaignId,
-            corretor_id: user.id,
+            corretor_id: userId,
             cliente_cpf: '00000000000',
             tabulacao: 'ENTROU'
           });
@@ -590,8 +591,8 @@ export default function CampanhaAtendimentoPage() {
             ...(campaignData.filtros || {}),
             sessoes_corretores: {
               ...currentSessoes,
-              [user.id]: {
-                ...currentSessoes[user.id],
+              [userId]: {
+                ...currentSessoes[userId],
                 entrou: nowIso,
                 saiu: null
               }
@@ -612,7 +613,7 @@ export default function CampanhaAtendimentoPage() {
           .from('campanha_atendimentos')
           .select('*', { count: 'exact', head: true })
           .eq('campanha_id', campaignId)
-          .eq('corretor_id', user.id)
+          .eq('corretor_id', userId)
       )
       
       if (countError) {
@@ -641,7 +642,7 @@ export default function CampanhaAtendimentoPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [user, campaignId, loadNextLead, router])
+  }, [userId, campaignId, loadNextLead, router])
 
   useEffect(() => {
     fetchCampaignAndProgress()
@@ -652,14 +653,14 @@ export default function CampanhaAtendimentoPage() {
        toast.error("Por favor, selecione uma tabulação.")
        return
      }
-     if (!currentLead || !campaign || !user) return
+     if (!currentLead || !campaign || !userId) return
      
      setIsSubmitting(true)
      try {
        const { error } = await withRetry(() => 
          supabase.from('campanha_atendimentos').insert({
            campanha_id: campaign.id,
-           corretor_id: user.id,
+           corretor_id: userId,
            cliente_cpf: currentLead.cpf,
            tabulacao,
            
@@ -673,7 +674,7 @@ export default function CampanhaAtendimentoPage() {
          await supabase.from('campanha_vinculos')
            .update({ completed: true })
            .eq('campanha_id', campaign.id)
-           .eq('corretor_id', user.id)
+           .eq('corretor_id', userId)
            .eq('cliente_cpf', currentLead.cpf)
        } catch (linkErr) {
          console.warn("Could not mark claim as completed statefully:", linkErr)
@@ -694,7 +695,7 @@ export default function CampanhaAtendimentoPage() {
 
 
   const handleExit = async () => {
-    if (!campaign || !user) {
+    if (!campaign || !userId) {
       router.push('/campanhas/distribuicao')
       return
     }
@@ -710,7 +711,7 @@ export default function CampanhaAtendimentoPage() {
         const { error } = await withRetry(() => 
           supabase.from('campanha_atendimentos').insert({
             campanha_id: campaign.id,
-            corretor_id: user.id,
+            corretor_id: userId,
             cliente_cpf: currentLead.cpf,
             tabulacao
           })
@@ -723,7 +724,7 @@ export default function CampanhaAtendimentoPage() {
           await supabase.from('campanha_vinculos')
             .update({ completed: true })
             .eq('campanha_id', campaign.id)
-            .eq('corretor_id', user.id)
+            .eq('corretor_id', userId)
             .eq('cliente_cpf', currentLead.cpf)
         } catch (linkErr) {
           console.warn("Could not mark claim as completed statefully:", linkErr)
@@ -743,13 +744,13 @@ export default function CampanhaAtendimentoPage() {
         // Registrar na tabela campanha_atendimentos
         await supabase.from('campanha_atendimentos').insert({
           campanha_id: campaign.id,
-          corretor_id: user.id,
+          corretor_id: userId,
           cliente_cpf: '00000000000',
           tabulacao: 'SAIU'
         });
         console.log("Horário de saída registrado no banco (campanha_atendimentos)!");
 
-        // Atualizar filtros legado para compatibilidade visual instantânea
+        // Registrar no visual de sessoes_corretores
         const { data: latestCamp } = await supabase
           .from('campanhas')
           .select('filtros')
@@ -763,8 +764,8 @@ export default function CampanhaAtendimentoPage() {
             ...(latestCamp.filtros || {}),
             sessoes_corretores: {
               ...currentSessoes,
-              [user.id]: {
-                ...(currentSessoes[user.id] || {}),
+              [userId]: {
+                ...(currentSessoes[userId] || {}),
                 saiu: nowIso
               }
             }
