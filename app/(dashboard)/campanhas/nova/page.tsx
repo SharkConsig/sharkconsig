@@ -87,6 +87,7 @@ const TABLE_MAP: Record<string, string> = {
   'prefeitura_sp': 'base_consulta_prefeitura_sp',
   'governo_pi': 'base_consulta_governo_pi',
   'governo_ma': 'base_consulta_governo_ma',
+  'governo_rr': 'base_consulta_governo_rr',
 };
 
 const TABLE_COLUMNS: Record<string, string[]> = {
@@ -116,6 +117,10 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'cpf', 'nome', 'data_nascimento', 'telefone_1', 
     'numero_matricula', 'orgao', 'situacao_funcional', 
     'margem_35', 'bruta_5', 'liquida_5', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
+  ],
+  'base_consulta_governo_rr': [
+    'cpf', 'nome', 'data_de_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'margem_emprestimo', 'margem_cartao'
   ]
 };
 
@@ -125,6 +130,7 @@ const CONVENIOS = [
   { id: 'prefeitura_sp', label: 'PREFEITURA SP' },
   { id: 'governo_pi', label: 'GOVERNO PIAUÍ' },
   { id: 'governo_ma', label: 'GOVERNO MARANHÃO' },
+  { id: 'governo_rr', label: 'GOVERNO RORAIMA' },
 ];
 
 export default function NewCampaignPage() {
@@ -152,6 +158,7 @@ export default function NewCampaignPage() {
     cardTypes: [] as string[],
     cardBanks: [] as string[],
     cardMargemMin: "",
+    cardMargemMax: "",
     cardBeneficioMin: "",
     cardBeneficioMax: "",
     idadeMin: "",
@@ -188,6 +195,11 @@ export default function NewCampaignPage() {
       } else if (activeConvenio === 'governo_ma') {
         orgaos = ['GOVERNO MARANHAO'];
         situacoes = ['EFETIVO', 'PENSIONISTA PREVIDENCIARIA', 'SERVIDOR EFETIVO MILITAR'];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'governo_rr') {
+        orgaos = [];
+        situacoes = [];
         regimes = [];
         ufs = [];
       } else {
@@ -245,6 +257,20 @@ export default function NewCampaignPage() {
   }
 
   const getCardNumbers = useCallback(() => {
+    if (activeConvenio === 'governo_rr') {
+      return {
+        idade: 1,
+        orgao: 0,
+        situacao: 0,
+        regime: 0,
+        uf: 0,
+        margem: 2,
+        saldo: 0,
+        loans: 0,
+        cards: 3,
+      };
+    }
+
     if (activeConvenio === 'governo_ma') {
       return {
         idade: 1,
@@ -459,6 +485,10 @@ export default function NewCampaignPage() {
         q = q.not("margem_disponivel_emprestimo", "is", null);
         if (mMinNum !== null) q = q.gte("margem_disponivel_emprestimo", mMinNum);
         if (mMaxNum !== null) q = q.lte("margem_disponivel_emprestimo", mMaxNum);
+      } else if (cols.includes('margem_emprestimo')) {
+        q = q.not("margem_emprestimo", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_emprestimo", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_emprestimo", mMaxNum);
       }
     }
 
@@ -496,23 +526,24 @@ export default function NewCampaignPage() {
     if (f.ufs.length > 0 && cols.includes('uf')) q = q.in('uf', f.ufs);
 
     // 2. Filtro de IDADE
-    if (f.idadeMin && cols.includes('data_nascimento')) {
+    const birthCol = cols.includes('data_de_nascimento') ? 'data_de_nascimento' : cols.includes('data_nascimento') ? 'data_nascimento' : null;
+    if (f.idadeMin && birthCol) {
       const ageMin = parseInt(f.idadeMin);
       if (!isNaN(ageMin)) {
         const d = new Date();
         d.setFullYear(d.getFullYear() - ageMin);
         const dateStr = d.toISOString().split('T')[0];
-        q = q.lte('data_nascimento', dateStr);
+        q = q.lte(birthCol, dateStr);
       }
     }
-    if (f.idadeMax && cols.includes('data_nascimento')) {
+    if (f.idadeMax && birthCol) {
       const ageMax = parseInt(f.idadeMax);
       if (!isNaN(ageMax)) {
         const d = new Date();
         d.setFullYear(d.getFullYear() - ageMax - 1);
         d.setDate(d.getDate() + 1);
         const dateStr = d.toISOString().split('T')[0];
-        q = q.gte('data_nascimento', dateStr);
+        q = q.gte(birthCol, dateStr);
       }
     }
 
@@ -521,7 +552,17 @@ export default function NewCampaignPage() {
       q = q.not('saldo_70', 'is', null).gte('saldo_70', sMin);
     }
     
-    if (activeConvenio === 'governo_sp') {
+    if (activeConvenio === 'governo_rr') {
+      const cMMin = parseSafeNumber(f.cardMargemMin);
+      const cMMax = parseSafeNumber(f.cardMargemMax);
+      if (cMMin !== null || cMMax !== null) {
+        if (cols.includes('margem_cartao')) {
+          q = q.not('margem_cartao', 'is', null);
+          if (cMMin !== null) q = q.gte('margem_cartao', cMMin);
+          if (cMMax !== null) q = q.lte('margem_cartao', cMMax);
+        }
+      }
+    } else if (activeConvenio === 'governo_sp') {
       const cleanTypes = f.cardTypes.filter(t => t !== '__ACTIVE__');
       if (cleanTypes.length > 0) {
         if (cleanTypes.includes('CARTÃO CONSIGNADO')) {
@@ -902,7 +943,9 @@ export default function NewCampaignPage() {
                   cardTypes: [],
                   cardBanks: [],
                   cardMargemMin: "",
+                  cardMargemMax: "",
                   cardBeneficioMin: "",
+                  cardBeneficioMax: "",
                   idadeMin: "",
                   idadeMax: "",
                 }));
@@ -990,6 +1033,7 @@ export default function NewCampaignPage() {
           </Card>
 
           {filterSections.map((section) => {
+            if (activeConvenio === 'governo_rr') return null;
             if (activeConvenio === 'governo_pi') return null;
             if (section.id === "4" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             if (section.id === "3" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
@@ -1131,7 +1175,9 @@ export default function NewCampaignPage() {
                       ? `${getCardNumbers()['margem']}. MARGEM DISPONÍVEL EMPRÉSTIMO` 
                       : activeConvenio === 'prefeitura_sp'
                         ? `${getCardNumbers()['margem']}. LÍQUIDA CONSIGNADO`
-                        : `${getCardNumbers()['margem']}. MARGEM 35%`}
+                        : activeConvenio === 'governo_rr'
+                          ? `${getCardNumbers()['margem']}. MARGEM EMPRÉSTIMO`
+                          : `${getCardNumbers()['margem']}. MARGEM 35%`}
                   </h3>
                 </div>
                 <button 
@@ -1173,7 +1219,7 @@ export default function NewCampaignPage() {
             </CardContent>
           </Card>
 
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && (
             /* 7. SALDO 70% */
             <Card className={cn(
               "card-shadow transition-all duration-300",
@@ -1224,7 +1270,7 @@ export default function NewCampaignPage() {
 
 
           {/* 8. EMPRÉSTIMOS */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1354,7 +1400,7 @@ export default function NewCampaignPage() {
           )}
 
           {/* 9. CARTÕES */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_ma' ? (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' ? (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1629,7 +1675,71 @@ export default function NewCampaignPage() {
                 )}
               </CardContent>
             </Card>
-          ) : (
+          ) : activeConvenio === 'governo_rr' ? (
+            /* 3. MARGEM CARTÃO (For Governo Roraima) */
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.cardMargemMin || filters.cardMargemMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      (filters.cardMargemMin || filters.cardMargemMax) ? "bg-blue-100" : "bg-slate-50"
+                    )}>
+                      <CreditCard className={cn(
+                        "w-4 h-4 transition-colors",
+                        (filters.cardMargemMin || filters.cardMargemMax) ? "text-blue-600" : "text-slate-400"
+                      )} />
+                    </div>
+                    <h3 className={cn(
+                      "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                      (filters.cardMargemMin || filters.cardMargemMax) ? "text-blue-600" : "text-slate-400"
+                    )}>
+                      {getCardNumbers()['cards']}. MARGEM CARTÃO
+                    </h3>
+                  </div>
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardMargemMax: "" }))}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors flex items-center gap-1.5"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                    Limpar
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Mínimo</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="0,00" 
+                        inputMode="decimal"
+                        value={filters.cardMargemMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Máximo</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="0,00" 
+                        inputMode="decimal"
+                        value={filters.cardMargemMax}
+                        onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMax: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : activeConvenio === 'governo_pi' ? (
             /* 4. MARGEM DOS CARTÕES (For Governo Piauí) */
             <Card className={cn(
               "card-shadow transition-all duration-300",
@@ -1690,7 +1800,7 @@ export default function NewCampaignPage() {
                 </div>
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </div>
 
         {/* Summary Sidebar */}

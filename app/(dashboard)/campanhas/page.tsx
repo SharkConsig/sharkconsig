@@ -34,9 +34,11 @@ import {
   Edit2,
   Check,
   X,
-  Share2
+  Share2,
+  Upload
 } from "lucide-react"
 import Link from "next/link"
+import Papa from "papaparse"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { cn } from "@/lib/utils"
@@ -128,7 +130,7 @@ interface User {
 }
 
 export default function CampaignsPage() {
-  const { canAccessAdminAreas, isLoading: authLoading } = useAuth()
+  const { user, canAccessAdminAreas, isLoading: authLoading } = useAuth()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -141,6 +143,16 @@ export default function CampaignsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Import Campaign State
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importConvenio, setImportConvenio] = useState("siape")
+  const [importCampaignName, setImportCampaignName] = useState("")
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [isImportingCamp, setIsImportingCamp] = useState(false)
+  const [importProgress, setImportProgress] = useState(0)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
   
   // Distribution State
   const [showDistributionModal, setShowDistributionModal] = useState(false)
@@ -185,6 +197,255 @@ export default function CampaignsPage() {
   const [isExporting, setIsExporting] = useState<string | null>(null)
   const [exportProgress, setExportProgress] = useState(0)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragOver(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file && file.name.endsWith('.csv')) {
+      setImportFile(file)
+      if (!importCampaignName) {
+        const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " ")
+        setImportCampaignName(baseName.toUpperCase())
+      }
+    } else {
+      alert("Por favor, selecione apenas arquivos CSV.")
+    }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setImportFile(file)
+      if (!importCampaignName) {
+        const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " ")
+        setImportCampaignName(baseName.toUpperCase())
+      }
+    }
+  }
+
+  const extractCpfFromRow = (row: unknown): string | null => {
+    if (!row) return null
+    
+    if (Array.isArray(row)) {
+      for (const val of row) {
+        if (typeof val === "string") {
+          const clean = val.replace(/\D/g, "")
+          if (clean.length === 11) return clean
+        }
+      }
+      if (row.length > 0 && (typeof row[0] === "string" || typeof row[0] === "number")) {
+        const clean = String(row[0]).replace(/\D/g, "")
+        if (clean) return clean
+      }
+      return null
+    }
+    
+    if (typeof row === "object") {
+      const rowObj = row as Record<string, unknown>
+      const keys = Object.keys(rowObj)
+      const exactCpfKey = keys.find(k => k.toLowerCase() === 'cpf')
+      if (exactCpfKey && rowObj[exactCpfKey]) {
+        const clean = String(rowObj[exactCpfKey]).replace(/\D/g, "")
+        if (clean) return clean
+      }
+      
+      const containsCpfKey = keys.find(k => k.toLowerCase().includes('cpf'))
+      if (containsCpfKey && rowObj[containsCpfKey]) {
+        const clean = String(rowObj[containsCpfKey]).replace(/\D/g, "")
+        if (clean) return clean
+      }
+      
+      for (const key of keys) {
+        const val = rowObj[key];
+        if (typeof val === "string" || typeof val === "number") {
+          const clean = String(val).replace(/\D/g, "")
+          if (clean.length === 11) return clean
+        }
+      }
+      
+      if (keys.length > 0) {
+        const firstVal = rowObj[keys[0]]
+        if (firstVal !== undefined && firstVal !== null) {
+          const clean = String(firstVal).replace(/\D/g, "")
+          if (clean) return clean
+        }
+      }
+    }
+    
+    return null
+  }
+
+  const handleImportCampaign = async () => {
+    if (!importCampaignName.trim()) {
+      setImportError("O nome da campanha é obrigatório.")
+      return
+    }
+    if (!importFile) {
+      setImportError("Por favor, selecione um arquivo CSV para importar.")
+      return
+    }
+
+    setIsImportingCamp(true)
+    setImportProgress(0)
+    setImportError(null)
+
+    try {
+      // 1. Criar a campanha correspondente com status PROCESSANDO
+      const initFiltros = {
+        convenio: importConvenio,
+        imported: true,
+        orgaos: [],
+        situacoes: [],
+        regimes: [],
+        ufs: [],
+        margemMin: "",
+        margemMax: "",
+        saldoMin: "",
+        saldoMax: "",
+        cardMargemMin: "",
+        cardBeneficioMin: "",
+        loanBanks: [],
+        loanPrazoMin: "",
+        loanPrazoMax: "",
+        cardBanks: [],
+        cardTypes: [],
+        idadeMin: "",
+        idadeMax: "",
+        distribuicao: [],
+        corretores_selecionados: []
+      }
+
+      const { data: createdCampaign, error: saveError } = await withRetry(() =>
+        supabase
+          .from('campanhas')
+          .insert({
+            nome: importCampaignName.toUpperCase(),
+            publico_estimado: 0,
+            convenio: importConvenio,
+            filtros: initFiltros,
+            filtros_json: initFiltros,
+            user_id: user?.id,
+            criado_por: user?.id,
+            status: 'ativa',
+            processamento_status: 'PROCESSANDO',
+            created_at: new Date().toISOString(),
+            criado_em: new Date().toISOString()
+          })
+          .select()
+          .single()
+      )
+
+      if (saveError) throw saveError
+      const campaignId = createdCampaign.id
+
+      let orderIndex = 1
+      const insertedCpfs = new Set<string>()
+
+      Papa.parse(importFile, {
+        header: true,
+        skipEmptyLines: true,
+        encoding: "ISO-8859-1",
+        chunkSize: 1024 * 256, // Usar 256KB de chunkSize para máxima estabilidade
+        chunk: async (results, parser) => {
+          parser.pause()
+          
+          try {
+            const uniqueCpfBatch: { cpf: string }[] = []
+            for (const row of results.data) {
+              const rawCpf = extractCpfFromRow(row)
+              if (rawCpf) {
+                const cleanCpf = rawCpf.trim()
+                if (cleanCpf && !insertedCpfs.has(cleanCpf)) {
+                  insertedCpfs.add(cleanCpf)
+                  uniqueCpfBatch.push({ cpf: cleanCpf })
+                }
+              }
+            }
+
+            const stepSize = 1000
+            for (let i = 0; i < uniqueCpfBatch.length; i += stepSize) {
+              const chunk = uniqueCpfBatch.slice(i, i + stepSize)
+              if (chunk.length > 0) {
+                const membersToInsert = chunk.map(row => ({
+                  campanha_id: campaignId,
+                  cliente_cpf: row.cpf,
+                  convenio: importConvenio,
+                  ordem_fila: orderIndex++,
+                  criado_em: new Date().toISOString()
+                }))
+
+                const { error: insertError } = await withRetry(() =>
+                  supabase.from('campanha_membros').insert(membersToInsert)
+                )
+                if (insertError) throw insertError
+              }
+            }
+
+            setImportProgress(insertedCpfs.size)
+            await new Promise(resolve => setTimeout(resolve, 300))
+
+          } catch (err) {
+            console.error("Erro ao importar lote:", err)
+            parser.abort()
+            throw err
+          } finally {
+            parser.resume()
+          }
+        },
+        complete: async () => {
+          try {
+            const realPublicoCount = insertedCpfs.size
+            const { error: updateError } = await withRetry(() =>
+              supabase
+                .from('campanhas')
+                .update({ 
+                  processamento_status: 'PRONTA',
+                  publico_estimado: realPublicoCount
+                })
+                .eq('id', campaignId)
+            )
+
+            if (updateError) throw updateError
+
+            await fetchCampaigns()
+
+            // Reset states
+            setImportFile(null)
+            setImportCampaignName("")
+            setShowImportModal(false)
+            setIsImportingCamp(false)
+            alert("Sua campanha foi importada com sucesso com " + realPublicoCount + " CPFs únicos!")
+
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : "Erro desconhecido ao finalizar importação"
+            setImportError(errorMsg)
+            setIsImportingCamp(false)
+          }
+        },
+        error: (err) => {
+          console.error("Erro PapaParse:", err)
+          setImportError(err.message || "Erro no parsing do arquivo CSV.")
+          setIsImportingCamp(false)
+        }
+      })
+
+    } catch (err: unknown) {
+      console.error("Erro geral na importação:", err)
+      const errorMsg = err instanceof Error ? err.message : "Ocorreu um erro ao iniciar a importação de campanha."
+      setImportError(errorMsg)
+      setIsImportingCamp(false)
+    }
+  }
 
   const handleCancelExport = () => {
     if (abortControllerRef.current) {
@@ -276,6 +537,7 @@ export default function CampaignsPage() {
       }
 
       const isGovPi = targetTable === 'base_consulta_governo_pi';
+      const isGovRr = targetTable === 'base_consulta_governo_rr';
       
       const headers = isGovPi
         ? [
@@ -283,13 +545,18 @@ export default function CampaignsPage() {
             "TELEFONE 1", "TELEFONE 2", "TELEFONE 3", "ÓRGÃO", 
             "MARGEM DISPONÍVEL EMPRÉSTIMO", "MARGEM CARTÃO CONSIGNADO", "MARGEM CARTÃO BENEFÍCIO"
           ].map(h => `"${h}"`).join(",")
-        : [
-            "CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3", 
-            "MATRÍCULA", "ÓRGÃO", "SITUAÇÃO FUNCIONAL", "SALÁRIO", "INSTITUIDOR", 
-            "REGIME JURÍDICO", "UF", "SALDO 70%", "MARGEM 35%", "BRUTA 5%", 
-            "UTILIZADA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO UTILIZADA 5%", 
-            "BENEFÍCIO LÍQUIDA 5%", "BANCO", "PRAZO", "TIPO"
-          ].map(h => `"${h}"`).join(",")
+        : isGovRr
+          ? [
+              "CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3",
+              "MARGEM EMPRÉSTIMO", "MARGEM CARTÃO"
+            ].map(h => `"${h}"`).join(",")
+          : [
+              "CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3", 
+              "MATRÍCULA", "ÓRGÃO", "SITUAÇÃO FUNCIONAL", "SALÁRIO", "INSTITUIDOR", 
+              "REGIME JURÍDICO", "UF", "SALDO 70%", "MARGEM 35%", "BRUTA 5%", 
+              "UTILIZADA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO UTILIZADA 5%", 
+              "BENEFÍCIO LÍQUIDA 5%", "BANCO", "PRAZO", "TIPO"
+            ].map(h => `"${h}"`).join(",")
       
       allCsvRows.push(headers)
       
@@ -337,15 +604,18 @@ export default function CampaignsPage() {
         const isGovSp = targetTable === 'base_consulta_governo_sp';
         const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
         const isGovMa = targetTable === 'base_consulta_governo_ma';
+        const isGovRr = targetTable === 'base_consulta_governo_rr';
         const columnsToSelect = isGovPi
           ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio"
-          : isGovSp
-            ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5"
-            : isPrefSp
-              ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5"
-              : isGovMa
-                ? "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf"
-                : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
+          : isGovRr
+            ? "cpf, nome, data_de_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao"
+            : isGovSp
+              ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5"
+              : isPrefSp
+                ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5"
+                : isGovMa
+                  ? "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf"
+                  : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
 
         const { data: bcrData, error: bcrError } = await withRetry(() =>
           supabase.from(targetTable).select(columnsToSelect).in('cpf', cpfs)
@@ -358,6 +628,7 @@ export default function CampaignsPage() {
           cpf: string;
           nome: string;
           data_nascimento?: string;
+          data_de_nascimento?: string;
           telefone_1?: string;
           telefone_2?: string;
           telefone_3?: string;
@@ -379,6 +650,8 @@ export default function CampaignsPage() {
           banco?: string;
           prazo?: string | number;
           tipo?: string;
+          margem_emprestimo?: number | string;
+          margem_cartao?: number | string;
         }
 
         interface IGovPiRow {
@@ -409,7 +682,7 @@ export default function CampaignsPage() {
           }
         });
 
-        sortedBatchData.forEach((row: { cpf: string; nome: string; data_nascimento?: string; telefone_1?: string; telefone_2?: string; telefone_3?: string; numero_matricula?: string; orgao?: string; situacao_funcional?: string; salario?: number; instituidor_nome?: string; regime_juridico?: string; uf?: string; saldo_70?: number; margem_35?: number; bruta_5?: number; utilizada_5?: number; liquida_5?: number; beneficio_bruta_5?: number; beneficio_utilizada_5?: number; beneficio_liquida_5?: number; banco?: string; prazo?: string | number; tipo?: string }) => {
+        sortedBatchData.forEach((row: ICampaignMembroRow) => {
           const key = row.cpf;
           if (uniqueRowsKeys.has(key)) return
           uniqueRowsKeys.add(key)
@@ -431,15 +704,26 @@ export default function CampaignsPage() {
                 govRow.margem_cartao_consignado ?? "",
                 govRow.margem_cartao_beneficio ?? ""
               ]
-            : [
-                row.cpf, row.nome, row.data_nascimento || "",
-                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "", 
-                row.numero_matricula || (row as unknown as { identificacao?: string }).identificacao || "", row.orgao || "", row.situacao_funcional || "",
-                row.salario || 0, row.instituidor_nome || "", row.regime_juridico || "", row.uf || "",
-                row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
-                row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0,
-                row.banco || "", row.prazo || "", row.tipo || ""
-              ];
+            : isGovRr
+              ? [
+                  row.cpf,
+                  row.nome,
+                  row.data_de_nascimento || "",
+                  row.telefone_1 || "",
+                  row.telefone_2 || "",
+                  row.telefone_3 || "",
+                  row.margem_emprestimo ?? "",
+                  row.margem_cartao ?? ""
+                ]
+              : [
+                  row.cpf, row.nome, row.data_nascimento || "",
+                  row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "", 
+                  row.numero_matricula || (row as unknown as { identificacao?: string }).identificacao || "", row.orgao || "", row.situacao_funcional || "",
+                  row.salario || 0, row.instituidor_nome || "", row.regime_juridico || "", row.uf || "",
+                  row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
+                  row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0,
+                  row.banco || "", row.prazo || "", row.tipo || ""
+                ];
 
           const csvRow = csvFields.map(val => {
             const clean = String(val === null || val === undefined ? "" : val).replace(/"/g, '""');
@@ -640,9 +924,23 @@ export default function CampaignsPage() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest text-center md:text-left">Gerencie seus públicos e estratégias de vendas.</p>
           <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
+            <Button 
+              onClick={() => {
+                setImportFile(null)
+                setImportCampaignName("")
+                setImportError(null)
+                setImportProgress(0)
+                setShowImportModal(true)
+              }}
+              variant="outline"
+              className="w-full md:w-auto h-10 px-6 text-[12px] font-bold uppercase tracking-widest border-slate-200 text-slate-700 hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Importar Campanha
+            </Button>
             <Link href="/campanhas/nova" className="w-full md:w-auto">
-              <Button className="w-full md:w-auto h-10 px-6 text-[12px] font-bold uppercase tracking-widest">
-                <Plus className="w-3.5 h-3.5 mr-2" />
+              <Button className="w-full md:w-auto h-10 px-6 text-[12px] font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                <Plus className="w-3.5 h-3.5" />
                 Nova Campanha
               </Button>
             </Link>
@@ -1395,6 +1693,182 @@ export default function CampaignsPage() {
                 {isSavingDistribution ? <Loader2 className="w-4 h-4 animate-spin" /> : "FINALIZAR DISTRIBUIÇÃO"}
               </Button>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Campaign Dialog */}
+      <Dialog open={showImportModal} onOpenChange={(open) => {
+        if (!isImportingCamp) setShowImportModal(open);
+      }}>
+        <DialogContent className="max-w-md p-0 overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-2xl">
+          <DialogHeader className="p-6 pb-4 border-b border-slate-50 relative">
+            <DialogTitle className="text-sm font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+              <Upload className="w-4 h-4 text-primary" />
+              Importar Campanha
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 font-medium">
+              Importe uma lista de CPFs no formato CSV para criar uma nova campanha.
+            </DialogDescription>
+            <button 
+              onClick={() => setShowImportModal(false)}
+              className="absolute right-6 top-6 p-1.5 rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"
+              disabled={isImportingCamp}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </DialogHeader>
+
+          <div className="p-6 space-y-5">
+            {/* Convenio Selection */}
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                Convênio
+              </label>
+              <select
+                disabled={isImportingCamp}
+                value={importConvenio}
+                onChange={(e) => setImportConvenio(e.target.value)}
+                className="w-full h-11 px-3 bg-slate-50 border border-slate-100/80 hover:border-slate-200 focus:border-primary/30 rounded-xl text-xs font-bold text-slate-700 uppercase tracking-wide focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all cursor-pointer"
+              >
+                <option value="siape">SIAPE / FEDERAL</option>
+                <option value="governo_sp">GOVERNO SP</option>
+                <option value="prefeitura_sp">PREFEITURA SP</option>
+                <option value="governo_pi">GOVERNO PIAUÍ</option>
+                <option value="governo_ma">GOVERNO MARANHÃO</option>
+                <option value="governo_rr">GOVERNO RORAIMA</option>
+              </select>
+            </div>
+
+            {/* Campaign Name Input */}
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                Nome da Campanha
+              </label>
+              <Input
+                disabled={isImportingCamp}
+                placeholder="Ex: IMPORTADOS - LEADS NOVOS"
+                className="h-11 text-[12px] uppercase font-bold"
+                value={importCampaignName}
+                onChange={(e) => setImportCampaignName(e.target.value)}
+              />
+            </div>
+
+            {/* Drag & Drop File Upload field */}
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                Arquivo de Clientes (CSV)
+              </label>
+
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => {
+                  if (!isImportingCamp) {
+                    document.getElementById("file-upload-input")?.click();
+                  }
+                }}
+                className={cn(
+                  "border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all duration-300 min-h-[140px]",
+                  isDragOver ? "border-primary bg-primary/5 scale-[0.99]" : "border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50",
+                  importFile ? "border-emerald-200 bg-emerald-50/10 hover:bg-emerald-50/20" : "",
+                  isImportingCamp ? "pointer-events-none opacity-50" : ""
+                )}
+              >
+                <input
+                  id="file-upload-input"
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+
+                {importFile ? (
+                  <>
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                      <Check className="w-5 h-5 animate-bounce" strokeWidth={3} />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-slate-700 max-w-[240px] truncate">
+                        {importFile.name}
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5 font-medium">
+                        {(importFile.size / 1024).toFixed(1)} KB • Pronto para importar
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center transition-colors",
+                      isDragOver ? "bg-primary/20 text-primary" : "bg-slate-100/80 text-slate-400"
+                    )}>
+                      <Upload className="w-4 h-4" />
+                    </div>
+                    <div className="text-center space-y-0.5">
+                      <p className="text-xs font-bold text-slate-600">
+                        Arraste seu arquivo CSV ou <span className="text-blue-600 font-extrabold hover:underline">busque</span>
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
+                        Selecione um arquivo CSV com uma coluna de CPFs.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Error and progress feedbacks */}
+            {importError && (
+              <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-[11px] font-bold text-red-600 flex items-center gap-2">
+                <X className="w-4 h-4 shrink-0" strokeWidth={3} />
+                <span>{importError}</span>
+              </div>
+            )}
+
+            {isImportingCamp && (
+              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                    Processando base em lotes...
+                  </span>
+                  <span>{importProgress} CPFs inseridos</span>
+                </div>
+                <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-primary h-full transition-all duration-300 animate-pulse" 
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3 rounded-b-[24px]">
+            <Button
+              variant="ghost"
+              disabled={isImportingCamp}
+              onClick={() => setShowImportModal(false)}
+              className="flex-1 h-11 text-[11px] font-black uppercase tracking-wider rounded-xl text-slate-400 hover:bg-slate-100"
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={isImportingCamp || !importFile || !importCampaignName.trim()}
+              onClick={handleImportCampaign}
+              className="flex-1 h-11 text-[11px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-lg shadow-emerald-100 hover:shadow-xl transition-all"
+            >
+              {isImportingCamp ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  Importando...
+                </>
+              ) : (
+                "Importar"
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
