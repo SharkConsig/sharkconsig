@@ -245,6 +245,20 @@ export default function NewCampaignPage() {
   }
 
   const getCardNumbers = useCallback(() => {
+    if (activeConvenio === 'governo_ma') {
+      return {
+        idade: 1,
+        orgao: 2,
+        situacao: 3,
+        regime: 0,
+        uf: 0,
+        margem: 4,
+        saldo: 0,
+        loans: 0,
+        cards: 0,
+      };
+    }
+
     let currentNumber = 1;
     const numbers: Record<string, number> = {
       idade: currentNumber++,
@@ -979,6 +993,7 @@ export default function NewCampaignPage() {
             if (activeConvenio === 'governo_pi') return null;
             if (section.id === "4" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             if (section.id === "3" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
+            if (activeConvenio === 'governo_ma' && (section.id === "3" || section.id === "4")) return null;
             const category = CATEGORY_MAP[section.id] as keyof typeof filters;
             const hasSelectedFilters = category && (filters[category] as string[]).length > 0;
 
@@ -1158,7 +1173,7 @@ export default function NewCampaignPage() {
             </CardContent>
           </Card>
 
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && (
             /* 7. SALDO 70% */
             <Card className={cn(
               "card-shadow transition-all duration-300",
@@ -1209,7 +1224,7 @@ export default function NewCampaignPage() {
 
 
           {/* 8. EMPRÉSTIMOS */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1339,7 +1354,7 @@ export default function NewCampaignPage() {
           )}
 
           {/* 9. CARTÕES */}
-          {activeConvenio !== 'governo_pi' ? (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_ma' ? (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
