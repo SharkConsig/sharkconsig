@@ -169,10 +169,26 @@ export default function NewCampaignPage() {
       let regimes: string[] = [];
       let ufs: string[] = [];
 
-      if (activeConvenio === 'governo_pi') {
-        // No dynamically loaded filter options are needed since Órgão and Vínculo are removed for GOVERNO PIAUÍ campaigns
-        orgaos = [];
-        situacoes = [];
+      if (activeConvenio === 'governo_sp') {
+        orgaos = ['PMESP', 'SEFAZ', 'SPPREV'];
+        situacoes = ['APOSENTADO', 'PENSIONISTA', 'EFETIVO', 'ESTAB. CONSTIT.'];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'prefeitura_sp') {
+        orgaos = ['HSPM', 'IPREM', 'IPREM APOSENTADOS', 'PENSIONISTAS', 'SP (PMSP)'];
+        situacoes = ['APOSENTADO', 'PENSIONISTA', 'EFETIVO'];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'governo_pi') {
+        orgaos = ['GOVERNO PIAUI'];
+        situacoes = ['APOSENTADO', 'PENSIONISTA', 'ESTAVEL', 'EFETIVO', 'NAO INFORMADO'];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'governo_ma') {
+        orgaos = ['GOVERNO MARANHAO'];
+        situacoes = ['EFETIVO', 'PENSIONISTA PREVIDENCIARIA', 'SERVIDOR EFETIVO MILITAR'];
+        regimes = [];
+        ufs = [];
       } else {
         const { data: orgaosData } = await supabase
           .from(tableName)
@@ -226,6 +242,34 @@ export default function NewCampaignPage() {
   const translateOrgao = (id: string) => {
     return ORGAOS_MAPPING[id as keyof typeof ORGAOS_MAPPING] || id
   }
+
+  const getCardNumbers = useCallback(() => {
+    let currentNumber = 1;
+    const numbers: Record<string, number> = {
+      idade: currentNumber++,
+    };
+
+    if (activeConvenio !== 'governo_pi') {
+      numbers['orgao'] = currentNumber++;
+      numbers['situacao'] = currentNumber++;
+      
+      if (activeConvenio !== 'governo_sp') {
+        numbers['regime'] = currentNumber++;
+        numbers['uf'] = currentNumber++;
+      }
+    }
+
+    numbers['margem'] = currentNumber++;
+
+    if (activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp') {
+      numbers['saldo'] = currentNumber++;
+      numbers['loans'] = currentNumber++;
+    }
+
+    numbers['cards'] = currentNumber++;
+
+    return numbers;
+  }, [activeConvenio]);
 
   const [isCalculating, setIsCalculating] = useState(false)
   const [estimatedAudience, setEstimatedAudience] = useState(0)
@@ -411,10 +455,25 @@ export default function NewCampaignPage() {
       if (combinedOrgaos.length > 0) q = q.in('orgao', combinedOrgaos);
     }
     if (f.situacoes.length > 0) {
+      const expandedSituacoes: string[] = [];
+      f.situacoes.forEach(sit => {
+        expandedSituacoes.push(sit);
+        if (sit === 'APOSENTADO') {
+          expandedSituacoes.push('1 - APOSENTADO');
+        } else if (sit === 'PENSIONISTA') {
+          expandedSituacoes.push('6 - PENSIONISTA');
+        } else if (sit === 'EFETIVO') {
+          expandedSituacoes.push('7 - EFETIVO');
+        } else if (sit === 'ESTAB. CONSTIT.') {
+          expandedSituacoes.push('8 - ESTAB. CONSTIT.');
+        }
+      });
+      const finalSituacoes = Array.from(new Set(expandedSituacoes));
+
       if (cols.includes('situacao_funcional')) {
-        q = q.in('situacao_funcional', f.situacoes);
+        q = q.in('situacao_funcional', finalSituacoes);
       } else if (cols.includes('vinculo')) {
-        q = q.in('vinculo', f.situacoes);
+        q = q.in('vinculo', finalSituacoes);
       }
     }
     if (f.regimes.length > 0 && cols.includes('regime_juridico')) q = q.in('regime_juridico', f.regimes);
@@ -446,20 +505,51 @@ export default function NewCampaignPage() {
       q = q.not('saldo_70', 'is', null).gte('saldo_70', sMin);
     }
     
-    const cMMin = parseSafeNumber(f.cardMargemMin);
-    if (cMMin !== null) {
-      if (cols.includes('liquida_5')) {
-        q = q.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
-      } else if (cols.includes('margem_cartao_consignado')) {
-        q = q.not('margem_cartao_consignado', 'is', null).gte('margem_cartao_consignado', cMMin);
+    if (activeConvenio === 'governo_sp') {
+      const cleanTypes = f.cardTypes.filter(t => t !== '__ACTIVE__');
+      if (cleanTypes.length > 0) {
+        if (cleanTypes.includes('CARTÃO CONSIGNADO')) {
+          const cMMin = parseSafeNumber(f.cardMargemMin);
+          if (cMMin !== null) {
+            q = q.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+          } else {
+            q = q.not('liquida_5', 'is', null).gt('liquida_5', 0);
+          }
+        }
+        if (cleanTypes.includes('CARTÃO BENEFÍCIO')) {
+          const cBMin = parseSafeNumber(f.cardBeneficioMin);
+          if (cBMin !== null) {
+            q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+          } else {
+            q = q.not('beneficio_liquida_5', 'is', null).gt('beneficio_liquida_5', 0);
+          }
+        }
+      } else {
+        const cMMin = parseSafeNumber(f.cardMargemMin);
+        if (cMMin !== null && cols.includes('liquida_5')) {
+          q = q.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+        }
+        const cBMin = parseSafeNumber(f.cardBeneficioMin);
+        if (cBMin !== null && cols.includes('beneficio_liquida_5')) {
+          q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+        }
       }
-    }
-    const cBMin = parseSafeNumber(f.cardBeneficioMin);
-    if (cBMin !== null) {
-      if (cols.includes('beneficio_liquida_5')) {
-        q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
-      } else if (cols.includes('margem_cartao_beneficio')) {
-        q = q.not('margem_cartao_beneficio', 'is', null).gte('margem_cartao_beneficio', cBMin);
+    } else {
+      const cMMin = parseSafeNumber(f.cardMargemMin);
+      if (cMMin !== null) {
+        if (cols.includes('liquida_5')) {
+          q = q.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+        } else if (cols.includes('margem_cartao_consignado')) {
+          q = q.not('margem_cartao_consignado', 'is', null).gte('margem_cartao_consignado', cMMin);
+        }
+      }
+      const cBMin = parseSafeNumber(f.cardBeneficioMin);
+      if (cBMin !== null) {
+        if (cols.includes('beneficio_liquida_5')) {
+          q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+        } else if (cols.includes('margem_cartao_beneficio')) {
+          q = q.not('margem_cartao_beneficio', 'is', null).gte('margem_cartao_beneficio', cBMin);
+        }
       }
     }
 
@@ -876,12 +966,22 @@ export default function NewCampaignPage() {
 
           {filterSections.map((section) => {
             if (activeConvenio === 'governo_pi') return null;
+            if (section.id === "4" && activeConvenio === 'governo_sp') return null;
+            if (section.id === "3" && activeConvenio === 'governo_sp') return null;
             const category = CATEGORY_MAP[section.id] as keyof typeof filters;
             const hasSelectedFilters = category && (filters[category] as string[]).length > 0;
 
-            const sectionTitle = activeConvenio === 'governo_pi' && section.id === "2"
-              ? "3. VÍNCULO"
-              : section.title;
+            const cardNumbers = getCardNumbers();
+            let sectionTitle = "";
+            if (section.id === "1") {
+              sectionTitle = `${cardNumbers['orgao']}. ÓRGÃO`;
+            } else if (section.id === "2") {
+              sectionTitle = `${cardNumbers['situacao']}. ${activeConvenio === 'governo_pi' ? 'VÍNCULO' : 'SITUAÇÃO FUNCIONAL'}`;
+            } else if (section.id === "3") {
+              sectionTitle = `${cardNumbers['regime']}. REGIME JURÍDICO`;
+            } else if (section.id === "4") {
+              sectionTitle = `${cardNumbers['uf']}. UF (ESTADO)`;
+            }
 
             return (
               <Card 
@@ -1001,7 +1101,9 @@ export default function NewCampaignPage() {
                     "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
                     (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
                   )}>
-                    {activeConvenio === 'governo_pi' ? "6. MARGEM DISPONÍVEL EMPRÉSTIMO" : "6. MARGEM 35%"}
+                    {activeConvenio === 'governo_pi' 
+                      ? `${getCardNumbers()['margem']}. MARGEM DISPONÍVEL EMPRÉSTIMO` 
+                      : `${getCardNumbers()['margem']}. MARGEM 35%`}
                   </h3>
                 </div>
                 <button 
@@ -1043,7 +1145,7 @@ export default function NewCampaignPage() {
             </CardContent>
           </Card>
 
-          {activeConvenio !== 'governo_pi' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && (
             /* 7. SALDO 70% */
             <Card className={cn(
               "card-shadow transition-all duration-300",
@@ -1064,7 +1166,7 @@ export default function NewCampaignPage() {
                     <h3 className={cn(
                       "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
                       (filters.saldoMin || filters.saldoMax) ? "text-blue-600" : "text-slate-400"
-                    )}>7. SALDO 70%</h3>
+                    )}>{getCardNumbers()['saldo']}. SALDO 70%</h3>
                   </div>
                   <button 
                     onClick={() => setFilters(prev => ({ ...prev, saldoMin: "", saldoMax: "" }))}
@@ -1094,7 +1196,7 @@ export default function NewCampaignPage() {
 
 
           {/* 8. EMPRÉSTIMOS */}
-          {activeConvenio !== 'governo_pi' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1113,7 +1215,7 @@ export default function NewCampaignPage() {
                   <h3 className={cn(
                     "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
                     (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "text-blue-600" : "text-slate-400"
-                  )}>8. EMPRÉSTIMOS</h3>
+                  )}>{getCardNumbers()['loans']}. EMPRÉSTIMOS</h3>
                 </div>
 
                 <div className="space-y-6 bg-slate-50/30 p-5 rounded-xl border border-slate-100/50">
@@ -1244,130 +1346,225 @@ export default function NewCampaignPage() {
                     <h3 className={cn(
                       "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
                       (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
-                    )}>9. CARTÕES</h3>
+                    )}>{getCardNumbers()['cards']}. CARTÕES</h3>
                   </div>
                   <button 
-                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "" }))}
+                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "", cardTypes: [] }))}
                     className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
                   >
                     Limpar
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Líquida 5% (Mínima)</label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                      <Input 
-                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                        placeholder="Ex: 100,00" 
-                        inputMode="decimal"
-                        value={filters.cardMargemMin}
-                        onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício Líquida 5% (Mínima)</label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                      <Input 
-                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                        placeholder="Ex: 100,00" 
-                        inputMode="decimal"
-                        value={filters.cardBeneficioMin}
-                        onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </div>
+                {activeConvenio === 'governo_sp' ? (
+                  /* Layout Customizado para Governo SP */
+                  <div className="space-y-6">
+                    <div id="tipo-cartao-section-sp" className="space-y-4 bg-blue-50/10 p-5 rounded-xl border border-blue-100/30">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Tipo de Cartão</h4>
+                          <p className="text-[8px] text-slate-400 font-medium font-bold uppercase tracking-tight">Selecione o tipo de cartão para habilitar o preenchimento de sua margem mínima</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => selectAll("cardTypes", ['CARTÃO CONSIGNADO', 'CARTÃO BENEFÍCIO'])}
+                            className="text-[9px] font-bold text-primary uppercase tracking-widest hover:text-primary/80 transition-colors px-2 py-1 rounded-md bg-white hover:bg-slate-50 border border-slate-100 shadow-xs"
+                          >
+                            Todos
+                          </button>
+                          <button 
+                            onClick={() => clearAll("cardTypes", ['CARTÃO CONSIGNADO', 'CARTÃO BENEFÍCIO'])}
+                            className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-white hover:bg-slate-50 border border-slate-100 shadow-xs"
+                          >
+                            Limpar
+                          </button>
+                        </div>
+                      </div>
 
-                <div id="tipo-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-blue-50/10 p-4 rounded-xl shadow-sm border border-blue-100/30">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Tipo de Cartão</h4>
-                    </div>
-                    <div className="flex gap-3">
-                      <button 
-                        onClick={() => selectAll("cardTypes", CARD_TYPES)}
-                        className="text-[9px] font-bold text-primary uppercase tracking-widest hover:text-primary/80 transition-colors px-2 py-1 rounded-md bg-primary/5 hover:bg-primary/10"
-                      >
-                        Todos
-                      </button>
-                      <button 
-                        onClick={() => clearAll("cardTypes", CARD_TYPES)}
-                        className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-slate-50 hover:bg-slate-100"
-                      >
-                        Limpar
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {CARD_TYPES.map((type) => (
-                      <button 
-                        key={type}
-                        onClick={() => toggleFilter("cardTypes", type)}
-                        className={cn(
-                           "flex items-center justify-between px-4 py-3.5 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
-                          filters.cardTypes.includes(type) 
-                            ? "bg-primary border-primary text-white shadow-lg shadow-primary/20 ring-2 ring-primary/10" 
-                            : "bg-white border-slate-100 text-slate-500 hover:border-primary/30 hover:bg-slate-50/50"
-                        )}
-                      >
-                        <span className="truncate mr-2">{type}</span>
-                        {filters.cardTypes.includes(type) && <Check className="w-3.5 h-3.5" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                        {/* Bloco 1: CARTÃO CONSIGNADO */}
+                        <div className="space-y-4 p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
+                          <button 
+                            onClick={() => toggleFilter("cardTypes", "CARTÃO CONSIGNADO")}
+                            className={cn(
+                              "w-full flex items-center justify-between px-4 py-3 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
+                              filters.cardTypes.includes("CARTÃO CONSIGNADO") 
+                                ? "bg-primary border-primary text-white shadow-md ring-2 ring-primary/10" 
+                                : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary/20"
+                            )}
+                          >
+                            <span>CARTÃO CONSIGNADO</span>
+                            {filters.cardTypes.includes("CARTÃO CONSIGNADO") && <Check className="w-3.5 h-3.5" />}
+                          </button>
 
-                <div id="banco-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-indigo-50/10 p-5 rounded-2xl mt-6 border border-indigo-100/30 shadow-sm transition-all hover:shadow-md">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Banco do Cartão</h4>
-                    </div>
-                    <div className="flex gap-3">
-                      <button 
-                        onClick={() => selectAll("cardBanks", CARD_BANKS)}
-                        className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100/50"
-                      >
-                        Todos
-                      </button>
-                      <button 
-                        onClick={() => clearAll("cardBanks", CARD_BANKS)}
-                        className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-white hover:bg-slate-50"
-                      >
-                        Limpar
-                      </button>
+                          <div className="space-y-2">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">LÍQUIDA 5% (MÍNIMA)</label>
+                            <div className="relative">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                              <Input 
+                                className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px] rounded-lg" 
+                                placeholder="Ex: 100,00" 
+                                inputMode="decimal"
+                                value={filters.cardMargemMin}
+                                onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Bloco 2: CARTÃO BENEFÍCIO */}
+                        <div className="space-y-4 p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
+                          <button 
+                            onClick={() => toggleFilter("cardTypes", "CARTÃO BENEFÍCIO")}
+                            className={cn(
+                              "w-full flex items-center justify-between px-4 py-3 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
+                              filters.cardTypes.includes("CARTÃO BENEFÍCIO") 
+                                ? "bg-primary border-primary text-white shadow-md ring-2 ring-primary/10" 
+                                : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary/20"
+                            )}
+                          >
+                            <span>CARTÃO BENEFÍCIO</span>
+                            {filters.cardTypes.includes("CARTÃO BENEFÍCIO") && <Check className="w-3.5 h-3.5" />}
+                          </button>
+
+                          <div className="space-y-2">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">BENEFÍCIO LÍQUIDA 5% MÍNIMA</label>
+                            <div className="relative">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                              <Input 
+                                className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px] rounded-lg" 
+                                placeholder="Ex: 100,00" 
+                                inputMode="decimal"
+                                value={filters.cardBeneficioMin}
+                                onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <Input 
-                    placeholder="Localizar banco..." 
-                    icon={<Search className="w-4 h-4" />}
-                    className="bg-slate-50/30 border-slate-100 h-9 text-[12px]"
-                    value={searchQueries["card_banks"] || ""}
-                    onChange={(e) => handleSearch("card_banks", e.target.value)}
-                  />
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                    {getFilteredOptions(CARD_BANKS, "card_banks").map((bank) => (
-                      <button 
-                        key={bank}
-                        title={bank}
-                        onClick={() => toggleFilter("cardBanks", bank)}
-                        className={cn(
-                          "flex items-center justify-between px-4 py-3 border rounded-lg text-[10px] font-bold transition-all uppercase tracking-tight text-left",
-                          filters.cardBanks.includes(bank) 
-                            ? "bg-primary border-primary text-white shadow-lg shadow-primary/20" 
-                            : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary hover:text-primary"
-                        )}
-                      >
-                        <span className="truncate mr-2">{bank}</span>
-                        {filters.cardBanks.includes(bank) && <Check className="w-3 h-3 flex-shrink-0" />}
-                      </button>
-                    ))}
+                ) : (
+                  /* Layout Original (SIAPE e outros) */
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Líquida 5% (Mínima)</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardMargemMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício Líquida 5% (Mínima)</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardBeneficioMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div id="tipo-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-blue-50/10 p-4 rounded-xl shadow-sm border border-blue-100/30">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Tipo de Cartão</h4>
+                        </div>
+                        <div className="flex gap-3">
+                          <button 
+                            onClick={() => selectAll("cardTypes", CARD_TYPES)}
+                            className="text-[9px] font-bold text-primary uppercase tracking-widest hover:text-primary/80 transition-colors px-2 py-1 rounded-md bg-primary/5 hover:bg-primary/10"
+                          >
+                            Todos
+                          </button>
+                          <button 
+                            onClick={() => clearAll("cardTypes", CARD_TYPES)}
+                            className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-slate-50 hover:bg-slate-100"
+                          >
+                            Limpar
+                          </button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {CARD_TYPES.map((type) => (
+                          <button 
+                            key={type}
+                            onClick={() => toggleFilter("cardTypes", type)}
+                            className={cn(
+                              "flex items-center justify-between px-4 py-3.5 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
+                              filters.cardTypes.includes(type) 
+                                ? "bg-primary border-primary text-white shadow-lg shadow-primary/20 ring-2 ring-primary/10" 
+                                : "bg-white border-slate-100 text-slate-500 hover:border-primary/30 hover:bg-slate-50/50"
+                            )}
+                          >
+                            <span className="truncate mr-2">{type}</span>
+                            {filters.cardTypes.includes(type) && <Check className="w-3.5 h-3.5" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {activeConvenio !== 'governo_sp' && (
+                  <div id="banco-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-indigo-50/10 p-5 rounded-2xl mt-6 border border-indigo-100/30 shadow-sm transition-all hover:shadow-md">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Banco do Cartão</h4>
+                      </div>
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={() => selectAll("cardBanks", CARD_BANKS)}
+                          className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100/50"
+                        >
+                          Todos
+                        </button>
+                        <button 
+                          onClick={() => clearAll("cardBanks", CARD_BANKS)}
+                          className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-white hover:bg-slate-50"
+                        >
+                          Limpar
+                        </button>
+                      </div>
+                    </div>
+                    <Input 
+                      placeholder="Localizar banco..." 
+                      icon={<Search className="w-4 h-4" />}
+                      className="bg-slate-50/30 border-slate-100 h-9 text-[12px]"
+                      value={searchQueries["card_banks"] || ""}
+                      onChange={(e) => handleSearch("card_banks", e.target.value)}
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                      {getFilteredOptions(CARD_BANKS, "card_banks").map((bank) => (
+                        <button 
+                          key={bank}
+                          title={bank}
+                          onClick={() => toggleFilter("cardBanks", bank)}
+                          className={cn(
+                            "flex items-center justify-between px-4 py-3 border rounded-lg text-[10px] font-bold transition-all uppercase tracking-tight text-left",
+                            filters.cardBanks.includes(bank) 
+                              ? "bg-primary border-primary text-white shadow-lg shadow-primary/20" 
+                              : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary hover:text-primary"
+                          )}
+                        >
+                          <span className="truncate mr-2">{bank}</span>
+                          {filters.cardBanks.includes(bank) && <Check className="w-3 h-3 flex-shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           ) : (
@@ -1391,7 +1588,7 @@ export default function NewCampaignPage() {
                     <h3 className={cn(
                       "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
                       (filters.cardMargemMin || filters.cardBeneficioMin) ? "text-blue-600" : "text-slate-400"
-                    )}>4. MARGEM DOS CARTÕES</h3>
+                    )}>{getCardNumbers()['cards']}. MARGEM DOS CARTÕES</h3>
                   </div>
                   <button 
                     onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "" }))}
