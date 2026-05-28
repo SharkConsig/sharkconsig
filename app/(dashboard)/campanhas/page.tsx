@@ -335,11 +335,14 @@ export default function CampaignsPage() {
         }
 
         const isGovSp = targetTable === 'base_consulta_governo_sp';
+        const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
         const columnsToSelect = isGovPi
           ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio"
           : isGovSp
             ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, salario, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5"
-            : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
+            : isPrefSp
+              ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5"
+              : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
 
         const { data: bcrData, error: bcrError } = await withRetry(() =>
           supabase.from(targetTable).select(columnsToSelect).in('cpf', cpfs)

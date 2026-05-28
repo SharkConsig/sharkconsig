@@ -177,12 +177,12 @@ export default function SearchClientPage() {
         return {
           ...r,
           id: r.id as string,
-          numero_matricula: (r.rf as string) || '---',
-          identificacao: (r.rf as string) || '---',
-          situacao_funcional: r.situacao_funcional as string | null,
+          numero_matricula: (r.identificacao as string) || '---',
+          identificacao: (r.identificacao as string) || '---',
+          situacao_funcional: (r.tipo_vinculo as string) || (r.situacao_funcional as string) || null,
           salario: 0,
-          orgao: r.secretaria as string | null,
-          regime_juridico: r.regime_juridico as string | null,
+          orgao: (lotacoes[0]?.orgao as string) || (r.orgao as string) || (r.secretaria as string) || null,
+          regime_juridico: (lotacoes[0]?.lotacao as string) || (r.regime_juridico as string) || null,
           uf: 'SP',
           prefeitura_sp_lotacoes: lotacoes,
           instituidores: lotacoes.map((l) => ({
