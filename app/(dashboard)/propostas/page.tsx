@@ -153,8 +153,17 @@ export default function ProposalsPage() {
       const proposal = proposals.find(p => p.id_lead === idLead)
       if (!proposal) throw new Error("Proposta não encontrada")
 
-      // Use de data selecionada ou data atual
-      const baseDate = customDate ? new Date(`${customDate}T${new Date().toISOString().split('T')[1]}`) : new Date();
+      // Use de data selecionada ou data atual, garantindo que não ocorra problemas de timezone
+      const baseDate = customDate ? (() => {
+        const d = new Date();
+        const parts = customDate.split('-').map(Number);
+        if (parts.length === 3 && !parts.some(isNaN)) {
+          d.setFullYear(parts[0]);
+          d.setMonth(parts[1] - 1);
+          d.setDate(parts[2]);
+        }
+        return d;
+      })() : new Date();
       const isoDate = baseDate.toISOString();
 
       // Base data that definitely exists

@@ -34,6 +34,13 @@ interface StatusPropostaModalProps {
   onStatusUpdate: (proposalId: string, newStatus: string, ade?: string, obsCorretor?: string, obsOperacional?: string, customDate?: string) => Promise<void>;
 }
 
+const getLocalDateString = (d: Date = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate }: StatusPropostaModalProps) {
   const { isCollapsed } = useSidebar()
   const { isCorretor, isSupervisor, isDeveloper, isOperational, isAdmin } = useAuth()
@@ -42,7 +49,7 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
   
   // Novos estados para campos dinâmicos
   const [ade, setAde] = useState("")
-  const [dataStatus, setDataStatus] = useState<string>(new Date().toISOString().split('T')[0])
+  const [dataStatus, setDataStatus] = useState<string>(getLocalDateString())
   const [obsCorretor, setObsCorretor] = useState("")
   const [obsOperacional, setObsOperacional] = useState("")
 
@@ -75,6 +82,21 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
       setObsOperacional("")
       
       setSelectedStatus("")
+
+      // Resetar à data local atual, ou usar data de pagamento prévia se já paga
+      let initialDateStr = getLocalDateString();
+      if (
+        (proposal.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA" || proposal.status === "PÓS-VENDA REALIZADA") &&
+        proposal.data_pago_cliente
+      ) {
+        try {
+          const d = new Date(proposal.data_pago_cliente as string);
+          initialDateStr = getLocalDateString(d);
+        } catch (e) {
+          console.error("Erro ao converter data_pago_cliente:", e);
+        }
+      }
+      setDataStatus(initialDateStr);
     }
   }, [proposal])
 

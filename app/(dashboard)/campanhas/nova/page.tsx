@@ -153,6 +153,7 @@ export default function NewCampaignPage() {
     cardBanks: [] as string[],
     cardMargemMin: "",
     cardBeneficioMin: "",
+    cardBeneficioMax: "",
     idadeMin: "",
     idadeMax: "",
   })
@@ -253,7 +254,7 @@ export default function NewCampaignPage() {
       numbers['orgao'] = currentNumber++;
       numbers['situacao'] = currentNumber++;
       
-      if (activeConvenio !== 'governo_sp') {
+      if (activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp') {
         numbers['regime'] = currentNumber++;
         numbers['uf'] = currentNumber++;
       }
@@ -261,7 +262,7 @@ export default function NewCampaignPage() {
 
     numbers['margem'] = currentNumber++;
 
-    if (activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp') {
+    if (activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp') {
       numbers['saldo'] = currentNumber++;
       numbers['loans'] = currentNumber++;
     }
@@ -313,6 +314,7 @@ export default function NewCampaignPage() {
       filters.loanPrazoMax !== "" ||
       filters.cardMargemMin !== "" ||
       filters.cardBeneficioMin !== "" ||
+      filters.cardBeneficioMax !== "" ||
       filters.cardTypes.length > 0 ||
       filters.cardBanks.length > 0 ||
       filters.idadeMin !== "" ||
@@ -533,6 +535,15 @@ export default function NewCampaignPage() {
         if (cBMin !== null && cols.includes('beneficio_liquida_5')) {
           q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
         }
+      }
+    } else if (activeConvenio === 'prefeitura_sp') {
+      const cBMin = parseSafeNumber(f.cardBeneficioMin);
+      const cBMax = parseSafeNumber(f.cardBeneficioMax);
+      if (cBMin !== null && cols.includes('beneficio_liquida_5')) {
+        q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+      }
+      if (cBMax !== null && cols.includes('beneficio_liquida_5')) {
+        q = q.not('beneficio_liquida_5', 'is', null).lte('beneficio_liquida_5', cBMax);
       }
     } else {
       const cMMin = parseSafeNumber(f.cardMargemMin);
@@ -966,8 +977,8 @@ export default function NewCampaignPage() {
 
           {filterSections.map((section) => {
             if (activeConvenio === 'governo_pi') return null;
-            if (section.id === "4" && activeConvenio === 'governo_sp') return null;
-            if (section.id === "3" && activeConvenio === 'governo_sp') return null;
+            if (section.id === "4" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
+            if (section.id === "3" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             const category = CATEGORY_MAP[section.id] as keyof typeof filters;
             const hasSelectedFilters = category && (filters[category] as string[]).length > 0;
 
@@ -1103,7 +1114,9 @@ export default function NewCampaignPage() {
                   )}>
                     {activeConvenio === 'governo_pi' 
                       ? `${getCardNumbers()['margem']}. MARGEM DISPONÍVEL EMPRÉSTIMO` 
-                      : `${getCardNumbers()['margem']}. MARGEM 35%`}
+                      : activeConvenio === 'prefeitura_sp'
+                        ? `${getCardNumbers()['margem']}. LÍQUIDA CONSIGNADO`
+                        : `${getCardNumbers()['margem']}. MARGEM 35%`}
                   </h3>
                 </div>
                 <button 
@@ -1145,7 +1158,7 @@ export default function NewCampaignPage() {
             </CardContent>
           </Card>
 
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && (
             /* 7. SALDO 70% */
             <Card className={cn(
               "card-shadow transition-all duration-300",
@@ -1196,7 +1209,7 @@ export default function NewCampaignPage() {
 
 
           {/* 8. EMPRÉSTIMOS */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1329,27 +1342,29 @@ export default function NewCampaignPage() {
           {activeConvenio !== 'governo_pi' ? (
             <Card className={cn(
               "card-shadow transition-all duration-300",
-              (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+              (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
             )}>
               <CardContent className="p-6 lg:p-8 space-y-8">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={cn(
                       "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                      (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "bg-blue-100" : "bg-slate-50"
+                      (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "bg-blue-100" : "bg-slate-50"
                     )}>
                       <CreditCard className={cn(
                         "w-4 h-4 transition-colors",
-                        (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
+                        (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
                       )} />
                     </div>
                     <h3 className={cn(
                       "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
-                      (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
-                    )}>{getCardNumbers()['cards']}. CARTÕES</h3>
+                      (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
+                    )}>
+                      {getCardNumbers()['cards']}. {activeConvenio === 'prefeitura_sp' ? "CARTÃO BENEFÍCIO" : "CARTÕES"}
+                    </h3>
                   </div>
                   <button 
-                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "", cardTypes: [] }))}
+                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "", cardBeneficioMax: "", cardTypes: [] }))}
                     className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
                   >
                     Limpar
@@ -1444,6 +1459,38 @@ export default function NewCampaignPage() {
                       </div>
                     </div>
                   </div>
+                ) : activeConvenio === 'prefeitura_sp' ? (
+                  /* Layout Customizado para Prefeitura SP */
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício Líquida 5% (Mínima)</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px] rounded-lg" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardBeneficioMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício Líquida 5% (Máxima)</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px] rounded-lg" 
+                            placeholder="Ex: 500,00" 
+                            inputMode="decimal"
+                            value={filters.cardBeneficioMax}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMax: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   /* Layout Original (SIAPE e outros) */
                   <>
@@ -1517,7 +1564,7 @@ export default function NewCampaignPage() {
                   </>
                 )}
 
-                {activeConvenio !== 'governo_sp' && (
+                {activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && (
                   <div id="banco-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-indigo-50/10 p-5 rounded-2xl mt-6 border border-indigo-100/30 shadow-sm transition-all hover:shadow-md">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
