@@ -413,7 +413,29 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
         )
 
         if (idError) console.error("Erro ao buscar identificações Governo MA:", idError)
-        setRegistrations((idData as Registration[]) || [])
+        
+        const mappedRegs = (idData || []).map((r: Record<string, unknown>) => {
+          const lotacoes = ensureArray<Lotacao>(r.governo_ma_lotacoes)
+          return {
+            ...r,
+            id: r.id as string,
+            numero_matricula: (r.matricula as string) || '---',
+            matricula: (r.matricula as string) || '---',
+            situacao_funcional: r.situacao_funcional as string | null,
+            salario: 0,
+            orgao: r.secretaria as string | null,
+            regime_juridico: r.regime_juridico as string | null,
+            uf: 'MA',
+            governo_ma_lotacoes: lotacoes,
+            instituidores: lotacoes.map((l) => ({
+              id: (l.id as string) || "---",
+              nome: null,
+              itens_credito: []
+            }))
+          }
+        })
+
+        setRegistrations(mappedRegs as unknown as Registration[])
         setIsLoading(false)
         return
       }
@@ -1179,75 +1201,78 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                 </div>
                               );
                               
-                              const isConsigAvailable = (lotacao.margem_emprestimo_consignado || 0) > 0;
-                              const isCardAvailable = (lotacao.margem_cartao_consignado || 0) > 0;
-                              const isBenefAvailable = (lotacao.margem_cartao_beneficio || 0) > 0;
+                              const valConsig = lotacao.margem_emprestimo_consignado ?? 0;
+                              const valCard = lotacao.margem_cartao_consignado ?? 0;
+                              const valBenef = lotacao.margem_cartao_beneficio ?? 0;
 
-                              const sections = [
-                                {
-                                  title: "EMPRÉSTIMO CONSIGNADO",
-                                  color: "bg-blue-500",
-                                  value: lotacao.margem_emprestimo_consignado,
-                                  isAvailable: isConsigAvailable,
-                                  bgColor: "bg-[#f0f7ff]",
-                                  borderColor: "border-blue-100",
-                                  textColor: "text-blue-600",
-                                  mainTextColor: "text-blue-700",
-                                  dotColor: "bg-blue-500"
-                                },
-                                {
-                                  title: "CARTÃO CONSIGNADO (RMC)",
-                                  color: "bg-emerald-500",
-                                  value: lotacao.margem_cartao_consignado,
-                                  isAvailable: isCardAvailable,
-                                  bgColor: "bg-[#f0fff4]",
-                                  borderColor: "border-emerald-100",
-                                  textColor: "text-emerald-600",
-                                  mainTextColor: "text-emerald-700",
-                                  dotColor: "bg-emerald-500"
-                                },
-                                {
-                                  title: "CARTÃO BENEFÍCIO (RCC)",
-                                  color: "bg-purple-500",
-                                  value: lotacao.margem_cartao_beneficio,
-                                  isAvailable: isBenefAvailable,
-                                  bgColor: "bg-[#fdf4ff]",
-                                  borderColor: "border-purple-100",
-                                  textColor: "text-purple-600",
-                                  mainTextColor: "text-purple-700",
-                                  dotColor: "bg-purple-500"
-                                }
-                              ];
+                              const isConsigAvailable = valConsig > 0;
+                              const isCardAvailable = valCard > 0;
+                              const isBenefAvailable = valBenef > 0;
 
                               return (
-                                <div className="space-y-8">
-                                  {sections.map((section, sIdx) => (
-                                    <div key={sIdx} className="space-y-4">
-                                      <div className="flex items-center gap-2">
-                                        <div className={cn("w-1 h-3.5 rounded-full", section.color)}></div>
-                                        <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">{section.title}</h4>
-                                      </div>
-                                      <div className="grid grid-cols-1">
-                                        <div className={cn(
-                                          "p-5 border rounded-2xl transition-all",
-                                          section.isAvailable ? `${section.bgColor} ${section.borderColor}` : "bg-red-50 border-red-100"
-                                        )}>
-                                          <p className={cn("text-[9px] font-black uppercase tracking-widest mb-2", section.isAvailable ? section.textColor : "text-red-600")}>
-                                            Margem Disponível
-                                          </p>
-                                          <p className={cn("text-2xl font-black", section.isAvailable ? section.mainTextColor : "text-red-700")}>
-                                            {formatCurrency(section.value)}
-                                          </p>
-                                          <div className="flex items-center gap-1.5 mt-2">
-                                            <div className={cn("w-1.5 h-1.5 rounded-full", section.isAvailable ? section.dotColor : "bg-red-500")}></div>
-                                            <p className={cn("text-[9px] font-black uppercase tracking-widest", section.isAvailable ? section.textColor : "text-red-600")}>
-                                              {section.isAvailable ? "Disponível" : "Indisponível"}
-                                            </p>
-                                          </div>
-                                        </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                  {/* Margem Empréstimo Consignado */}
+                                  <div className={cn(
+                                    "p-5 border rounded-2xl space-y-3",
+                                    isConsigAvailable ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                                  )}>
+                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
+                                      MARGEM EMPRÉSTIMO CONSIGNADO
+                                    </p>
+                                    <div className="flex flex-col">
+                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isConsigAvailable ? "text-blue-700" : "text-red-700 font-bold")}>
+                                        {formatCurrency(valConsig)}
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
+                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
+                                          {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </span>
                                       </div>
                                     </div>
-                                  ))}
+                                  </div>
+
+                                  {/* Margem Cartão Consignado */}
+                                  <div className={cn(
+                                    "p-5 border rounded-2xl space-y-3",
+                                    isCardAvailable ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                                  )}>
+                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600 truncate")}>
+                                      MARGEM CARTÃO CONSIGNADO
+                                    </p>
+                                    <div className="flex flex-col">
+                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isCardAvailable ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                        {formatCurrency(valCard)}
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <div className={cn("w-2 h-2 rounded-full", isCardAvailable ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
+                                          {isCardAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Margem Cartão Benefício */}
+                                  <div className={cn(
+                                    "p-5 border rounded-2xl space-y-3",
+                                    isBenefAvailable ? "bg-purple-50 border-purple-100" : "bg-red-50 border-red-100"
+                                  )}>
+                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600 truncate")}>
+                                      MARGEM CARTÃO BENEFÍCIO
+                                    </p>
+                                    <div className="flex flex-col">
+                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isBenefAvailable ? "text-purple-700" : "text-red-700 font-bold")}>
+                                        {formatCurrency(valBenef)}
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <div className={cn("w-2 h-2 rounded-full", isBenefAvailable ? "bg-purple-500" : "bg-red-500")}></div>
+                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600")}>
+                                          {isBenefAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
                               );
                             })()}
