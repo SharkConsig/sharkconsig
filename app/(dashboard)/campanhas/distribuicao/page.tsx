@@ -62,6 +62,58 @@ interface BrokerUser {
   funcao?: string;
 }
 
+async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[]> {
+  if (cpfs.length === 0) return [];
+
+  const TABLES = [
+    'base_consulta_siape',
+    'base_consulta_governo_sp',
+    'base_consulta_prefeitura_sp',
+    'base_consulta_governo_pi',
+    'base_consulta_governo_ma',
+    'base_consulta_governo_rr'
+  ];
+
+  const results: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
+  const foundCpfs = new Set<string>();
+
+  const queries = TABLES.map(async (table) => {
+    try {
+      const { data, error } = await supabase
+        .from(table)
+        .select('cpf, nome, telefone_1, telefone_2, telefone_3')
+        .in('cpf', cpfs);
+      if (error) {
+        console.error(`Erro ao consultar ${table} para detalhes:`, error);
+        return [];
+      }
+      return data || [];
+    } catch (err) {
+      console.error(`Falha ao carregar detalhes de ${table}:`, err);
+      return [];
+    }
+  });
+
+  const batches = await Promise.all(queries);
+  for (const batch of batches) {
+    for (const item of batch) {
+      if (!foundCpfs.has(item.cpf)) {
+        foundCpfs.add(item.cpf);
+        results.push({
+          cpf: item.cpf,
+          nome: item.nome,
+          telefone_1: item.telefone_1,
+          telefone_2: item.telefone_2,
+          telefone_3: item.telefone_3
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+
 export default function DistribuicaoCampanhaPage() {
   const router = useRouter()
   const { user, perfil, isAdmin, isDeveloper, isOperational } = useAuth()
@@ -188,15 +240,18 @@ export default function DistribuicaoCampanhaPage() {
       const batchSize = 500;
       for (let i = 0; i < uniqueCpfs.length; i += batchSize) {
         const batchCpfs = uniqueCpfs.slice(i, i + batchSize);
-        const { data: clientDetails, error: clientErr } = await supabase
-          .from(targetTable)
-          .select('cpf, nome, telefone_1, telefone_2, telefone_3')
-          .in('cpf', batchCpfs);
-
-        if (clientErr) throw clientErr;
-        if (clientDetails) {
-          clientsBatchList.push(...clientDetails);
+        let clientDetailsOfBatch;
+        if (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect') {
+          clientDetailsOfBatch = await fetchClientDetailsFromAllTables(batchCpfs);
+        } else {
+          const { data: details, error: clientErr } = await supabase
+            .from(targetTable)
+            .select('cpf, nome, telefone_1, telefone_2, telefone_3')
+            .in('cpf', batchCpfs);
+          if (clientErr) throw clientErr;
+          clientDetailsOfBatch = details || [];
         }
+        clientsBatchList.push(...clientDetailsOfBatch);
       }
 
       const workbook = new ExcelJS.Workbook();
@@ -367,12 +422,17 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_governo_rr';
       }
 
-      const { data: clientDetails, error: clientErr } = await supabase
-        .from(targetTable)
-        .select('cpf, nome, telefone_1, telefone_2, telefone_3')
-        .in('cpf', cpfs);
-
-      if (clientErr) throw clientErr;
+      let clientDetails;
+      if (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect') {
+        clientDetails = await fetchClientDetailsFromAllTables(cpfs);
+      } else {
+        const { data: details, error: clientErr } = await supabase
+          .from(targetTable)
+          .select('cpf, nome, telefone_1, telefone_2, telefone_3')
+          .in('cpf', cpfs);
+        if (clientErr) throw clientErr;
+        clientDetails = details || [];
+      }
 
       const mappedDetails = cpfs.map(cpf => {
         const found = clientDetails?.find(c => c.cpf === cpf);

@@ -538,25 +538,39 @@ export default function CampaignsPage() {
 
       const isGovPi = targetTable === 'base_consulta_governo_pi';
       const isGovRr = targetTable === 'base_consulta_governo_rr';
-      
-      const headers = isGovPi
-        ? [
-            "CPF", "NOME", "MATRÍCULA", "VÍNCULO", "DATA NASCIMENTO", 
-            "TELEFONE 1", "TELEFONE 2", "TELEFONE 3", "ÓRGÃO", 
-            "MARGEM DISPONÍVEL EMPRÉSTIMO", "MARGEM CARTÃO CONSIGNADO", "MARGEM CARTÃO BENEFÍCIO"
-          ].map(h => `"${h}"`).join(",")
-        : isGovRr
-          ? [
-              "CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3",
-              "MARGEM EMPRÉSTIMO", "MARGEM CARTÃO"
-            ].map(h => `"${h}"`).join(",")
-          : [
-              "CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3", 
-              "MATRÍCULA", "ÓRGÃO", "SITUAÇÃO FUNCIONAL", "SALÁRIO", "INSTITUIDOR", 
-              "REGIME JURÍDICO", "UF", "SALDO 70%", "MARGEM 35%", "BRUTA 5%", 
-              "UTILIZADA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO UTILIZADA 5%", 
-              "BENEFÍCIO LÍQUIDA 5%", "BANCO", "PRAZO", "TIPO"
-            ].map(h => `"${h}"`).join(",")
+      const isGovSp = targetTable === 'base_consulta_governo_sp';
+      const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
+      const isGovMa = targetTable === 'base_consulta_governo_ma';
+      const isMultiConvenio = (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect');
+
+      const headersArray = ["CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3"];
+      if (isGovPi) {
+        headersArray.push("MARGEM DISPONÍVEL EMPRÉSTIMO", "MARGEM CARTÃO CONSIGNADO", "MARGEM CARTÃO BENEFÍCIO");
+      } else if (isGovRr) {
+        headersArray.push("MARGEM EMPRÉSTIMO", "MARGEM CARTÃO");
+      } else if (isGovSp) {
+        headersArray.push("MARGEM 35%", "BRUTA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO LÍQUIDA 5%");
+      } else if (isPrefSp) {
+        headersArray.push("MARGEM 35%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO LÍQUIDA 5%");
+      } else if (isGovMa) {
+        headersArray.push("MARGEM 35%", "BRUTA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO LÍQUIDA 5%");
+      } else if (isMultiConvenio) {
+        headersArray.push(
+          "CONVÊNIO",
+          "SALDO 70%",
+          "MARGEM 35% / EMPRÉSTIMO",
+          "BRUTA 5%",
+          "UTILIZADA 5%",
+          "LÍQUIDA 5% / CARTÃO",
+          "BENEFÍCIO BRUTA 5%",
+          "BENEFÍCIO UTILIZADA 5%",
+          "BENEFÍCIO LÍQUIDA 5% / CARTÃO BENEFÍCIO"
+        );
+      } else {
+        headersArray.push("SALDO 70%", "MARGEM 35%", "BRUTA 5%", "UTILIZADA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO UTILIZADA 5%", "BENEFÍCIO LÍQUIDA 5%");
+      }
+
+      const headers = headersArray.map(h => `"${h}"`).join(",");
       
       allCsvRows.push(headers)
       
@@ -600,6 +614,13 @@ export default function CampaignsPage() {
         if (cpfs.length === 0) {
           break;
         }
+
+        const memberConvenioMap = new Map<string, string>(
+          memberBatch.map((m: { cliente_cpf: string | null; convenio?: string | null }) => [
+            m.cliente_cpf || "",
+            m.convenio || "siape"
+          ])
+        );
 
         const isGovSp = targetTable === 'base_consulta_governo_sp';
         const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
@@ -652,6 +673,9 @@ export default function CampaignsPage() {
           tipo?: string;
           margem_emprestimo?: number | string;
           margem_cartao?: number | string;
+          margem_disponivel_emprestimo?: number | string | null;
+          margem_cartao_consignado?: number | string | null;
+          margem_cartao_beneficio?: number | string | null;
         }
 
         interface IGovPiRow {
@@ -689,41 +713,137 @@ export default function CampaignsPage() {
 
           const govRow = row as unknown as IGovPiRow;
 
-          const csvFields = isGovPi
-            ? [
-                govRow.cpf,
-                govRow.nome,
-                govRow.matricula || "",
-                govRow.vinculo || "",
-                govRow.data_nascimento || "",
-                govRow.telefone_1 || "",
-                govRow.telefone_2 || "",
-                govRow.telefone_3 || "",
-                govRow.orgao || "",
-                govRow.margem_disponivel_emprestimo ?? "",
-                govRow.margem_cartao_consignado ?? "",
-                govRow.margem_cartao_beneficio ?? ""
-              ]
-            : isGovRr
-              ? [
-                  row.cpf,
-                  row.nome,
-                  row.data_de_nascimento || "",
-                  row.telefone_1 || "",
-                  row.telefone_2 || "",
-                  row.telefone_3 || "",
-                  row.margem_emprestimo ?? "",
-                  row.margem_cartao ?? ""
-                ]
-              : [
-                  row.cpf, row.nome, row.data_nascimento || "",
-                  row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "", 
-                  row.numero_matricula || (row as unknown as { identificacao?: string }).identificacao || "", row.orgao || "", row.situacao_funcional || "",
-                  row.salario || 0, row.instituidor_nome || "", row.regime_juridico || "", row.uf || "",
-                  row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
-                  row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0,
-                  row.banco || "", row.prazo || "", row.tipo || ""
-                ];
+          let csvFields: (string | number | null | undefined)[] = [];
+          if (isGovPi) {
+            csvFields = [
+              govRow.cpf,
+              govRow.nome,
+              govRow.data_nascimento || "",
+              govRow.telefone_1 || "",
+              govRow.telefone_2 || "",
+              govRow.telefone_3 || "",
+              govRow.margem_disponivel_emprestimo ?? "",
+              govRow.margem_cartao_consignado ?? "",
+              govRow.margem_cartao_beneficio ?? ""
+            ];
+          } else if (isGovRr) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_de_nascimento || row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              row.margem_emprestimo ?? "",
+              row.margem_cartao ?? ""
+            ];
+          } else if (isGovSp) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              row.margem_35 || 0,
+              row.bruta_5 || 0,
+              row.liquida_5 || 0,
+              row.beneficio_bruta_5 || 0,
+              row.beneficio_liquida_5 || 0
+            ];
+          } else if (isPrefSp) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              row.margem_35 || 0,
+              row.beneficio_bruta_5 || 0,
+              row.beneficio_liquida_5 || 0
+            ];
+          } else if (isGovMa) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              row.margem_35 || 0,
+              row.bruta_5 || 0,
+              row.liquida_5 || 0,
+              row.beneficio_bruta_5 || 0,
+              row.beneficio_liquida_5 || 0
+            ];
+          } else if (isMultiConvenio) {
+            const conv = memberConvenioMap.get(row.cpf) || "siape";
+            if (conv === "siape") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "SIAPE",
+                row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
+                row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0
+              ];
+            } else if (conv === "governo_sp") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO SP",
+                "", row.margem_35 || 0, row.bruta_5 || 0, "",
+                row.liquida_5 || 0, row.beneficio_bruta_5 || 0, "", row.beneficio_liquida_5 || 0
+              ];
+            } else if (conv === "prefeitura_sp") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "PREFEITURA SP",
+                "", row.margem_35 || 0, "", "",
+                "", row.beneficio_bruta_5 || 0, "", row.beneficio_liquida_5 || 0
+              ];
+            } else if (conv === "governo_pi") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO PIAUÍ",
+                "", row.margem_disponivel_emprestimo ?? "", "", "",
+                row.margem_cartao_consignado ?? "", "", "", row.margem_cartao_beneficio ?? ""
+              ];
+            } else if (conv === "governo_ma") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO MARANHÃO",
+                "", row.margem_35 || 0, row.bruta_5 || 0, "",
+                row.liquida_5 || 0, row.beneficio_bruta_5 || 0, "", row.beneficio_liquida_5 || 0
+              ];
+            } else if (conv === "governo_rr") {
+              csvFields = [
+                row.cpf, row.nome, row.data_de_nascimento || row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO RORAIMA",
+                "", row.margem_emprestimo ?? "", "", "",
+                row.margem_cartao ?? "", "", "", ""
+              ];
+            } else {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "SIAPE",
+                row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
+                row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0
+              ];
+            }
+          } else {
+            csvFields = [
+              row.cpf, row.nome, row.data_nascimento || "",
+              row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+              row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
+              row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0
+            ];
+          }
 
           const csvRow = csvFields.map(val => {
             const clean = String(val === null || val === undefined ? "" : val).replace(/"/g, '""');

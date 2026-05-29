@@ -450,7 +450,7 @@ export default function CampanhaAtendimentoPage() {
           const { data: memberRow, error: memberErr } = await withRetry(() =>
             supabase
               .from('campanha_membros')
-              .select('cliente_cpf')
+              .select('cliente_cpf, convenio')
               .eq('campanha_id', camp.id)
               .order('ordem_fila', { ascending: true })
               .range(globalOffset, globalOffset)
@@ -458,6 +458,9 @@ export default function CampanhaAtendimentoPage() {
           )
           if (!memberErr && memberRow?.cliente_cpf) {
             fetchedLeadCpf = memberRow.cliente_cpf
+            if (memberRow.convenio && TABLE_MAP[memberRow.convenio]) {
+              table = TABLE_MAP[memberRow.convenio]
+            }
           } else if (memberErr) {
             console.error("Erro ao buscar campanha_membros:", memberErr)
           }
