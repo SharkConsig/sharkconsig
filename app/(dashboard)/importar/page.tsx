@@ -328,6 +328,27 @@ export default function ImportBatchPage() {
     return results;
   }
 
+  /**
+   * Helper to delete data in batches to avoid URL length limits with .in()
+   */
+  async function deleteInBatches(
+    table: string,
+    column: string,
+    values: (string | number)[],
+    batchSize = 100
+  ): Promise<void> {
+    for (let i = 0; i < values.length; i += batchSize) {
+      const batch = values.slice(i, i + batchSize);
+      const { error } = await withRetry(async () => {
+        return await supabase
+          .from(table)
+          .delete()
+          .in(column, batch);
+      });
+      if (error) throw error;
+    }
+  }
+
   const processSiapeChunk = async (results: Record<string, string | undefined>[]) => {
     const cpfs = results.map(r => normalizeCPF(r.cpf || "")).filter(Boolean);
     if (cpfs.length === 0) return;
@@ -807,8 +828,9 @@ export default function ImportBatchPage() {
     // Helper para verificar se devemos preservar o valor do banco (Anti-Null e Anti-Zero)
     // Retorna true se o valor da planilha for vazio (""), nulo ou '0'
     const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
       const v = String(val).trim();
-      return v === "" || v === "0" || val === null || val === undefined;
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
     };
 
     // Usamos um Map para evitar CPFs duplicados no próprio lote
@@ -817,13 +839,28 @@ export default function ImportBatchPage() {
       const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
       const existingInMap = clientMap.get(row.cpf);
 
-      // Regra: Se a planilha trouxer Vazio ou 0, e existir dado no Banco ou no Lote, preserva o dado.
-      // Caso contrário (planilha tem valor válido), atualiza.
-      const nome = !shouldPreserve(row.nome) ? row.nome : (existingInMap?.nome || dbClient?.nome || 'NAO INFORMADO');
-      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : (existingInMap?.data_nascimento || dbClient?.data_nascimento || null);
-      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : (existingInMap?.telefone_1 || dbClient?.telefone_1 || null);
-      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : (existingInMap?.telefone_2 || dbClient?.telefone_2 || null);
-      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : (existingInMap?.telefone_3 || dbClient?.telefone_3 || null);
+      // Regra do Nome: O nome do cliente só é sobrescrito se o valor no banco estiver como null ou "MOCK/NÃO INFORMADO"
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      // Anti-Null/Zero para os demais campos de clientes (se vier nulo/vazio, não sobrescreve dado do banco)
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
 
       clientMap.set(row.cpf, {
         cpf: row.cpf, 
@@ -885,29 +922,60 @@ export default function ImportBatchPage() {
 
     const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, identificacao: string}) => [`${id.cliente_id}_${id.identificacao}`, id.id]));
 
-    // --- PASSO 3: Inserir Lotações (N:1 com Identificação) ---
-    const lotacaoRows = normalizedRows.map(row => {
+    // --- PASSO 3: Inserir Lotações (N:1 com Identificação) com UPSERT (Mesclagem Inteligente de Dados como SIAPE) ---
+    const identIds = Array.from(keyToIdentId.values());
+    const existingLotacoesRaw = await fetchInBatches<Record<string, unknown>>('governo_sp_lotacoes', 'identificacao_id', identIds);
+    const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
+
+    const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+
+    normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.identificacao_val}`);
-      
-      if (!identId) return null;
+      if (!identId) return;
 
-      return {
+      const existingLot = existingLotacoesMap.get(identId);
+      const currentInMap = lotacoesToUpsertMap.get(identId);
+
+      // Regra: Para campos não margens, use a preservação do banco/mapa
+      const lotacao = !shouldPreserve(row.lotacao) ? row.lotacao : (currentInMap?.lotacao || existingLot?.lotacao || null);
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || existingLot?.orgao || null);
+
+      // Margens devem ser atualizadas mesmo se vierem vazias (ou zeros) para refletir o estado real
+      const mb_consignacoes = row.mb_consignacoes !== undefined ? row.mb_consignacoes : (currentInMap?.mb_consignacoes ?? existingLot?.mb_consignacoes ?? null);
+      const md_consignacoes = row.md_consignacoes !== undefined ? row.md_consignacoes : (currentInMap?.md_consignacoes ?? existingLot?.md_consignacoes ?? null);
+      const mb_cartao_credito = row.mb_cartao_credito !== undefined ? row.mb_cartao_credito : (currentInMap?.mb_cartao_credito ?? existingLot?.mb_cartao_credito ?? null);
+      const md_cartao_credito = row.md_cartao_credito !== undefined ? row.md_cartao_credito : (currentInMap?.md_cartao_credito ?? existingLot?.md_cartao_credito ?? null);
+      const mb_cartao_beneficio = row.mb_cartao_beneficio !== undefined ? row.mb_cartao_beneficio : (currentInMap?.mb_cartao_beneficio ?? existingLot?.mb_cartao_beneficio ?? null);
+      const md_cartao_beneficio = row.md_cartao_beneficio !== undefined ? row.md_cartao_beneficio : (currentInMap?.md_cartao_beneficio ?? existingLot?.md_cartao_beneficio ?? null);
+
+      lotacoesToUpsertMap.set(identId, {
         identificacao_id: identId,
-        lotacao: row.lotacao,
-        orgao: row.orgao,
-        mb_consignacoes: row.mb_consignacoes,
-        md_consignacoes: row.md_consignacoes,
-        mb_cartao_credito: row.mb_cartao_credito,
-        md_cartao_credito: row.md_cartao_credito,
-        mb_cartao_beneficio: row.mb_cartao_beneficio,
-        md_cartao_beneficio: row.md_cartao_beneficio,
+        lotacao,
+        orgao,
+        mb_consignacoes,
+        md_consignacoes,
+        mb_cartao_credito,
+        md_cartao_credito,
+        mb_cartao_beneficio,
+        md_cartao_beneficio,
         lote_id: loteId,
         updated_at: new Date().toISOString()
-      };
-    }).filter(Boolean);
+      });
+    });
+
+    const lotacaoRows = Array.from(lotacoesToUpsertMap.values());
 
     if (lotacaoRows.length > 0) {
+      // 1. Limpamos quaisquer registros antigos para evitar duplicações históricas acumuladas em lotes (anti-timeout/anti-URL-limit)
+      try {
+        await deleteInBatches('governo_sp_lotacoes', 'identificacao_id', identIds);
+      } catch (delErr) {
+        const msg = delErr instanceof Error ? delErr.message : String(delErr);
+        throw new Error(`Erro ao limpar lotações Governo SP antigas: ${msg}`);
+      }
+
+      // 2. Inserimos as novas lotações mescladas (agora sem perigo de colisão ou duplicação)
       const { error: lotErr } = await withRetry(async () => {
         return await supabase.from('governo_sp_lotacoes').insert(lotacaoRows);
       });
@@ -943,8 +1011,9 @@ export default function ImportBatchPage() {
     const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
 
     const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
       const v = String(val).trim();
-      return v === "" || v === "0" || val === null || val === undefined;
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
     };
 
     const clientMap = new Map<string, Record<string, unknown>>();
@@ -952,12 +1021,28 @@ export default function ImportBatchPage() {
       const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
       const existingInMap = clientMap.get(row.cpf);
 
-      // Regra Anti-Null/Zero para Prefeitura SP
-      const nome = !shouldPreserve(row.nome) ? row.nome : (existingInMap?.nome || dbClient?.nome || 'NAO INFORMADO');
-      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : (existingInMap?.data_nascimento || dbClient?.data_nascimento || null);
-      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : (existingInMap?.telefone_1 || dbClient?.telefone_1 || null);
-      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : (existingInMap?.telefone_2 || dbClient?.telefone_2 || null);
-      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : (existingInMap?.telefone_3 || dbClient?.telefone_3 || null);
+      // Regra do Nome: O nome do cliente só é sobrescrito se o valor no banco estiver como null ou "MOCK/NÃO INFORMADO"
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      // Anti-Null/Zero para os demais campos de clientes (se vier nulo/vazio, não sobrescreve dado do banco)
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
 
       clientMap.set(row.cpf, {
         cpf: row.cpf,
@@ -1019,27 +1104,56 @@ export default function ImportBatchPage() {
 
     const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, identificacao: string}) => [`${id.cliente_id}_${id.identificacao}`, id.id]));
 
-    // --- PASSO 3: Inserir Lotações (N:1 com Identificação) ---
-    const lotacaoRows = normalizedRows.map(row => {
+    // --- PASSO 3: Inserir Lotações (N:1 com Identificação) com UPSERT (Mesclagem Inteligente de Dados como SIAPE) ---
+    const identIds = Array.from(keyToIdentId.values());
+    const existingLotacoesRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_sp_lotacoes', 'identificacao_id', identIds);
+    const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
+
+    const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+
+    normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.identificacao_val}`);
-      
-      if (!identId) return null;
+      if (!identId) return;
 
-      return {
+      const existingLot = existingLotacoesMap.get(identId);
+      const currentInMap = lotacoesToUpsertMap.get(identId);
+
+      // Regra: Para campos não margens, use a preservação do banco/mapa
+      const lotacao = !shouldPreserve(row.lotacao) ? row.lotacao : (currentInMap?.lotacao || existingLot?.lotacao || null);
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || existingLot?.orgao || null);
+
+      // Margens devem ser atualizadas mesmo se vierem vazias (ou zeros) para refletir o estado real
+      const mb_consignacoes = row.mb_consignacoes !== undefined ? row.mb_consignacoes : (currentInMap?.mb_consignacoes ?? existingLot?.mb_consignacoes ?? null);
+      const md_consignacoes = row.md_consignacoes !== undefined ? row.md_consignacoes : (currentInMap?.md_consignacoes ?? existingLot?.md_consignacoes ?? null);
+      const mb_cartao_beneficio = row.mb_cartao_beneficio !== undefined ? row.mb_cartao_beneficio : (currentInMap?.mb_cartao_beneficio ?? existingLot?.mb_cartao_beneficio ?? null);
+      const md_cartao_beneficio = row.md_cartao_beneficio !== undefined ? row.md_cartao_beneficio : (currentInMap?.md_cartao_beneficio ?? existingLot?.md_cartao_beneficio ?? null);
+
+      lotacoesToUpsertMap.set(identId, {
         identificacao_id: identId,
-        lotacao: row.lotacao,
-        orgao: row.orgao,
-        mb_consignacoes: row.mb_consignacoes,
-        md_consignacoes: row.md_consignacoes,
-        mb_cartao_beneficio: row.mb_cartao_beneficio,
-        md_cartao_beneficio: row.md_cartao_beneficio,
+        lotacao,
+        orgao,
+        mb_consignacoes,
+        md_consignacoes,
+        mb_cartao_beneficio,
+        md_cartao_beneficio,
         lote_id: loteId,
         updated_at: new Date().toISOString()
-      };
-    }).filter(Boolean);
+      });
+    });
+
+    const lotacaoRows = Array.from(lotacoesToUpsertMap.values());
 
     if (lotacaoRows.length > 0) {
+      // 1. Limpamos quaisquer registros antigos para evitar duplicações históricas acumuladas em lotes (anti-timeout/anti-URL-limit)
+      try {
+        await deleteInBatches('prefeitura_sp_lotacoes', 'identificacao_id', identIds);
+      } catch (delErr) {
+        const msg = delErr instanceof Error ? delErr.message : String(delErr);
+        throw new Error(`Erro ao limpar lotações Prefeitura SP antigas: ${msg}`);
+      }
+
+      // 2. Inserimos as novas lotações mescladas (agora sem perigo de colisão ou duplicação)
       const { error: lotErr } = await withRetry(async () => {
         return await supabase.from('prefeitura_sp_lotacoes').insert(lotacaoRows);
       });
@@ -1080,8 +1194,9 @@ export default function ImportBatchPage() {
     const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
 
     const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
       const v = String(val).trim();
-      return v === "" || v === "0" || val === null || val === undefined;
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
     };
 
     const clientMap = new Map<string, Record<string, unknown>>();
@@ -1089,11 +1204,28 @@ export default function ImportBatchPage() {
       const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
       const existingInMap = clientMap.get(row.cpf);
 
-      const nome = !shouldPreserve(row.nome) ? row.nome : (existingInMap?.nome || dbClient?.nome || 'NAO INFORMADO');
-      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : (existingInMap?.data_nascimento || dbClient?.data_nascimento || null);
-      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : (existingInMap?.telefone_1 || dbClient?.telefone_1 || null);
-      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : (existingInMap?.telefone_2 || dbClient?.telefone_2 || null);
-      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : (existingInMap?.telefone_3 || dbClient?.telefone_3 || null);
+      // Regra do Nome: O nome do cliente só é sobrescrito se o valor no banco estiver como null ou "MOCK/NÃO INFORMADO"
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      // Anti-Null/Zero para os demais campos de clientes (se vier nulo/vazio, não sobrescreve dado do banco)
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
 
       clientMap.set(row.cpf, {
         cpf: row.cpf,
@@ -1168,9 +1300,9 @@ export default function ImportBatchPage() {
       const currentInMap = lotacoesToUpsertMap.get(identId);
 
       // Órgão é preservado se vier vazio no CSV
-      const orgao = row.orgao || (currentInMap?.orgao as string) || (existingLot?.orgao as string) || null;
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || existingLot?.orgao || null);
 
-      // Margens podem ser atualizadas ou sobrescritas por novos valores (mesmo nulos) seguindo a regra do SIAPE
+      // Margens devem ser atualizadas mesmo se vierem vazias (ou zeros) para refletir o estado real
       const margem_disponivel_emprestimo = row.margem_disponivel_emprestimo !== undefined ? row.margem_disponivel_emprestimo : (currentInMap?.margem_disponivel_emprestimo ?? existingLot?.margem_disponivel_emprestimo ?? null);
       const margem_cartao_consignado = row.margem_cartao_consignado !== undefined ? row.margem_cartao_consignado : (currentInMap?.margem_cartao_consignado ?? existingLot?.margem_cartao_consignado ?? null);
       const margem_cartao_beneficio = row.margem_cartao_beneficio !== undefined ? row.margem_cartao_beneficio : (currentInMap?.margem_cartao_beneficio ?? existingLot?.margem_cartao_beneficio ?? null);
@@ -1189,9 +1321,17 @@ export default function ImportBatchPage() {
     const lotacaoRows = Array.from(lotacoesToUpsertMap.values());
 
     if (lotacaoRows.length > 0) {
+      // 1. Limpamos quaisquer registros antigos para evitar duplicações históricas acumuladas em lotes (anti-timeout/anti-URL-limit)
+      try {
+        await deleteInBatches('governo_pi_lotacoes', 'identificacao_id', identIds);
+      } catch (delErr) {
+        const msg = delErr instanceof Error ? delErr.message : String(delErr);
+        throw new Error(`Erro ao limpar lotações Governo Piauí antigas: ${msg}`);
+      }
+
+      // 2. Inserimos as novas lotações mescladas (agora sem perigo de colisão ou duplicação)
       const { error: lotErr } = await withRetry(async () => {
-        return await supabase.from('governo_pi_lotacoes')
-          .upsert(lotacaoRows, { onConflict: 'identificacao_id' });
+        return await supabase.from('governo_pi_lotacoes').insert(lotacaoRows);
       });
       if (lotErr) throw new Error(`Erro ao salvar lotações Governo Piauí: ${lotErr.message}`);
     }
@@ -1222,8 +1362,9 @@ export default function ImportBatchPage() {
     const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
 
     const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
       const v = String(val).trim();
-      return v === "" || v === "0" || val === null || val === undefined;
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
     };
 
     const clientMap = new Map<string, Record<string, unknown>>();
@@ -1231,11 +1372,28 @@ export default function ImportBatchPage() {
       const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
       const existingInMap = clientMap.get(row.cpf);
 
-      const nome = !shouldPreserve(row.nome) ? row.nome : (existingInMap?.nome || dbClient?.nome || 'NAO INFORMADO');
-      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : (existingInMap?.data_nascimento || dbClient?.data_nascimento || null);
-      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : (existingInMap?.telefone_1 || dbClient?.telefone_1 || null);
-      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : (existingInMap?.telefone_2 || dbClient?.telefone_2 || null);
-      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : (existingInMap?.telefone_3 || dbClient?.telefone_3 || null);
+      // Regra do Nome: O nome do cliente só é sobrescrito se o valor no banco estiver como null ou "MOCK/NÃO INFORMADO"
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      // Anti-Null/Zero para os demais campos de clientes (se vier nulo/vazio, não sobrescreve dado do banco)
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
 
       clientMap.set(row.cpf, {
         cpf: row.cpf,
@@ -1294,25 +1452,52 @@ export default function ImportBatchPage() {
 
     const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, matricula: string}) => [`${id.cliente_id}_${id.matricula}`, id.id]));
 
-    // --- PASSO 3: Inserir Lotações (Margins) ---
-    const lotacaoRows = normalizedRows.map(row => {
+    // --- PASSO 3: Inserir Lotações (Margins) com UPSERT (Mesclagem Inteligente de Dados como SIAPE) ---
+    const identIds = Array.from(keyToIdentId.values());
+    const existingLotacoesRaw = await fetchInBatches<Record<string, unknown>>('governo_ma_lotacoes', 'identificacao_id', identIds);
+    const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
+
+    const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+
+    normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
-      
-      if (!identId) return null;
+      if (!identId) return;
 
-      return {
+      const existingLot = existingLotacoesMap.get(identId);
+      const currentInMap = lotacoesToUpsertMap.get(identId);
+
+      // Órgão é preservado se vier vazio no CSV
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || existingLot?.orgao || null);
+
+      // Margens devem ser atualizadas mesmo se vierem vazias (ou zeros) para refletir o estado real
+      const margem_emprestimo_consignado = row.margem_emprestimo_consignado !== undefined ? row.margem_emprestimo_consignado : (currentInMap?.margem_emprestimo_consignado ?? existingLot?.margem_emprestimo_consignado ?? null);
+      const margem_cartao_consignado = row.margem_cartao_consignado !== undefined ? row.margem_cartao_consignado : (currentInMap?.margem_cartao_consignado ?? existingLot?.margem_cartao_consignado ?? null);
+      const margem_cartao_beneficio = row.margem_cartao_beneficio !== undefined ? row.margem_cartao_beneficio : (currentInMap?.margem_cartao_beneficio ?? existingLot?.margem_cartao_beneficio ?? null);
+
+      lotacoesToUpsertMap.set(identId, {
         identificacao_id: identId,
-        orgao: row.orgao,
-        margem_emprestimo_consignado: row.margem_emprestimo_consignado,
-        margem_cartao_consignado: row.margem_cartao_consignado,
-        margem_cartao_beneficio: row.margem_cartao_beneficio,
+        orgao,
+        margem_emprestimo_consignado,
+        margem_cartao_consignado,
+        margem_cartao_beneficio,
         lote_id: loteId,
         updated_at: new Date().toISOString()
-      };
-    }).filter(Boolean);
+      });
+    });
+
+    const lotacaoRows = Array.from(lotacoesToUpsertMap.values());
 
     if (lotacaoRows.length > 0) {
+      // 1. Limpamos quaisquer registros antigos para evitar duplicações históricas acumuladas em lotes (anti-timeout/anti-URL-limit)
+      try {
+        await deleteInBatches('governo_ma_lotacoes', 'identificacao_id', identIds);
+      } catch (delErr) {
+        const msg = delErr instanceof Error ? delErr.message : String(delErr);
+        throw new Error(`Erro ao limpar lotações Governo Maranhão antigas: ${msg}`);
+      }
+
+      // 2. Inserimos as novas lotações mescladas (agora sem perigo de colisão ou duplicação)
       const { error: lotErr } = await withRetry(async () => {
         return await supabase.from('governo_ma_lotacoes').insert(lotacaoRows);
       });
@@ -1343,8 +1528,9 @@ export default function ImportBatchPage() {
     const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
 
     const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
       const v = String(val).trim();
-      return v === "" || v === "0" || val === null || val === undefined;
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
     };
 
     const clientMap = new Map<string, Record<string, unknown>>();
@@ -1352,11 +1538,28 @@ export default function ImportBatchPage() {
       const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
       const existingInMap = clientMap.get(row.cpf);
 
-      const nome = !shouldPreserve(row.nome) ? row.nome : (existingInMap?.nome || dbClient?.nome || 'NAO INFORMADO');
-      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : (existingInMap?.data_nascimento || dbClient?.data_nascimento || null);
-      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : (existingInMap?.telefone_1 || dbClient?.telefone_1 || null);
-      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : (existingInMap?.telefone_2 || dbClient?.telefone_2 || null);
-      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : (existingInMap?.telefone_3 || dbClient?.telefone_3 || null);
+      // Regra do Nome: O nome do cliente só é sobrescrito se o valor no banco estiver como null ou "MOCK/NÃO INFORMADO"
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      // Anti-Null/Zero para os demais campos de clientes (se vier nulo/vazio, não sobrescreve dado do banco)
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
 
       clientMap.set(row.cpf, {
         cpf: row.cpf,
@@ -1414,23 +1617,50 @@ export default function ImportBatchPage() {
 
     const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, matricula: string}) => [`${id.cliente_id}_${id.matricula}`, id.id]));
 
-    const lotacaoRows = normalizedRows.map(row => {
+    // --- PASSO 3: Inserir Lotações (Instituidores) com UPSERT (Mesclagem Inteligente de Dados como SIAPE) ---
+    const identIds = Array.from(keyToIdentId.values());
+    const existingLotacoesRaw = await fetchInBatches<Record<string, unknown>>('governo_rr_instituidores', 'matricula_id', identIds);
+    const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.matricula_id as string, l]));
+
+    const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+
+    normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
-      
-      if (!identId) return null;
+      if (!identId) return;
 
-      return {
+      const existingLot = existingLotacoesMap.get(identId);
+      const currentInMap = lotacoesToUpsertMap.get(identId);
+
+      // Origem é preservado se vier vazio no CSV
+      const origem = !shouldPreserve(row.origem) ? row.origem : (currentInMap?.origem || existingLot?.origem || null);
+
+      // Margens devem ser atualizadas mesmo se vierem vazias (ou zeros) para refletir o estado real
+      const margem_emprestimo = row.margem_emprestimo !== undefined ? row.margem_emprestimo : (currentInMap?.margem_emprestimo ?? existingLot?.margem_emprestimo ?? null);
+      const margem_cartao = row.margem_cartao !== undefined ? row.margem_cartao : (currentInMap?.margem_cartao ?? existingLot?.margem_cartao ?? null);
+
+      lotacoesToUpsertMap.set(identId, {
         matricula_id: identId,
-        origem: row.origem,
-        margem_emprestimo: row.margem_emprestimo,
-        margem_cartao: row.margem_cartao,
+        origem,
+        margem_emprestimo,
+        margem_cartao,
         lote_id: loteId,
         updated_at: new Date().toISOString()
-      };
-    }).filter(Boolean);
+      });
+    });
+
+    const lotacaoRows = Array.from(lotacoesToUpsertMap.values());
 
     if (lotacaoRows.length > 0) {
+      // 1. Limpamos quaisquer registros antigos para evitar duplicações históricas acumuladas em lotes (anti-timeout/anti-URL-limit)
+      try {
+        await deleteInBatches('governo_rr_instituidores', 'matricula_id', identIds);
+      } catch (delErr) {
+        const msg = delErr instanceof Error ? delErr.message : String(delErr);
+        throw new Error(`Erro ao limpar instituidores GOV RR antigos: ${msg}`);
+      }
+
+      // 2. Inserimos as novas lotações mescladas (agora sem perigo de colisão ou duplicação)
       const { error: lotErr } = await withRetry(async () => {
         return await supabase.from('governo_rr_instituidores').insert(lotacaoRows);
       });
