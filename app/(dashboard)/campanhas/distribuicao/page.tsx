@@ -1216,7 +1216,7 @@ export default function DistribuicaoCampanhaPage() {
       </div>
 
       {campaignToDelete && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full border border-slate-200 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <h3 className="text-[13px] font-black uppercase tracking-widest text-[#1C2643]">Confirmar Exclusão</h3>
             <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider leading-relaxed font-sans">
@@ -1259,7 +1259,7 @@ export default function DistribuicaoCampanhaPage() {
       )}
 
       {selectedCampaignForTeam && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full border border-slate-200 shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
               <div className="flex items-center gap-2">
@@ -1355,7 +1355,7 @@ export default function DistribuicaoCampanhaPage() {
       )}
 
       {selectedTabulationDetails && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-6 max-w-2xl w-full border border-slate-200 shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150 text-slate-800">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
               <div className="flex flex-col text-left">
@@ -1552,7 +1552,7 @@ export default function DistribuicaoCampanhaPage() {
       )}
 
       {sessionReportUser && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-6 max-w-xl w-full border border-slate-200 shadow-2xl flex flex-col max-h-[80vh] animate-in fade-in zoom-in-95 duration-150 text-slate-800">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
               <div className="flex flex-col text-left">

@@ -456,117 +456,170 @@ export default function CampanhaAtendimentoPage() {
 
         const globalOffset = (offset * numBrokers) + brokerRelIndex
         
-        // 1. Fetch CPF from campanha_membros (extremely fast and indexed)
+        // 1. Fetch CPF from campanha_membros with a loop that skips already tabulated clients in this campaign
         let fetchedLeadCpf: string | null = null
-        try {
-          const { data: memberRows, error: memberErr } = await withRetry(() =>
-            supabase
-              .from('campanha_membros')
-              .select('cliente_cpf, convenio')
-              .eq('campanha_id', camp.id)
-              .order('ordem_fila', { ascending: true })
-              .range(globalOffset, globalOffset)
-              .limit(1)
-          )
-          const memberRow = memberRows && memberRows.length > 0 ? memberRows[0] : null
-          if (!memberErr && memberRow?.cliente_cpf) {
-            fetchedLeadCpf = memberRow.cliente_cpf
-            if (memberRow.convenio && TABLE_MAP[memberRow.convenio]) {
-              table = TABLE_MAP[memberRow.convenio]
-            } else if (
-              !memberRow.convenio ||
-              memberRow.convenio === "detect" ||
-              memberRow.convenio === "importado" ||
-              memberRow.convenio === "multi" ||
-              convenioKey === "detect" ||
-              convenioKey === "importado" ||
-              convenioKey === "multi"
-            ) {
-              // Resolve convenio dynamically at runtime by checking all tables in parallel
-              const splitTables = [
-                { name: 'base_consulta_siape', convenio: 'siape' },
-                { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
-                { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
-                { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
-                { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
-                { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
-              ];
-              const detectionResults = await Promise.all(
-                splitTables.map(async (t) => {
-                  try {
-                    const paddedCpf = memberRow.cliente_cpf.padStart(11, '0')
-                    const { data: dDataList, error: dErr } = await supabase
-                      .from(t.name)
-                      .select('cpf')
-                      .eq('cpf', paddedCpf)
-                      .limit(1)
-                    if (!dErr && dDataList && dDataList.length > 0) {
-                      return t.name;
+        let currentGlobalOffset = globalOffset
+        let attempts = 0
+        const maxAttempts = 100 // Prevent infinite search loop
+
+        while (attempts < maxAttempts) {
+          try {
+            const { data: memberRows, error: memberErr } = await withRetry(() =>
+              supabase
+                .from('campanha_membros')
+                .select('cliente_cpf, convenio')
+                .eq('campanha_id', camp.id)
+                .order('ordem_fila', { ascending: true })
+                .range(currentGlobalOffset, currentGlobalOffset)
+                .limit(1)
+            )
+            const memberRow = memberRows && memberRows.length > 0 ? memberRows[0] : null
+            if (!memberErr && memberRow?.cliente_cpf) {
+              // Verificação para garantir que o cliente não foi tabulado anteriormente nesta campanha
+              const { data: existingAtendimento, error: checkErr } = await supabase
+                .from('campanha_atendimentos')
+                .select('id')
+                .eq('campanha_id', camp.id)
+                .eq('cliente_cpf', memberRow.cliente_cpf)
+                .limit(1)
+
+              if (!checkErr && existingAtendimento && existingAtendimento.length > 0) {
+                console.log(`Lead ${memberRow.cliente_cpf} já tabulado nesta campanha. Buscando próximo...`);
+                currentGlobalOffset += 1;
+                attempts++;
+                continue;
+              }
+
+              fetchedLeadCpf = memberRow.cliente_cpf
+              if (memberRow.convenio && TABLE_MAP[memberRow.convenio]) {
+                table = TABLE_MAP[memberRow.convenio]
+              } else if (
+                !memberRow.convenio ||
+                memberRow.convenio === "detect" ||
+                memberRow.convenio === "importado" ||
+                memberRow.convenio === "multi" ||
+                convenioKey === "detect" ||
+                convenioKey === "importado" ||
+                convenioKey === "multi"
+              ) {
+                // Resolve convenio dynamically at runtime by checking all tables in parallel
+                const splitTables = [
+                  { name: 'base_consulta_siape', convenio: 'siape' },
+                  { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
+                  { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
+                  { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
+                  { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
+                  { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
+                ];
+                const detectionResults = await Promise.all(
+                  splitTables.map(async (t) => {
+                    try {
+                      const paddedCpf = memberRow.cliente_cpf.padStart(11, '0')
+                      const { data: dDataList, error: dErr } = await supabase
+                        .from(t.name)
+                        .select('cpf')
+                        .eq('cpf', paddedCpf)
+                        .limit(1)
+                      if (!dErr && dDataList && dDataList.length > 0) {
+                        return t.name;
+                      }
+                    } catch (e) {
+                      console.warn(`Erro na deteção do CPF ${memberRow.cliente_cpf} na tabela ${t.name}:`, e);
                     }
-                  } catch (e) {
-                    console.warn(`Erro na deteção do CPF ${memberRow.cliente_cpf} na tabela ${t.name}:`, e);
+                    return null;
+                  })
+                );
+                const foundTable = detectionResults.find((r) => r !== null);
+                if (foundTable) {
+                  table = foundTable;
+                  const resolvedConvenio = splitTables.find((t) => t.name === foundTable)?.convenio;
+                  if (resolvedConvenio) {
+                    // Silently cache/update back to campanha_membros for subsequent ultra-fast database query runs
+                    supabase
+                      .from('campanha_membros')
+                      .update({ convenio: resolvedConvenio })
+                      .eq('campanha_id', camp.id)
+                      .eq('cliente_cpf', memberRow.cliente_cpf)
+                      .then(() => {});
                   }
-                  return null;
-                })
-              );
-              const foundTable = detectionResults.find((r) => r !== null);
-              if (foundTable) {
-                table = foundTable;
-                const resolvedConvenio = splitTables.find((t) => t.name === foundTable)?.convenio;
-                if (resolvedConvenio) {
-                  // Silently cache/update back to campanha_membros for subsequent ultra-fast database query runs
-                  supabase
-                    .from('campanha_membros')
-                    .update({ convenio: resolvedConvenio })
-                    .eq('campanha_id', camp.id)
-                    .eq('cliente_cpf', memberRow.cliente_cpf)
-                    .then(() => {});
                 }
               }
+              break; // Encontrou CPF válido e não tabulado
+            } else {
+              if (memberErr) {
+                console.error("Erro ao buscar campanha_membros:", memberErr)
+              }
+              break; // Fim da fila ou erro
             }
-          } else if (memberErr) {
-            console.error("Erro ao buscar campanha_membros:", memberErr)
+          } catch (err) {
+            console.error("Falha ao consultar campanha_membros:", err)
+            break;
           }
-        } catch (err) {
-          console.error("Falha ao consultar campanha_membros, caindo para fallback:", err)
         }
         
         // 2. Graceful fallback to formulaic scan if campanha_membros is not fully populated/available
         if (!fetchedLeadCpf) {
-          let query = supabase.from(table).select('cpf')
-          query = applyCampaignFilters(query, filters)
-          query = query.order('cpf', { ascending: true }).range(globalOffset, globalOffset)
-          
-          let fetchError: any = null
-          
-          try {
-            const { data: resCpf, error: errCpf } = await withRetry(() => query.maybeSingle())
-            fetchError = errCpf
-            fetchedLeadCpf = resCpf?.cpf || null
-          } catch (err: any) {
-            fetchError = err
-          }
-          
-          // UNORDERED GRACEFUL FALLBACK below of the formula fallback
-          if (fetchError || !fetchedLeadCpf) {
-            console.warn("Ordered check failed/timed out, trying fast unordered fallback scan", fetchError)
+          let currentFallbackOffset = globalOffset
+          let fallbackAttempts = 0
+          const maxFallbackAttempts = 100
+
+          while (fallbackAttempts < maxFallbackAttempts) {
+            let query = supabase.from(table).select('cpf')
+            query = applyCampaignFilters(query, filters)
+            query = query.order('cpf', { ascending: true }).range(currentFallbackOffset, currentFallbackOffset)
             
-            let unorderedQuery = supabase.from(table).select('cpf')
-            unorderedQuery = applyCampaignFilters(unorderedQuery, filters)
-            
-            const fastOffset = globalOffset % 500
-            unorderedQuery = unorderedQuery.range(fastOffset, fastOffset)
+            let fetchError: any = null
+            let tempCpf: string | null = null
             
             try {
-              const { data: resCpfUnordered, error: errCpfUnordered } = await withRetry(() => unorderedQuery.maybeSingle())
-              if (!errCpfUnordered && resCpfUnordered?.cpf) {
-                fetchedLeadCpf = resCpfUnordered.cpf
-              } else if (errCpfUnordered) {
-                console.error("Unordered fallback failed too:", errCpfUnordered)
-              }
-            } catch (unordErr) {
-              console.error("Unordered search promise crash:", unordErr)
+              const { data: resCpf, error: errCpf } = await withRetry(() => query.maybeSingle())
+              fetchError = errCpf
+              tempCpf = resCpf?.cpf || null
+            } catch (err: any) {
+              fetchError = err
             }
+            
+            // UNORDERED GRACEFUL FALLBACK
+            if (fetchError || !tempCpf) {
+              console.warn("Ordered check failed/timed out, trying fast unordered fallback scan", fetchError)
+              
+              let unorderedQuery = supabase.from(table).select('cpf')
+              unorderedQuery = applyCampaignFilters(unorderedQuery, filters)
+              
+              const fastOffset = currentFallbackOffset % 500
+              unorderedQuery = unorderedQuery.range(fastOffset, fastOffset)
+              
+              try {
+                const { data: resCpfUnordered, error: errCpfUnordered } = await withRetry(() => unorderedQuery.maybeSingle())
+                if (!errCpfUnordered && resCpfUnordered?.cpf) {
+                  tempCpf = resCpfUnordered.cpf
+                } else if (errCpfUnordered) {
+                  console.error("Unordered fallback failed too:", errCpfUnordered)
+                }
+              } catch (unordErr) {
+                console.error("Unordered search promise crash:", unordErr)
+              }
+            }
+
+            if (tempCpf) {
+              // Validar se CPF do fallback já foi tabulado
+              const { data: existingAtendimento, error: checkErr } = await supabase
+                .from('campanha_atendimentos')
+                .select('id')
+                .eq('campanha_id', camp.id)
+                .eq('cliente_cpf', tempCpf)
+                .limit(1)
+
+              if (!checkErr && existingAtendimento && existingAtendimento.length > 0) {
+                console.log(`Fallback lead ${tempCpf} já tabulado nesta campanha. Buscando próximo...`);
+                currentFallbackOffset += 1;
+                fallbackAttempts++;
+                continue;
+              }
+
+              fetchedLeadCpf = tempCpf
+            }
+            break;
           }
         }
         
