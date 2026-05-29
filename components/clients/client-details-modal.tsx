@@ -129,6 +129,12 @@ interface ClientData {
   [key: string]: unknown;
 }
 
+function ensureArray<T>(val: unknown): T[] {
+  if (!val) return [];
+  if (Array.isArray(val)) return val as T[];
+  return [val] as T[];
+}
+
 interface ClientDetailsModalProps {
   cpf: string;
   isOpen: boolean;
@@ -197,15 +203,34 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('governo_sp_identificacoes')
-            .select(`
-              *,
-              governo_sp_lotacoes (*)
-            `)
+            .select('*, governo_sp_lotacoes(*)')
             .eq('cliente_id', (govSpData as ClientData).id)
         )
 
         if (idError) console.error("Erro ao buscar identificações Governo SP:", idError)
-        setRegistrations((idData as Registration[]) || [])
+        
+        const mappedRegs = (idData || []).map((r: Record<string, unknown>) => {
+          const lotacoes = ensureArray<Lotacao>(r.governo_sp_lotacoes)
+          return {
+            ...r,
+            id: r.id as string,
+            numero_matricula: (r.identificacao as string) || '---',
+            identificacao: (r.identificacao as string) || '---',
+            situacao_funcional: r.situacao_funcional as string | null,
+            salario: 0,
+            orgao: r.secretaria as string | null,
+            regime_juridico: r.regime_juridico as string | null,
+            uf: 'SP',
+            governo_sp_lotacoes: lotacoes,
+            instituidores: lotacoes.map((l) => ({
+              id: (l.id as string) || (l.identificacao_id as string) || "---",
+              nome: null,
+              itens_credito: []
+            }))
+          }
+        })
+
+        setRegistrations(mappedRegs as unknown as Registration[])
         setIsLoading(false)
         return
       }
@@ -222,15 +247,34 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('prefeitura_sp_identificacoes')
-            .select(`
-              *,
-              prefeitura_sp_lotacoes (*)
-            `)
+            .select('*, prefeitura_sp_lotacoes(*)')
             .eq('cliente_id', (pmspData as ClientData).id)
         )
 
         if (idError) console.error("Erro ao buscar identificações Prefeitura SP:", idError)
-        setRegistrations((idData as Registration[]) || [])
+        
+        const mappedRegs = (idData || []).map((r: Record<string, unknown>) => {
+          const lotacoes = ensureArray<Lotacao>(r.prefeitura_sp_lotacoes)
+          return {
+            ...r,
+            id: r.id as string,
+            numero_matricula: (r.identificacao as string) || '---',
+            identificacao: (r.identificacao as string) || '---',
+            situacao_funcional: (r.tipo_vinculo as string) || (r.situacao_funcional as string) || null,
+            salario: 0,
+            orgao: (lotacoes[0]?.orgao as string) || (r.orgao as string) || (r.secretaria as string) || null,
+            regime_juridico: (lotacoes[0]?.lotacao as string) || (r.regime_juridico as string) || null,
+            uf: 'SP',
+            prefeitura_sp_lotacoes: lotacoes,
+            instituidores: lotacoes.map((l) => ({
+              id: (l.id as string) || (l.identificacao_id as string) || "---",
+              nome: null,
+              itens_credito: []
+            }))
+          }
+        })
+
+        setRegistrations(mappedRegs as unknown as Registration[])
         setIsLoading(false)
         return
       }
@@ -789,12 +833,14 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                           <>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                               <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Identificação</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Identificacao</p>
                                 <p className="text-[12px] font-bold text-slate-900">{activeReg.identificacao}</p>
                               </div>
                               <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase">{activeReg.tipo_vinculo || "NÃO INFORMADO"}</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vinculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase">
+                                  {clientType === 'governo_sp' ? (activeReg.tipo_vinculo || "NÃO INFORMADO") : (activeReg.tipo_vinculo || activeReg.situacao_funcional || "NÃO INFORMADO")}
+                                </p>
                               </div>
                               <div className="space-y-1">
                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nomeação</p>
@@ -803,12 +849,12 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                               <div className="space-y-1">
                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Lotação / Órgão</p>
                                 <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.governo_sp_lotacoes?.[0]?.lotacao || activeReg.prefeitura_sp_lotacoes?.[0]?.lotacao || "---"}
+                                  {activeReg.governo_sp_lotacoes?.[0]?.lotacao || activeReg.prefeitura_sp_lotacoes?.[0]?.lotacao || activeReg.regime_juridico || "---"}
                                 </p>
                               </div>
                             </div>
 
-                            {/* Margens Grid Gov SP / PMSP - Layout image.png */}
+                            {/* Margens Grid Gov SP / PMSP - Layout correspondente a pesquisa/page.tsx */}
                             {(() => {
                               const lotacao = activeReg.governo_sp_lotacoes?.[0] || activeReg.prefeitura_sp_lotacoes?.[0];
                               if (!lotacao) return (
@@ -816,116 +862,171 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                   <p className="text-[10px] font-bold text-slate-400 uppercase">Dados de lotação/margens não encontrados</p>
                                 </div>
                               );
-                              
-                              const getUtilizedStatus = (bruta: number | null, liquida: number | null) => {
+
+                              const getMarginLogic = (bruta: number | null, liquida_db: number | null) => {
                                 const b = bruta || 0;
-                                const l = liquida || 0;
-                                if (l <= 0) return "SIM";
-                                if (l < b) return "PARCIAL";
-                                return "NÃO";
+                                const l = liquida_db || 0;
+                                
+                                let status: 'SIM' | 'NÃO' | 'PARCIAL' = 'NÃO';
+                                if (l <= 0) {
+                                  status = 'SIM';
+                                } else if (l < b) {
+                                  status = 'PARCIAL';
+                                } else {
+                                  status = 'NÃO';
+                                }
+                                
+                                return { 
+                                  status, 
+                                  liquida_val: l,
+                                  label: l > 0 ? 'DISPONÍVEL' : 'INDISPONÍVEL'
+                                };
                               };
 
-                              const sections = [
-                                { 
-                                  title: "EMPRÉSTIMO CONSIGNADO",
-                                  color: "bg-blue-500",
-                                  items: [
-                                    { label: "Bruta", value: lotacao.mb_consignacoes },
-                                    { label: "Utilizada", type: 'status', bruta: lotacao.mb_consignacoes, liquida: lotacao.md_consignacoes },
-                                    { label: "Líquida", value: lotacao.md_consignacoes, isLiquida: true }
-                                  ]
-                                },
-                                { 
-                                  title: "CARTÃO CONSIGNADO (RMC)",
-                                  color: "bg-emerald-500",
-                                  items: [
-                                    { label: "Bruta", value: lotacao.mb_cartao_credito },
-                                    { label: "Utilizada", type: 'status', bruta: lotacao.mb_cartao_credito, liquida: lotacao.md_cartao_credito },
-                                    { label: "Líquida", value: lotacao.md_cartao_credito, isLiquida: true }
-                                  ]
-                                },
-                                { 
-                                  title: "CARTÃO BENEFÍCIO (RCC)",
-                                  color: "bg-purple-500",
-                                  items: [
-                                    { label: "Bruta", value: lotacao.mb_cartao_beneficio },
-                                    { label: "Utilizada", type: 'status', bruta: lotacao.mb_cartao_beneficio, liquida: lotacao.md_cartao_beneficio },
-                                    { label: "Líquida", value: lotacao.md_cartao_beneficio, isLiquida: true }
-                                  ]
-                                }
-                              ];
+                              const getCardLogic = (bruta: number | null, liquida_db: number | null) => {
+                                const b = bruta || 0;
+                                const l = liquida_db || 0;
+                                const used = Math.abs(l - b) > 0.01;
+                                return {
+                                  status: used ? 'SIM' : 'NÃO' as const,
+                                  liquida_val: l,
+                                  label: used ? 'INDISPONÍVEL' : 'DISPONÍVEL'
+                                };
+                              };
+
+                              const consignacoes = getMarginLogic(lotacao.mb_consignacoes, lotacao.md_consignacoes);
+                              const cartao = clientType === 'governo_sp' ? getCardLogic(lotacao.mb_cartao_credito, lotacao.md_cartao_credito) : null;
+                              const beneficio = getCardLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
 
                               return (
-                                <div className="space-y-8">
-                                  {sections.map((section, sIdx) => (
-                                    <div key={sIdx} className="space-y-4">
-                                      <div className="flex items-center gap-2">
-                                        <div className={cn("w-1 h-3.5 rounded-full", section.color)}></div>
-                                        <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">{section.title}</h4>
+                                <div className="space-y-6">
+                                  {/* Consignações */}
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1 h-3.5 bg-blue-600 rounded-full"></div>
+                                      <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">EMPRÉSTIMO CONSIGNADO</h4>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Consignações</p>
+                                        <p className="text-[17px] font-bold text-slate-900">{formatCurrency(lotacao.mb_consignacoes)}</p>
                                       </div>
-                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                        {section.items.map((item, iIdx) => {
-                                          if (item.type === 'status') {
-                                            const utilized = getUtilizedStatus(item.bruta || 0, item.liquida || 0);
-                                            return (
-                                              <div key={iIdx} className={cn(
-                                                "p-4 border rounded-2xl",
-                                                utilized === "SIM" ? "bg-red-50 border-red-200" : 
-                                                utilized === "PARCIAL" ? "bg-[#f1f5f9] border-slate-200" : 
-                                                "bg-emerald-50 border-emerald-200"
-                                              )}>
-                                                <p className={cn(
-                                                  "text-[9px] font-bold uppercase tracking-widest mb-1",
-                                                  utilized === "SIM" ? "text-red-700" : 
-                                                  utilized === "PARCIAL" ? "text-slate-500" : 
-                                                  "text-emerald-700"
-                                                )}>{item.label}</p>
-                                                <p className={cn(
-                                                  "text-xl font-black",
-                                                  utilized === "SIM" ? "text-red-700" : 
-                                                  utilized === "PARCIAL" ? "text-[#1e293b]" : 
-                                                  "text-emerald-700"
-                                                )}>{utilized}</p>
-                                              </div>
-                                            );
-                                          }
-
-                                          const isPositive = (item.value || 0) > 0;
-                                          const isLiquida = item.isLiquida;
-
-                                          return (
-                                            <div key={iIdx} className={cn(
-                                              "p-4 border rounded-2xl",
-                                              isLiquida 
-                                                ? (isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200")
-                                                : "bg-[#f8fafc] border-slate-200"
-                                            )}>
-                                              <p className={cn(
-                                                "text-[9px] font-bold uppercase tracking-widest mb-1",
-                                                isLiquida 
-                                                  ? (isPositive ? "text-emerald-700" : "text-red-700") 
-                                                  : "text-slate-500"
-                                              )}>{item.label}</p>
-                                              <p className={cn(
-                                                "text-xl font-black",
-                                                isLiquida 
-                                                  ? (isPositive ? "text-emerald-700" : "text-red-700")
-                                                  : "text-slate-900"
-                                              )}>{formatCurrency(item.value)}</p>
-                                              {isLiquida && (
-                                                <div className="flex items-center gap-1.5 mt-2">
-                                                  <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                                  <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                                    {isPositive ? "Disponível" : "Indisponível"}
-                                                  </p>
-                                                </div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
+                                      <div className={cn(
+                                        "p-3.5 border rounded-xl space-y-0.5",
+                                        consignacoes.status === 'SIM' ? "bg-red-100/50 border-red-200" : 
+                                        consignacoes.status === 'PARCIAL' ? "bg-slate-100/80 border-slate-200" : 
+                                        "bg-emerald-100/50 border-emerald-200"
+                                      )}>
+                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                          consignacoes.status === 'SIM' ? "text-red-700/60" : 
+                                          consignacoes.status === 'PARCIAL' ? "text-slate-500" : 
+                                          "text-emerald-700/60"
+                                        )}>Utilizada</p>
+                                        <p className={cn("text-[17px] font-bold uppercase", 
+                                          consignacoes.status === 'SIM' ? "text-red-700" : 
+                                          consignacoes.status === 'PARCIAL' ? "text-slate-600" : 
+                                          "text-emerald-700"
+                                        )}>{consignacoes.status}</p>
+                                      </div>
+                                      <div className={cn(
+                                        "p-3.5 border rounded-xl space-y-0.5",
+                                        consignacoes.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                      )}>
+                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
+                                        <div className="flex flex-col">
+                                          <p className={cn("text-[17px] font-bold", consignacoes.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
+                                          <div className="flex items-center gap-1.5">
+                                            <div className={cn("w-1.5 h-1.5 rounded-full", consignacoes.liquida_val > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                            <span className={cn("text-[8px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-600" : "text-red-600")}>
+                                              {consignacoes.label}
+                                            </span>
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
-                                  ))}
+                                  </div>
+
+                                  {/* Cartão Crédito (apenas para Governo SP) */}
+                                  {clientType === 'governo_sp' && cartao && (
+                                    <div className="space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-1 h-3.5 bg-emerald-500 rounded-full"></div>
+                                        <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">CARTÃO CONSIGNADO (RMC)</h4>
+                                      </div>
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Crédito</p>
+                                          <p className="text-[17px] font-bold text-slate-900">{formatCurrency(lotacao.mb_cartao_credito)}</p>
+                                        </div>
+                                        <div className={cn(
+                                          "p-3.5 border rounded-xl space-y-0.5",
+                                          cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                        )}>
+                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                            cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
+                                          )}>Utilizada</p>
+                                          <p className={cn("text-[17px] font-bold uppercase", 
+                                            cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700"
+                                          )}>{cartao.status}</p>
+                                        </div>
+                                        <div className={cn(
+                                          "p-3.5 border rounded-xl space-y-0.5",
+                                          cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                        )}>
+                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest", cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
+                                          <div className="flex flex-col">
+                                            <p className={cn("text-[17px] font-bold", cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(cartao.liquida_val)}</p>
+                                            <div className="flex items-center gap-1.5">
+                                              <div className={cn("w-1.5 h-1.5 rounded-full", cartao.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
+                                              <span className={cn("text-[8px] font-bold uppercase tracking-widest", cartao.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
+                                                {cartao.label}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Cartão Benefício */}
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1 h-3.5 bg-purple-500 rounded-full"></div>
+                                      <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">CARTÃO BENEFÍCIO (RCC)</h4>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Benefício</p>
+                                        <p className="text-[17px] font-bold text-slate-900">{formatCurrency(lotacao.mb_cartao_beneficio)}</p>
+                                      </div>
+                                      <div className={cn(
+                                        "p-3.5 border rounded-xl space-y-0.5",
+                                        beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                      )}>
+                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                          beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
+                                        )}>Utilizada</p>
+                                        <p className={cn("text-[17px] font-bold uppercase", 
+                                          beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700"
+                                        )}>{beneficio.status}</p>
+                                      </div>
+                                      <div className={cn(
+                                        "p-3.5 border rounded-xl space-y-0.5",
+                                        beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                      )}>
+                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
+                                        <div className="flex flex-col">
+                                          <p className={cn("text-[17px] font-bold", beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(beneficio.liquida_val)}</p>
+                                          <div className="flex items-center gap-1.5">
+                                            <div className={cn("w-1.5 h-1.5 rounded-full", beneficio.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
+                                            <span className={cn("text-[8px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
+                                              {beneficio.label}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
                               );
                             })()}
