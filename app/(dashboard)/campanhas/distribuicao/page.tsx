@@ -65,23 +65,23 @@ interface BrokerUser {
 async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[]> {
   if (cpfs.length === 0) return [];
 
-  const TABLES = [
-    'base_consulta_siape',
-    'base_consulta_governo_sp',
-    'base_consulta_prefeitura_sp',
-    'base_consulta_governo_pi',
-    'base_consulta_governo_ma',
-    'base_consulta_governo_rr'
-  ];
+  const TABLE_COLUMNS_MAP: Record<string, string> = {
+    'base_consulta_siape': 'cpf, nome, telefone_1, telefone_2, telefone_3',
+    'base_consulta_governo_sp': 'cpf, nome, telefone_1, telefone_2, telefone_3',
+    'base_consulta_prefeitura_sp': 'cpf, nome, telefone_1, telefone_2, telefone_3',
+    'base_consulta_governo_pi': 'cpf, nome, telefone_1, telefone_2, telefone_3',
+    'base_consulta_governo_ma': 'cpf, nome, telefone_1',
+    'base_consulta_governo_rr': 'cpf, nome, telefone_1, telefone_2, telefone_3'
+  };
 
   const results: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
   const foundCpfs = new Set<string>();
 
-  const queries = TABLES.map(async (table) => {
+  const queries = Object.entries(TABLE_COLUMNS_MAP).map(async ([table, selectCols]) => {
     try {
       const { data, error } = await supabase
         .from(table)
-        .select('cpf, nome, telefone_1, telefone_2, telefone_3')
+        .select(selectCols)
         .in('cpf', cpfs);
       if (error) {
         console.error(`Erro ao consultar ${table} para detalhes:`, error);
@@ -99,12 +99,13 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
     for (const item of batch) {
       if (!foundCpfs.has(item.cpf)) {
         foundCpfs.add(item.cpf);
+        const phoneObj = item as { telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null };
         results.push({
           cpf: item.cpf,
           nome: item.nome,
-          telefone_1: item.telefone_1,
-          telefone_2: item.telefone_2,
-          telefone_3: item.telefone_3
+          telefone_1: phoneObj.telefone_1,
+          telefone_2: phoneObj.telefone_2 || null,
+          telefone_3: phoneObj.telefone_3 || null
         });
       }
     }
@@ -377,7 +378,8 @@ export default function DistribuicaoCampanhaPage() {
         .from('campanha_atendimentos')
         .select('cliente_cpf')
         .eq('campanha_id', campaignId)
-        .eq('corretor_id', brokerId);
+        .eq('corretor_id', brokerId)
+        .neq('cliente_cpf', '00000000000');
 
       if (tabName === 'Não tabulado') {
         query = query.or('tabulacao.is.null,tabulacao.eq.Não tabulado');

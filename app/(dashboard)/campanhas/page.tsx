@@ -48,6 +48,54 @@ import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
 
 import { useAuth } from "@/context/auth-context"
 
+interface ICampaignMembroRow {
+  cpf: string;
+  nome: string;
+  data_nascimento?: string;
+  data_de_nascimento?: string;
+  telefone_1?: string;
+  telefone_2?: string;
+  telefone_3?: string;
+  numero_matricula?: string;
+  orgao?: string;
+  situacao_funcional?: string;
+  salario?: number;
+  instituidor_nome?: string;
+  regime_juridico?: string;
+  uf?: string;
+  saldo_70?: number;
+  margem_35?: number;
+  bruta_5?: number;
+  utilizada_5?: number;
+  liquida_5?: number;
+  beneficio_bruta_5?: number;
+  beneficio_utilizada_5?: number;
+  beneficio_liquida_5?: number;
+  banco?: string;
+  prazo?: string | number;
+  tipo?: string;
+  margem_emprestimo?: number | string;
+  margem_cartao?: number | string;
+  margem_disponivel_emprestimo?: number | string | null;
+  margem_cartao_consignado?: number | string | null;
+  margem_cartao_beneficio?: number | string | null;
+}
+
+interface IGovPiRow {
+  cpf: string;
+  nome: string;
+  matricula?: string;
+  vinculo?: string;
+  data_nascimento?: string;
+  telefone_1?: string;
+  telefone_2?: string;
+  telefone_3?: string;
+  orgao?: string;
+  margem_disponivel_emprestimo?: number | string | null;
+  margem_cartao_consignado?: number | string | null;
+  margem_cartao_beneficio?: number | string | null;
+}
+
 interface CampaignFilters {
   orgaos: string[];
   situacoes: string[];
@@ -146,7 +194,7 @@ export default function CampaignsPage() {
 
   // Import Campaign State
   const [showImportModal, setShowImportModal] = useState(false)
-  const [importConvenio, setImportConvenio] = useState("siape")
+  const [importConvenio, setImportConvenio] = useState("detect")
   const [importCampaignName, setImportCampaignName] = useState("")
   const [importFile, setImportFile] = useState<File | null>(null)
   const [isImportingCamp, setIsImportingCamp] = useState(false)
@@ -364,7 +412,7 @@ export default function CampaignsPage() {
             for (const row of results.data) {
               const rawCpf = extractCpfFromRow(row)
               if (rawCpf) {
-                const cleanCpf = rawCpf.trim()
+                const cleanCpf = rawCpf.trim().padStart(11, '0')
                 if (cleanCpf && !insertedCpfs.has(cleanCpf)) {
                   insertedCpfs.add(cleanCpf)
                   uniqueCpfBatch.push({ cpf: cleanCpf })
@@ -615,87 +663,95 @@ export default function CampaignsPage() {
           break;
         }
 
+        const detectedConvenios = new Map<string, string>();
+        let bcrData: Record<string, unknown>[] = [];
+
+        if (isMultiConvenio) {
+          const tablesList = [
+            { name: 'base_consulta_siape', convenio: 'siape', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo" },
+            { name: 'base_consulta_governo_sp', convenio: 'governo_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+            { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5" },
+            { name: 'base_consulta_governo_pi', convenio: 'governo_pi', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio" },
+            { name: 'base_consulta_governo_ma', convenio: 'governo_ma', columns: "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf" },
+            { name: 'base_consulta_governo_rr', convenio: 'governo_rr', columns: "cpf, nome, data_de_nascimento, data_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao" },
+          ];
+
+          const queriesResults = await Promise.all(
+            tablesList.map(async (t) => {
+              try {
+                const { data, error } = await supabase.from(t.name).select(t.columns).in('cpf', cpfs);
+                if (!error && data) {
+                  return { data, convenio: t.convenio };
+                }
+              } catch (e) {
+                console.error(`Erro ao buscar na tabela ${t.name} para exportação:`, e);
+              }
+              return { data: [], convenio: t.convenio };
+            })
+          );
+
+          const tempBcrData: Record<string, unknown>[] = [];
+          const matchedCpfs = new Set<string>();
+
+          queriesResults.forEach(({ data, convenio }) => {
+            if (data && data.length > 0) {
+              (data as Record<string, unknown>[]).forEach((row) => {
+                if (row && row.cpf && !matchedCpfs.has(row.cpf as string)) {
+                  matchedCpfs.add(row.cpf as string);
+                  detectedConvenios.set(row.cpf as string, convenio);
+                  tempBcrData.push(row);
+
+                  const currentMember = (memberBatch as { cliente_cpf: string | null; convenio?: string | null }[]).find((m) => m.cliente_cpf === row.cpf);
+                  if (currentMember && (!currentMember.convenio || currentMember.convenio === "detect" || currentMember.convenio === "importado" || currentMember.convenio === "multi")) {
+                    supabase
+                      .from('campanha_membros')
+                      .update({ convenio })
+                      .eq('campanha_id', campaign.id)
+                      .eq('cliente_cpf', row.cpf as string)
+                      .then(() => {});
+                  }
+                }
+              });
+            }
+          });
+          bcrData = tempBcrData;
+        } else {
+          const isGovSp = targetTable === 'base_consulta_governo_sp';
+          const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
+          const isGovMa = targetTable === 'base_consulta_governo_ma';
+          const isGovRr = targetTable === 'base_consulta_governo_rr';
+          const columnsToSelect = isGovPi
+            ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio"
+            : isGovRr
+              ? "cpf, nome, data_de_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao"
+              : isGovSp
+                ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5"
+                : isPrefSp
+                  ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5"
+                  : isGovMa
+                    ? "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf"
+                    : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
+
+          const { data, error: bcrError } = await withRetry(() =>
+            supabase.from(targetTable).select(columnsToSelect).in('cpf', cpfs)
+          );
+          if (bcrError) throw bcrError;
+          bcrData = data || [];
+        }
+
         const memberConvenioMap = new Map<string, string>(
-          memberBatch.map((m: { cliente_cpf: string | null; convenio?: string | null }) => [
-            m.cliente_cpf || "",
-            m.convenio || "siape"
-          ])
+          memberBatch.map((m: { cliente_cpf: string | null; convenio?: string | null }) => {
+            const cpf = m.cliente_cpf || "";
+            const conv = m.convenio && m.convenio !== "detect" && m.convenio !== "importado" && m.convenio !== "multi"
+              ? m.convenio
+              : (detectedConvenios.get(cpf) || "siape");
+            return [cpf, conv];
+          })
         );
-
-        const isGovSp = targetTable === 'base_consulta_governo_sp';
-        const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
-        const isGovMa = targetTable === 'base_consulta_governo_ma';
-        const isGovRr = targetTable === 'base_consulta_governo_rr';
-        const columnsToSelect = isGovPi
-          ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio"
-          : isGovRr
-            ? "cpf, nome, data_de_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao"
-            : isGovSp
-              ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5"
-              : isPrefSp
-                ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5"
-                : isGovMa
-                  ? "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf"
-                  : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
-
-        const { data: bcrData, error: bcrError } = await withRetry(() =>
-          supabase.from(targetTable).select(columnsToSelect).in('cpf', cpfs)
-        );
-        if (bcrError) throw bcrError;
-
-        const mappedBcrData = bcrData || [];
-
-        interface ICampaignMembroRow {
-          cpf: string;
-          nome: string;
-          data_nascimento?: string;
-          data_de_nascimento?: string;
-          telefone_1?: string;
-          telefone_2?: string;
-          telefone_3?: string;
-          numero_matricula?: string;
-          orgao?: string;
-          situacao_funcional?: string;
-          salario?: number;
-          instituidor_nome?: string;
-          regime_juridico?: string;
-          uf?: string;
-          saldo_70?: number;
-          margem_35?: number;
-          bruta_5?: number;
-          utilizada_5?: number;
-          liquida_5?: number;
-          beneficio_bruta_5?: number;
-          beneficio_utilizada_5?: number;
-          beneficio_liquida_5?: number;
-          banco?: string;
-          prazo?: string | number;
-          tipo?: string;
-          margem_emprestimo?: number | string;
-          margem_cartao?: number | string;
-          margem_disponivel_emprestimo?: number | string | null;
-          margem_cartao_consignado?: number | string | null;
-          margem_cartao_beneficio?: number | string | null;
-        }
-
-        interface IGovPiRow {
-          cpf: string;
-          nome: string;
-          matricula?: string;
-          vinculo?: string;
-          data_nascimento?: string;
-          telefone_1?: string;
-          telefone_2?: string;
-          telefone_3?: string;
-          orgao?: string;
-          margem_disponivel_emprestimo?: number | string | null;
-          margem_cartao_consignado?: number | string | null;
-          margem_cartao_beneficio?: number | string | null;
-        }
 
         // O(N) Maps lookup para preservar a ordem exata de ordem_fila sem loops lineares complexos
         const bcrMap = new Map<string, ICampaignMembroRow>(
-          mappedBcrData.map((row) => [row.cpf as string, row as unknown as ICampaignMembroRow])
+          (bcrData || []).map((row) => [row.cpf as string, row as unknown as ICampaignMembroRow])
         );
 
         const sortedBatchData: ICampaignMembroRow[] = [];
@@ -1840,24 +1896,19 @@ export default function CampaignsPage() {
           </DialogHeader>
 
           <div className="p-6 space-y-5">
-            {/* Convenio Selection */}
-            <div className="space-y-1.5">
-              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                Convênio
-              </label>
-              <select
-                disabled={isImportingCamp}
-                value={importConvenio}
-                onChange={(e) => setImportConvenio(e.target.value)}
-                className="w-full h-11 px-3 bg-slate-50 border border-slate-100/80 hover:border-slate-200 focus:border-primary/30 rounded-xl text-xs font-bold text-slate-700 uppercase tracking-wide focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all cursor-pointer"
-              >
-                <option value="siape">SIAPE / FEDERAL</option>
-                <option value="governo_sp">GOVERNO SP</option>
-                <option value="prefeitura_sp">PREFEITURA SP</option>
-                <option value="governo_pi">GOVERNO PIAUÍ</option>
-                <option value="governo_ma">GOVERNO MARANHÃO</option>
-                <option value="governo_rr">GOVERNO RORAIMA</option>
-              </select>
+            {/* Automatic Agreement Detector Status */}
+            <div id="auto_convenio_indicator" className="bg-slate-50/60 border border-slate-100/80 p-3.5 rounded-2xl flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                  Identificação do Convênio
+                </span>
+                <span className="text-[11px] font-semibold text-slate-600">
+                  Detecção automática por CPF ativa
+                </span>
+              </div>
+              <span className="px-2 py-0.5 text-[9.5px] font-black uppercase bg-emerald-50 text-emerald-700 rounded-lg tracking-wider border border-emerald-100">
+                Multi-convênio
+              </span>
             </div>
 
             {/* Campaign Name Input */}

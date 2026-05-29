@@ -300,6 +300,7 @@ export default function CampanhaAtendimentoPage() {
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [activeTable, setActiveTable] = useState<string>('base_consulta_siape')
   
   // Tabulation
   const [tabulacao, setTabulacao] = useState<string>("")
@@ -314,8 +315,12 @@ export default function CampanhaAtendimentoPage() {
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (!userId || !campaignId) return;
+      const sessionKey = `active_session_${campaignId}_${userId}`;
       if (hasRegisteredSession.current && !hasRegisteredExit.current) {
         hasRegisteredExit.current = true;
+        try {
+          sessionStorage.removeItem(sessionKey);
+        } catch {}
 
         // Fire both updates as quickly as possible
         supabase.from('campanha_atendimentos').insert({
@@ -350,9 +355,15 @@ export default function CampanhaAtendimentoPage() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
 
-      // On component unmount (e.g. user clicks another sidebar page link or navigates away)
-      if (userId && campaignId && hasRegisteredSession.current && !hasRegisteredExit.current) {
+      const sessionKey = `active_session_${campaignId}_${userId}`;
+      const isLeavingPage = typeof window !== 'undefined' && !window.location.pathname.includes(`/campanhas/atendimento/${campaignId}`);
+
+      // On component unmount, ONLY log out if they are actually leaving the campaign page URL structure (stops spurious updates on Next clients/agreement switches)
+      if (userId && campaignId && hasRegisteredSession.current && !hasRegisteredExit.current && isLeavingPage) {
         hasRegisteredExit.current = true;
+        try {
+          sessionStorage.removeItem(sessionKey);
+        } catch {}
 
         supabase.from('campanha_atendimentos').insert({
           campanha_id: campaignId,
@@ -429,8 +440,9 @@ export default function CampanhaAtendimentoPage() {
       let data = null;
 
       if (targetCpf) {
+        const paddedTargetCpf = targetCpf.padStart(11, '0')
         const { data: leadData, error: leadError } = await withRetry(() => 
-          supabase.from(table).select('*').eq('cpf', targetCpf).limit(1)
+          supabase.from(table).select('*').eq('cpf', paddedTargetCpf).limit(1)
         )
         if (leadError) throw leadError
         data = leadData && leadData.length > 0 ? leadData[0] : null
@@ -447,19 +459,70 @@ export default function CampanhaAtendimentoPage() {
         // 1. Fetch CPF from campanha_membros (extremely fast and indexed)
         let fetchedLeadCpf: string | null = null
         try {
-          const { data: memberRow, error: memberErr } = await withRetry(() =>
+          const { data: memberRows, error: memberErr } = await withRetry(() =>
             supabase
               .from('campanha_membros')
               .select('cliente_cpf, convenio')
               .eq('campanha_id', camp.id)
               .order('ordem_fila', { ascending: true })
               .range(globalOffset, globalOffset)
-              .maybeSingle()
+              .limit(1)
           )
+          const memberRow = memberRows && memberRows.length > 0 ? memberRows[0] : null
           if (!memberErr && memberRow?.cliente_cpf) {
             fetchedLeadCpf = memberRow.cliente_cpf
             if (memberRow.convenio && TABLE_MAP[memberRow.convenio]) {
               table = TABLE_MAP[memberRow.convenio]
+            } else if (
+              !memberRow.convenio ||
+              memberRow.convenio === "detect" ||
+              memberRow.convenio === "importado" ||
+              memberRow.convenio === "multi" ||
+              convenioKey === "detect" ||
+              convenioKey === "importado" ||
+              convenioKey === "multi"
+            ) {
+              // Resolve convenio dynamically at runtime by checking all tables in parallel
+              const splitTables = [
+                { name: 'base_consulta_siape', convenio: 'siape' },
+                { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
+                { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
+                { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
+                { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
+                { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
+              ];
+              const detectionResults = await Promise.all(
+                splitTables.map(async (t) => {
+                  try {
+                    const paddedCpf = memberRow.cliente_cpf.padStart(11, '0')
+                    const { data: dDataList, error: dErr } = await supabase
+                      .from(t.name)
+                      .select('cpf')
+                      .eq('cpf', paddedCpf)
+                      .limit(1)
+                    if (!dErr && dDataList && dDataList.length > 0) {
+                      return t.name;
+                    }
+                  } catch (e) {
+                    console.warn(`Erro na deteção do CPF ${memberRow.cliente_cpf} na tabela ${t.name}:`, e);
+                  }
+                  return null;
+                })
+              );
+              const foundTable = detectionResults.find((r) => r !== null);
+              if (foundTable) {
+                table = foundTable;
+                const resolvedConvenio = splitTables.find((t) => t.name === foundTable)?.convenio;
+                if (resolvedConvenio) {
+                  // Silently cache/update back to campanha_membros for subsequent ultra-fast database query runs
+                  supabase
+                    .from('campanha_membros')
+                    .update({ convenio: resolvedConvenio })
+                    .eq('campanha_id', camp.id)
+                    .eq('cliente_cpf', memberRow.cliente_cpf)
+                    .then(() => {});
+                }
+              }
             }
           } else if (memberErr) {
             console.error("Erro ao buscar campanha_membros:", memberErr)
@@ -510,8 +573,9 @@ export default function CampanhaAtendimentoPage() {
         // 3. RAPID SINGLE KEY LOOKUP:
         // Use primary key query to fetch full details
         if (fetchedLeadCpf) {
+          const paddedFetchedCpf = fetchedLeadCpf.padStart(11, '0')
           const { data: fullLead, error: fullLeadError } = await withRetry(() => 
-            supabase.from(table).select('*').eq('cpf', fetchedLeadCpf).limit(1)
+            supabase.from(table).select('*').eq('cpf', paddedFetchedCpf).limit(1)
           )
           if (fullLeadError) throw fullLeadError
           data = fullLead && fullLead.length > 0 ? fullLead[0] : null
@@ -546,6 +610,7 @@ export default function CampanhaAtendimentoPage() {
         }
         
         setCurrentLead(client)
+        setActiveTable(table)
         
         // Fetch detailed registrations if SIAPE
         if (table === 'base_consulta_siape') {
@@ -560,6 +625,7 @@ export default function CampanhaAtendimentoPage() {
         } else {
           // Wrapped generic data
           const isGovPi = table === 'base_consulta_governo_pi';
+          const isGovRr = table === 'base_consulta_governo_rr';
           setRegistrations([{
             id: data.id || data.cpf,
             numero_matricula: isGovPi 
@@ -569,20 +635,20 @@ export default function CampanhaAtendimentoPage() {
             salario: data.salario || 0,
             orgao: data.orgao,
             regime_juridico: data.regime_juridico,
-            uf: isGovPi ? 'PI' : data.uf,
+            uf: isGovPi ? 'PI' : (isGovRr ? 'RR' : data.uf),
             matricula: isGovPi ? (data.matricula || '---') : undefined,
             vinculo: isGovPi ? (data.vinculo || '---') : undefined,
-            margem_disponivel_emprestimo: isGovPi ? data.margem_disponivel_emprestimo : undefined,
-            margem_cartao_consignado: isGovPi ? data.margem_cartao_consignado : undefined,
+            margem_disponivel_emprestimo: isGovPi ? data.margem_disponivel_emprestimo : (isGovRr ? data.margem_emprestimo : undefined),
+            margem_cartao_consignado: isGovPi ? data.margem_cartao_consignado : (isGovRr ? data.margem_cartao : undefined),
             margem_cartao_beneficio: isGovPi ? data.margem_cartao_beneficio : undefined,
             instituidores: [{
                id: 'main',
-               nome: data.orgao,
+               nome: data.orgao || (isGovRr ? 'GOVERNO RR' : ''),
                saldo_70: data.saldo_70,
-               margem_35: data.margem_35,
+               margem_35: isGovRr ? data.margem_emprestimo : data.margem_35,
                bruta_5: data.bruta_5,
                utilizada_5: data.utilizada_5,
-               liquida_5: isGovPi ? data.margem_cartao_consignado : data.liquida_5,
+               liquida_5: isGovPi ? data.margem_cartao_consignado : (isGovRr ? data.margem_cartao : data.liquida_5),
                beneficio_bruta_5: data.beneficio_bruta_5,
                beneficio_utilizada_5: data.beneficio_utilizada_5,
                beneficio_liquida_5: isGovPi ? data.margem_cartao_beneficio : data.beneficio_liquida_5,
@@ -646,8 +712,24 @@ export default function CampanhaAtendimentoPage() {
       console.log("Campanha carregada com sucesso:", campaignData.nome)
 
       // Registrar horário de entrada
+      const sessionKey = `active_session_${campaignId}_${userId}`;
+      let isSessionActiveInStorage = false;
+      try {
+        isSessionActiveInStorage = typeof window !== 'undefined' && sessionStorage.getItem(sessionKey) === 'true';
+      } catch {}
+
+      if (isSessionActiveInStorage) {
+        hasRegisteredSession.current = true;
+      }
+
       if (!hasRegisteredSession.current) {
         hasRegisteredSession.current = true;
+        try {
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem(sessionKey, 'true');
+          }
+        } catch {}
+
         try {
           // Registrar na tabela campanha_atendimentos
           await supabase.from('campanha_atendimentos').insert({
@@ -688,6 +770,7 @@ export default function CampanhaAtendimentoPage() {
           .select('*', { count: 'exact', head: true })
           .eq('campanha_id', campaignId)
           .eq('corretor_id', userId)
+          .neq('cliente_cpf', '00000000000')
       )
       
       if (countError) {
@@ -812,8 +895,15 @@ export default function CampanhaAtendimentoPage() {
     }
 
     // Registrar horário de saída
+    const sessionKey = `active_session_${campaign.id}_${userId}`;
     if (!hasRegisteredExit.current) {
       hasRegisteredExit.current = true;
+      try {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(sessionKey);
+        }
+      } catch {}
+
       try {
         // Registrar na tabela campanha_atendimentos
         await supabase.from('campanha_atendimentos').insert({
@@ -1260,7 +1350,7 @@ export default function CampanhaAtendimentoPage() {
                       )}
 
                       {/* Contratos Section (SIAPE) */}
-                      {activeInst && activeReg.uf !== 'PI' && (
+                      {activeTable === 'base_consulta_siape' && activeInst && activeReg.uf !== 'PI' && (
                         <div className="space-y-10 border-t border-slate-100 pt-8">
                           {/* Contratos de Empréstimo */}
                           {(() => {

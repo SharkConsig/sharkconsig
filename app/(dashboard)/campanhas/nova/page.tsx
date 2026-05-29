@@ -834,7 +834,7 @@ export default function NewCampaignPage() {
             const uniqueCpfBatch: { cpf: string }[] = [];
             for (const row of cpfBatch) {
               if (row.cpf) {
-                const cleanCpf = row.cpf.trim();
+                const cleanCpf = row.cpf.trim().padStart(11, '0');
                 if (cleanCpf && !insertedCpfs.has(cleanCpf)) {
                   insertedCpfs.add(cleanCpf);
                   uniqueCpfBatch.push({ cpf: cleanCpf });
