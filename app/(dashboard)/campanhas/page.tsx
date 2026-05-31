@@ -537,6 +537,13 @@ export default function CampaignsPage() {
     else if (clean.includes(",")) {
       clean = clean.replace(",", ".");
     }
+    // Se houver apenas ponto (sem vírgula): "1.500" ou "15.000" (seguido de exatamente 3 dígitos)
+    else if (clean.includes(".")) {
+      const parts = clean.split(".");
+      if (parts[parts.length - 1].length === 3) {
+        clean = clean.replace(/\./g, "");
+      }
+    }
     
     const num = parseFloat(clean);
     return isNaN(num) ? null : num;

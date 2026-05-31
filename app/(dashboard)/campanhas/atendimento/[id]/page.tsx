@@ -39,6 +39,11 @@ const parseSafeNumber = (val: string | undefined | null) => {
     clean = clean.replace(/\./g, "").replace(",", ".");
   } else if (clean.includes(",")) {
     clean = clean.replace(",", ".");
+  } else if (clean.includes(".")) {
+    const parts = clean.split(".");
+    if (parts[parts.length - 1].length === 3) {
+      clean = clean.replace(/\./g, "");
+    }
   }
   
   const num = parseFloat(clean);

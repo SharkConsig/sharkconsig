@@ -463,9 +463,13 @@ export default function NewCampaignPage() {
     else if (clean.includes(",")) {
       clean = clean.replace(",", ".");
     }
-    // Se houver apenas ponto e não for milhar (ex: 1.000), tratamos como decimal: 2183.35 -> 2183.35
-    // Se o ponto estiver na posição de milhar e não houver mais nada, parseFloat lida bem ou tratamos.
-    // Na prática, se o usuário copiar do banco (ex: 2183.35), o parseFloat(2183.35) funciona.
+    // Se houver apenas ponto (sem vírgula): "1.500" ou "15.000" (seguido de exatamente 3 dígitos)
+    else if (clean.includes(".")) {
+      const parts = clean.split(".");
+      if (parts[parts.length - 1].length === 3) {
+        clean = clean.replace(/\./g, "");
+      }
+    }
     
     const num = parseFloat(clean);
     return isNaN(num) ? null : num;
