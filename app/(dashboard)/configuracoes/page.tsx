@@ -156,6 +156,14 @@ export default function SettingsPage() {
   const [isBrokerGoalModalOpen, setIsBrokerGoalModalOpen] = useState(false)
   const [isFaixaMetaModalOpen, setIsFaixaMetaModalOpen] = useState(false)
   const [isBannerModalOpen, setIsBannerModalOpen] = useState(false)
+  const [isEditBannerModalOpen, setIsEditBannerModalOpen] = useState(false)
+  const [editingBanner, setEditingBanner] = useState<DashboardBanner | null>(null)
+  const [editBannerForm, setEditBannerForm] = useState({
+    title: "",
+    imageFile: null as File | null,
+    imagePreview: "",
+    imageUrl: ""
+  })
 
   const [annualGoalForm, setAnnualGoalForm] = useState({ id: "", ano: new Date().getFullYear(), valor: "", ativo: true })
   const [faixaMetaForm, setFaixaMetaForm] = useState({ id: "", nome: "", valor_minimo: "", premio: "", ativo: true, ano: new Date().getFullYear() })
@@ -285,7 +293,7 @@ export default function SettingsPage() {
 
         if (item.file) {
           console.log("Iniciando validação de imagem e upload...")
-          const img = new Image()
+          const img = new window.Image()
           const objectUrl = URL.createObjectURL(item.file)
           
           await new Promise((resolve, reject) => {
@@ -294,11 +302,11 @@ export default function SettingsPage() {
             img.src = objectUrl
           })
 
-          if (img.width !== 2560 || img.height !== 1440) {
-            console.warn(`Dimensões inválidas: ${img.width}x${img.height}`)
-            toast.error(`Dimensões incorretas: ${img.width}x${img.height}. Todas as imagens devem ter exatamente 2560x1440.`)
-            URL.revokeObjectURL(objectUrl)
-            continue // Pular esta imagem
+          const aspectRatio = img.width / img.height
+          const isProportional = Math.abs(aspectRatio - 1.777) < 0.25
+          if (!isProportional) {
+            console.warn(`Imagem de proporção não-padrão detectada: ${img.width}x${img.height} (Aspecto: ${aspectRatio.toFixed(2)})`)
+            toast.warning(`A imagem "${item.file.name}" não está no formato ideal de 16:9. Mas não se preocupe! Ela foi mantida e se ajustará ao carrossel.`)
           }
           URL.revokeObjectURL(objectUrl)
 
@@ -357,6 +365,88 @@ export default function SettingsPage() {
       }
       
       toast.error(`Erro ao salvar banner: ${errorMsg}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleOpenEditBanner = (banner: DashboardBanner) => {
+    setEditingBanner(banner)
+    setEditBannerForm({
+      title: banner.title || "",
+      imageFile: null,
+      imagePreview: banner.image_url,
+      imageUrl: banner.image_url
+    })
+    setIsEditBannerModalOpen(true)
+  }
+
+  const handleBannerEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingBanner) return
+
+    setIsSubmitting(true)
+    try {
+      let finalImageUrl = editBannerForm.imageUrl
+
+      if (editBannerForm.imageFile) {
+        console.log("Iniciando upload de nova imagem...")
+        const img = new window.Image()
+        const objectUrl = URL.createObjectURL(editBannerForm.imageFile)
+        
+        await new Promise((resolve, reject) => {
+          img.onload = resolve
+          img.onerror = () => reject(new Error("Erro ao carregar imagem para validação"))
+          img.src = objectUrl
+        })
+
+        const aspectRatio = img.width / img.height
+        const isProportional = Math.abs(aspectRatio - 1.777) < 0.25
+        if (!isProportional) {
+          console.warn(`Imagem de proporção não-padrão detectada: ${img.width}x${img.height} (Aspecto: ${aspectRatio.toFixed(2)})`)
+          toast.warning(`A nova imagem não está no formato ideal de 16:9, mas foi mantida e se ajustará ao carrossel.`)
+        }
+        URL.revokeObjectURL(objectUrl)
+
+        const fileExt = editBannerForm.imageFile.name.split('.').pop()
+        const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+        const filePath = `banners/${fileName}`
+
+        const { error: uploadError } = await withRetry(() => 
+          supabase.storage
+            .from('dashboard-banners')
+            .upload(filePath, editBannerForm.imageFile!)
+        )
+
+        if (uploadError) throw uploadError
+
+        const { data } = supabase.storage
+          .from('dashboard-banners')
+          .getPublicUrl(filePath)
+        
+        finalImageUrl = data.publicUrl
+      }
+
+      const { error: updateError } = await withRetry(() =>
+        supabase
+          .from('dashboard_banners')
+          .update({
+            title: editBannerForm.title || null,
+            image_url: finalImageUrl
+          })
+          .eq('id', editingBanner.id)
+      )
+
+      if (updateError) throw updateError
+
+      toast.success("Banner atualizado com sucesso!")
+      setIsEditBannerModalOpen(false)
+      setEditingBanner(null)
+      await fetchStatuses()
+    } catch (error: unknown) {
+      console.error("Erro ao atualizar o banner:", error)
+      const errorMsg = error instanceof Error ? error.message : "Erro desconhecido"
+      toast.error(`Erro ao atualizar o banner: ${errorMsg}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -1934,7 +2024,7 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2">
                 <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
                 <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                  GERENCIAR CARROSSEL DO DASHBOARD (2560x1440)
+                  GERENCIAR CARROSSEL DO DASHBOARD (PROPORÇÃO 16:9)
                   {isBannersExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
                 </h2>
               </div>
@@ -1977,23 +2067,32 @@ export default function SettingsPage() {
                                referrerPolicy="no-referrer"
                              />
                            </div>
-                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 z-10">
-                              <p className="text-white font-bold text-[12px] uppercase tracking-tight truncate mb-3">{banner.title || "Sem título"}</p>
+                           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 z-10">
+                              <p className="text-white font-extrabold text-[12px] uppercase tracking-wider truncate mb-3">{banner.title || "Sem título de controle"}</p>
                               <div className="flex items-center gap-2">
                                 <Button 
                                   size="sm" 
                                   variant="ghost" 
-                                  className={cn("h-8 flex-1 text-[9px] font-black uppercase tracking-widest gap-2", banner.is_active ? "bg-emerald-500 text-white" : "bg-white text-slate-800 hover:bg-white/90")}
+                                  className={cn("h-8 flex-1 text-[9px] font-black uppercase tracking-widest gap-2", banner.is_active ? "bg-emerald-500 text-white hover:bg-emerald-600" : "bg-white text-slate-800 hover:bg-white/90")}
                                   onClick={() => handleToggleBanner(banner.id, banner.is_active)}
                                 >
                                   {banner.is_active ? <Check className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
                                   {banner.is_active ? "ATIVO" : "ATIVAR"}
                                 </Button>
                                 <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className="h-8 bg-blue-600 hover:bg-blue-700 text-white text-[9px] font-black uppercase tracking-widest gap-1.5 px-3 rounded-lg"
+                                  onClick={() => handleOpenEditBanner(banner)}
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                  EDITAR
+                                </Button>
+                                <Button 
                                   size="icon" 
                                   variant="ghost" 
-                                  className="h-8 w-8 bg-rose-500/80 hover:bg-rose-500 text-white rounded-lg"
-                                  onClick={() => handleDeleteBanner(banner.id, banner.image_url)}
+                                  className="h-8 w-8 bg-rose-500/80 hover:bg-rose-500 text-white rounded-lg flex-shrink-0"
+                                  onClick={() => handleGenericDelete('banner', banner.id, banner.title || 'Campanha')}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
@@ -3014,79 +3113,81 @@ export default function SettingsPage() {
 
       {/* Modal Upload Banner */}
       <Dialog open={isBannerModalOpen} onOpenChange={setIsBannerModalOpen}>
-        <DialogContent className="sm:max-w-[600px] border-none rounded-3xl shadow-2xl">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col border-none rounded-3xl shadow-2xl p-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-2">
             <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase">
               Adicionar ao Carrossel de Banners
             </DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleBannerSubmit} className="space-y-6 pt-4">
-            <div className="space-y-2">
-              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Título da Campanha (Opcional)</Label>
-              <Input 
-                placeholder="EX. CAMPANHA DE JUNHO - MODALIDADE INSS"
-                value={bannerForm.title}
-                onChange={(e) => setBannerForm(prev => ({ ...prev, title: e.target.value }))}
-                className="h-10 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] uppercase"
-              />
-            </div>
+          <form onSubmit={handleBannerSubmit} className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Título da Campanha (Opcional)</Label>
+                <Input 
+                  placeholder="EX. CAMPANHA DE JUNHO - MODALIDADE INSS"
+                  value={bannerForm.title}
+                  onChange={(e) => setBannerForm(prev => ({ ...prev, title: e.target.value }))}
+                  className="h-10 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] uppercase"
+                />
+              </div>
 
-            <div className="space-y-4">
-              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Imagens do Banner (2560x1440) - Selecione várias</Label>
-              
-              <div className="grid grid-cols-2 gap-4">
-                {bannerForm.images.map((item, index) => (
-                  <div key={index} className="relative aspect-[2560/1440] rounded-2xl overflow-hidden border-2 border-primary/20 shadow-lg group">
-                    <img src={item.preview} className="w-full h-full object-cover" alt={`Preview ${index + 1}`} />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Button 
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setBannerForm(prev => ({ 
-                          ...prev, 
-                          images: prev.images.filter((_, i) => i !== index) 
-                        }))}
-                        className="text-white hover:text-rose-400"
-                      >
-                        <Trash2 className="w-6 h-6" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                <label className="flex flex-col items-center justify-center aspect-[2560/1440] border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-slate-100/50 hover:border-primary/30 transition-all cursor-pointer">
-                  <div className="flex flex-col items-center justify-center p-4 text-center">
-                    <Plus className="w-6 h-6 text-slate-300 mb-2" />
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Adicionar Imagem</p>
-                  </div>
-                  <input 
-                    type="file" 
-                    className="hidden" 
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files || [])
-                      files.forEach(file => {
-                        if (file.size > 5 * 1024 * 1024) {
-                          toast.error(`Arquivo ${file.name} é muito grande (Limite 5MB).`)
-                          return
-                        }
-                        const reader = new FileReader()
-                        reader.onloadend = () => {
-                          setBannerForm(prev => ({ 
+              <div className="space-y-4">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-extrabold">Imagens do Banner (Proporção 16:9 recomendada)</Label>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  {bannerForm.images.map((item, index) => (
+                    <div key={index} className="relative aspect-[2560/1440] rounded-2xl overflow-hidden border-2 border-primary/20 shadow-lg group">
+                      <img src={item.preview} className="w-full h-full object-cover" alt={`Preview ${index + 1}`} />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Button 
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setBannerForm(prev => ({ 
                             ...prev, 
-                            images: [...prev.images, { file, preview: reader.result as string }] 
-                          }))
-                        }
-                        reader.readAsDataURL(file)
-                      })
-                    }}
-                  />
-                </label>
+                            images: prev.images.filter((_, i) => i !== index) 
+                          }))}
+                          className="text-white hover:text-rose-400"
+                        >
+                          <Trash2 className="w-6 h-6" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <label className="flex flex-col items-center justify-center aspect-[2560/1440] border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-slate-100/50 hover:border-primary/30 transition-all cursor-pointer">
+                    <div className="flex flex-col items-center justify-center p-4 text-center">
+                      <Plus className="w-6 h-6 text-slate-300 mb-2" />
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Adicionar Imagem</p>
+                    </div>
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || [])
+                        files.forEach(file => {
+                          if (file.size > 5 * 1024 * 1024) {
+                            toast.error(`Arquivo ${file.name} é muito grande (Limite 5MB).`)
+                            return
+                          }
+                          const reader = new FileReader()
+                          reader.onloadend = () => {
+                            setBannerForm(prev => ({ 
+                              ...prev, 
+                              images: [...prev.images, { file, preview: reader.result as string }] 
+                            }))
+                          }
+                          reader.readAsDataURL(file)
+                        })
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
             </div>
 
-            <DialogFooter className="pt-4 border-t border-slate-50 gap-3">
+            <DialogFooter className="p-6 border-t border-slate-100 gap-3 bg-slate-50 flex-shrink-0">
               <Button 
                 type="button" 
                 variant="outline" 
@@ -3101,6 +3202,95 @@ export default function SettingsPage() {
                 className="px-8 h-[40px] bg-[#171717] hover:bg-[#171717]/90 text-white font-black text-[10px] rounded-xl gap-3 transition-all uppercase tracking-widest shadow-xl shadow-slate-200 min-w-[160px]"
               >
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4" /> Salvar Banner</>}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Editar Banner */}
+      <Dialog open={isEditBannerModalOpen} onOpenChange={setIsEditBannerModalOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col border-none rounded-3xl shadow-2xl p-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-2">
+            <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase flex items-center gap-2">
+              <Pencil className="w-4 h-4 text-slate-800" />
+              EDITAR BANNER
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleBannerEditSubmit} className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+              <div className="space-y-2">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Título da Campanha (Opcional)</Label>
+                <Input 
+                  placeholder="EX. CAMPANHA DE JUNHO - MODALIDADE INSS"
+                  value={editBannerForm.title}
+                  onChange={(e) => setEditBannerForm(prev => ({ ...prev, title: e.target.value }))}
+                  className="h-10 bg-slate-50 border-slate-100 rounded-xl font-bold text-[12px] uppercase"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-extrabold font-black">Imagem do Banner (Proporção 16:9 recomendada)</Label>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  {editBannerForm.imagePreview && (
+                    <div className="relative aspect-[2560/1440] rounded-2xl overflow-hidden border-2 border-primary/20 shadow-lg group">
+                      <img src={editBannerForm.imagePreview} className="w-full h-full object-cover" alt="Preview Banner" />
+                    </div>
+                  )}
+                  
+                  <label className="flex flex-col items-center justify-center aspect-[2560/1440] border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-slate-100/50 hover:border-primary/30 transition-all cursor-pointer">
+                    <div className="flex flex-col items-center justify-center p-4 text-center">
+                      <Plus className="w-6 h-6 text-slate-300 mb-2" />
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Substituir Imagem</p>
+                    </div>
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          if (file.size > 5 * 1024 * 1024) {
+                            toast.error(`Arquivo ${file.name} é muito grande (Limite 5MB).`)
+                            return
+                          }
+                          const reader = new FileReader()
+                          reader.onloadend = () => {
+                            setEditBannerForm(prev => ({ 
+                              ...prev, 
+                              imageFile: file,
+                              imagePreview: reader.result as string 
+                            }))
+                          }
+                          reader.readAsDataURL(file)
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="p-6 border-t border-slate-100 gap-3 bg-slate-50 flex-shrink-0">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => {
+                  setIsEditBannerModalOpen(false)
+                  setEditingBanner(null)
+                }}
+                className="px-6 h-[40px] uppercase text-[10px] font-black border-slate-200 rounded-xl"
+              >
+                Cancelar
+              </Button>
+              <Button 
+                type="submit"
+                disabled={isSubmitting}
+                className="px-8 h-[40px] bg-[#171717] hover:bg-[#171717]/90 text-white font-black text-[10px] rounded-xl gap-3 transition-all uppercase tracking-widest shadow-xl shadow-slate-200 min-w-[160px]"
+              >
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4" /> Salvar Alterações</>}
               </Button>
             </DialogFooter>
           </form>

@@ -16,7 +16,9 @@ import {
   Zap,
   Loader2,
   MessageSquare,
-  BarChart3
+  BarChart3,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react"
 
 import { useAuth } from "@/context/auth-context"
@@ -1715,35 +1717,41 @@ export default function DashboardPage() {
 
                       <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/60 via-black/20 to-transparent pointer-events-none rounded-b-[32px] sm:rounded-b-[40px]" />
 
-                      {banners[currentBanner].title && (
-                        <div className="absolute bottom-16 left-8 right-8 z-10 pointer-events-none">
-                          <motion.p 
-                            key={`title-${currentBanner}`}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="text-white font-black text-xl sm:text-2xl lg:text-3xl uppercase tracking-tighter drop-shadow-lg"
-                          >
-                            {banners[currentBanner].title}
-                          </motion.p>
-                        </div>
-                      )}
-
                       {banners.length > 1 && (
-                        <div className="absolute bottom-8 left-8 flex items-center gap-2 z-10">
-                          {banners.map((_, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => setCurrentBanner(idx)}
-                              className={cn(
-                                "h-1.5 rounded-full transition-all duration-500",
-                                idx === currentBanner 
-                                  ? "bg-white w-10 shadow-[0_0_10px_rgba(255,255,255,0.5)]" 
-                                  : "bg-white/30 w-3 hover:bg-white/50"
-                              )}
-                              title={`Ver banner ${idx + 1}`}
-                            />
-                          ))}
-                        </div>
+                        <>
+                          {/* Navigation Arrows */}
+                          <button
+                            onClick={() => setCurrentBanner(prev => (prev - 1 + banners.length) % banners.length)}
+                            className="absolute left-6 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300 hover:bg-black/60 hover:scale-105 active:scale-95 z-20 cursor-pointer shadow-lg"
+                            aria-label="Campanha anterior"
+                          >
+                            <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+                          </button>
+                          <button
+                            onClick={() => setCurrentBanner(prev => (prev + 1) % banners.length)}
+                            className="absolute right-6 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300 hover:bg-black/60 hover:scale-105 active:scale-95 z-20 cursor-pointer shadow-lg"
+                            aria-label="Próxima campanha"
+                          >
+                            <ChevronRight className="w-5 h-5 stroke-[2.5]" />
+                          </button>
+
+                          {/* Slide Indicator Dots */}
+                          <div className="absolute bottom-8 left-8 flex items-center gap-2 z-10">
+                            {banners.map((_, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => setCurrentBanner(idx)}
+                                className={cn(
+                                  "h-1.5 rounded-full transition-all duration-500",
+                                  idx === currentBanner 
+                                    ? "bg-white w-10 shadow-[0_0_10px_rgba(255,255,255,0.5)]" 
+                                    : "bg-white/30 w-3 hover:bg-white/50"
+                                )}
+                                title={`Ver banner ${idx + 1}`}
+                              />
+                            ))}
+                          </div>
+                        </>
                       )}
                     </div>
                   </DashboardCard>
