@@ -185,8 +185,8 @@ interface User {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { perfil, isCorretor, isAdmin, isOperational } = useAuth()
-  const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || isAdmin
+  const { perfil, isCorretor, isAdmin, isOperational, isDeveloper } = useAuth()
+  const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isAdmin || isDeveloper
   const { isCollapsed } = useSidebar()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -219,6 +219,8 @@ export default function DashboardPage() {
   const [opInProcessValue, setOpInProcessValue] = useState(0)
   const [opInProcessCount, setOpInProcessCount] = useState(0)
   const [dashboardCampaigns, setDashboardCampaigns] = useState<Campaign[]>([])
+  const [monthlyGoal, setMonthlyGoal] = useState<number>(47000)
+  const [teamGoal, setTeamGoal] = useState<number>(448000)
   
   const fetchDashboardData = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -301,6 +303,65 @@ export default function DashboardPage() {
           .order('created_at', { ascending: false })
       )
       setBanners(bannerData || [])
+
+      // Fetch dynamic goal configs from DB for the current month and year
+      try {
+        const now = new Date()
+        const currentYear = now.getFullYear()
+        const currentMonth = now.getMonth() + 1 // 1-12
+
+        // Default initial structures based on user role fallbacks
+        let calculatedMonthlyGoal = (isSupervisor || isOperational || isAdmin || isDeveloper) ? 448000 : 47000
+        let calculatedTeamGoal = 448000
+
+        const { data: goalsConfigs, error: goalsError } = await withRetry(() => 
+          supabase
+            .from('metas_config')
+            .select('*')
+            .eq('ano', currentYear)
+            .eq('mes', currentMonth)
+        )
+
+        if (!goalsError && goalsConfigs && goalsConfigs.length > 0) {
+          const targetSupervisorId = isSupervisor ? perfil?.id : perfil?.supervisor_id
+
+          if (isSupervisor || isOperational || isAdmin || isDeveloper) {
+            // Se for supervisor, operacional, admin ou dev, a sua meta principal ("monthlyGoal") é a meta de time da sua própria equipe
+            let teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time' && g.alvo_id === targetSupervisorId)
+            if (!teamGoalConfig) {
+              // Se não encontrou uma meta de time para o seu próprio ID (caso do Admin, Developer ou Operacional),
+              // tentaremos encontrar qualquer meta de time para o mês
+              teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time')
+            }
+            if (teamGoalConfig) {
+              calculatedMonthlyGoal = teamGoalConfig.valor_mensal
+            }
+          } else {
+            // Se for corretor/estagiário/processo seletivo
+            // A meta mensal individual deles ("monthlyGoal") vem da configuração individual (tipo === 'corretor' e alvo_id === perfil?.id)
+            const indGoalConfig = goalsConfigs.find(g => g.tipo === 'corretor' && g.alvo_id === perfil?.id)
+            if (indGoalConfig) {
+              calculatedMonthlyGoal = indGoalConfig.valor_mensal
+            }
+
+            // A meta de time deles ("teamGoal") vem da meta de time do supervisor deles (tipo === 'time' e alvo_id === supervisor_id)
+            let teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time' && g.alvo_id === targetSupervisorId)
+            if (!teamGoalConfig) {
+              // Se o corretor não tiver o supervisor_id correspondente ou o supervisor não possuir uma meta específica,
+              // então busca a primeira meta de time disponível de fallback
+              teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time')
+            }
+            if (teamGoalConfig) {
+              calculatedTeamGoal = teamGoalConfig.valor_mensal
+            }
+          }
+        }
+
+        setMonthlyGoal(calculatedMonthlyGoal)
+        setTeamGoal(calculatedTeamGoal)
+      } catch (metaErr) {
+        console.warn("Could not fetch goals configs from DB, using fallback:", metaErr)
+      }
 
       // Fetch distributed campaigns for the dashboard
       try {
@@ -402,8 +463,8 @@ export default function DashboardPage() {
         
         let sortedRankings: RankingItem[] = []
 
-        if (targetSupervisorId || isAdmin || isOperational) {
-          const team = (isAdmin || isOperational)
+        if (targetSupervisorId || isAdmin || isOperational || isDeveloper) {
+          const team = (isAdmin || isOperational || isDeveloper)
             ? allUsers.filter((u: User) => u.funcao === 'Corretor' || u.funcao === 'Supervisor' || u.funcao === 'Estágio' || u.funcao === 'Estagio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO')
             : allUsers.filter((u: User) => 
                 u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId
@@ -415,7 +476,7 @@ export default function DashboardPage() {
             .from("propostas")
             .select("corretor_id, valor_producao, status, updated_at, created_at, data_pago_cliente")
           
-          if (!(isAdmin || isOperational)) {
+          if (!(isAdmin || isOperational || isDeveloper)) {
             teamProposalsQuery = teamProposalsQuery.in("corretor_id", teamIds)
           }
 
@@ -833,10 +894,11 @@ export default function DashboardPage() {
         
         setTicketStats(finalTicketStats)
 
-        // 4. Fetch Admin specific stats - Only if Admin
-        if (isAdmin) {
+        // 4. Fetch Admin specific stats - Only if Admin or Developer
+        if (isAdmin || isDeveloper) {
           const now = new Date()
           const currentYear = now.getFullYear()
+          const currentMonth = now.getMonth() + 1
           const startOfYearDate = new Date(currentYear, 0, 1)
           const startOfYearISO = startOfYearDate.toISOString()
 
@@ -862,12 +924,12 @@ export default function DashboardPage() {
           const { data: goalsData } = await supabase
             .from('metas_config')
             .select('*')
-            .eq('tipo', 'empresa')
             .eq('ano', currentYear)
 
-          const annualGoalConfig = goalsData?.find(g => g.mes === 0)
+          const annualGoalConfig = goalsData?.find(g => g.tipo === 'empresa' && g.mes === 0)
           const annualGoalValue = annualGoalConfig?.valor_mensal || 0
-          const monthlyGoalValue = annualGoalValue / 12
+          const monthlyTeamConfig = goalsData?.find(g => g.tipo === 'time' && g.mes === currentMonth)
+          const monthlyGoalValue = monthlyTeamConfig ? monthlyTeamConfig.valor_mensal : (annualGoalValue / 12)
 
           setAdminStats({
             monthlyGoal: monthlyGoalValue,
@@ -916,7 +978,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [perfil?.id, perfil?.role, perfil?.supervisor_id, isCorretor, isAdmin, isOperational, isSupervisor, startDate, endDate])
+  }, [perfil?.id, perfil?.role, perfil?.supervisor_id, isCorretor, isAdmin, isOperational, isDeveloper, isSupervisor, startDate, endDate])
 
   useEffect(() => {
     setMounted(true)
@@ -981,7 +1043,7 @@ export default function DashboardPage() {
         const val = parseCurrency(p.valor_producao)
         return acc + (isNaN(val) ? 0 : val)
       }, 0)
-  }, [userProposals, startDate, endDate, isSupervisor, isAdmin, isOperational])
+  }, [userProposals, startDate, endDate, isSupervisor, isAdmin, isOperational, isDeveloper])
 
   const dailyProduced = useMemo(() => {
     const startOfToday = new Date()
@@ -1008,8 +1070,7 @@ export default function DashboardPage() {
       .slice(0, 3)
   }, [userProposals])
 
-  const monthlyGoal = (isSupervisor || isOperational || isAdmin) ? 448000 : 47000
-  const teamGoal = 448000
+
   
   const displayMonthlyProduced = (isSupervisor || isOperational || isAdmin) ? teamMTDProduced : monthlyMTDProduced
   const displayDailyProduced = (isSupervisor || isOperational || isAdmin) ? teamDailyProduced : dailyProduced
@@ -1046,6 +1107,7 @@ export default function DashboardPage() {
     
     const holidays = [
       { month: 4, day: 1 }, // May 1st
+      { month: 5, day: 4 }, // June 4th (Corpus Christi / Feriado de Junho)
     ]
 
     let count = 0
@@ -1088,7 +1150,7 @@ export default function DashboardPage() {
         "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
         isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
       )}>
-        {isAdmin && adminStats && (
+        {(isAdmin || isDeveloper) && adminStats && (
           <AdminDashboard 
             perfil={perfil} 
             isLoading={isLoading} 
@@ -1102,7 +1164,7 @@ export default function DashboardPage() {
           />
         )}
         
-        {(!isAdmin) && (
+        {(!isAdmin && !isDeveloper) && (
           <>
             {/* Header Section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
@@ -1220,7 +1282,7 @@ export default function DashboardPage() {
                 <div className="relative z-10 flex flex-col h-full">
                   <div className="flex items-center justify-between mb-2">
                      <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">
-                       {(perfil?.role?.toLowerCase() === 'operacional' || isAdmin) ? "META MENSAL DA EMPRESA" : "Sua Meta Mensal"}
+                       {(perfil?.role?.toLowerCase() === 'operacional' || perfil?.role?.toLowerCase() === 'desenvolvedor' || perfil?.role?.toLowerCase() === 'administrador' || isAdmin || isDeveloper) ? "META MENSAL DA EMPRESA" : "Sua Meta Mensal"}
                      </p>
                      <div className="bg-[#1C2643]/5 p-2 rounded-xl">
                         <Target className="w-5 h-5 text-[#1C2643]" />
