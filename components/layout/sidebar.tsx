@@ -17,7 +17,11 @@ import {
   ChevronRight,
   ChevronLeft,
   Settings,
-  Landmark
+  Landmark,
+  Calendar,
+  Briefcase,
+  Clock,
+  AlertTriangle
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
@@ -103,6 +107,50 @@ const menuItems = [
   }
 ]
 
+const hrMenuItems = [
+  {
+    title: "RECURSOS HUMANOS",
+    items: [
+      { 
+        name: "DASHBOARD", 
+        href: "/", 
+        icon: Landmark, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "ENTREVISTAS", 
+        href: "/entrevistas", 
+        icon: Calendar, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "DADOS DOS COLABORADORES", 
+        href: "/colaboradores", 
+        icon: Briefcase, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "GESTÃO DE USUÁRIOS", 
+        href: "/configuracoes/usuarios", 
+        icon: Users, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "ADVERTÊNCIA", 
+        href: "/advertencias", 
+        icon: AlertTriangle, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "TEMPO DE EMPRESA", 
+        href: "/tempo-empresa", 
+        icon: Clock, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
+    ]
+  }
+]
+
 interface SidebarProps {
   isOpen?: boolean
   onClose?: () => void
@@ -111,13 +159,15 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const { isCollapsed, toggleCollapse } = useSidebar()
-  const { perfil, isAdmin } = useAuth()
+  const { perfil, isAdmin, isRecursosHumanos } = useAuth()
   const [isHovered, setIsHovered] = useState(false)
 
   const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
   const effectiveCollapsed = isCollapsed && !isHovered
 
-  const filteredMenuItems = menuItems.map(section => ({
+  const activeMenuItems = (isRecursosHumanos || perfil?.role === 'Recursos Humanos') ? hrMenuItems : menuItems
+
+  const filteredMenuItems = activeMenuItems.map(section => ({
     ...section,
     items: section.items.filter(item => {
       // Se for admin via email (superadmin), vê tudo

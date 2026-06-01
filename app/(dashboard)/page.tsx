@@ -31,6 +31,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { useSidebar } from "@/context/sidebar-context"
 import { DashboardCard, Gauge, formatCurrency } from "@/components/dashboard/dashboard-shared"
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard"
+import { HRDashboard } from "@/components/dashboard/hr-dashboard"
 
 interface ProposalSummary {
   id_lead: string
@@ -212,7 +213,7 @@ interface User {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { perfil, isCorretor, isAdmin, isOperational, isDeveloper } = useAuth()
+  const { perfil, isCorretor, isAdmin, isOperational, isDeveloper, isRecursosHumanos } = useAuth()
   const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isAdmin || isDeveloper
   const isEstagio = perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const { isCollapsed } = useSidebar()
@@ -1147,6 +1148,20 @@ export default function DashboardPage() {
   }, [])
 
   if (!mounted) return null
+
+  if (isRecursosHumanos || perfil?.role === 'Recursos Humanos') {
+    return (
+      <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+        <Header title="DASHBOARD" />
+        <div className={cn(
+          "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
+          isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
+        )}>
+          <HRDashboard />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex-1 flex flex-col bg-[#F8FAFC]">

@@ -295,6 +295,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                       <SelectItem value="Estágio" className="text-[10.5px] font-medium">Estágio</SelectItem>
                       <SelectItem value="Processo Seletivo" className="text-[10.5px] font-medium">Processo Seletivo</SelectItem>
                       <SelectItem value="Desenvolvedor" className="text-[10.5px] font-medium">Desenvolvedor</SelectItem>
+                      <SelectItem value="Recursos Humanos" className="text-[10.5px] font-medium">Recursos Humanos</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

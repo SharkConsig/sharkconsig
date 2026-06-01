@@ -128,12 +128,14 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       'PAGAMENTO DEVOLVIDO'
     ].includes(proposal.status));
 
-  const canAttach = (!(isCorretor || isSupervisor)) || ((isCorretor || isSupervisor) && [
-    'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
-    'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
-    'COM INCONSISTÊNCIA NO BANCO',
-    'PAGAMENTO DEVOLVIDO'
-  ].includes(proposal.status));
+  const canAttach = (isAdmin || isDeveloper || isOperational) || 
+    (!(isCorretor || isSupervisor)) || 
+    ((isCorretor || isSupervisor) && [
+      'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO',
+      'COM INCONSISTÊNCIA / PENDÊNCIA PARA DIGITAÇÃO',
+      'COM INCONSISTÊNCIA NO BANCO',
+      'PAGAMENTO DEVOLVIDO'
+    ].includes(proposal.status));
 
   const canSave = (canEditFields || canAttach);
 

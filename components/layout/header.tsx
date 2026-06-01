@@ -21,7 +21,7 @@ export function Header({ title }: HeaderProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { toggleSidebar } = useSidebar()
-  const { perfil, user, isAdmin } = useAuth()
+  const { perfil, user, isAdmin, isRecursosHumanos } = useAuth()
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -134,39 +134,41 @@ export function Header({ title }: HeaderProps) {
         </h2>
       </div>
       <div className="flex items-center gap-2 sm:gap-4">
-        <div className={`hidden md:flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100 mr-2 ${
-          isCampanhaAtendimento ? "pointer-events-none opacity-40 cursor-not-allowed select-none" : ""
-        }`}>
-          <Link 
-            href="/chamados/novo" 
-            title="Abrir Chamado"
-            className="p-2 text-blue-600 hover:bg-white hover:shadow-sm rounded-md transition-all"
-          >
-            <MessageSquarePlus className="w-[21px] h-[21px]" />
-          </Link>
-          <Link 
-            href="/chamados" 
-            title="Chamados Abertos"
-            className="p-2 text-green-600 hover:bg-white hover:shadow-sm rounded-md transition-all"
-          >
-            <MessageSquareText className="w-[21px] h-[21px]" />
-          </Link>
-          <div className="w-px h-4 bg-slate-200 mx-1" />
-          <Link 
-            href="/propostas/nova" 
-            title="Digitar Proposta"
-            className="p-2 text-amber-600 hover:bg-white hover:shadow-sm rounded-md transition-all"
-          >
-            <FileEdit className="w-[21px] h-[21px]" />
-          </Link>
-          <Link 
-            href="/propostas" 
-            title="Lista de Propostas"
-            className="p-2 text-purple-600 hover:bg-white hover:shadow-sm rounded-md transition-all"
-          >
-            <ClipboardList className="w-[21px] h-[21px]" />
-          </Link>
-        </div>
+        {!(isRecursosHumanos || perfil?.role === 'Recursos Humanos') && (
+          <div className={`hidden md:flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100 mr-2 ${
+            isCampanhaAtendimento ? "pointer-events-none opacity-40 cursor-not-allowed select-none" : ""
+          }`}>
+            <Link 
+              href="/chamados/novo" 
+              title="Abrir Chamado"
+              className="p-2 text-blue-600 hover:bg-white hover:shadow-sm rounded-md transition-all"
+            >
+              <MessageSquarePlus className="w-[21px] h-[21px]" />
+            </Link>
+            <Link 
+              href="/chamados" 
+              title="Chamados Abertos"
+              className="p-2 text-green-600 hover:bg-white hover:shadow-sm rounded-md transition-all"
+            >
+              <MessageSquareText className="w-[21px] h-[21px]" />
+            </Link>
+            <div className="w-px h-4 bg-slate-200 mx-1" />
+            <Link 
+              href="/propostas/nova" 
+              title="Digitar Proposta"
+              className="p-2 text-amber-600 hover:bg-white hover:shadow-sm rounded-md transition-all"
+            >
+              <FileEdit className="w-[21px] h-[21px]" />
+            </Link>
+            <Link 
+              href="/propostas" 
+              title="Lista de Propostas"
+              className="p-2 text-purple-600 hover:bg-white hover:shadow-sm rounded-md transition-all"
+            >
+              <ClipboardList className="w-[21px] h-[21px]" />
+            </Link>
+          </div>
+        )}
 
         <div className="relative" ref={dropdownRef}>
           <button 

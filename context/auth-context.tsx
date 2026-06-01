@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { User } from "@supabase/supabase-js"
 
-export type UserRole = 'Desenvolvedor' | 'Administrador' | 'Operacional' | 'Supervisor' | 'Corretor' | 'Estágio' | 'Processo Seletivo' | 'PROCESSO SELETIVO'
+export type UserRole = 'Desenvolvedor' | 'Administrador' | 'Operacional' | 'Supervisor' | 'Corretor' | 'Estágio' | 'Processo Seletivo' | 'PROCESSO SELETIVO' | 'Recursos Humanos'
 
 interface Perfil {
   id: string
@@ -29,6 +29,7 @@ interface AuthContextType {
   isOperational: boolean
   isCorretor: boolean
   isEstagio: boolean
+  isRecursosHumanos: boolean
   canAccessAdminAreas: boolean
 }
 
@@ -79,6 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isOperational = isAdmin || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo'
   const isCorretor = perfil?.role === 'Corretor' || perfil?.role === 'Estágio' || perfil?.role === 'Processo Seletivo' || perfil?.role === 'PROCESSO SELETIVO' || (!isAdmin && !!user && !perfil?.role)
   const isEstagio = perfil?.role === 'Estágio'
+  const isRecursosHumanos = perfil?.role === 'Recursos Humanos'
   const canAccessAdminAreas = isAdmin || isDeveloper
 
   return (
@@ -92,6 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isOperational,
       isCorretor,
       isEstagio,
+      isRecursosHumanos,
       canAccessAdminAreas
     }}>
       {children}

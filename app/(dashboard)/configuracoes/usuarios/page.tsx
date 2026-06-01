@@ -55,7 +55,7 @@ interface Usuario {
 
 export default function UsuariosPage() {
   const router = useRouter()
-  const { canAccessAdminAreas, isLoading: authLoading } = useAuth()
+  const { canAccessAdminAreas, isRecursosHumanos, perfil, isLoading: authLoading } = useAuth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<Usuario | null>(null)
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
@@ -143,10 +143,10 @@ export default function UsuariosPage() {
   }
 
   useEffect(() => {
-    if (!authLoading && !canAccessAdminAreas) {
+    if (!authLoading && !canAccessAdminAreas && !isRecursosHumanos && perfil?.role !== 'Recursos Humanos') {
       router.replace("/")
     }
-  }, [authLoading, canAccessAdminAreas, router])
+  }, [authLoading, canAccessAdminAreas, isRecursosHumanos, perfil, router])
 
   const fetchUsuarios = useCallback(async () => {
     setIsLoading(true)
