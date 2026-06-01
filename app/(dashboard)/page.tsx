@@ -18,7 +18,10 @@ import {
   MessageSquare,
   BarChart3,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  BookOpen,
+  Compass,
+  Award
 } from "lucide-react"
 
 import { useAuth } from "@/context/auth-context"
@@ -174,6 +177,30 @@ const parseCurrency = (val: string | number | null | undefined) => {
   return parseFloat(clean)
 }
 
+export const getRemainingBusinessDays = () => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const today = now.getDate()
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  
+  const holidays = [
+    { month: 4, day: 1 }, // May 1st
+    { month: 5, day: 4 }, // June 4th (Corpus Christi / Feriado de Junho)
+  ]
+
+  let count = 0
+  for (let d = today; d <= lastDay; d++) {
+    const date = new Date(year, month, d)
+    const dayOfWeek = date.getDay()
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      const isHoliday = holidays.some(h => h.month === month && h.day === d)
+      if (!isHoliday) count++
+    }
+  }
+  return count || 1
+}
+
 interface User {
   id: string
   nome: string
@@ -187,6 +214,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const { perfil, isCorretor, isAdmin, isOperational, isDeveloper } = useAuth()
   const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isAdmin || isDeveloper
+  const isEstagio = perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const { isCollapsed } = useSidebar()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -928,15 +956,17 @@ export default function DashboardPage() {
 
           const annualGoalConfig = goalsData?.find(g => g.tipo === 'empresa' && g.mes === 0)
           const annualGoalValue = annualGoalConfig?.valor_mensal || 0
-          const monthlyTeamConfig = goalsData?.find(g => g.tipo === 'time' && g.mes === currentMonth)
-          const monthlyGoalValue = monthlyTeamConfig ? monthlyTeamConfig.valor_mensal : (annualGoalValue / 12)
+          const monthlyTeamConfigs = goalsData?.filter(g => g.tipo === 'time' && g.mes === currentMonth) || []
+          const monthlyGoalValue = monthlyTeamConfigs.length > 0 
+            ? monthlyTeamConfigs.reduce((sum, g) => sum + (g.valor_mensal || 0), 0)
+            : (annualGoalValue / 12)
 
           setAdminStats({
             monthlyGoal: monthlyGoalValue,
             monthlyProduced: teamMTDTotal,
             annualGoal: annualGoalValue,
             annualProduced: annualProducedValue,
-            dailyGoal: monthlyGoalValue / 22,
+            dailyGoal: monthlyGoalValue / getRemainingBusinessDays(),
             dailyProduced: teamDailyTotal,
             inProcessValue: teamInProcessValueCalc,
             inProcessCount: teamInProcessCountCalc,
@@ -1098,30 +1128,6 @@ export default function DashboardPage() {
   const progressPercent = Math.round((displayMonthlyProduced / monthlyGoal) * 100)
   const remainingValue = Math.max(0, monthlyGoal - displayMonthlyProduced)
   
-  const getRemainingBusinessDays = () => {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth()
-    const today = now.getDate()
-    const lastDay = new Date(year, month + 1, 0).getDate()
-    
-    const holidays = [
-      { month: 4, day: 1 }, // May 1st
-      { month: 5, day: 4 }, // June 4th (Corpus Christi / Feriado de Junho)
-    ]
-
-    let count = 0
-    for (let d = today; d <= lastDay; d++) {
-      const date = new Date(year, month, d)
-      const dayOfWeek = date.getDay()
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        const isHoliday = holidays.some(h => h.month === month && h.day === d)
-        if (!isHoliday) count++
-      }
-    }
-    return count
-  }
-
   const remainingBusinessDays = getRemainingBusinessDays()
   const dailyGoal = remainingBusinessDays > 0 ? remainingValue / remainingBusinessDays : 0
 
@@ -1181,25 +1187,27 @@ export default function DashboardPage() {
                 </p>
               </motion.div>
               
-              <motion.div 
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-5 self-start md:self-center relative group"
-              >
-                <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0">
-                   <Clock className="w-7 h-7 text-amber-500" />
-                </div>
-                <div className="relative z-10">
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Prazo Para Bater a Meta</p>
-                   <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-black text-[#1C2643]">{remainingBusinessDays.toString().padStart(2, '0')}</span>
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dias Restantes</span>
-                   </div>
-                   <p className="text-[11px] font-medium text-slate-500 mt-1 max-w-[200px] leading-tight">
-                      <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta.</span> Aproveite cada dia útil para transformar esforço em resultado.
-                   </p>
-                </div>
-              </motion.div>
+              {!isEstagio && (
+                <motion.div 
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="flex items-center gap-5 self-start md:self-center relative group"
+                >
+                  <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0">
+                     <Clock className="w-7 h-7 text-amber-500" />
+                  </div>
+                  <div className="relative z-10">
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Prazo Para Bater a Meta</p>
+                     <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-black text-[#1C2643]">{remainingBusinessDays.toString().padStart(2, '0')}</span>
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dias Restantes</span>
+                     </div>
+                     <p className="text-[11px] font-medium text-slate-500 mt-1 max-w-[200px] leading-tight">
+                        <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta.</span> Aproveite cada dia útil para transformar esforço em resultado.
+                     </p>
+                  </div>
+                </motion.div>
+              )}
             </div>
 
             {/* FILTER SECTION SECURELY RENDERED FOR SUPERVISOR */}
@@ -1269,13 +1277,174 @@ export default function DashboardPage() {
             )}
 
             {activeTab === 'propostas' ? (
-              <motion.div 
-                key="propostas"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={cn("transition-opacity duration-500", isLoading ? "opacity-50 pointer-events-none" : "opacity-100")}
-              >
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              isEstagio ? (
+                <motion.div 
+                  key="estagio-propostas"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-8"
+                >
+                  {/* Hero Header Card / Banner */}
+                  <div className="relative overflow-hidden bg-[#1C2643] text-white rounded-[32px] p-8 sm:p-10 shadow-xl border border-[#1C2643]/10">
+                    <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-[0.03] pointer-events-none flex items-center justify-center">
+                      <Trophy className="w-64 h-64 text-amber-400" />
+                    </div>
+                    <div className="relative z-10 max-w-3xl">
+                      <span className="bg-amber-400 text-[#1C2643] text-[10px] font-black uppercase tracking-widest px-3.5 py-1.5 rounded-full inline-block mb-4">
+                        Jornada do Futuro Shark
+                      </span>
+                      <h2 className="text-3xl sm:text-4xl font-black tracking-tight mb-4 text-white">
+                        Formando os Líderes de Amanhã
+                      </h2>
+                      <p className="text-[14px] text-slate-350 font-medium leading-relaxed mb-6">
+                        Tubarões não nascem prontos; eles são moldados na consistência, no estudo e na persistência. Este período de estágio é a sua maior oportunidade de dominar o mercado, aperfeiçoar sua retórica de vendas e entender a fundo a engrenagem do crédito consignado. Cada dia é um aprendizado valioso.
+                      </p>
+                      <div className="flex flex-wrap gap-4 items-center">
+                        <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
+                          <BookOpen className="w-4 h-4 text-amber-400" />
+                          <span className="text-xs font-bold text-slate-200">Domínio Técnico</span>
+                        </div>
+                        <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
+                          <Compass className="w-4 h-4 text-[#00C896]" />
+                          <span className="text-xs font-bold text-slate-200">Forte Conexão</span>
+                        </div>
+                        <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
+                          <Award className="w-4 h-4 text-blue-400" />
+                          <span className="text-xs font-bold text-slate-200">Mentalidade Vencedora</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Motivational Cards Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group">
+                      <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mb-2 shrink-0 border border-amber-100">
+                        <BookOpen className="w-6 h-6 text-amber-600" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest block">Pilar 01</span>
+                        <h4 className="text-lg font-black text-[#1C2643] mt-1">Conhecimento Técnico</h4>
+                        <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
+                          Não se compare com os outros, mas sim com quem você era ontem. Dedique tempo para estudar os scripts de vendas, entender os fluxos operacionais e dominar os detalhes dos principais convênios.
+                        </p>
+                      </div>
+                      <div className="mt-auto pt-4 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
+                        <span>Foco em Evolução</span>
+                      </div>
+                    </DashboardCard>
+
+                    <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group">
+                      <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mb-2 shrink-0 border border-emerald-100">
+                        <Compass className="w-6 h-6 text-emerald-600" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block">Pilar 02</span>
+                        <h4 className="text-lg font-black text-[#1C2643] mt-1">Conexão & Empatia</h4>
+                        <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
+                          Nossos clientes buscam segurança e acolhimento. Pratique a escuta ativa, demonstre empatia sincera e construa verdadeira proximidade em cada ligação de atendimento realizados.
+                        </p>
+                      </div>
+                      <div className="mt-auto pt-4 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
+                        <span>Sintonia & Atendimento</span>
+                      </div>
+                    </DashboardCard>
+
+                    <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group">
+                      <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mb-2 shrink-0 border border-blue-100">
+                        <Award className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">Pilar 03</span>
+                        <h4 className="text-lg font-black text-[#1C2643] mt-1">Perseverança Diária</h4>
+                        <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
+                          Grandes conquistas decorrem da consistência diária e da paixão pelo processo. Mantenha a resiliência ativa, celebre seu progresso constante e aproveite cada feedback recebido.
+                        </p>
+                      </div>
+                      <div className="mt-auto pt-4 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
+                        <span>Paciência & Consistência</span>
+                      </div>
+                    </DashboardCard>
+                  </div>
+
+                  {/* Campaigns & Code of Ethics Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <div className="lg:col-span-8 bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 bg-[#1C2643] rounded-xl flex items-center justify-center">
+                          <Target className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none">
+                            Minhas Campanhas Ativas
+                          </p>
+                          <p className="text-[11px] font-bold text-slate-400 mt-1">Desenvolva suas habilidades de comunicação praticando com bases de leads</p>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {dashboardCampaigns.length > 0 ? (
+                          dashboardCampaigns.map((campaign) => (
+                            <div 
+                              key={campaign.id} 
+                              onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
+                              className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200 hover:border-[#1C2643]/35 hover:bg-white transition-all cursor-pointer group"
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-amber-600 transition-colors">
+                                  {campaign.nome}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                  {campaign.filtros?.convenio || 'Geral'}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[11px] font-black text-[#1C2643]">
+                                  {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
+                                </p>
+                                <p className="text-[9px] font-bold text-slate-400">
+                                  {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-8 opacity-40">
+                            <Target className="w-8 h-8 mb-2" />
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="lg:col-span-4 bg-amber-50 rounded-[28px] p-6 border border-amber-100 shadow-sm flex flex-col justify-between">
+                      <div className="space-y-4">
+                        <span className="text-[10px] font-black text-amber-700 bg-white px-3 py-1 rounded-full border border-amber-200 inline-block uppercase tracking-wider">
+                          Suporte & Mentoria
+                        </span>
+                        <h3 className="text-lg font-black text-[#1C2643] tracking-tight">O Jeito SharkConsig</h3>
+                        <p className="text-xs text-slate-700 leading-relaxed font-semibold space-y-2">
+                          <span className="block">1. **Transparência Total**: Explicamos todas as simulações com clareza.</span>
+                          <span className="block">2. **Confiança & Ética**: Respeitamos cada cliente e suas decisões.</span>
+                          <span className="block">3. **Suporte no Cardume**: Em caso de dificuldades técnicas ou dúvidas, seu supervisor de equipe está de prontidão para ajudar. Use nossa mentoria!</span>
+                        </p>
+                      </div>
+                      <div className="mt-8 pt-4 border-t border-amber-200/60 flex items-center justify-between">
+                        <span className="text-[10px] font-black text-amber-800 tracking-wider font-mono">#SOMOSTUBAROES</span>
+                        <div className="relative w-16 h-4 opacity-40">
+                          <Image src="/logo.png" alt="SharkConsig" fill className="object-contain" referrerPolicy="no-referrer" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div 
+                  key="propostas"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={cn("transition-opacity duration-500", isLoading ? "opacity-50 pointer-events-none" : "opacity-100")}
+                >
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* SECTION 1: O CORAÇÃO DO DASHBOARD (Meta Individual) */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-4 lg:row-span-2">
               <DashboardCard className="h-full flex flex-col shadow-2xl shadow-[#1C2643]/5 overflow-hidden group">
@@ -1832,7 +2001,7 @@ export default function DashboardPage() {
             )}
             </div>
           </motion.div>
-        ) : (
+        )) : (
           isAdmin && activeTab === 'chamados' && (
             <motion.div 
               key="chamados"
