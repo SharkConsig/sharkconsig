@@ -90,8 +90,11 @@ interface Proposal {
   arquivo_rg_verso?: string
   arquivo_contracheque?: string
   arquivo_extrato?: string
+  arquivo_residencia?: string
   arquivo_outros?: string
   arquivo_outros_2?: string
+  arquivo_outros_3?: string
+  arquivo_outros_4?: string
 }
 
 interface Regra {
@@ -322,8 +325,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     verso: null,
     contracheque: null,
     extrato: null,
+    residencia: null,
     outros: null,
-    outros_2: null
+    outros_2: null,
+    outros_3: null,
+    outros_4: null
   })
 
   const [existingAttachments, setExistingAttachments] = useState<{ [key: string]: string | null }>({
@@ -331,8 +337,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     verso: (proposal.arquivo_rg_verso as string) || null,
     contracheque: (proposal.arquivo_contracheque as string) || null,
     extrato: (proposal.arquivo_extrato as string) || null,
+    residencia: (proposal.arquivo_residencia as string) || null,
     outros: (proposal.arquivo_outros as string) || null,
-    outros_2: (proposal.arquivo_outros_2 as string) || null
+    outros_2: (proposal.arquivo_outros_2 as string) || null,
+    outros_3: (proposal.arquivo_outros_3 as string) || null,
+    outros_4: (proposal.arquivo_outros_4 as string) || null
   })
 
   const [isSearchingCEP, setIsSearchingCEP] = useState(false)
@@ -387,8 +396,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       verso: (proposal.arquivo_rg_verso as string) || null,
       contracheque: (proposal.arquivo_contracheque as string) || null,
       extrato: (proposal.arquivo_extrato as string) || null,
+      residencia: (proposal.arquivo_residencia as string) || null,
       outros: (proposal.arquivo_outros as string) || null,
-      outros_2: (proposal.arquivo_outros_2 as string) || null
+      outros_2: (proposal.arquivo_outros_2 as string) || null,
+      outros_3: (proposal.arquivo_outros_3 as string) || null,
+      outros_4: (proposal.arquivo_outros_4 as string) || null
     });
 
     setSelectedFiles({
@@ -396,8 +408,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       verso: null,
       contracheque: null,
       extrato: null,
+      residencia: null,
       outros: null,
-      outros_2: null
+      outros_2: null,
+      outros_3: null,
+      outros_4: null
     });
 
     setPastedImages([]);
@@ -447,8 +462,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     verso: useRef<HTMLInputElement>(null),
     contracheque: useRef<HTMLInputElement>(null),
     extrato: useRef<HTMLInputElement>(null),
+    residencia: useRef<HTMLInputElement>(null),
     outros: useRef<HTMLInputElement>(null),
-    outros_2: useRef<HTMLInputElement>(null)
+    outros_2: useRef<HTMLInputElement>(null),
+    outros_3: useRef<HTMLInputElement>(null),
+    outros_4: useRef<HTMLInputElement>(null)
   }
 
   useEffect(() => {
@@ -772,8 +790,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           arquivo_rg_verso: fileUrls.verso || existingAttachments.verso,
           arquivo_contracheque: fileUrls.contracheque || existingAttachments.contracheque,
           arquivo_extrato: fileUrls.extrato || existingAttachments.extrato,
+          arquivo_residencia: fileUrls.residencia || existingAttachments.residencia,
           arquivo_outros: fileUrls.outros || existingAttachments.outros,
           arquivo_outros_2: fileUrls.outros_2 || existingAttachments.outros_2,
+          arquivo_outros_3: fileUrls.outros_3 || existingAttachments.outros_3,
+          arquivo_outros_4: fileUrls.outros_4 || existingAttachments.outros_4,
         });
       }
 
@@ -947,8 +968,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   verso: "RG (Verso)",
                   contracheque: "Contracheque",
                   extrato: "Extrato",
+                  residencia: "Comprovante de Residência",
                   outros: "Outro 1",
-                  outros_2: "Outro 2"
+                  outros_2: "Outro 2",
+                  outros_3: "Outro 3",
+                  outros_4: "Outro 4"
                 }
                 const label = labelMap[key] || "Anexo"
                 const extension = url.split('.').pop()?.split('?')[0].toUpperCase() || "PDF"
@@ -1668,8 +1692,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   { label: "RG (VERSO)", id: "verso", ref: fileRefs.verso },
                   { label: "CONTRA CHEQUE", id: "contracheque", ref: fileRefs.contracheque },
                   { label: "EXTRATO DE CONSIGNAÇÃO", id: "extrato", ref: fileRefs.extrato },
+                  { label: "COMPROVANTE DE RESIDÊNCIA", id: "residencia", ref: fileRefs.residencia },
                   { label: "OUTROS", id: "outros", ref: fileRefs.outros },
-                  { label: "OUTROS", id: "outros_2", ref: fileRefs.outros_2 }
+                  { label: "OUTROS", id: "outros_2", ref: fileRefs.outros_2 },
+                  { label: "OUTROS", id: "outros_3", ref: fileRefs.outros_3 },
+                  { label: "OUTROS", id: "outros_4", ref: fileRefs.outros_4 }
                 ].map((field) => (
                   <div key={field.id} className="space-y-2">
                     <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest block">{field.label}</label>

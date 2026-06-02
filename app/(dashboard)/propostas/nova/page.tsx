@@ -110,16 +110,22 @@ function NewProposalForm() {
     verso: null,
     contracheque: null,
     extrato: null,
+    residencia: null,
     outros: null,
-    outros_2: null
+    outros_2: null,
+    outros_3: null,
+    outros_4: null
   })
   const [existingAttachments, setExistingAttachments] = useState<{ [key: string]: string | null }>({
     frente: null,
     verso: null,
     contracheque: null,
     extrato: null,
+    residencia: null,
     outros: null,
-    outros_2: null
+    outros_2: null,
+    outros_3: null,
+    outros_4: null
   })
   const [pastedImages, setPastedImages] = useState<File[]>([])
   
@@ -242,8 +248,11 @@ function NewProposalForm() {
               verso: ticket.arquivo_rg_verso || null,
               contracheque: ticket.arquivo_contracheque || null,
               extrato: ticket.arquivo_extrato || null,
+              residencia: ticket.arquivo_residencia || null,
               outros: ticket.arquivo_outros || null,
-              outros_2: ticket.arquivo_outros_2 || null
+              outros_2: ticket.arquivo_outros_2 || null,
+              outros_3: ticket.arquivo_outros_3 || null,
+              outros_4: ticket.arquivo_outros_4 || null
             })
           }
         } catch (err) {
@@ -351,8 +360,11 @@ function NewProposalForm() {
     verso: useRef<HTMLInputElement>(null),
     contracheque: useRef<HTMLInputElement>(null),
     extrato: useRef<HTMLInputElement>(null),
+    residencia: useRef<HTMLInputElement>(null),
     outros: useRef<HTMLInputElement>(null),
-    outros_2: useRef<HTMLInputElement>(null)
+    outros_2: useRef<HTMLInputElement>(null),
+    outros_3: useRef<HTMLInputElement>(null),
+    outros_4: useRef<HTMLInputElement>(null)
   }
 
   const handleSearchCEP = async () => {
@@ -497,8 +509,11 @@ function NewProposalForm() {
             verso: proposal.arquivo_rg_verso || prev.verso,
             contracheque: proposal.arquivo_contracheque || prev.contracheque,
             extrato: proposal.arquivo_extrato || prev.extrato,
+            residencia: proposal.arquivo_residencia || prev.residencia,
             outros: proposal.arquivo_outros || prev.outros,
-            outros_2: proposal.arquivo_outros_2 || prev.outros_2
+            outros_2: proposal.arquivo_outros_2 || prev.outros_2,
+            outros_3: proposal.arquivo_outros_3 || prev.outros_3,
+            outros_4: proposal.arquivo_outros_4 || prev.outros_4
           }));
 
           toast.success("Dados pessoais e anexos preenchidos automaticamente.");
@@ -655,8 +670,11 @@ function NewProposalForm() {
         verso: null,
         contracheque: null,
         extrato: null,
+        residencia: null,
         outros: null,
-        outros_2: null
+        outros_2: null,
+        outros_3: null,
+        outros_4: null
       };
 
       for (const [key, file] of Object.entries(selectedFiles)) {
@@ -775,8 +793,11 @@ function NewProposalForm() {
         arquivo_rg_verso: fileUrls.verso || existingAttachments.verso,
         arquivo_contracheque: fileUrls.contracheque || existingAttachments.contracheque,
         arquivo_extrato: fileUrls.extrato || existingAttachments.extrato,
+        arquivo_residencia: fileUrls.residencia || existingAttachments.residencia,
         arquivo_outros: fileUrls.outros || existingAttachments.outros,
         arquivo_outros_2: fileUrls.outros_2 || existingAttachments.outros_2,
+        arquivo_outros_3: fileUrls.outros_3 || existingAttachments.outros_3,
+        arquivo_outros_4: fileUrls.outros_4 || existingAttachments.outros_4,
         updated_at: new Date().toISOString()
       })
 
@@ -1739,8 +1760,11 @@ function NewProposalForm() {
                       verso: "RG Verso",
                       contracheque: "Contra Cheque",
                       extrato: "Extrato",
-                      outros: "Outros",
-                      outros_2: "Outros 2"
+                      residencia: "Comprovante de Residência",
+                      outros: "Outros 1",
+                      outros_2: "Outros 2",
+                      outros_3: "Outros 3",
+                      outros_4: "Outros 4"
                     };
                     return (
                       <div key={field} className="relative group">
@@ -1800,8 +1824,11 @@ function NewProposalForm() {
                   { label: "RG (VERSO)", id: "verso", ref: fileRefs.verso },
                   { label: "CONTRA CHEQUE", id: "contracheque", ref: fileRefs.contracheque },
                   { label: "EXTRATO DE CONSIGNAÇÃO", id: "extrato", ref: fileRefs.extrato },
+                  { label: "COMPROVANTE DE RESIDÊNCIA", id: "residencia", ref: fileRefs.residencia },
                   { label: "OUTROS", id: "outros", ref: fileRefs.outros },
-                  { label: "OUTROS", id: "outros_2", ref: fileRefs.outros_2 }
+                  { label: "OUTROS", id: "outros_2", ref: fileRefs.outros_2 },
+                  { label: "OUTROS", id: "outros_3", ref: fileRefs.outros_3 },
+                  { label: "OUTROS", id: "outros_4", ref: fileRefs.outros_4 }
               ].map((field) => (
                 <div key={field.id} className="space-y-2">
                   <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest block">

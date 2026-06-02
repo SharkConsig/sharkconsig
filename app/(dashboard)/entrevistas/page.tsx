@@ -23,9 +23,11 @@ import {
   Layers,
   FileSpreadsheet,
   RefreshCw,
-  HelpCircle
+  HelpCircle,
+  Database
 } from "lucide-react"
 import { toast } from "sonner"
+import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 
 // Our main spreadsheet interview record interface
 interface Interview {
@@ -34,9 +36,9 @@ interface Interview {
   phone: string
   date: string
   time: string
-  fase: "Não compareceu" | "Desistiu" | "Reprovado" | "Aprovado" | "Outra oportunidade" | "Agendada" | "Realizada"
-  plataforma: "Instagram" | "Indicação" | "WhatsApp" | "LinkedIn" | "Outro"
-  area: "Estágio" | "Comercial" | "Operacional" | "TI"
+  fase: string
+  plataforma: string
+  area: string
   notes: string
 }
 
@@ -225,69 +227,265 @@ export default function EntrevistasPage() {
   const [plataformaFilter, setPlataformaFilter] = useState("Todas")
   const [areaFilter, setAreaFilter] = useState("Todas")
   const [interviews, setInterviews] = useState<Interview[]>([])
+  const [supabaseActive, setSupabaseActive] = useState<boolean | null>(null)
+  const [activeSchema, setActiveSchema] = useState<"rh" | "public">("rh")
+  const [loadingTable, setLoadingTable] = useState(true)
+  const [showSqlModal, setShowSqlModal] = useState(false)
+  
+  // Quick Add Form States
+  const [quickName, setQuickName] = useState("")
+  const [quickPhone, setQuickPhone] = useState("")
+  const [quickDate, setQuickDate] = useState(new Date().toISOString().split('T')[0])
+  const [quickTime, setQuickTime] = useState("14:00")
+  const [quickFase, setQuickFase] = useState("Entrevista")
+  const [quickPlataforma, setQuickPlataforma] = useState("Instagram")
+  const [quickArea, setQuickArea] = useState("Comercial")
+  const [quickNotes, setQuickNotes] = useState("")
+  const [showQuickAdd, setShowQuickAdd] = useState(true)
   
   // Ref for hidden file input used to trigger CSV upload
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Load and hydrate database
   useEffect(() => {
-    const saved = localStorage.getItem("shark_hr_interviews_spreadsheet")
-    if (saved) {
-      try {
-        setInterviews(JSON.parse(saved))
-      } catch (e) {
-        setInterviews(DEFAULT_CANDIDATES)
-      }
-    } else {
-      // Fallback/Legacy data merge
-      const legacySaved = localStorage.getItem("shark_hr_interviews")
-      if (legacySaved) {
+    async function loadData() {
+      setLoadingTable(true)
+      
+      const saved = localStorage.getItem("shark_hr_interviews_spreadsheet")
+      let initialData: Interview[] = []
+      
+      if (saved) {
         try {
-          const parsedLegacy = JSON.parse(legacySaved)
-          // Map to spreadsheet candidate model
-          const migrated: Interview[] = parsedLegacy.map((item: any, index: number) => ({
-            id: item.id || `mig-${index}`,
-            name: item.name || "Candidato",
-            phone: item.phone || "",
-            date: item.date || new Date().toISOString().split('T')[0],
-            time: item.time ? (item.time.length === 5 ? `${item.time}:00` : item.time) : "14:00:00",
-            fase: (item.status === "Aprovada" ? "Aprovado" : item.status === "Reprovada" ? "Reprovado" : item.status || "Agendada") as any,
-            plataforma: item.plataforma || "Instagram",
-            area: item.role === "Estágio" || item.role === "Estagio" ? "Estágio" : "Comercial",
-            notes: item.notes || ""
-          }))
-          setInterviews(migrated)
-          localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(migrated))
-        } catch (err) {
-          setInterviews(DEFAULT_CANDIDATES)
+          initialData = JSON.parse(saved)
+        } catch (e) {
+          initialData = DEFAULT_CANDIDATES
         }
       } else {
-        setInterviews(DEFAULT_CANDIDATES)
-        localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(DEFAULT_CANDIDATES))
+        // Fallback/Legacy data merge
+        const legacySaved = localStorage.getItem("shark_hr_interviews")
+        if (legacySaved) {
+          try {
+            const parsedLegacy = JSON.parse(legacySaved) as { 
+              id?: string; 
+              name?: string; 
+              phone?: string; 
+              date?: string; 
+              time?: string; 
+              status?: string; 
+              plataforma?: string; 
+              role?: string; 
+              notes?: string;
+            }[]
+            // Map to spreadsheet candidate model
+            const migrated: Interview[] = parsedLegacy.map((item, index: number) => ({
+              id: item.id || `mig-${index}`,
+              name: item.name || "Candidato",
+              phone: item.phone || "",
+              date: item.date || new Date().toISOString().split('T')[0],
+              time: item.time ? (item.time.length === 5 ? `${item.time}:00` : item.time) : "14:00:00",
+              fase: item.status === "Aprovada" ? "Aprovado" : item.status === "Reprovada" ? "Reprovado" : item.status || "Agendada",
+              plataforma: item.plataforma || "Instagram",
+              area: item.role === "Estágio" || item.role === "Estagio" ? "Estágio" : "Comercial",
+              notes: item.notes || ""
+            }))
+            initialData = migrated
+          } catch (err) {
+            initialData = DEFAULT_CANDIDATES
+          }
+        } else {
+          initialData = DEFAULT_CANDIDATES
+        }
+      }
+
+      if (!isSupabaseConfigured) {
+        setSupabaseActive(false)
+        setInterviews(initialData)
+        setLoadingTable(false)
+        return
+      }
+
+      try {
+        const { data, error } = await supabase
+          .schema('rh')
+          .from('hr_interviews')
+          .select('*')
+          .order('date', { ascending: false })
+        
+        if (error) {
+          console.warn("Supabase load failed for schema 'rh':", error.message)
+          setSupabaseActive(false)
+          setInterviews(initialData)
+          
+          if (error.message.includes("Invalid schema") || error.message.includes("does not exist") || error.message.includes("schema \"rh\"")) {
+            toast.error(
+              "Atenção: O schema 'rh' não está exposto nas configurações de API do seu Supabase. Adicione 'rh' em 'Settings -> API -> Exposed Schemas' no painel do Supabase para ativar a sincronização.",
+              { duration: 15000 }
+            )
+          } else {
+            toast.error(`Erro ao sincronizar com Supabase: ${error.message}`)
+          }
+        } else if (data) {
+          setSupabaseActive(true)
+          setActiveSchema("rh")
+          console.log("Connected successfully to database on schema 'rh'")
+          if (data.length > 0) {
+            const mappedData: Interview[] = (data as Interview[]).map((item) => ({
+              id: item.id,
+              name: item.name,
+              phone: item.phone || "",
+              date: item.date,
+              time: item.time,
+              fase: item.fase,
+              plataforma: item.plataforma,
+              area: item.area,
+              notes: item.notes || ""
+            }))
+            setInterviews(mappedData)
+            localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(mappedData))
+            localStorage.setItem("shark_hr_interviews_database_seeded_v1", "true")
+          } else {
+            const wasSeeded = localStorage.getItem("shark_hr_interviews_database_seeded_v1")
+            if (wasSeeded) {
+              setInterviews([])
+              localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify([]))
+            } else {
+              // Seed Supabase with defaults in custom schema 'rh'
+              const seedToSupa = initialData.map(item => ({
+                id: item.id,
+                name: item.name,
+                phone: item.phone || "",
+                date: item.date,
+                time: item.time,
+                fase: item.fase,
+                plataforma: item.plataforma,
+                area: item.area,
+                notes: item.notes || ""
+              }))
+              
+              const client = supabase.schema('rh')
+              const { error: insertErr } = await client.from('hr_interviews').upsert(seedToSupa)
+              if (insertErr && insertErr.code !== '23505') {
+                console.error("Failed to seed initial candidates to Supabase under schema rh:", insertErr.message)
+              }
+              setInterviews(initialData)
+              localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(initialData))
+              localStorage.setItem("shark_hr_interviews_database_seeded_v1", "true")
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Error connecting to Supabase in schema rh, offline status active:", err)
+        setSupabaseActive(false)
+        setInterviews(initialData)
+      } finally {
+        setLoadingTable(false)
       }
     }
+    
+    loadData()
   }, [])
 
-  const saveInterviews = (updated: Interview[]) => {
-    setInterviews(updated)
-    localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(updated))
-  }
-
-  // Update a single cell directly in our state (Spreadsheet behavior!)
-  const updateCell = (id: string, field: keyof Interview, value: any) => {
+  // Update a single cell directly in our state (Spreadsheet behavior!) & Sync
+  const updateCell = async (id: string, field: keyof Interview, value: string) => {
+    // 1. Instant local ui update
     const updated = interviews.map(item => {
       if (item.id === id) {
         return { ...item, [field]: value }
       }
       return item
     })
-    saveInterviews(updated)
+    setInterviews(updated)
+    localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(updated))
+
+    // 2. Sync online
+    if (isSupabaseConfigured) {
+      try {
+        let valueForDb = value
+        if (field === 'time' && typeof value === 'string' && value.length === 5) {
+          valueForDb = `${value}:00`
+        }
+        const client = activeSchema === 'rh' ? supabase.schema('rh') : supabase
+        const { error } = await client
+          .from('hr_interviews')
+          .update({ [field]: valueForDb })
+          .eq('id', id)
+        if (error) {
+          console.error("Failed to update field on Supabase:", error.message)
+          toast.error("Erro ao sincronizar com Supabase. Salvo localmente.")
+        }
+      } catch (err) {
+        console.error("Network error on Supabase sync:", err)
+      }
+    }
   }
 
-  // Insert a new blank row immediately and save
-  const handleAddNewRow = () => {
+  // Insert a new pre-filled candidate from the Quick Add Form
+  const handleQuickAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!quickName.trim()) {
+      toast.error("Por favor, preencha o nome do candidato.")
+      return
+    }
+
+    const newId = `int-${Date.now()}`
+    
+    // Format time to HH:MM:SS
+    let formattedTime = quickTime
+    if (formattedTime && formattedTime.length === 5) {
+      formattedTime = `${formattedTime}:00`
+    } else if (!formattedTime) {
+      formattedTime = "14:00:00"
+    }
+
     const newRow: Interview = {
-      id: `int-${Date.now()}`,
+      id: newId,
+      name: quickName.trim(),
+      phone: quickPhone.trim(),
+      date: quickDate || new Date().toISOString().split('T')[0],
+      time: formattedTime,
+      fase: quickFase,
+      plataforma: quickPlataforma,
+      area: quickArea,
+      notes: quickNotes.trim()
+    }
+
+    // 1. Instant local state & cache update
+    const updated = [newRow, ...interviews]
+    setInterviews(updated)
+    localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(updated))
+
+    // 2. Sync with database
+    if (isSupabaseConfigured) {
+      try {
+        const client = activeSchema === 'rh' ? supabase.schema('rh') : supabase
+        const { error } = await client
+          .from('hr_interviews')
+          .insert([newRow])
+        if (error) {
+          console.error("Failed to insert row on Supabase:", error.message)
+          toast.error("Salvo localmente, erro ao persistir no Supabase.")
+        } else {
+          toast.success("Candidato cadastrado e sincronizado com o banco!")
+        }
+      } catch (err) {
+        console.error("Network sync error:", err)
+        toast.error("Salvo offline! Sincronizará quando a rede retornar.")
+      }
+    } else {
+      toast.success("Candidato inserido com sucesso (Modo Offline)!")
+    }
+
+    // Reset simple values for bulk insertion comfort (keep date, time, and drops)
+    setQuickName("")
+    setQuickPhone("")
+    setQuickNotes("")
+  }
+
+  // Insert a new blank row immediately and save & Sync
+  const handleAddNewRow = async () => {
+    const newId = `int-${Date.now()}`
+    const newRow: Interview = {
+      id: newId,
       name: "",
       phone: "",
       date: new Date().toISOString().split('T')[0],
@@ -297,33 +495,106 @@ export default function EntrevistasPage() {
       area: "Comercial",
       notes: ""
     }
+    
+    // 1. Instant local update
     const updated = [newRow, ...interviews]
-    saveInterviews(updated)
-    toast.success("Nova linha em branco adicionada no topo da planilha!")
+    setInterviews(updated)
+    localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(updated))
+
+    // 2. Sync online
+    if (isSupabaseConfigured) {
+      try {
+        const client = activeSchema === 'rh' ? supabase.schema('rh') : supabase
+        const { error } = await client
+          .from('hr_interviews')
+          .insert([newRow])
+        if (error) {
+          console.error("Failed to insert row on Supabase:", error.message)
+          toast.error("Erro ao sincronizar nova linha no banco. Salva localmente.")
+        } else {
+          toast.success("Nova linha adicionada em tempo real!")
+          return
+        }
+      } catch (err) {
+        console.error("Network error on Supabase sync:", err)
+      }
+    }
+    toast.success("Nova linha em branco adicionada no topo da planilha (Offline)!")
   }
 
-  // Delete an entire candidate row
-  const handleDeleteRow = (id: string, name: string) => {
+  // Delete an entire candidate row & Sync
+  const handleDeleteRow = async (id: string, name: string) => {
+    // 1. Instant local update
     const updated = interviews.filter(item => item.id !== id)
-    saveInterviews(updated)
-    toast.success(`Candidato(a) ${name || "Sem Nome"} removido(a) com sucesso.`)
+    setInterviews(updated)
+    localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(updated))
+
+    // 2. Sync online
+    if (isSupabaseConfigured) {
+      try {
+        const client = activeSchema === 'rh' ? supabase.schema('rh') : supabase
+        const { error } = await client
+          .from('hr_interviews')
+          .delete()
+          .eq('id', id)
+        if (error) {
+          console.error("Failed to delete row on Supabase:", error.message)
+          toast.error("Erro ao excluir do banco. Excluído localmente.")
+        } else {
+          toast.success(`Candidato(a) ${name || "Sem Nome"} removido(a) em tempo real!`)
+          return
+        }
+      } catch (err) {
+        console.error("Network error on Supabase sync:", err)
+      }
+    }
+    toast.success(`Candidato(a) ${name || "Sem Nome"} removido(a) com sucesso (Offline).`)
   }
 
-  // Restore Default spreadsheet values
-  const handleResetToDefault = () => {
+  // Restore Default spreadsheet values & Sync
+  const handleResetToDefault = async () => {
     if (window.confirm("Deseja realmente restaurar os dados originais da demonstração? Isso substituirá as edições atuais.")) {
-      saveInterviews(DEFAULT_CANDIDATES)
-      toast.success("Planilha redefinida para os dados padrões!")
+      setInterviews(DEFAULT_CANDIDATES)
+      localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(DEFAULT_CANDIDATES))
+      
+      if (isSupabaseConfigured) {
+        try {
+          const client = activeSchema === 'rh' ? supabase.schema('rh') : supabase
+          const { error: delErr } = await client
+            .from('hr_interviews')
+            .delete()
+            .neq('id', 'dummy-id-never-match')
+            
+          if (delErr) {
+            console.error("Failed to clean database table:", delErr.message)
+          }
+
+          const { error: insErr } = await client
+            .from('hr_interviews')
+            .insert(DEFAULT_CANDIDATES)
+            
+          if (insErr) {
+            console.error("Failed to insert default rows to database:", insErr.message)
+            toast.error("Restaurado localmente de forma segura, mas falhou ao semear no Supabase.")
+          } else {
+            toast.success("Tabela restaurada para os padrões no Supabase!")
+          }
+        } catch (err) {
+          console.error("Network error on restore:", err)
+        }
+      } else {
+        toast.success("Planilha redefinida localmente para os dados padrões!")
+      }
     }
   }
 
-  // Pure TypeScript CSV parsing client side
+  // Pure TypeScript CSV parsing client side & Sync
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     const reader = new FileReader()
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const text = event.target?.result as string
       if (!text) {
         toast.error("Erro ao ler conteúdo do arquivo.")
@@ -367,12 +638,12 @@ export default function EntrevistasPage() {
             faseVal = "Agendada"
           }
 
-          let plataformaVal = cleanCell(cols[5]) as any
+          let plataformaVal = cleanCell(cols[5]) as string
           if (!["Instagram", "Indicação", "WhatsApp", "LinkedIn", "Outro"].includes(plataformaVal)) {
             plataformaVal = "Instagram"
           }
 
-          let areaVal = cleanCell(cols[6]) as any
+          let areaVal = cleanCell(cols[6]) as string
           if (!["Estágio", "Comercial", "Operacional", "TI"].includes(areaVal)) {
             areaVal = "Comercial"
           }
@@ -385,7 +656,7 @@ export default function EntrevistasPage() {
             phone,
             date,
             time,
-            fase: faseVal as any,
+            fase: faseVal as string,
             plataforma: plataformaVal,
             area: areaVal,
             notes
@@ -394,8 +665,28 @@ export default function EntrevistasPage() {
 
         if (parsed.length > 0) {
           const combined = [...parsed, ...interviews]
-          saveInterviews(combined)
-          toast.success(`Sucesso! ${parsed.length} candidatos importados da planilha.`);
+          setInterviews(combined)
+          localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(combined))
+          
+          if (isSupabaseConfigured) {
+            try {
+              const client = activeSchema === 'rh' ? supabase.schema('rh') : supabase
+              const { error } = await client
+                .from('hr_interviews')
+                .insert(parsed)
+              if (error) {
+                console.error("Failed to insert CSV rows on Supabase:", error.message)
+                toast.error(`Importado localmente apenas. Supabase: ${error.message}`)
+              } else {
+                toast.success(`Sucesso! ${parsed.length} novos candidatos integrados ao Supabase.`);
+              }
+            } catch (err) {
+              console.error("Network error inserting CSV rows on Supabase:", err)
+              toast.error("Importado localmente apenas (erro de conexão com banco).")
+            }
+          } else {
+            toast.success(`Sucesso! ${parsed.length} candidatos importados da planilha (Offline).`);
+          }
         } else {
           toast.error("Nenhuma linha válida encontrada para importação.")
         }
@@ -459,7 +750,7 @@ export default function EntrevistasPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-[#F8FAFC] min-h-screen font-sans">
-      <Header title="PLANEJAMENTO DE RECRUTAMENTO" />
+      <Header title="ENTREVISTAS" />
 
       <div className="p-4 lg:p-8 max-w-[1700px] mx-auto w-full space-y-6 pb-24 animate-fade-in text-slate-800">
         
@@ -481,6 +772,28 @@ export default function EntrevistasPage() {
               <p className="text-slate-300 text-xs sm:text-sm max-w-2xl leading-relaxed">
                 Uma réplica fiel e funcional de sua planilha de acompanhamento do Excel. Edite qualquer célula diretamente com 1 clique, use filtros integrados e faça importações ou exportações.
               </p>
+              <div className="flex flex-wrap items-center gap-2 mt-2 pt-1 text-xs">
+                {supabaseActive === true ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-300 font-medium border border-emerald-500/25">
+                    <Database className="w-3.5 h-3.5 text-emerald-400" />
+                    Supabase Ativo (Sincronização em Tempo Real via schema &apos;{activeSchema}&apos;)
+                  </span>
+                ) : supabaseActive === false ? (
+                  <span 
+                    onClick={() => setShowSqlModal(true)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-300 font-medium cursor-pointer hover:bg-amber-500/30 transition-colors border border-amber-500/25"
+                    title="Clique para ver instruções de SQL para o seu Supabase"
+                  >
+                    <Database className="w-3.5 h-3.5 text-amber-400" />
+                    Banco Local Ativo (Tabela &apos;{activeSchema}.hr_interviews&apos; offline - Clique para configurar SQL)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-500/20 text-slate-300 font-medium border border-slate-550/25">
+                    <RefreshCw className="w-3.5 h-3.5 text-slate-400 animate-spin" />
+                    Buscando conexões de banco de dados...
+                  </span>
+                )}
+              </div>
             </div>
             
             <div className="flex flex-row flex-wrap gap-2 shrink-0">
@@ -578,6 +891,147 @@ export default function EntrevistasPage() {
           </Card>
         </div>
 
+        {/* CADASTRO RÁPIDO DO CANDIDATO */}
+        {showQuickAdd && (
+          <Card className="border border-slate-200 bg-white rounded-2xl shadow-md overflow-hidden transition-all duration-300">
+            <div className="bg-[#0B1E36] px-5 py-3.5 text-white flex items-center justify-between border-b border-slate-900 select-none">
+              <div className="flex items-center gap-2">
+                <Plus className="w-4 h-4 text-emerald-400" />
+                <h2 className="text-xs font-black uppercase tracking-wider">⚡ Formulário de Cadastro Rápido de Candidato</h2>
+              </div>
+              <span className="text-[9px] text-[#A5F3FC] uppercase font-black tracking-widest bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-505">
+                Sincronização em Tempo Real
+              </span>
+            </div>
+            <CardContent className="p-5">
+              <form onSubmit={handleQuickAdd} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                {/* Nome */}
+                <div className="space-y-1.25">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Candidato *</label>
+                  <Input 
+                    placeholder="Nome completo do candidato"
+                    value={quickName}
+                    onChange={(e) => setQuickName(e.target.value)}
+                    className="h-[38px] text-xs font-bold rounded-xl bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white"
+                    required
+                  />
+                </div>
+
+                {/* Contato/Telefone */}
+                <div className="space-y-1.25">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Contato (Telefone)</label>
+                  <Input 
+                    placeholder="e.g. 48 99123-4567"
+                    value={quickPhone}
+                    onChange={(e) => setQuickPhone(e.target.value)}
+                    className="h-[38px] text-xs font-bold rounded-xl bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white"
+                  />
+                </div>
+
+                {/* Data */}
+                <div className="space-y-1.25">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Data da Entrevista</label>
+                  <Input 
+                    type="date"
+                    value={quickDate}
+                    onChange={(e) => setQuickDate(e.target.value)}
+                    className="h-[38px] text-xs font-mono font-bold rounded-xl bg-slate-50 border-slate-200 text-slate-800 focus:bg-white"
+                  />
+                </div>
+
+                {/* Horário */}
+                <div className="space-y-1.25">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Horário</label>
+                  <Input 
+                    type="time"
+                    value={quickTime}
+                    onChange={(e) => setQuickTime(e.target.value)}
+                    className="h-[38px] text-xs font-mono font-bold rounded-xl bg-slate-50 border-slate-200 text-slate-800 focus:bg-white"
+                  />
+                </div>
+
+                {/* Fase */}
+                <div className="space-y-1.25">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Fase Inicial</label>
+                  <select
+                    value={quickFase}
+                    onChange={(e) => setQuickFase(e.target.value)}
+                    className="w-full h-[38px] px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer focus:ring-1 focus:ring-slate-350 focus:bg-white"
+                  >
+                    {faseOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Plataforma */}
+                <div className="space-y-1.25">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Plataforma</label>
+                  <select
+                    value={quickPlataforma}
+                    onChange={(e) => setQuickPlataforma(e.target.value)}
+                    className="w-full h-[38px] px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer focus:ring-1 focus:ring-slate-350 focus:bg-white"
+                  >
+                    {plataformaOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Área */}
+                <div className="space-y-1.25">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Área / Cargo</label>
+                  <select
+                    value={quickArea}
+                    onChange={(e) => setQuickArea(e.target.value)}
+                    className="w-full h-[38px] px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer focus:ring-1 focus:ring-slate-350 focus:bg-white"
+                  >
+                    {areaOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Observações */}
+                <div className="space-y-1.25">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Observações Iniciais</label>
+                  <Input 
+                    placeholder="e.g. Ótima comunicação, mora perto..."
+                    value={quickNotes}
+                    onChange={(e) => setQuickNotes(e.target.value)}
+                    className="h-[38px] text-xs font-bold rounded-xl bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white"
+                  />
+                </div>
+
+                {/* Action buttons */}
+                <div className="sm:col-span-2 lg:col-span-4 flex items-center justify-end gap-2 pt-3 mt-1 border-t border-slate-100">
+                  <Button 
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setQuickName("")
+                      setQuickPhone("")
+                      setQuickNotes("")
+                    }}
+                    className="h-[36px] rounded-xl text-xs font-black uppercase tracking-wider px-5 text-slate-500 hover:text-slate-[#0B1E36]"
+                  >
+                    Limpar
+                  </Button>
+                  <Button 
+                    type="submit"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl h-[36px] px-6 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-emerald-600/10"
+                  >
+                    <Check className="w-4 h-4" />
+                    Adicionar Candidato
+                  </Button>
+                </div>
+
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
         {/* CONTROLS BAR: SEARCH & COLUMN FILTERS */}
         <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
           <CardContent className="p-5 flex flex-col gap-4">
@@ -607,13 +1061,17 @@ export default function EntrevistasPage() {
                     className="h-[34px] px-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 outline-none cursor-pointer focus:ring-1 focus:ring-slate-350"
                   >
                     <option value="Todas">Todas</option>
+                    <option value="Em processo de contratação">Em processo de contratação</option>
+                    <option value="Aprovado">Aprovado</option>
+                    <option value="Reprovado">Reprovado</option>
+                    <option value="Stand-by">Stand-by</option>
+                    <option value="Entrevista">Entrevista</option>
                     <option value="Não compareceu">Não compareceu</option>
                     <option value="Desistiu">Desistiu</option>
-                    <option value="Reprovado">Reprovado</option>
-                    <option value="Aprovado">Aprovado</option>
+                    <option value="Rep. formulário">Rep. formulário</option>
                     <option value="Outra oportunidade">Outra oportunidade</option>
-                    <option value="Agendada">Agendada</option>
-                    <option value="Realizada">Realizada</option>
+                    <option value="Não veio para o teste">Não veio para o teste</option>
+                    <option value="Remarcar">Remarcar</option>
                   </select>
                 </div>
 
@@ -626,11 +1084,10 @@ export default function EntrevistasPage() {
                     className="h-[34px] px-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 outline-none cursor-pointer focus:ring-1 focus:ring-slate-350"
                   >
                     <option value="Todas">Todas</option>
+                    <option value="Indeed">Indeed</option>
                     <option value="Instagram">Instagram</option>
                     <option value="Indicação">Indicação</option>
-                    <option value="WhatsApp">WhatsApp</option>
-                    <option value="LinkedIn">LinkedIn</option>
-                    <option value="Outro">Outro</option>
+                    <option value="Escola">Escola</option>
                   </select>
                 </div>
 
@@ -643,10 +1100,28 @@ export default function EntrevistasPage() {
                     className="h-[34px] px-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 outline-none cursor-pointer focus:ring-1 focus:ring-slate-350"
                   >
                     <option value="Todas">Todas</option>
-                    <option value="Estágio">Estágio</option>
                     <option value="Comercial">Comercial</option>
+                    <option value="Operacional">Operacional</option>
+                    <option value="Estágio">Estágio</option>
+                    <option value="Não estudam">Não estudam</option>
+                    <option value="PJ">PJ</option>
                   </select>
                 </div>
+
+                {/* Toggle Quick Add Form */}
+                <Button 
+                  onClick={() => setShowQuickAdd(!showQuickAdd)}
+                  variant="outline"
+                  className={cn(
+                    "rounded-xl h-[36px] px-3.5 text-[10px] font-black uppercase tracking-widest gap-1.5 transition-all border shrink-0",
+                    showQuickAdd 
+                      ? "bg-slate-150 border-slate-300 text-slate-700 hover:bg-slate-200" 
+                      : "bg-[#0F172A] text-teal-400 border-slate-800 hover:bg-slate-800"
+                  )}
+                  title={showQuickAdd ? "Ocultar o Formulário de Cadastro Rápido" : "Exibir o Formulário de Cadastro Rápido"}
+                >
+                  {showQuickAdd ? "Esconder Formulário" : "⚡ Cadastro Rápido"}
+                </Button>
 
                 {/* Add new inline row */}
                 <Button 
@@ -732,13 +1207,22 @@ export default function EntrevistasPage() {
 
               {/* Spreadsheet rows list */}
               <tbody className="divide-y divide-slate-200">
-                {filteredInterviews.length === 0 ? (
+                {loadingTable ? (
+                  <tr>
+                    <td colSpan={9} className="text-center py-20 bg-slate-50/50">
+                      <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
+                        <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" strokeWidth={3} />
+                        <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Sincronizando com Banco de Dados em tempo real...</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredInterviews.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="text-center py-20 bg-slate-50/50">
                       <div className="flex flex-col items-center justify-center space-y-2">
                         <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                         <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Planilha vazia ou com filtros excessivos</p>
-                        <p className="text-[11px] text-slate-500">Clique em "+ Nova Linha" ou "Dados Originais" para carregar registros.</p>
+                        <p className="text-[11px] text-slate-500">Clique em &quot;+ Nova Linha&quot; ou &quot;Dados Originais&quot; para carregar registros.</p>
                       </div>
                     </td>
                   </tr>
@@ -865,12 +1349,146 @@ export default function EntrevistasPage() {
           <div className="space-y-1">
             <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Como funciona o sincronizador do Excel?</h4>
             <p className="text-[11px] font-medium text-slate-500 leading-relaxed max-w-5xl">
-              Você pode trabalhar direto na ferramenta acima preenchendo novos candidatos e fases. Caso prefira inserir dados que já possui em sua planilha local original do Excel, basta salvar sua planilha excel no formato <strong>CSV delimitado por ponto e vírgula (.csv)</strong> e clicar no botão <strong>"Importar CSV"</strong>. Seus dados se acoplarão imediatamente à tela.
+              Você pode trabalhar direto na ferramenta acima preenchendo novos candidatos e fases. Caso prefira inserir dados que já possui em sua planilha local original do Excel, basta salvar sua planilha excel no formato <strong>CSV delimitado por ponto e vírgula (.csv)</strong> e clicar no botão <strong>&quot;Importar CSV&quot;</strong>. Seus dados se acoplarão imediatamente à tela.
             </p>
           </div>
         </div>
 
       </div>
+
+      {/* SQL Setup Modal helper */}
+      {showSqlModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm animate-fade-in">
+          <div className="relative max-w-2xl w-full bg-slate-900 text-slate-100 rounded-3xl p-6 md:p-8 shadow-2xl border border-slate-800 flex flex-col max-h-[90vh]">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Database className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-xl font-black uppercase tracking-tight text-white">Configurar Supabase para Entrevistas</h3>
+                </div>
+                <p className="text-slate-400 text-xs">Instalação e estruturação da tabela <code className="text-amber-300 font-mono">hr_interviews</code> no banco.</p>
+              </div>
+              <button 
+                onClick={() => setShowSqlModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="mt-6 flex-1 overflow-y-auto space-y-4 pr-1 text-slate-300 text-xs leading-relaxed">
+              <p>
+                Para habilitar a persistência real das entrevistas em nuvem de forma imediata, execute o seguinte comando SQL na aba **SQL Editor** do seu painel do Supabase. O módulo se conectará de forma totalmente segura e automática.
+              </p>
+
+              <div className="relative">
+                <pre className="p-4 bg-slate-950 text-emerald-400 rounded-2xl font-mono text-[10px] overflow-y-auto max-h-[250px] whitespace-pre border border-slate-800/80">
+{`-- OPÇÃO 1 (Schema 'rh')
+CREATE SCHEMA IF NOT EXISTS rh;
+CREATE TABLE IF NOT EXISTS rh.hr_interviews (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT,
+    date DATE NOT NULL,
+    time TIME NOT NULL,
+    fase TEXT NOT NULL DEFAULT 'Entrevista',
+    plataforma TEXT NOT NULL DEFAULT 'Instagram',
+    area TEXT NOT NULL DEFAULT 'Comercial',
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+ALTER TABLE rh.hr_interviews ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE rh.hr_interviews TO anon, authenticated, service_role;
+DROP POLICY IF EXISTS "Acesso total livre para hr_interviews" ON rh.hr_interviews;
+CREATE POLICY "Acesso total livre para hr_interviews" ON rh.hr_interviews FOR ALL USING (true) WITH CHECK (true);
+
+-- OPÇÃO 2 (AUTO-FALLBACK - Schema 'public')
+CREATE TABLE IF NOT EXISTS public.hr_interviews (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT,
+    date DATE NOT NULL,
+    time TIME NOT NULL,
+    fase TEXT NOT NULL DEFAULT 'Entrevista',
+    plataforma TEXT NOT NULL DEFAULT 'Instagram',
+    area TEXT NOT NULL DEFAULT 'Comercial',
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+ALTER TABLE public.hr_interviews ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.hr_interviews TO anon, authenticated, service_role;
+DROP POLICY IF EXISTS "Acesso total livre para hr_interviews" ON public.hr_interviews;
+CREATE POLICY "Acesso total livre para hr_interviews" ON public.hr_interviews FOR ALL USING (true) WITH CHECK (true);`}
+                </pre>
+                <Button
+                  onClick={async () => {
+                    const sqlText = `CREATE SCHEMA IF NOT EXISTS rh;
+CREATE TABLE IF NOT EXISTS rh.hr_interviews (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT,
+    date DATE NOT NULL,
+    time TIME NOT NULL,
+    fase TEXT NOT NULL DEFAULT 'Entrevista',
+    plataforma TEXT NOT NULL DEFAULT 'Instagram',
+    area TEXT NOT NULL DEFAULT 'Comercial',
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+ALTER TABLE rh.hr_interviews ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE rh.hr_interviews TO anon, authenticated, service_role;
+DROP POLICY IF EXISTS "Acesso total livre para hr_interviews" ON rh.hr_interviews;
+CREATE POLICY "Acesso total livre para hr_interviews" ON rh.hr_interviews FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS public.hr_interviews (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT,
+    date DATE NOT NULL,
+    time TIME NOT NULL,
+    fase TEXT NOT NULL DEFAULT 'Entrevista',
+    plataforma TEXT NOT NULL DEFAULT 'Instagram',
+    area TEXT NOT NULL DEFAULT 'Comercial',
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+ALTER TABLE public.hr_interviews ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.hr_interviews TO anon, authenticated, service_role;
+DROP POLICY IF EXISTS "Acesso total livre para hr_interviews" ON public.hr_interviews;
+CREATE POLICY "Acesso total livre para hr_interviews" ON public.hr_interviews FOR ALL USING (true) WITH CHECK (true);`;
+                    try {
+                      await navigator.clipboard.writeText(sqlText);
+                      toast.success("Script SQL completo (Duo Schema) copiado com sucesso!");
+                    } catch (err) {
+                      toast.error("Erro ao copiar.");
+                    }
+                  }}
+                  className="absolute top-2 right-2 bg-slate-800/80 hover:bg-slate-700 text-white rounded-lg px-2.5 py-1 text-[10px] uppercase font-bold"
+                >
+                  Copiar SQL
+                </Button>
+              </div>
+
+              <div className="p-3.5 bg-slate-950/40 rounded-2xl border border-slate-800/60 text-slate-400 text-[11px] leading-snug">
+                💡 <strong>Dica de Automação:</strong> Ao executar o código acima, as tabelas serão geradas nos schemas <code className="text-amber-300">rh</code> e <code className="text-amber-300">public</code>. Caso sua API do Supabase não possua o schema <code className="text-amber-300">rh</code> exposto, o sistema usará o schema <code className="text-amber-300">public</code> de forma 100% transparente para garantir o sincronismo!
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-800 flex justify-end">
+              <Button
+                onClick={() => setShowSqlModal(false)}
+                className="bg-slate-800 hover:bg-slate-700 text-white font-bold uppercase text-[10px] h-[36px] px-6 rounded-xl"
+              >
+                Entendido
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -989,7 +1607,7 @@ function PillDropdown({
 }: { 
   value: string
   options: { value: string; label: string; bg: string; border?: string; text: string; arrowColor?: string }[]
-  onChange: (val: any) => void
+  onChange: (val: string) => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const currentOpt = options.find(o => o.value === value) || options[0]
@@ -1045,26 +1663,30 @@ function PillDropdown({
 // -------------------------------------------------------------
 
 const faseOptions = [
-  { value: "Não compareceu", label: "Não compareceu", bg: "bg-red-50 hover:bg-red-100", border: "border-red-200", text: "text-red-700", arrowColor: "text-red-700" },
-  { value: "Desistiu", label: "Desistiu", bg: "bg-sky-50 hover:bg-sky-100", border: "border-sky-200", text: "text-sky-700", arrowColor: "text-sky-700" },
-  { value: "Reprovado", label: "Reprovado", bg: "bg-[#922b21] hover:bg-[#922b21]/90", text: "text-white", arrowColor: "text-white" },
-  { value: "Aprovado", label: "Aprovado", bg: "bg-[#1e8449] hover:bg-[#1e8449]/90", text: "text-white", arrowColor: "text-white" },
-  { value: "Outra oportunidade", label: "Outra oportunidade", bg: "bg-[#5c4033] hover:bg-[#5c4033]/90", text: "text-white", arrowColor: "text-white" },
-  { value: "Agendada", label: "Agendada", bg: "bg-blue-50 border-blue-200", border: "border-blue-200", text: "text-blue-700", arrowColor: "text-blue-700" },
-  { value: "Realizada", label: "Realizada", bg: "bg-slate-50 border-slate-200", border: "border-slate-200", text: "text-slate-600", arrowColor: "text-slate-600" }
+  { value: "Em processo de contratação", label: "Em processo de contratação", bg: "bg-[#dcfce7] hover:bg-[#dcfce7]/90", border: "border-[#bbf7d0]", text: "text-[#15803d]", arrowColor: "text-[#15803d]" },
+  { value: "Aprovado", label: "Aprovado", bg: "bg-[#15803d] hover:bg-[#166534]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
+  { value: "Reprovado", label: "Reprovado", bg: "bg-[#b91c1c] hover:bg-[#991b1b]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
+  { value: "Stand-by", label: "Stand-by", bg: "bg-[#fef3c7] hover:bg-[#fef3c7]/90", border: "border-[#fde68a]", text: "text-[#d97706]", arrowColor: "text-[#d97706]" },
+  { value: "Entrevista", label: "Entrevista", bg: "bg-[#f3e8ff] hover:bg-[#f3e8ff]/90", border: "border-[#e9d5ff]", text: "text-[#6b21a8]", arrowColor: "text-[#6b21a8]" },
+  { value: "Não compareceu", label: "Não compareceu", bg: "bg-[#fee2e2] hover:bg-[#fee2e2]/90", border: "border-[#fecaca]", text: "text-[#b91c1c]", arrowColor: "text-[#b91c1c]" },
+  { value: "Desistiu", label: "Desistiu", bg: "bg-[#e0f2fe] hover:bg-[#e0f2fe]/90", border: "border-[#bae6fd]", text: "text-[#0369a1]", arrowColor: "text-[#0369a1]" },
+  { value: "Rep. formulário", label: "Rep. formulário", bg: "bg-[#f1f5f9] hover:bg-[#cbd5e1]/50", border: "border-[#cbd5e1]", text: "text-[#475569]", arrowColor: "text-[#475569]" },
+  { value: "Outra oportunidade", label: "Outra oportunidade", bg: "bg-[#5c1c1c] hover:bg-[#521c1c]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
+  { value: "Não veio para o teste", label: "Não veio para o teste", bg: "bg-[#205361] hover:bg-[#1f4a56]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
+  { value: "Remarcar", label: "Remarcar", bg: "bg-[#f1f5f9] hover:bg-[#e2e8f0]", border: "border-[#cbd5e1]", text: "text-[#475569]", arrowColor: "text-[#475569]" }
 ]
 
 const plataformaOptions = [
-  { value: "Instagram", label: "Instagram", bg: "bg-purple-100 hover:bg-purple-150", border: "border-purple-300", text: "text-purple-700", arrowColor: "text-purple-700" },
-  { value: "Indicação", label: "Indicação", bg: "bg-amber-100 hover:bg-amber-150", border: "border-amber-300", text: "text-amber-800", arrowColor: "text-amber-800" },
-  { value: "WhatsApp", label: "WhatsApp", bg: "bg-emerald-100 hover:bg-emerald-150", border: "border-emerald-300", text: "text-emerald-800", arrowColor: "text-emerald-800" },
-  { value: "LinkedIn", label: "LinkedIn", bg: "bg-blue-105 hover:bg-blue-150", border: "border-blue-300", text: "text-blue-800", arrowColor: "text-blue-800" },
-  { value: "Outro", label: "Outro", bg: "bg-slate-100 hover:bg-slate-150", border: "border-slate-300", text: "text-slate-700", arrowColor: "text-slate-700" }
+  { value: "Indeed", label: "Indeed", bg: "bg-[#e0f2fe] hover:bg-[#e0f2fe]/90", border: "border-[#bae6fd]", text: "text-[#0369a1]", arrowColor: "text-[#0369a1]" },
+  { value: "Instagram", label: "Instagram", bg: "bg-[#f3e8ff] hover:bg-[#f3e8ff]/90", border: "border-[#e9d5ff]", text: "text-[#6b21a8]", arrowColor: "text-[#6b21a8]" },
+  { value: "Indicação", label: "Indicação", bg: "bg-[#fef3c7] hover:bg-[#fef3c7]/90", border: "border-[#fde68a]", text: "text-[#b45309]", arrowColor: "text-[#b45309]" },
+  { value: "Escola", label: "Escola", bg: "bg-[#f1f5f9] hover:bg-[#f1f5f9]/90", border: "border-[#e2e8f0]", text: "text-[#475569]", arrowColor: "text-[#475569]" }
 ]
 
 const areaOptions = [
-  { value: "Estágio", label: "Estágio", bg: "bg-[#115e59] hover:bg-[#115e59]/90", text: "text-white", arrowColor: "text-white" },
-  { value: "Comercial", label: "Comercial", bg: "bg-[#d4efdf] hover:bg-[#d4efdf]/90", border: "border-emerald-250", text: "text-emerald-800", arrowColor: "text-emerald-800" },
-  { value: "Operacional", label: "Operacional", bg: "bg-sky-100", border: "border-sky-305", text: "text-sky-800", arrowColor: "text-sky-800" },
-  { value: "TI", label: "TI", bg: "bg-slate-800", text: "text-white", arrowColor: "text-white" }
+  { value: "Comercial", label: "Comercial", bg: "bg-[#dcfce7] hover:bg-[#dcfce7]/90", border: "border-[#bbf7d0]", text: "text-[#15803d]", arrowColor: "text-[#15803d]" },
+  { value: "Operacional", label: "Operacional", bg: "bg-[#e0f2fe] hover:bg-[#e0f2fe]/90", border: "border-[#bae6fd]", text: "text-[#0369a1]", arrowColor: "text-[#0369a1]" },
+  { value: "Estágio", label: "Estágio", bg: "bg-[#15803d] hover:bg-[#166534]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
+  { value: "Não estudam", label: "Não estudam", bg: "bg-[#205361] hover:bg-[#1f4a56]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
+  { value: "PJ", label: "PJ", bg: "bg-[#334155] hover:bg-[#1e293b]", border: "border-transparent", text: "text-white", arrowColor: "text-white" }
 ]
