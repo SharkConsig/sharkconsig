@@ -86,7 +86,7 @@ export function HRDashboard() {
       actionText: "Acessar Entrevistas"
     },
     {
-      title: "DADOS DOS COLABORADORES",
+      title: "COLABORADORES",
       description: "Pasta digital completa dos colaboradores, histórico de salários, cargos e equipes.",
       href: "/colaboradores",
       icon: Briefcase,

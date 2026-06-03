@@ -452,185 +452,139 @@ export default function CampanhaAtendimentoPage() {
         if (leadError) throw leadError
         data = leadData && leadData.length > 0 ? leadData[0] : null
       } else {
-        // Fallback to client-side formulaic mathematical round robin querying campanha_membros
+        // Fallback to client-side sequential real-time mathematical distribution querying campanha_membros
         const filters = camp.filtros
         const brokers = filters.corretores_selecionados || []
-        const numBrokers = brokers.length || 1
         const myIndex = brokers.indexOf(userId)
         const brokerRelIndex = myIndex === -1 ? 0 : myIndex // Fallback to 0 if not explicitly listed
 
-        const globalOffset = (offset * numBrokers) + brokerRelIndex
-        
-        // 1. Fetch CPF from campanha_membros with a loop that skips already tabulated clients in this campaign
+        // Release any existing pending (uncompleted) claims for this broker on this campaign to make them self-healing
+        try {
+          await supabase
+            .from('campanha_vinculos')
+            .delete()
+            .eq('campanha_id', camp.id)
+            .eq('corretor_id', userId)
+            .eq('completed', false)
+        } catch (releaseErr) {
+          console.warn("Erro ao liberar vínculos pendentes do corretor:", releaseErr)
+        }
+
+        // 1. Obter todos os CPFs já tabulados (atendidos) nesta campanha para filtrá-los em tempo real na listagem
+        const { data: attendedRows, error: attendedErr } = await withRetry(() =>
+          supabase
+            .from('campanha_atendimentos')
+            .select('cliente_cpf')
+            .eq('campanha_id', camp.id)
+            .neq('cliente_cpf', '00000000000')
+        )
+        if (attendedErr) {
+          console.warn("Erro ao buscar atendimentos existentes:", attendedErr)
+        }
+        const attendedCpfs = new Set((attendedRows || []).map(r => r.cliente_cpf))
+
+        // 2. Obter todos os vínculos (claims) ativos de outros corretores
+        const { data: claimedRows, error: claimedErr } = await withRetry(() =>
+          supabase
+            .from('campanha_vinculos')
+            .select('cliente_cpf')
+            .eq('campanha_id', camp.id)
+            .eq('completed', false)
+        )
+        if (claimedErr) {
+          console.warn("Erro ao buscar CPFs reservados por outros corretores:", claimedErr)
+        }
+        const claimedCpfs = new Set((claimedRows || []).map(r => r.cliente_cpf))
+
+        // 3. Obter todos os membros cadastrados na campanha_membros da campanha ordenados pela fila
+        const { data: allMembers, error: membersErr } = await withRetry(() =>
+          supabase
+            .from('campanha_membros')
+            .select('cliente_cpf, convenio')
+            .eq('campanha_id', camp.id)
+            .order('ordem_fila', { ascending: true })
+        )
+        if (membersErr) {
+          console.error("Erro ao buscar membros da campanha:", membersErr)
+          throw membersErr
+        }
+
+        // 4. Filtrar pelos CPFs que ainda não foram tabulados e não estão vinculados a outro corretor neste exato momento
+        const availableMembers = (allMembers || []).filter(m => 
+          !attendedCpfs.has(m.cliente_cpf) && 
+          !claimedCpfs.has(m.cliente_cpf)
+        )
+
         let fetchedLeadCpf: string | null = null
-        let currentGlobalOffset = globalOffset
-        let attempts = 0
-        const maxAttempts = 100 // Prevent infinite search loop
+        let resolvedConvenio: string | null = null
 
-        while (attempts < maxAttempts) {
-          try {
-            const { data: memberRows, error: memberErr } = await withRetry(() =>
-              supabase
-                .from('campanha_membros')
-                .select('cliente_cpf, convenio')
-                .eq('campanha_id', camp.id)
-                .order('ordem_fila', { ascending: true })
-                .range(currentGlobalOffset, currentGlobalOffset)
-                .limit(1)
-            )
-            const memberRow = memberRows && memberRows.length > 0 ? memberRows[0] : null
-            if (!memberErr && memberRow?.cliente_cpf) {
-              // Verificação para garantir que o cliente não foi tabulado anteriormente nesta campanha
-              const { data: existingAtendimento, error: checkErr } = await supabase
-                .from('campanha_atendimentos')
-                .select('id')
-                .eq('campanha_id', camp.id)
-                .eq('cliente_cpf', memberRow.cliente_cpf)
-                .limit(1)
-
-              if (!checkErr && existingAtendimento && existingAtendimento.length > 0) {
-                console.log(`Lead ${memberRow.cliente_cpf} já tabulado nesta campanha. Buscando próximo...`);
-                currentGlobalOffset += 1;
-                attempts++;
-                continue;
-              }
-
-              fetchedLeadCpf = memberRow.cliente_cpf
-              if (memberRow.convenio && TABLE_MAP[memberRow.convenio]) {
-                table = TABLE_MAP[memberRow.convenio]
-              } else if (
-                !memberRow.convenio ||
-                memberRow.convenio === "detect" ||
-                memberRow.convenio === "importado" ||
-                memberRow.convenio === "multi" ||
-                convenioKey === "detect" ||
-                convenioKey === "importado" ||
-                convenioKey === "multi"
-              ) {
-                // Resolve convenio dynamically at runtime by checking all tables in parallel
-                const splitTables = [
-                  { name: 'base_consulta_siape', convenio: 'siape' },
-                  { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
-                  { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
-                  { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
-                  { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
-                  { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
-                ];
-                const detectionResults = await Promise.all(
-                  splitTables.map(async (t) => {
-                    try {
-                      const paddedCpf = memberRow.cliente_cpf.padStart(11, '0')
-                      const { data: dDataList, error: dErr } = await supabase
-                        .from(t.name)
-                        .select('cpf')
-                        .eq('cpf', paddedCpf)
-                        .limit(1)
-                      if (!dErr && dDataList && dDataList.length > 0) {
-                        return t.name;
-                      }
-                    } catch (e) {
-                      console.warn(`Erro na deteção do CPF ${memberRow.cliente_cpf} na tabela ${t.name}:`, e);
-                    }
-                    return null;
-                  })
-                );
-                const foundTable = detectionResults.find((r) => r !== null);
-                if (foundTable) {
-                  table = foundTable;
-                  const resolvedConvenio = splitTables.find((t) => t.name === foundTable)?.convenio;
-                  if (resolvedConvenio) {
-                    // Silently cache/update back to campanha_membros for subsequent ultra-fast database query runs
-                    supabase
-                      .from('campanha_membros')
-                      .update({ convenio: resolvedConvenio })
-                      .eq('campanha_id', camp.id)
-                      .eq('cliente_cpf', memberRow.cliente_cpf)
-                      .then(() => {});
-                  }
-                }
-              }
-              break; // Encontrou CPF válido e não tabulado
-            } else {
-              if (memberErr) {
-                console.error("Erro ao buscar campanha_membros:", memberErr)
-              }
-              break; // Fim da fila ou erro
-            }
-          } catch (err) {
-            console.error("Falha ao consultar campanha_membros:", err)
-            break;
-          }
+        if (availableMembers.length > 0) {
+          // Para evitar colisão extrema caso dois corretores carreguem exatamente ao mesmo tempo,
+          // usamos o brokerRelIndex modulo a quantidade de itens disponíveis para indexar o pool.
+          // Se houver apenas 1 disponível, dá o mesmo (0). Se houver vários, eles pegaram índices distintos.
+          const selectedIndex = brokerRelIndex % availableMembers.length
+          const matchedMember = availableMembers[selectedIndex]
+          fetchedLeadCpf = matchedMember.cliente_cpf
+          resolvedConvenio = matchedMember.convenio || null
         }
-        
-        // 2. Graceful fallback to formulaic scan if campanha_membros is not fully populated/available
-        if (!fetchedLeadCpf) {
-          let currentFallbackOffset = globalOffset
-          let fallbackAttempts = 0
-          const maxFallbackAttempts = 100
 
-          while (fallbackAttempts < maxFallbackAttempts) {
-            let query = supabase.from(table).select('cpf')
-            query = applyCampaignFilters(query, filters)
-            query = query.order('cpf', { ascending: true }).range(currentFallbackOffset, currentFallbackOffset)
-            
-            let fetchError: any = null
-            let tempCpf: string | null = null
-            
-            try {
-              const { data: resCpf, error: errCpf } = await withRetry(() => query.maybeSingle())
-              fetchError = errCpf
-              tempCpf = resCpf?.cpf || null
-            } catch (err: any) {
-              fetchError = err
-            }
-            
-            // UNORDERED GRACEFUL FALLBACK
-            if (fetchError || !tempCpf) {
-              console.warn("Ordered check failed/timed out, trying fast unordered fallback scan", fetchError)
-              
-              let unorderedQuery = supabase.from(table).select('cpf')
-              unorderedQuery = applyCampaignFilters(unorderedQuery, filters)
-              
-              const fastOffset = currentFallbackOffset % 500
-              unorderedQuery = unorderedQuery.range(fastOffset, fastOffset)
-              
-              try {
-                const { data: resCpfUnordered, error: errCpfUnordered } = await withRetry(() => unorderedQuery.maybeSingle())
-                if (!errCpfUnordered && resCpfUnordered?.cpf) {
-                  tempCpf = resCpfUnordered.cpf
-                } else if (errCpfUnordered) {
-                  console.error("Unordered fallback failed too:", errCpfUnordered)
-                }
-              } catch (unordErr) {
-                console.error("Unordered search promise crash:", unordErr)
-              }
-            }
-
-            if (tempCpf) {
-              // Validar se CPF do fallback já foi tabulado
-              const { data: existingAtendimento, error: checkErr } = await supabase
-                .from('campanha_atendimentos')
-                .select('id')
-                .eq('campanha_id', camp.id)
-                .eq('cliente_cpf', tempCpf)
-                .limit(1)
-
-              if (!checkErr && existingAtendimento && existingAtendimento.length > 0) {
-                console.log(`Fallback lead ${tempCpf} já tabulado nesta campanha. Buscando próximo...`);
-                currentFallbackOffset += 1;
-                fallbackAttempts++;
-                continue;
-              }
-
-              fetchedLeadCpf = tempCpf
-            }
-            break;
-          }
-        }
-        
-        // 3. RAPID SINGLE KEY LOOKUP:
-        // Use primary key query to fetch full details
+        // 5. RAPID SINGLE KEY LOOKUP:
+        // Se encontramos um CPF disponível, buscamos os seus dados completos na tabela correspondente
         if (fetchedLeadCpf) {
+          if (resolvedConvenio && TABLE_MAP[resolvedConvenio]) {
+            table = TABLE_MAP[resolvedConvenio]
+          } else if (
+            !resolvedConvenio ||
+            resolvedConvenio === "detect" ||
+            resolvedConvenio === "importado" ||
+            resolvedConvenio === "multi" ||
+            convenioKey === "detect" ||
+            convenioKey === "importado" ||
+            convenioKey === "multi"
+          ) {
+            // Resolve convenio dynamically at runtime by checking all tables in parallel
+            const splitTables = [
+              { name: 'base_consulta_siape', convenio: 'siape' },
+              { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
+              { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
+              { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
+              { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
+              { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
+            ];
+            const detectionResults = await Promise.all(
+              splitTables.map(async (t) => {
+                try {
+                  const paddedCpf = fetchedLeadCpf!.padStart(11, '0')
+                  const { data: dDataList, error: dErr } = await supabase
+                    .from(t.name)
+                    .select('cpf')
+                    .eq('cpf', paddedCpf)
+                    .limit(1)
+                  if (!dErr && dDataList && dDataList.length > 0) {
+                    return t.name;
+                  }
+                } catch (e) {
+                  console.warn(`Erro na deteção do CPF ${fetchedLeadCpf} na tabela ${t.name}:`, e);
+                }
+                return null;
+              })
+            );
+            const foundTable = detectionResults.find((r) => r !== null);
+            if (foundTable) {
+              table = foundTable;
+              const detectedConvenio = splitTables.find((t) => t.name === foundTable)?.convenio;
+              if (detectedConvenio) {
+                // Silently cache/update back to campanha_membros for subsequent ultra-fast database query runs
+                supabase
+                  .from('campanha_membros')
+                  .update({ convenio: detectedConvenio })
+                  .eq('campanha_id', camp.id)
+                  .eq('cliente_cpf', fetchedLeadCpf)
+                  .then(() => {});
+              }
+            }
+          }
+
           const paddedFetchedCpf = fetchedLeadCpf.padStart(11, '0')
           const { data: fullLead, error: fullLeadError } = await withRetry(() => 
             supabase.from(table).select('*').eq('cpf', paddedFetchedCpf).limit(1)
@@ -638,8 +592,8 @@ export default function CampanhaAtendimentoPage() {
           if (fullLeadError) throw fullLeadError
           data = fullLead && fullLead.length > 0 ? fullLead[0] : null
         }
-        
-        // Attempt stateful claim creation so future steps become fully sequential
+
+        // 6. Criar vínculo temporário em campanha_vinculos para segurar a posse do lead enquanto é trabalhado
         if (data && data.cpf) {
           try {
             await supabase.from('campanha_vinculos').insert({
@@ -647,7 +601,7 @@ export default function CampanhaAtendimentoPage() {
               corretor_id: userId,
               cliente_cpf: data.cpf,
               completed: false,
-              indice: globalOffset
+              indice: offset
             })
           } catch (insertErr) {
             console.warn("Could not record initial lead claimed row:", insertErr)

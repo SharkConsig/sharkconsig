@@ -124,7 +124,7 @@ const hrMenuItems = [
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
       },
       { 
-        name: "DADOS DOS COLABORADORES", 
+        name: "COLABORADORES", 
         href: "/colaboradores", 
         icon: Briefcase, 
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 

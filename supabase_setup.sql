@@ -100,6 +100,32 @@ CREATE TABLE IF NOT EXISTS chamados (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 8. Tabela de Colaboradores
+CREATE TABLE IF NOT EXISTS colaboradores (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nome VARCHAR(255) NOT NULL,
+    funcao VARCHAR(100),
+    cpf VARCHAR(20),
+    data_nascimento VARCHAR(50),
+    estado_civil VARCHAR(50),
+    endereco TEXT,
+    telefone VARCHAR(50),
+    email VARCHAR(255),
+    telefone_emergencia VARCHAR(100),
+    tamanho_calcado VARCHAR(20),
+    filhos VARCHAR(255),
+    tamanho_roupa VARCHAR(20),
+    chocolate_preferido TEXT,
+    bebida_preferida TEXT,
+    comida_preferida TEXT,
+    sugestao_campanhas TEXT,
+    preferencia_incentivos TEXT,
+    data_admissao VARCHAR(50),
+    status VARCHAR(50) DEFAULT 'Ativo',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Habilitar RLS (Row Level Security)
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matriculas ENABLE ROW LEVEL SECURITY;
@@ -108,6 +134,7 @@ ALTER TABLE itens_credito ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campanhas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lotes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chamados ENABLE ROW LEVEL SECURITY;
+ALTER TABLE colaboradores ENABLE ROW LEVEL SECURITY;
 
 -- Grant permissions explicitly
 GRANT ALL ON TABLE clientes TO authenticated, service_role;
@@ -117,6 +144,7 @@ GRANT ALL ON TABLE itens_credito TO authenticated, service_role;
 GRANT ALL ON TABLE campanhas TO authenticated, service_role;
 GRANT ALL ON TABLE lotes TO authenticated, service_role;
 GRANT ALL ON TABLE chamados TO authenticated, service_role;
+GRANT ALL ON TABLE colaboradores TO authenticated, service_role;
 
 -- Remover políticas antigas se existirem
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON clientes;
@@ -126,6 +154,7 @@ DROP POLICY IF EXISTS "Permitir tudo para todos" ON itens_credito;
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON campanhas;
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON lotes;
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON chamados;
+DROP POLICY IF EXISTS "Permitir tudo para todos" ON colaboradores;
 
 -- Criar políticas para usuários autenticados (CRUD completo)
 CREATE POLICY "Acesso total para autenticados" ON clientes FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -135,3 +164,4 @@ CREATE POLICY "Acesso total para autenticados" ON itens_credito FOR ALL TO authe
 CREATE POLICY "Acesso total para autenticados" ON campanhas FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total para autenticados" ON lotes FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total para autenticados" ON chamados FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total para autenticados" ON colaboradores FOR ALL TO authenticated USING (true) WITH CHECK (true);
