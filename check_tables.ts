@@ -1,27 +1,24 @@
 import { createClient } from '@supabase/supabase-js'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || 'placeholder_anon_key'
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
 async function check() {
   const supabase = createClient(url, key)
   
-  // Let's check query on hr_interviews in the rh schema
-  console.log("Checking table 'hr_interviews' in schema 'rh'...")
-  const res1 = await supabase.schema('rh').from('hr_interviews').select('*').limit(1)
-  if (res1.error) {
-    console.log("Error on hr_interviews:", res1.error.message)
+  console.log("Checking table 'campanha_vinculos'...")
+  const res = await supabase.from('campanha_vinculos').select('*').limit(5)
+  if (res.error) {
+    console.log("Error on campanha_vinculos:", res.error.message)
   } else {
-    console.log("hr_interviews exists! Columns:", Object.keys(res1.data[0] || {}))
-  }
-
-  // Let's check query on entrevistas
-  console.log("Checking table 'entrevistas'...")
-  const res2 = await supabase.from('entrevistas').select('*').limit(1)
-  if (res2.error) {
-    console.log("Error on entrevistas:", res2.error.message)
-  } else {
-    console.log("entrevistas exists! Columns:", Object.keys(res2.data[0] || {}))
+    console.log("campanha_vinculos exists! Rows count:", res.data?.length)
+    if (res.data && res.data.length > 0) {
+      console.log("Columns:", Object.keys(res.data[0] || {}))
+      console.log("Sample row:", res.data[0])
+    } else {
+      console.log("campanha_vinculos is empty. Let's check table structure via querying column names if possible.")
+      // Can check details via selecting a mock or schema query
+    }
   }
 }
 

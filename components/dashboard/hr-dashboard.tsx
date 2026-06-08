@@ -10,16 +10,14 @@ import {
   Clock, 
   ArrowRight, 
   Briefcase, 
-  UserCheck, 
   UserPlus,
   Megaphone,
-  Sparkles,
-  History,
-  TrendingUp
+  Cake
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/context/auth-context"
+import { supabase } from "@/lib/supabase"
 
 interface HRMetric {
   title: string
@@ -28,17 +26,154 @@ interface HRMetric {
   icon: React.ElementType
   color: string
   bgColor: string
+  href: string
+}
+
+interface DBCollaborator {
+  id: string
+  status?: string | null
+  data_admissao?: string | null
+  joinDate?: string | null
+  data_nascimento?: string | null
+  birthDate?: string | null
+}
+
+// Helper to parse birthday month safely (0-indexed)
+const getBirthdayMonth = (dateStr: string): number | null => {
+  if (!dateStr) return null
+  const cleanStr = dateStr.trim()
+  
+  if (cleanStr.includes("/")) {
+    const parts = cleanStr.split("/")
+    if (parts.length >= 2) {
+      return parseInt(parts[1], 10) - 1
+    }
+  } else if (cleanStr.includes("-")) {
+    const parts = cleanStr.split("-")
+    if (parts.length >= 2) {
+      if (parts[0].length === 4) {
+        return parseInt(parts[1], 10) - 1 // YYYY-MM-DD
+      } else {
+        return parseInt(parts[1], 10) - 1 // DD-MM-YYYY
+      }
+    }
+  }
+  // Try fallback to date parse
+  const parsed = Date.parse(cleanStr)
+  if (!isNaN(parsed)) {
+    return new Date(parsed).getMonth()
+  }
+  return null
 }
 
 export function HRDashboard() {
   const { perfil } = useAuth()
-  const [colaboradoresCount, setColaboradoresCount] = useState(24)
-  const [entrevistasCount, setEntrevistasCount] = useState(6)
-  const [advertenciasCount, setAdvertenciasCount] = useState(3)
+  const [colaboradoresCount, setColaboradoresCount] = useState(0)
+  const [entrevistasCount, setEntrevistasCount] = useState(0)
+  const [advertenciasCount, setAdvertenciasCount] = useState(0)
+  const [birthdaysCount, setBirthdaysCount] = useState(0)
 
-  const firstFirstLetter = useMemo(() => {
-    return perfil?.nome ? perfil.nome.charAt(0).toUpperCase() : "U"
+  const firstName = useMemo(() => {
+    if (!perfil?.nome) return "GESTOR"
+    return perfil.nome.trim().split(/\s+/)[0].toUpperCase()
   }, [perfil?.nome])
+
+  // UseEffect to load actual numbers and fallback safely to offline local cache
+  useEffect(() => {
+    async function loadStats() {
+      // 1. Initial Local Cache Fallback
+      let colabsLocal: DBCollaborator[] = []
+      let interviewsLocal: Record<string, unknown>[] = []
+      let warningsLocal: Record<string, unknown>[] = []
+
+      try {
+        const savedColabs = localStorage.getItem("shark_hr_collaborators_spreadsheet")
+        if (savedColabs) {
+          colabsLocal = JSON.parse(savedColabs)
+        }
+      } catch (e) {
+        console.error("Local colabs read err:", e)
+      }
+
+      try {
+        const savedInterviews = localStorage.getItem("shark_hr_interviews_spreadsheet")
+        if (savedInterviews) {
+          interviewsLocal = JSON.parse(savedInterviews)
+        }
+      } catch (e) {
+        console.error("Local interviews read err:", e)
+      }
+
+      try {
+        const savedWarnings = localStorage.getItem("hr_warning_records_v2")
+        if (savedWarnings) {
+          warningsLocal = JSON.parse(savedWarnings)
+        }
+      } catch (e) {
+        console.error("Local warnings read err:", e)
+      }
+
+      const activeColabsLocal = colabsLocal.filter((item: DBCollaborator) => {
+        const status = item.status || "Ativo"
+        return status !== "Inativo"
+      })
+      setColaboradoresCount(activeColabsLocal.length)
+      setEntrevistasCount(interviewsLocal.length)
+      setAdvertenciasCount(warningsLocal.length)
+
+      const today = new Date()
+      const currentMonth = today.getMonth()
+
+      const birthLocalCount = activeColabsLocal.filter((item: DBCollaborator) => {
+        const dateStr = item.birthDate || item.data_nascimento || ""
+        const m = getBirthdayMonth(dateStr)
+        return m === currentMonth
+      }).length
+      setBirthdaysCount(birthLocalCount)
+
+      // 2. Direct Supabase Query fetch
+      try {
+        const { data: colabsData } = await supabase
+          .from("hr_colaboradores")
+          .select("id, status, data_admissao, data_nascimento")
+        
+        if (colabsData) {
+          const activeSupa = (colabsData as DBCollaborator[]).filter((item: DBCollaborator) => {
+            const status = item.status || "Ativo"
+            return status !== "Inativo"
+          })
+          setColaboradoresCount(activeSupa.length)
+
+          const birthSupaCount = activeSupa.filter((item: DBCollaborator) => {
+            const dateStr = item.data_nascimento || ""
+            const m = getBirthdayMonth(dateStr)
+            return m === currentMonth
+          }).length
+          setBirthdaysCount(birthSupaCount)
+        }
+
+        const { data: interviewsData } = await supabase
+          .from("hr_interviews")
+          .select("id")
+        
+        if (interviewsData) {
+          setEntrevistasCount(interviewsData.length)
+        }
+
+        const { data: warningsData } = await supabase
+          .from("hr_advertencias")
+          .select("id")
+        
+        if (warningsData) {
+          setAdvertenciasCount(warningsData.length)
+        }
+      } catch (err) {
+        console.warn("Failed to query live dashboard statistics, offline cache remains active:", err)
+      }
+    }
+
+    loadStats()
+  }, [])
 
   // Custom HR Metrics Cards
   const metrics: HRMetric[] = [
@@ -48,7 +183,17 @@ export function HRDashboard() {
       description: "Profissionais contratados",
       icon: Users,
       color: "text-blue-600",
-      bgColor: "bg-blue-50"
+      bgColor: "bg-blue-50",
+      href: "/colaboradores"
+    },
+    {
+      title: "Aniversariantes do Mês",
+      value: birthdaysCount,
+      description: "Datas de nascimento este mês",
+      icon: Cake,
+      color: "text-rose-600",
+      bgColor: "bg-rose-50",
+      href: "/colaboradores"
     },
     {
       title: "Entrevistas Agendadas",
@@ -56,7 +201,8 @@ export function HRDashboard() {
       description: "Recrutamento ativo este mês",
       icon: Calendar,
       color: "text-emerald-600",
-      bgColor: "bg-emerald-50"
+      bgColor: "bg-emerald-50",
+      href: "/entrevistas"
     },
     {
       title: "Advertências",
@@ -64,15 +210,8 @@ export function HRDashboard() {
       description: "Registros de disciplina",
       icon: AlertTriangle,
       color: "text-amber-600",
-      bgColor: "bg-amber-50"
-    },
-    {
-      title: "Tempo de Empresa",
-      value: "4 Colabs",
-      description: "Completando aniversário este mês",
-      icon: Clock,
-      color: "text-purple-600",
-      bgColor: "bg-purple-50"
+      bgColor: "bg-amber-50",
+      href: "/advertencias"
     }
   ]
 
@@ -121,28 +260,19 @@ export function HRDashboard() {
 
   return (
     <div className="space-y-8 animate-fade-in text-slate-800">
-      {/* Greetings Hero */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-teal-700 via-[#1C2643] to-[#0f172a] p-8 text-white shadow-2xl">
-        <div className="relative z-10 space-y-4">
-          <div className="flex items-center gap-2">
-            <span className="bg-white/20 backdrop-blur-md text-[10px] uppercase tracking-widest font-black px-3 py-1 rounded-full border border-white/10">
-              Módulo Recursos Humanos
-            </span>
-            <span className="flex items-center gap-1 bg-amber-400 text-slate-950 text-[10px] uppercase tracking-widest font-black px-3 py-1 rounded-full">
-              <Sparkles className="w-3 h-3 animate-pulse" /> Ativo
-            </span>
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight uppercase">
-            Olá, {perfil?.nome || "Gestor de RH"}
+      {/* Greetings Hero (Clean structure with specific #1C2643 typography color) */}
+      <div className="py-2">
+        <div className="space-y-2">
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight uppercase text-[#1C2643]">
+            Olá, {firstName}
           </h1>
-          <p className="text-slate-200 text-xs sm:text-sm max-w-xl font-medium leading-relaxed">
+          <p className="text-[#1C2643] text-xs sm:text-sm max-w-2xl font-medium leading-relaxed">
             Seja bem-vindo ao painel central de Recursos Humanos. Aqui você pode gerenciar todas as rotinas internas, acompanhar contratações e acompanhar termos comportamentais.
           </p>
         </div>
-        <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
       </div>
 
-      {/* Grid Summary Cards */}
+      {/* Grid Summary Cards (Fully functional real numbers with interactive Link wraps) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {metrics.map((metric, index) => {
           const Icon = metric.icon
@@ -153,24 +283,26 @@ export function HRDashboard() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
             >
-              <Card className="border border-slate-150 rounded-2xl shadow-sm hover:shadow-md transition-shadow bg-white overflow-hidden">
-                <CardContent className="p-6 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      {metric.title}
-                    </p>
-                    <p className="text-2xl font-black text-slate-900">
-                      {metric.value}
-                    </p>
-                    <p className="text-[10px] font-medium text-slate-500">
-                      {metric.description}
-                    </p>
-                  </div>
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${metric.bgColor} ${metric.color}`}>
-                    <Icon className="w-6 h-6" />
-                  </div>
-                </CardContent>
-              </Card>
+              <Link href={metric.href} className="block transition-all hover:-translate-y-1 duration-200">
+                <Card className="border border-slate-150 rounded-2xl shadow-sm hover:shadow-md bg-white overflow-hidden">
+                  <CardContent className="p-6 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        {metric.title}
+                      </p>
+                      <p className="text-2xl font-black text-[#1C2643]">
+                        {metric.value}
+                      </p>
+                      <p className="text-[10px] font-medium text-slate-500">
+                        {metric.description}
+                      </p>
+                    </div>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${metric.bgColor} ${metric.color}`}>
+                      <Icon className="w-6 h-6" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             </motion.div>
           )
         })}

@@ -7,17 +7,69 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "motion/react"
 import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 import { 
   Search, 
-  Briefcase, 
   Filter,
   ChevronDown,
   Check,
   Trash2,
   Users,
   Smile,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Cake,
+  UserMinus,
+  Paperclip,
+  Eye,
+  UploadCloud,
+  X,
+  CheckCircle2
 } from "lucide-react"
+
+const DOCUMENT_TYPES = [
+  {
+    category: "1. Documentos Pessoais",
+    items: [
+      { key: "rg", name: "RG (ou CNH, etc.)" },
+      { key: "cpf", name: "CPF" },
+      { key: "residencia", name: "Comprovante de Residência" },
+      { key: "titulo_voto", name: "Título de Eleitor e comprovante de votação" },
+      { key: "certidao_nasc_cas", name: "Certidão de Nascimento ou Casamento" },
+      { key: "reservista", name: "Certificado de Reservista ou dispensa" }
+    ]
+  },
+  {
+    category: "2. Documentos Profissionais e Financeiros",
+    items: [
+      { key: "ctps", name: "Carteira de Trabalho (CTPS)" },
+      { key: "pis_pasep_nis", name: "Número do PIS/PASEP/NIS" },
+      { key: "escolaridade", name: "Comprovante de Escolaridade" },
+      { key: "dados_bancarios", name: "Dados Bancários para Salário" }
+    ]
+  },
+  {
+    category: "3. Documentos para Dependentes (Se houver)",
+    items: [
+      { key: "dep_cpf_nasc", name: "CPF e Certidão - Filhos < 14 anos" },
+      { key: "dep_vacina", name: "Carteira de Vacinação (Até 6 anos)" },
+      { key: "dep_escola", name: "Frequência Escolar (7 a 14 anos)" }
+    ]
+  },
+  {
+    category: "4. Obrigatório para a Admissão",
+    items: [
+      { key: "aso_admissional", name: "Atestado de Saúde Ocupacional (ASO) Admissional" }
+    ]
+  },
+  {
+    category: "5. Outros",
+    items: [
+      { key: "outro_1", name: "Outro Documento 1" },
+      { key: "outro_2", name: "Outro Documento 2" },
+      { key: "outro_3", name: "Outro Documento 3" }
+    ]
+  }
+]
 
 interface DBCollaborator {
   id?: string
@@ -38,7 +90,12 @@ interface DBCollaborator {
   comida_preferida?: string
   sugestao_campanhas?: string
   preferencia_incentivos?: string
+  banco?: string
+  agencia?: string
+  conta?: string
+  chave_pix?: string
   data_admissao?: string
+  data_demissao?: string
   status?: string
 }
 
@@ -62,15 +119,19 @@ function mapDBToCollaborator(db: DBCollaborator): Collaborator {
     favFood: db.comida_preferida || "",
     campaignSuggestion: db.sugestao_campanhas || "",
     incentivesPreference: db.preferencia_incentivos || "",
+    bank: db.banco || "",
+    bankAgency: db.agencia || "",
+    bankAccount: db.conta || "",
+    pixKey: db.chave_pix || "",
     joinDate: db.data_admissao || "",
+    exitDate: db.data_demissao || "",
     status: (db.status as "Ativo" | "Inativo") || "Ativo"
   }
 }
 
 function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
-  const db: DBCollaborator = {
-    nome: c.name || ""
-  }
+  const db: DBCollaborator = {}
+  if (c.name !== undefined) db.nome = c.name
   if (c.role !== undefined) db.funcao = c.role
   if (c.cpf !== undefined) db.cpf = c.cpf
   if (c.birthDate !== undefined) db.data_nascimento = c.birthDate
@@ -87,7 +148,12 @@ function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
   if (c.favFood !== undefined) db.comida_preferida = c.favFood
   if (c.campaignSuggestion !== undefined) db.sugestao_campanhas = c.campaignSuggestion
   if (c.incentivesPreference !== undefined) db.preferencia_incentivos = c.incentivesPreference
+  if (c.bank !== undefined) db.banco = c.bank
+  if (c.bankAgency !== undefined) db.agencia = c.bankAgency
+  if (c.bankAccount !== undefined) db.conta = c.bankAccount
+  if (c.pixKey !== undefined) db.chave_pix = c.pixKey
   if (c.joinDate !== undefined) db.data_admissao = c.joinDate
+  if (c.exitDate !== undefined) db.data_demissao = c.exitDate
   if (c.status !== undefined) db.status = c.status
   return db
 }
@@ -112,7 +178,12 @@ interface Collaborator {
   campaignSuggestion: string // Sugestão de Campanhas
   incentivesPreference: string // Preferência de Incentivos
   joinDate: string        // Tempo de Casa
+  exitDate?: string       // DATA DA DEMISSÃO
   status: "Ativo" | "Inativo"
+  bank?: string
+  bankAgency?: string
+  bankAccount?: string
+  pixKey?: string
 }
 
 const roleOptions = [
@@ -131,382 +202,7 @@ const roleOptions = [
   { value: "Estagiário", label: "Estagiário", bg: "bg-[#1e3a8a] hover:bg-[#172554]", border: "border-transparent", text: "text-white" }
 ]
 
-const initialCollaborators: Collaborator[] = [
-  {
-    id: "1",
-    name: "Robson Ramos",
-    role: "CEO",
-    cpf: "",
-    birthDate: "01/02/1987",
-    civilStatus: "",
-    address: "",
-    phone: "",
-    email: "",
-    emergencyPhone: "",
-    shoeSize: "",
-    children: "",
-    clothingSize: "",
-    favChocolate: "",
-    favDrink: "",
-    favFood: "",
-    campaignSuggestion: "",
-    incentivesPreference: "",
-    joinDate: "15/01/2024",
-    status: "Ativo"
-  },
-  {
-    id: "2",
-    name: "Larissa Ramos",
-    role: "Diretora Financeira",
-    cpf: "",
-    birthDate: "19/01/1992",
-    civilStatus: "",
-    address: "",
-    phone: "",
-    email: "",
-    emergencyPhone: "",
-    shoeSize: "",
-    children: "",
-    clothingSize: "",
-    favChocolate: "",
-    favDrink: "",
-    favFood: "",
-    campaignSuggestion: "",
-    incentivesPreference: "",
-    joinDate: "16/10/2023",
-    status: "Ativo"
-  },
-  {
-    id: "3",
-    name: "Nathali Beneduzi da Silva",
-    role: "Supervisora Comercial",
-    cpf: "038.669.150-98",
-    birthDate: "24/11/1995",
-    civilStatus: "Solteira",
-    address: "Servidão Dois Pinheiros, Saco dos Limões, 134",
-    phone: "(48) 99148-5756",
-    email: "nathy_looks@hotmail.com",
-    emergencyPhone: "(51) 98551-2738",
-    shoeSize: "35/36",
-    children: "Gael, 4 anos",
-    clothingSize: "P/M",
-    favChocolate: "Milka - Toblerone com nuts",
-    favDrink: "Aperol Spritz",
-    favFood: "Frutos do mar",
-    campaignSuggestion: "Finais de semana com experiência próxima",
-    incentivesPreference: "Vale cultura",
-    joinDate: "04/10/2021",
-    status: "Ativo"
-  },
-  {
-    id: "4",
-    name: "Felícia Moraes",
-    role: "Promotor de Vendas",
-    cpf: "432.505.758-79",
-    birthDate: "10/04/1995",
-    civilStatus: "Solteira",
-    address: "R. Irineu Hofman, 84 - Forquilhas",
-    phone: "(48) 98850-8578",
-    email: "feliciamoraesdosanjos@gmail.com",
-    emergencyPhone: "(48) 99699-7917",
-    shoeSize: "42",
-    children: "4",
-    clothingSize: "48 ou GG",
-    favChocolate: "Língua de gato ou milka caramelo",
-    favDrink: "Vinho e coca 0",
-    favFood: "Pizza e sushi",
-    campaignSuggestion: "Campanhas semanais com 2 equipes disputando",
-    incentivesPreference: "SPA, dinheiro, vale salão",
-    joinDate: "16/10/2023",
-    status: "Ativo"
-  },
-  {
-    id: "5",
-    name: "Valéria Sena do Nascimento",
-    role: "Promotor de Vendas",
-    cpf: "023.649.892-48",
-    birthDate: "24/09/1994",
-    civilStatus: "Solteira",
-    address: "Nossa Senhora Do Rosário 650, Jardim Atlântico",
-    phone: "(48) 99848-7790",
-    email: "senavaleria03@gmail.com",
-    emergencyPhone: "",
-    shoeSize: "35",
-    children: "Não",
-    clothingSize: "36/38",
-    favChocolate: "KitKat",
-    favDrink: "Suco de limão",
-    favFood: "Camarão e sushi",
-    campaignSuggestion: "Dinheiro",
-    incentivesPreference: "Estética",
-    joinDate: "04/10/2021",
-    status: "Ativo"
-  },
-  {
-    id: "6",
-    name: "Jorge Fabrício Marques Siqueira",
-    role: "Promotor de Vendas",
-    cpf: "047.199.420-08",
-    birthDate: "14/08/2005",
-    civilStatus: "Solteira",
-    address: "Rua Prof Walter de Bona Castelan nº157",
-    phone: "54 9204-2336",
-    email: "juniorfabriciojorge@gmail.com",
-    emergencyPhone: "54 9715-6137",
-    shoeSize: "45",
-    children: "Não",
-    clothingSize: "M",
-    favChocolate: "Milka Oreo",
-    favDrink: "Vinho branco suave",
-    favFood: "Empadão de frango cremoso",
-    campaignSuggestion: "Dia no SPA",
-    incentivesPreference: "Voucher de roupa/perfume",
-    joinDate: "05/01/2026",
-    status: "Ativo"
-  },
-  {
-    id: "7",
-    name: "Emanuella de Souza Lima",
-    role: "Estagiário",
-    cpf: "138.358.169-00",
-    birthDate: "27/01/2004",
-    civilStatus: "Solteira",
-    address: "Servidão Daniel Trajano Honorato, 83 - Costeira do Pirajubaé",
-    phone: "48 9146-2701",
-    email: "Emanuella.desouza98@gmail.com",
-    emergencyPhone: "(48) 988045527",
-    shoeSize: "36-37",
-    children: "Não",
-    clothingSize: "M",
-    favChocolate: "Chocolate meio amargo",
-    favDrink: "",
-    favFood: "Sushi",
-    campaignSuggestion: "Dia no SPA",
-    incentivesPreference: "Dinheiro",
-    joinDate: "29/04/2026",
-    status: "Ativo"
-  },
-  {
-    id: "8",
-    name: "Marcel Rodrigo Teixeira de Oliveira",
-    role: "PJ",
-    cpf: "059.246.350-82",
-    birthDate: "17/12/2007",
-    civilStatus: "Solteira",
-    address: "Servidão do Bosque, 66",
-    phone: "51 99936-2593",
-    email: "marcel.tx.oliveira@gmail.com",
-    emergencyPhone: "51 996538988",
-    shoeSize: "43",
-    children: "Não",
-    clothingSize: "G",
-    favChocolate: "Branco",
-    favDrink: "Sprit",
-    favFood: "Churrasco",
-    campaignSuggestion: "Viagem",
-    incentivesPreference: "Dinheiro",
-    joinDate: "06/05/2026",
-    status: "Ativo"
-  },
-  {
-    id: "9",
-    name: "Ana Carla Simões Braganholo",
-    role: "Estagiário",
-    cpf: "074.013.041-20",
-    birthDate: "10/04/2008",
-    civilStatus: "Solteira",
-    address: "",
-    phone: "48 9174-1391",
-    email: "anacarlabraganholo@gmail.com",
-    emergencyPhone: "48 99133-8866",
-    shoeSize: "36/37",
-    children: "Não",
-    clothingSize: "M",
-    favChocolate: "Lacta/ouro branco",
-    favDrink: "Guaraná",
-    favFood: "Pizza",
-    campaignSuggestion: "VR/VA",
-    incentivesPreference: "",
-    joinDate: "20/05/2026",
-    status: "Ativo"
-  },
-  {
-    id: "10",
-    name: "Maria Luiza Galvan Domingos",
-    role: "Estagiário",
-    cpf: "082.403.499-60",
-    birthDate: "19/01/2007",
-    civilStatus: "Solteira",
-    address: "Rua Deputado Antonio Edu Vieira 680, Pantanal",
-    phone: "47 9718-5975",
-    email: "maria.lgalvand@gmail.com",
-    emergencyPhone: "92 985663478",
-    shoeSize: "36",
-    children: "Não",
-    clothingSize: "M",
-    favChocolate: "bis extra Black",
-    favDrink: "refrigerante de morango do shadow",
-    favFood: "pizza de frango com catupiry",
-    campaignSuggestion: "bonificações no salário",
-    incentivesPreference: "",
-    joinDate: "25/05/2026",
-    status: "Ativo"
-  },
-  {
-    id: "11",
-    name: "Henry Alexy dos Santos Mendes",
-    role: "Estagiário",
-    cpf: "600.214.400-50",
-    birthDate: "04/10/2006",
-    civilStatus: "Solteira",
-    address: "Rua Ilha da Gralha Azul, 3855",
-    phone: "48 9135-6549",
-    email: "henry.inter.rs@gmail.com",
-    emergencyPhone: "51 99845-7795",
-    shoeSize: "41",
-    children: "Não",
-    clothingSize: "G",
-    favChocolate: "Chocolate branco",
-    favDrink: "Monster de Manga",
-    favFood: "Churrasco",
-    campaignSuggestion: "Vale jantar e Pix",
-    incentivesPreference: "Vale jantar e Pix",
-    joinDate: "25/05/2026",
-    status: "Ativo"
-  },
-  {
-    id: "12",
-    name: "Yasmin Limas",
-    role: "Estagiário",
-    cpf: "095.352.959-26",
-    birthDate: "22/03/2008",
-    civilStatus: "Solteira",
-    address: "Rua José Batista Rosa, 148",
-    phone: "47 8473-4549",
-    email: "yasminlimas6028@gmail.com",
-    emergencyPhone: "47 98466-3106",
-    shoeSize: "38",
-    children: "Não",
-    clothingSize: "M",
-    favChocolate: "Suflar - normal",
-    favDrink: "Suco de abacaxi com hortelã",
-    favFood: "Frango empanado",
-    campaignSuggestion: "Beto Carrero",
-    incentivesPreference: "Vale Jantar",
-    joinDate: "02/06/2026",
-    status: "Ativo"
-  },
-  {
-    id: "13",
-    name: "Talita da Silva Haupt",
-    role: "Supervisora Operacional",
-    cpf: "083.930.239-80",
-    birthDate: "29/09/1996",
-    civilStatus: "Solteira",
-    address: "Rua Olavio de Biasi, 659, casa 02, Palhoça - SC",
-    phone: "48 9653-2351",
-    email: "talitashaupt@gmail.com",
-    emergencyPhone: "48 9631-6301 11 99345-9288",
-    shoeSize: "37/38",
-    children: "Não",
-    clothingSize: "G",
-    favChocolate: "Chocolates aerados / preto",
-    favDrink: "Vinho rose",
-    favFood: "Japonesa",
-    campaignSuggestion: "Procedimentos estéticos",
-    incentivesPreference: "",
-    joinDate: "02/08/2021",
-    status: "Ativo"
-  },
-  {
-    id: "14",
-    name: "INDIANARA MACHADO DOS SANTOS",
-    role: "Serviços Gerais",
-    cpf: "",
-    birthDate: "12/05/1993",
-    civilStatus: "",
-    address: "",
-    phone: "",
-    email: "",
-    emergencyPhone: "",
-    shoeSize: "",
-    children: "",
-    clothingSize: "",
-    favChocolate: "",
-    favDrink: "",
-    favFood: "",
-    campaignSuggestion: "",
-    incentivesPreference: "",
-    joinDate: "12/03/2025",
-    status: "Ativo"
-  },
-  {
-    id: "15",
-    name: "Sergio",
-    role: "Serviços Gerais",
-    cpf: "",
-    birthDate: "01/02/1964",
-    civilStatus: "",
-    address: "",
-    phone: "",
-    email: "",
-    emergencyPhone: "",
-    shoeSize: "",
-    children: "",
-    clothingSize: "",
-    favChocolate: "",
-    favDrink: "",
-    favFood: "",
-    campaignSuggestion: "",
-    incentivesPreference: "",
-    joinDate: "05/09/2022",
-    status: "Ativo"
-  },
-  {
-    id: "16",
-    name: "Isadora Meira Marques",
-    role: "RH",
-    cpf: "132.285.299-59",
-    birthDate: "18/05/2003",
-    civilStatus: "Solteira",
-    address: "Servidão Arnoldo João Meira, 101 - Ipiranga, São José",
-    phone: "(48) 98418-1469",
-    email: "isameiradora.com@gmail.com",
-    emergencyPhone: "(48) 98464-9229",
-    shoeSize: "33/34",
-    children: "Não",
-    clothingSize: "PP",
-    favChocolate: "Kinder bueno white",
-    favDrink: "Suco",
-    favFood: "Strogonoff",
-    campaignSuggestion: "Viagens, massagem",
-    incentivesPreference: "Presentes e doces",
-    joinDate: "05/08/2025",
-    status: "Ativo"
-  },
-  {
-    id: "17",
-    name: "Letícia de Lourdes Araújo Pereira",
-    role: "Monitoria",
-    cpf: "104.280.734-50",
-    birthDate: "04/07/2003",
-    civilStatus: "Casada",
-    address: "R. Valdemiro Monguilhot, 213 - Centro, Florianópolis",
-    phone: "(82) 99425-1038",
-    email: "ldelourdes216@gmail.com",
-    emergencyPhone: "(82) 99407-4720 (82) 99415-2093",
-    shoeSize: "38",
-    children: "Não",
-    clothingSize: "M",
-    favChocolate: "Ao leite",
-    favDrink: "Suco de manga",
-    favFood: "Lasanha",
-    campaignSuggestion: "Campanhas temáticas: aproveitar datas comemorativas",
-    incentivesPreference: "Vale jantar, dinheiro e cestas",
-    joinDate: "07/10/2024",
-    status: "Ativo"
-  }
-]
+const initialCollaborators: Collaborator[] = []
 
 const monthsList = [
   { value: 1, name: "Janeiro" },
@@ -558,15 +254,22 @@ function getBirthdayDetails(dateStr: string) {
 
 export default function ColaboradoresPage() {
   const [collaborators, setCollaborators] = useState<Collaborator[]>([])
-  const [activeTab, setActiveTab] = useState<"clt" | "aniversarios">("clt")
+  const [activeTab, setActiveTab] = useState<"clt" | "aniversarios" | "ex_colaboradores">("clt")
   const [loadingTable, setLoadingTable] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterRole, setFilterRole] = useState("todos")
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [supabaseError, setSupabaseError] = useState<string | null>(null)
+
+  // Document management states
+  const [formDocs, setFormDocs] = useState<Record<string, File | null>>({})
+  const [colabDocs, setColabDocs] = useState<Record<string, string[]>>({})
+  const [activeModalColab, setActiveModalColab] = useState<Collaborator | null>(null)
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false)
   
   // Form State
   const [newName, setNewName] = useState("")
-  const [newRole, setNewRole] = useState("Promotor de Vendas")
+  const [newRole, setNewRole] = useState("")
   const [newCpf, setNewCpf] = useState("")
   const [newBirthDate, setNewBirthDate] = useState("")
   const [newCivilStatus, setNewCivilStatus] = useState("")
@@ -583,14 +286,29 @@ export default function ColaboradoresPage() {
   const [newCampaignSuggestion, setNewCampaignSuggestion] = useState("")
   const [newIncentivesPreference, setNewIncentivesPreference] = useState("")
   const [newJoinDate, setNewJoinDate] = useState("")
+  const [newBank, setNewBank] = useState("")
+  const [newBankAgency, setNewBankAgency] = useState("")
+  const [newBankAccount, setNewBankAccount] = useState("")
+  const [newPixKey, setNewPixKey] = useState("")
 
   // Load from Supabase on mount
   useEffect(() => {
+    // Purge old mock custom local storage data if present
+    try {
+      const oldSaved = localStorage.getItem("shark_hr_collaborators_spreadsheet")
+      if (oldSaved && (oldSaved.includes("Robson Ramos") || oldSaved.includes("Nathali Beneduzi"))) {
+        localStorage.removeItem("shark_hr_collaborators_spreadsheet")
+      }
+    } catch (e) {
+      // ignore
+    }
+
     async function loadCollaborators() {
       setLoadingTable(true)
+      setSupabaseError(null)
       try {
         const { data, error } = await supabase
-          .from("colaboradores")
+          .from("hr_colaboradores")
           .select("*")
           .order("nome", { ascending: true })
 
@@ -599,38 +317,26 @@ export default function ColaboradoresPage() {
         }
 
         if (data && data.length > 0) {
-          setCollaborators(data.map(mapDBToCollaborator))
+          const loaded = data.map(mapDBToCollaborator)
+          setCollaborators(loaded)
         } else {
-          // If empty in Supabase, seed from initial records
-          const seedList = initialCollaborators
-          const dbRows = seedList.map(({ id: _id, ...rest }) => mapCollaboratorToDB(rest))
-
-          const { data: insertedData, error: insertError } = await supabase
-            .from("colaboradores")
-            .insert(dbRows)
-            .select()
-
-          if (insertError) {
-            console.error("Erro ao semear colaboradores no Supabase:", insertError)
-            setCollaborators(seedList)
-          } else if (insertedData) {
-            setCollaborators(insertedData.map(mapDBToCollaborator))
-          } else {
-            setCollaborators(seedList)
-          }
+          setCollaborators([])
         }
       } catch (err) {
         console.error("Erro ao carregar colaboradores do Supabase:", err)
-        // Fallback to local storage or initial values if Supabase is down
+        const pgError = err as { message?: string; code?: string; details?: string; hint?: string };
+        const detailedError = pgError ? `${pgError.message || JSON.stringify(pgError)} [Código: ${pgError.code || 'n/a'}] [Detalhes: ${pgError.details || 'n/a'}] [Dica: ${pgError.hint || 'n/a'}]` : "Erro desconhecido";
+        setSupabaseError(detailedError)
+        // Fallback to local storage if Supabase is down
         const saved = localStorage.getItem("shark_hr_collaborators_spreadsheet")
         if (saved) {
           try {
             setCollaborators(JSON.parse(saved))
           } catch {
-            setCollaborators(initialCollaborators)
+            setCollaborators([])
           }
         } else {
-          setCollaborators(initialCollaborators)
+          setCollaborators([])
         }
       } finally {
         setLoadingTable(false)
@@ -645,15 +351,168 @@ export default function ColaboradoresPage() {
     localStorage.setItem("shark_hr_collaborators_spreadsheet", JSON.stringify(updated))
   }
 
+  const refreshColabDocs = async (colabId: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('colaboradores-documentos')
+        .list(colabId)
+      if (data) {
+        setColabDocs(prev => ({
+          ...prev,
+          [colabId]: data.map(f => f.name)
+        }))
+      }
+    } catch (e) {
+      console.error("Erro ao atualizar lista de documentos:", e)
+    }
+  }
+
+  useEffect(() => {
+    if (collaborators.length === 0) return;
+    
+    async function fetchDocs() {
+      const docsMap: Record<string, string[]> = {}
+      await Promise.all(collaborators.map(async (colab) => {
+        if (!colab.id || colab.id.startsWith('temp-')) return;
+        try {
+          const { data, error } = await supabase.storage
+            .from('colaboradores-documentos')
+            .list(colab.id)
+          if (data) {
+            docsMap[colab.id] = data.map(f => f.name)
+          }
+        } catch (err) {
+          console.error("Error listing docs:", err)
+        }
+      }));
+      setColabDocs(docsMap)
+    }
+    
+    fetchDocs()
+  }, [collaborators])
+
+  const handleUploadDocument = async (colabId: string, docKey: string, file: File) => {
+    setIsUploadingDoc(true)
+    try {
+      // 1. check and delete existing files starting with docKey (e.g. if we upload a .png over a .pdf)
+      const { data: existingFiles } = await supabase.storage
+        .from('colaboradores-documentos')
+        .list(colabId)
+        
+      if (existingFiles) {
+        const toDelete = existingFiles
+          .filter(f => f.name.split('.')[0] === docKey)
+          .map(f => `${colabId}/${f.name}`)
+        if (toDelete.length > 0) {
+          await supabase.storage.from('colaboradores-documentos').remove(toDelete)
+        }
+      }
+      
+      // 2. Upload the new file
+      const fileExt = file.name.split('.').pop() || 'pdf'
+      const filePath = `${colabId}/${docKey}.${fileExt}`
+      
+      const { error: uploadError } = await supabase.storage
+        .from('colaboradores-documentos')
+        .upload(filePath, file, { cacheControl: '0', upsert: true })
+        
+      if (uploadError) throw uploadError
+      
+      // 3. Re-fetch documents for this collaborator
+      await refreshColabDocs(colabId)
+      toast.success("Documento enviado com sucesso!")
+    } catch (err) {
+      console.error("Erro ao enviar documento:", err)
+      toast.error("Erro ao enviar documento")
+    } finally {
+      setIsUploadingDoc(false)
+    }
+  }
+
+  const handleDeleteDocument = async (colabId: string, docKey: string) => {
+    if (!confirm("Deseja realmente excluir este documento?")) return;
+    try {
+      const { data: existingFiles } = await supabase.storage
+        .from('colaboradores-documentos')
+        .list(colabId)
+        
+      if (existingFiles) {
+        const toDelete = existingFiles
+          .filter(f => f.name.split('.')[0] === docKey)
+          .map(f => `${colabId}/${f.name}`)
+        if (toDelete.length > 0) {
+          await supabase.storage.from('colaboradores-documentos').remove(toDelete)
+        }
+      }
+      await refreshColabDocs(colabId)
+      toast.success("Documento removido com sucesso!")
+    } catch (err) {
+      console.error("Erro ao deletar documento:", err)
+      toast.error("Erro ao deletar documento")
+    }
+  }
+
+  const handleFormDocChange = (key: string, file: File | null) => {
+    setFormDocs(prev => ({
+      ...prev,
+      [key]: file
+    }))
+  }
+
   const updateCell = async (id: string, field: keyof Collaborator, value: string) => {
     // Optimistic state update
-    const updated = collaborators.map(c => c.id === id ? { ...c, [field]: value } : c)
+    const updated = collaborators.map(c => {
+      if (c.id === id) {
+        if (field === "status") {
+          if (value === "Inativo") {
+            return {
+              ...c,
+              status: "Inativo",
+              exitDate: c.exitDate || new Date().toLocaleDateString("pt-BR"),
+              // preenchendo somente com os dados das colunas da tabela de lá (Ex-colaboradores)
+              joinDate: "",
+              bank: "",
+              bankAgency: "",
+              bankAccount: "",
+              pixKey: "",
+              shoeSize: "",
+              children: "",
+              clothingSize: "",
+              favChocolate: "",
+              favDrink: "",
+              favFood: "",
+              campaignSuggestion: "",
+              incentivesPreference: ""
+            } as Collaborator
+          } else if (value === "Ativo") {
+            return {
+              ...c,
+              status: "Ativo",
+              joinDate: c.joinDate || new Date().toLocaleDateString("pt-BR"),
+              exitDate: ""
+            } as Collaborator
+          }
+        }
+        return { ...c, [field]: value } as Collaborator
+      }
+      return c
+    })
     saveCollaborators(updated)
 
     try {
-      const mappedField = mapCollaboratorToDB({ [field]: value })
+      const colab = updated.find(c => c.id === id)
+      if (!colab) return
+
+      let mappedField: Partial<DBCollaborator> = {}
+      if (field === "status") {
+        // Sync the entire transitioned object to Supabase
+        mappedField = mapCollaboratorToDB(colab)
+      } else {
+        mappedField = mapCollaboratorToDB({ [field]: value })
+      }
+
       const { error } = await supabase
-        .from("colaboradores")
+        .from("hr_colaboradores")
         .update(mappedField)
         .eq("id", id)
 
@@ -676,7 +535,7 @@ export default function ColaboradoresPage() {
 
       try {
         const { error } = await supabase
-          .from("colaboradores")
+          .from("hr_colaboradores")
           .delete()
           .eq("id", deleteConfirmId)
 
@@ -715,6 +574,10 @@ export default function ColaboradoresPage() {
       favFood: newFavFood || "",
       campaignSuggestion: newCampaignSuggestion || "",
       incentivesPreference: newIncentivesPreference || "",
+      bank: newBank || "",
+      bankAgency: newBankAgency || "",
+      bankAccount: newBankAccount || "",
+      pixKey: newPixKey || "",
       joinDate: newJoinDate || new Date().toLocaleDateString("pt-BR"),
       status: "Ativo"
     }
@@ -729,7 +592,7 @@ export default function ColaboradoresPage() {
     try {
       const dbRow = mapCollaboratorToDB(colabData)
       const { data, error } = await supabase
-        .from("colaboradores")
+        .from("hr_colaboradores")
         .insert([dbRow])
         .select()
 
@@ -740,14 +603,43 @@ export default function ColaboradoresPage() {
       if (data && data[0]) {
         const savedColab = mapDBToCollaborator(data[0])
         setCollaborators(prev => prev.map(c => c.id === tempId ? savedColab : c))
+
+        // Upload documents if any exist in formDocs
+        const docKeys = Object.keys(formDocs).filter(k => formDocs[k] !== null)
+        if (docKeys.length > 0) {
+          const loadingToast = toast.loading("Enviando documentos estruturados para o banco...")
+          try {
+            for (const docKey of docKeys) {
+              const file = formDocs[docKey]
+              if (file) {
+                const fileExt = file.name.split('.').pop() || 'pdf'
+                const filePath = `${savedColab.id}/${docKey}.${fileExt}`
+                const { error: uploadError } = await supabase.storage
+                  .from('colaboradores-documentos')
+                  .upload(filePath, file, { cacheControl: '0', upsert: true })
+                if (uploadError) {
+                  console.error(`Erro ao subir ${docKey}:`, uploadError)
+                }
+              }
+            }
+            await refreshColabDocs(savedColab.id)
+            toast.success("Colaborador cadastrado e documentos arquivados com sucesso!", { id: loadingToast })
+          } catch (uploadException) {
+            console.error("Erro geral no upload:", uploadException)
+            toast.error("Colaborador cadastrado, mas houve falha ao salvar alguns documentos.", { id: loadingToast })
+          }
+        } else {
+          toast.success("Colaborador cadastrado com sucesso!")
+        }
       }
     } catch (err) {
       console.error("Erro ao salvar colaborador no Supabase:", err)
+      toast.error("Erro ao cadastrar colaborador")
     }
 
     // Reset Form
     setNewName("")
-    setNewRole("Promotor de Vendas")
+    setNewRole("")
     setNewCpf("")
     setNewBirthDate("")
     setNewCivilStatus("")
@@ -763,10 +655,39 @@ export default function ColaboradoresPage() {
     setNewFavFood("")
     setNewCampaignSuggestion("")
     setNewIncentivesPreference("")
+    setNewBank("")
+    setNewBankAgency("")
+    setNewBankAccount("")
+    setNewPixKey("")
     setNewJoinDate("")
+    setFormDocs({})
   }
 
-  const filteredCollaborators = collaborators.filter(c => {
+  const activeCollaborators = collaborators.filter(c => c.status !== "Inativo")
+  const inactiveCollaborators = collaborators.filter(c => c.status === "Inativo")
+
+  const currentMonthNum = new Date().getMonth() + 1
+  const activeBirthdaysCurrentMonth = activeCollaborators.filter(c => {
+    if (!c.birthDate) return false
+    const details = getBirthdayDetails(c.birthDate)
+    return details && details.month === currentMonthNum
+  })
+
+  const filteredCollaborators = activeCollaborators.filter(c => {
+    const query = searchQuery.toLowerCase()
+    const matchesSearch = 
+      (c.name || "").toLowerCase().includes(query) || 
+      (c.role || "").toLowerCase().includes(query) || 
+      (c.cpf || "").toLowerCase().includes(query) || 
+      (c.email || "").toLowerCase().includes(query) || 
+      (c.phone || "").toLowerCase().includes(query) || 
+      (c.address || "").toLowerCase().includes(query)
+
+    const matchesRole = filterRole === "todos" || c.role === filterRole
+    return matchesSearch && matchesRole
+  })
+
+  const filteredExCollaborators = inactiveCollaborators.filter(c => {
     const query = searchQuery.toLowerCase()
     const matchesSearch = 
       (c.name || "").toLowerCase().includes(query) || 
@@ -791,9 +712,9 @@ export default function ColaboradoresPage() {
           <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
             <CardContent className="p-6 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Colaboradores Cadastrados</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Colaboradores Ativos</p>
                 <p className="text-3xl font-black text-slate-800 mt-1">
-                  {collaborators.length}
+                  {activeCollaborators.length}
                 </p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
@@ -805,13 +726,13 @@ export default function ColaboradoresPage() {
           <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
             <CardContent className="p-6 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cargos & Funções</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aniversariantes do Mês</p>
                 <p className="text-3xl font-black text-slate-800 mt-1">
-                  {new Set(collaborators.map(c => c.role)).size}
+                  {activeBirthdaysCurrentMonth.length}
                 </p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 shrink-0">
-                <Briefcase className="w-6 h-6" />
+                <Cake className="w-6 h-6" />
               </div>
             </CardContent>
           </Card>
@@ -819,13 +740,13 @@ export default function ColaboradoresPage() {
           <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
             <CardContent className="p-6 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Com Preciosismo Social</p>
-                <p className="text-sm font-semibold text-slate-500 mt-1.5 leading-snug">
-                  Mapeamento de mimos, preferências, tamanhos e dados pessoais integrados em tempo real.
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Colaboradores Inativos</p>
+                <p className="text-3xl font-black text-slate-800 mt-1">
+                  {inactiveCollaborators.length}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
-                <Smile className="w-6 h-6" />
+              <div className="w-12 h-12 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 shrink-0">
+                <UserMinus className="w-6 h-6" />
               </div>
             </CardContent>
           </Card>
@@ -844,7 +765,7 @@ export default function ColaboradoresPage() {
             )}
             id="tab-clt"
           >
-            COLABORADORES CLT
+            COLABORADORES
           </button>
           <button
             type="button"
@@ -859,102 +780,135 @@ export default function ColaboradoresPage() {
           >
             CALENDÁRIO DE ANIVERSÁRIOS
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("ex_colaboradores")}
+            className={cn(
+              "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 cursor-pointer",
+              activeTab === "ex_colaboradores"
+                ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black"
+                : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            )}
+            id="tab-ex-colaboradores"
+          >
+            EX COLABORADORES
+          </button>
         </div>
 
         {activeTab === "clt" ? (
           <Card className="border border-slate-200 overflow-hidden bg-white rounded-2xl rounded-tl-none shadow-sm animate-in fade-in duration-300">
             <CardContent className="p-0">
-            <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-4 border-b border-slate-100">
-              <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 w-full md:max-w-md">
-                <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                <input 
-                  type="text" 
-                  placeholder="Pesquisar por nome, função, CPF, telefone..." 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-transparent border-none outline-none text-xs font-semibold text-slate-700 w-full"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-slate-400" />
-                  <select 
-                    value={filterRole}
-                    onChange={(e) => setFilterRole(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none cursor-pointer"
-                  >
-                    <option value="todos">Todas as Funções</option>
-                    {roleOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.value}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Form Cadastro */}
-            <div className="bg-slate-50/50 p-6 border-b border-slate-150">
-              <form onSubmit={handleCreateCollaborator} className="space-y-6">
+              {/* Form Cadastro */}
+              <div className="bg-slate-50/50 p-6 border-b border-slate-150">
+                <form onSubmit={handleCreateCollaborator} className="space-y-6">
                   {/* Grid 1: Informações Pessoais Principais */}
                   <div>
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">1. Informações Básicas e Administrativas</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div className="space-y-1.5">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                      <div className="space-y-1.5 col-span-1 md:col-span-3">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Nome Completo *</label>
                         <input 
                           type="text" 
                           required
-                          placeholder="Ex: Nathali Beneduzi" 
                           value={newName} 
                           onChange={(e) => setNewName(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Função (Cargo)</label>
-                        <select 
-                          value={newRole}
-                          onChange={(e) => setNewRole(e.target.value)}
-                          className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none field-sizing-content"
-                        >
-                          {roleOptions.map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.value}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-1.5">
+                      <div className="space-y-1.5 col-span-1 md:col-span-2">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">CPF</label>
                         <input 
                           type="text" 
-                          placeholder="Ex: 038.669.150-98" 
                           value={newCpf} 
                           onChange={(e) => setNewCpf(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Admissão (Tempo de Casa)</label>
+                      <div className="space-y-1.5 col-span-1 md:col-span-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Data de Nasc.</label>
                         <input 
-                          type="text" 
-                          placeholder="DD/MM/AAAA ou data" 
+                          type="date" 
+                          value={newBirthDate} 
+                          onChange={(e) => setNewBirthDate(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
+                        />
+                      </div>
+                      <div className="space-y-1.5 col-span-1 md:col-span-3">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Função (Cargo)</label>
+                        <select 
+                          value={newRole}
+                          onChange={(e) => setNewRole(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none cursor-pointer focus:border-slate-350 text-slate-700"
+                        >
+                          <option value=""></option>
+                          {roleOptions.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.value}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5 col-span-1 md:col-span-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Admissão</label>
+                        <input 
+                          type="date" 
                           value={newJoinDate} 
                           onChange={(e) => setNewJoinDate(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Grid 2: Dados Bancários */}
+                  <div>
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">2. Dados Bancários</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Banco</label>
+                        <input 
+                          type="text" 
+                          value={newBank} 
+                          onChange={(e) => setNewBank(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Agência</label>
+                        <input 
+                          type="text" 
+                          value={newBankAgency} 
+                          onChange={(e) => setNewBankAgency(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Conta-Bancária</label>
+                        <input 
+                          type="text" 
+                          value={newBankAccount} 
+                          onChange={(e) => setNewBankAccount(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Chave Pix</label>
+                        <input 
+                          type="text" 
+                          value={newPixKey} 
+                          onChange={(e) => setNewPixKey(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* Grid 2: Contatos e Endereço */}
+                  {/* Grid 3: Contatos e Endereço */}
                   <div>
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">2. Contatos, Família e Endereço</h3>
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">3. Contatos, Família e Endereço</h3>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div className="space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Telefone</label>
                         <input 
                           type="text" 
-                          placeholder="Ex: (48) 99148-5756" 
                           value={newPhone} 
                           onChange={(e) => setNewPhone(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
@@ -964,7 +918,6 @@ export default function ColaboradoresPage() {
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">E-mail</label>
                         <input 
                           type="email" 
-                          placeholder="nathy@hotmail.com" 
                           value={newEmail} 
                           onChange={(e) => setNewEmail(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
@@ -974,7 +927,6 @@ export default function ColaboradoresPage() {
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Fone de Emergência</label>
                         <input 
                           type="text" 
-                          placeholder="Ex: (51) 98551-2738" 
                           value={newEmergencyPhone} 
                           onChange={(e) => setNewEmergencyPhone(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
@@ -984,37 +936,24 @@ export default function ColaboradoresPage() {
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Filhos</label>
                         <input 
                           type="text" 
-                          placeholder="Ex: Gael, 4 anos ou Não" 
                           value={newChildren} 
                           onChange={(e) => setNewChildren(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
                         />
                       </div>
-                      <div className="space-y-1.5 col-span-1 md:col-span-2">
+                      <div className="space-y-1.5 col-span-1 md:col-span-3">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Endereço Completo</label>
                         <input 
                           type="text" 
-                          placeholder="Rua, Número, Bairro, Cidade - UF" 
                           value={newAddress} 
                           onChange={(e) => setNewAddress(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Data de Nasc.</label>
-                        <input 
-                          type="text" 
-                          placeholder="DD/MM/AAAA" 
-                          value={newBirthDate} 
-                          onChange={(e) => setNewBirthDate(e.target.value)}
-                          className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
+                      <div className="space-y-1.5 col-span-1 md:col-span-1">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Estado Civil</label>
                         <input 
                           type="text" 
-                          placeholder="Solteira / Casada" 
                           value={newCivilStatus} 
                           onChange={(e) => setNewCivilStatus(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
@@ -1023,15 +962,14 @@ export default function ColaboradoresPage() {
                     </div>
                   </div>
 
-                  {/* Grid 3: Preferências & Mimos */}
+                  {/* Grid 4: Preferências & Mimos */}
                   <div>
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">3. Mimos, Tamanhos e Preferências (Afinidade Social)</h3>
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">4. Mimos, Tamanhos e Preferências (Afinidade Social)</h3>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div className="space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Tamanho da Roupa</label>
                         <input 
                           type="text" 
-                          placeholder="Ex: M, P/M, G, GG" 
                           value={newClothingSize} 
                           onChange={(e) => setNewClothingSize(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
@@ -1041,7 +979,6 @@ export default function ColaboradoresPage() {
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Nº do Calçado</label>
                         <input 
                           type="text" 
-                          placeholder="Ex: 35/36" 
                           value={newShoeSize} 
                           onChange={(e) => setNewShoeSize(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
@@ -1051,7 +988,6 @@ export default function ColaboradoresPage() {
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Chocolate Preferido</label>
                         <input 
                           type="text" 
-                          placeholder="Ex: Milka Oreo" 
                           value={newFavChocolate} 
                           onChange={(e) => setNewFavChocolate(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
@@ -1061,7 +997,6 @@ export default function ColaboradoresPage() {
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Bebida Preferida</label>
                         <input 
                           type="text" 
-                          placeholder="Ex: Aperol Spritz" 
                           value={newFavDrink} 
                           onChange={(e) => setNewFavDrink(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
@@ -1071,7 +1006,6 @@ export default function ColaboradoresPage() {
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Comida Preferida</label>
                         <input 
                           type="text" 
-                          placeholder="Ex: Sushi, Strogonoff" 
                           value={newFavFood} 
                           onChange={(e) => setNewFavFood(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
@@ -1081,7 +1015,6 @@ export default function ColaboradoresPage() {
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Sugestão de Campanhas</label>
                         <input 
                           type="text" 
-                          placeholder="Ideia de campanhas, incentivos ou dinâmicas" 
                           value={newCampaignSuggestion} 
                           onChange={(e) => setNewCampaignSuggestion(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
@@ -1091,12 +1024,68 @@ export default function ColaboradoresPage() {
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Preferência de Incentivos</label>
                         <input 
                           type="text" 
-                          placeholder="Vale cultura, dinheiro, PIX, etc." 
                           value={newIncentivesPreference} 
                           onChange={(e) => setNewIncentivesPreference(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
                         />
                       </div>
+                    </div>
+                  </div>
+
+                  {/* ANEXAR DOCUMENTOS */}
+                  <div className="border-t border-slate-100 pt-6 mt-6">
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Paperclip className="w-4 h-4 text-[#002060]" />
+                      ANEXAR DOCUMENTOS COBRADOS NA ADMISSÃO
+                    </h3>
+                    
+                    <div className="space-y-6 text-left">
+                      {DOCUMENT_TYPES.map((cat) => (
+                        <div key={cat.category} className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
+                          <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-3 pb-1 border-b border-slate-200">
+                            {cat.category}
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {cat.items.map((item) => {
+                              const selectedFile = formDocs[item.key];
+                              return (
+                                <div key={item.key} className="flex flex-col gap-1.5 p-2 bg-white rounded-xl border border-slate-200/60 shadow-sm">
+                                  <label className="text-[10px] font-bold text-slate-600 truncate block">
+                                    {item.name}
+                                  </label>
+                                  {selectedFile ? (
+                                    <div className="flex items-center justify-between gap-2 p-1.5 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-800">
+                                      <span className="text-[10px] font-semibold truncate max-w-[120px]">
+                                        {selectedFile.name}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleFormDocChange(item.key, null)}
+                                        className="text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100 p-0.5 rounded-md transition-all cursor-pointer"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <label className="flex items-center justify-center gap-1.5 py-1.5 px-3 border border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50 rounded-lg cursor-pointer transition-all text-slate-500 hover:text-slate-700 select-none">
+                                      <UploadCloud className="w-3.5 h-3.5" />
+                                      <span className="text-[9px] font-black uppercase tracking-wider">Selecionar</span>
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0];
+                                          if (file) handleFormDocChange(item.key, file);
+                                        }}
+                                      />
+                                    </label>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
@@ -1106,7 +1095,7 @@ export default function ColaboradoresPage() {
                       variant="ghost" 
                       onClick={() => {
                         setNewName("")
-                        setNewRole("Promotor de Vendas")
+                        setNewRole("")
                         setNewCpf("")
                         setNewBirthDate("")
                         setNewCivilStatus("")
@@ -1123,6 +1112,7 @@ export default function ColaboradoresPage() {
                         setNewCampaignSuggestion("")
                         setNewIncentivesPreference("")
                         setNewJoinDate("")
+                        setFormDocs({})
                       }}
                       className="text-slate-500 hover:bg-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest"
                     >
@@ -1138,36 +1128,62 @@ export default function ColaboradoresPage() {
                 </form>
               </div>
 
+              {/* Campo de Pesquisa */}
+              <div className="p-6 flex items-center justify-between gap-4 border-b border-slate-100 bg-white">
+                <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 w-full md:max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                  <input 
+                    type="text" 
+                    placeholder="Pesquisar por nome, função, CPF, telefone..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="bg-transparent border-none outline-none text-xs font-semibold text-slate-700 w-full"
+                  />
+                </div>
+              </div>
+
+              {supabaseError && (
+                <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-xs font-semibold text-red-800 animate-in fade-in duration-250">
+                  <span className="font-bold uppercase tracking-wider block mb-1">Erro de Conectividade do Supabase:</span>
+                  {supabaseError}
+                </div>
+              )}
+
             {/* List Table */}
             <div className="overflow-x-auto min-h-[500px] px-6">
-              <table className="w-full text-left border-collapse table-fixed min-w-[3100px]">
+              <table className="w-full text-left border-collapse table-fixed min-w-[3700px]">
                 <thead>
-                  <tr className="bg-slate-50/50 border-b border-slate-100">
-                    <th className="w-[220px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome Completo</th>
-                    <th className="w-[180px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Função</th>
-                    <th className="w-[140px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">CPF</th>
-                    <th className="w-[110px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data de Nasc.</th>
-                    <th className="w-[120px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estado Civil</th>
-                    <th className="w-[320px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Endereço Completo</th>
-                    <th className="w-[140px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone</th>
-                    <th className="w-[220px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">E-mail</th>
-                    <th className="w-[180px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone de Emergência</th>
-                    <th className="w-[100px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nº Calçado</th>
-                    <th className="w-[110px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filhos</th>
-                    <th className="w-[140px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tamanho da Roupa</th>
-                    <th className="w-[200px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chocolate Preferido</th>
-                    <th className="w-[200px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bebida Preferida</th>
-                    <th className="w-[200px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Comida Preferida</th>
-                    <th className="w-[250px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sugestão de Campanhas</th>
-                    <th className="w-[220px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Preferência de Incentivos</th>
-                    <th className="w-[120px] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tempo de Casa</th>
-                    <th className="w-[80px] px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</th>
+                  <tr className="bg-[#171717] text-white">
+                    <th className="w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
+                    <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
+                    <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
+                    <th className="w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
+                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Banco</th>
+                    <th className="w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Agência</th>
+                    <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Conta-Bancária</th>
+                    <th className="w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chave Pix</th>
+                    <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
+                    <th className="w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
+                    <th className="w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
+                    <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
+                    <th className="w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
+                    <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
+                    <th className="w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Nº Calçado</th>
+                    <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Filhos</th>
+                    <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Tamanho da Roupa</th>
+                    <th className="w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chocolate Preferido</th>
+                    <th className="w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Bebida Preferida</th>
+                    <th className="w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Comida Preferida</th>
+                    <th className="w-[250px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Sugestão de Campanhas</th>
+                    <th className="w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Preferência de Incentivos</th>
+                    <th className="w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
+                    <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {loadingTable ? (
                     <tr>
-                      <td colSpan={19} className="text-center py-20 bg-slate-50/10">
+                      <td colSpan={24} className="text-center py-20 bg-slate-50/10">
                         <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                           <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de colaboradores...</p>
                         </div>
@@ -1175,7 +1191,7 @@ export default function ColaboradoresPage() {
                     </tr>
                   ) : filteredCollaborators.length === 0 ? (
                     <tr>
-                      <td colSpan={19} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={24} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador encontrado</p>
@@ -1211,6 +1227,56 @@ export default function ColaboradoresPage() {
                             onChange={(val) => updateCell(colab.id, "cpf", val)}
                             placeholder="---.---.------"
                             fontClass="font-mono text-slate-600 text-[11px]"
+                          />
+                        </td>
+
+                        {/* ADMISSÃO */}
+                        <td className="px-4 py-3.5">
+                          <TextInputCell 
+                            value={colab.joinDate} 
+                            onChange={(val) => updateCell(colab.id, "joinDate", val)}
+                            placeholder="Admissão..."
+                            fontClass="font-mono text-slate-605 text-[11px]"
+                          />
+                        </td>
+
+                        {/* BANCO */}
+                        <td className="px-4 py-3.5">
+                          <TextInputCell 
+                            value={colab.bank} 
+                            onChange={(val) => updateCell(colab.id, "bank", val)}
+                            placeholder="Banco..."
+                            fontClass="text-slate-605 text-[11px]"
+                          />
+                        </td>
+
+                        {/* AGÊNCIA */}
+                        <td className="px-4 py-3.5">
+                          <TextInputCell 
+                            value={colab.bankAgency} 
+                            onChange={(val) => updateCell(colab.id, "bankAgency", val)}
+                            placeholder="Agência..."
+                            fontClass="font-mono text-slate-605 text-[11px]"
+                          />
+                        </td>
+
+                        {/* CONTA-BANCÁRIA */}
+                        <td className="px-4 py-3.5">
+                          <TextInputCell 
+                            value={colab.bankAccount} 
+                            onChange={(val) => updateCell(colab.id, "bankAccount", val)}
+                            placeholder="Conta..."
+                            fontClass="font-mono text-slate-605 text-[11px]"
+                          />
+                        </td>
+
+                        {/* CHAVE PIX */}
+                        <td className="px-4 py-3.5">
+                          <TextInputCell 
+                            value={colab.pixKey} 
+                            onChange={(val) => updateCell(colab.id, "pixKey", val)}
+                            placeholder="Chave Pix..."
+                            fontClass="text-slate-605 text-[11px]"
                           />
                         </td>
 
@@ -1354,25 +1420,28 @@ export default function ColaboradoresPage() {
                           />
                         </td>
 
-                        {/* 18. TEMPO DE CASA */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.joinDate} 
-                            onChange={(val) => updateCell(colab.id, "joinDate", val)}
-                            placeholder="DD/MM/AAAA"
-                            fontClass="font-mono text-slate-600 text-[11px]"
-                          />
-                        </td>
-
-                        {/* EXCLUIR ROW BUTTON */}
+                        {/* SITUAÇÃO (ATIVO/DESATIVAR) ROW BUTTON */}
                         <td className="px-2 py-3.5 text-center">
                           <button
                             type="button"
-                            onClick={() => handleDelete(colab.id)}
-                            className="p-1.5 text-amber-500 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-all"
-                            title="Deletar colaborador permanentemente"
+                            onClick={() => updateCell(colab.id, "status", "Inactive" && "Inativo")}
+                            className="group w-[100px] h-[28px] mx-auto flex items-center justify-center text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-rose-50 hover:text-rose-700 border border-emerald-200 hover:border-rose-200 rounded-lg transition-all uppercase tracking-wider text-[9.5px] cursor-pointer"
+                            title="Desativar colaborador (mover para Ex-colaboradores)"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="group-hover:hidden">Ativo</span>
+                            <span className="group-hover:inline hidden">Desativar</span>
+                          </button>
+                        </td>
+
+                        {/* DOCUMENTO ROW LINK/MODAL CONTROL */}
+                        <td className="px-4 py-3.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setActiveModalColab(colab)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 hover:bg-[#002060]/5 hover:border-[#002060]/30 hover:text-[#002060] transition-all rounded-xl text-[10.5px] font-black uppercase text-slate-700 cursor-pointer shadow-sm text-center justify-center"
+                          >
+                            <Paperclip className="w-3.5 h-3.5 shrink-0" />
+                            DOCUMENTOS ({colabDocs[colab.id]?.length || 0})
                           </button>
                         </td>
                       </tr>
@@ -1383,7 +1452,7 @@ export default function ColaboradoresPage() {
             </div>
           </CardContent>
         </Card>
-        ) : (
+        ) : activeTab === "aniversarios" ? (
           <Card className="border border-slate-200 overflow-hidden bg-white rounded-2xl rounded-tl-none shadow-sm animate-in fade-in duration-300">
             <CardContent className="p-6">
               <div className="mb-6 pb-4 border-b border-slate-100">
@@ -1398,9 +1467,9 @@ export default function ColaboradoresPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 p-1">
                 {monthsList.map((m) => {
-                  const itemBirthdays = collaborators
+                  const itemBirthdays = activeCollaborators
                     .filter(c => {
-                      if (!c.birthDate || c.status !== "Ativo") return false;
+                      if (!c.birthDate) return false;
                       const details = getBirthdayDetails(c.birthDate);
                       return details && details.month === m.value;
                     })
@@ -1425,13 +1494,13 @@ export default function ColaboradoresPage() {
                     <div key={m.value} className="border border-slate-200 rounded-xl overflow-hidden shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05)] bg-white flex flex-col justify-between" id={`month-box-${m.value}`}>
                       <div>
                         {/* Título do Mês */}
-                        <div className="bg-[#002060] text-center text-[10.5px] font-black uppercase text-white py-2 tracking-widest border-b border-blue-900 leading-none">
+                        <div className="bg-[#171717] text-center text-[10.5px] font-black uppercase text-white py-2 tracking-widest border-b border-[#171717]/80 leading-none">
                           {m.name}
                         </div>
 
                         {/* Cabeçalho da Mini Tabela */}
-                        <div className="grid grid-cols-10 bg-[#002060]/95 text-white text-[8.5px] font-black uppercase tracking-wider py-1 border-b border-blue-900 leading-none">
-                          <div className="col-span-7 px-3 text-left border-r border-[#002060]/35">Nome</div>
+                        <div className="grid grid-cols-10 bg-[#171717]/95 text-white text-[8.5px] font-black uppercase tracking-wider py-1 border-b border-[#171717]/80 leading-none">
+                          <div className="col-span-7 px-3 text-left border-r border-[#171717]/35">Nome</div>
                           <div className="col-span-3 text-center">Data</div>
                         </div>
 
@@ -1455,8 +1524,329 @@ export default function ColaboradoresPage() {
               </div>
             </CardContent>
           </Card>
+        ) : (
+          <Card className="border border-slate-200 overflow-hidden bg-white rounded-2xl rounded-tl-none shadow-sm animate-in fade-in duration-300">
+            <CardContent className="p-0">
+              <div className="p-6 flex items-center justify-between gap-4 border-b border-slate-100">
+                <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 w-full md:max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                  <input 
+                    type="text" 
+                    placeholder="Pesquisar por nome, função, CPF, telefone..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="bg-transparent border-none outline-none text-xs font-semibold text-slate-700 w-full"
+                  />
+                </div>
+              </div>
+
+              {/* List Table */}
+              <div className="overflow-x-auto min-h-[500px] px-6 py-4">
+                <table className="w-full text-left border-collapse table-fixed min-w-[1900px]">
+                  <thead>
+                    <tr className="bg-[#171717] text-white">
+                      <th className="w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none rounded-l-xl">Nome Completo</th>
+                      <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">Função</th>
+                      <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none">CPF</th>
+                      <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none">Data de Nasc.</th>
+                      <th className="w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
+                      <th className="w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
+                      <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
+                      <th className="w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
+                      <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
+                      <th className="w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">DATA DA DEMISSÃO</th>
+                      <th className="w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
+                      <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {loadingTable ? (
+                      <tr>
+                        <td colSpan={12} className="text-center py-20 bg-slate-50/10">
+                          <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
+                            <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de ex-colaboradores...</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filteredExCollaborators.length === 0 ? (
+                      <tr>
+                        <td colSpan={12} className="text-center py-20 bg-slate-50/10 border-none">
+                          <div className="flex flex-col items-center justify-center space-y-2">
+                            <FileSpreadsheet className="w-10 h-10 text-slate-350" />
+                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Nenhum ex-colaborador encontrado</p>
+                            <p className="text-slate-400 text-[9px] font-semibold">Tabela vazia ou sem correspondências.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredExCollaborators.map((colab) => (
+                        <tr key={colab.id} className="hover:bg-slate-50/40 transition-colors uppercase font-bold text-slate-700">
+                          {/* Nome Completo */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.name} 
+                              onChange={(val) => updateCell(colab.id, "name", val)}
+                              placeholder=""
+                              fontClass="font-bold text-slate-800 text-[11px]"
+                            />
+                          </td>
+
+                          {/* Funcao */}
+                          <td className="px-4 py-3.5 text-center">
+                            <PillDropdown 
+                              value={colab.role} 
+                              options={roleOptions} 
+                              onChange={(val) => updateCell(colab.id, "role", val)} 
+                            />
+                          </td>
+
+                          {/* CPF */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.cpf} 
+                              onChange={(val) => updateCell(colab.id, "cpf", val)}
+                              placeholder=""
+                              fontClass="font-mono text-slate-650 text-[11px]"
+                            />
+                          </td>
+
+                          {/* Data de Nasc. */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.birthDate} 
+                              onChange={(val) => updateCell(colab.id, "birthDate", val)}
+                              placeholder=""
+                              fontClass="font-mono text-slate-650 text-[11px]"
+                            />
+                          </td>
+
+                          {/* Estado Civil */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.civilStatus} 
+                              onChange={(val) => updateCell(colab.id, "civilStatus", val)}
+                              placeholder=""
+                              fontClass="text-slate-650 text-[11px]"
+                            />
+                          </td>
+
+                          {/* Endereco */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.address} 
+                              onChange={(val) => updateCell(colab.id, "address", val)}
+                              placeholder=""
+                              fontClass="text-slate-650 text-[11px]"
+                            />
+                          </td>
+
+                          {/* Telefone */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.phone} 
+                              onChange={(val) => updateCell(colab.id, "phone", val)}
+                              placeholder=""
+                              fontClass="font-mono text-slate-650 text-[11px]"
+                            />
+                          </td>
+
+                          {/* Email */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.email} 
+                              onChange={(val) => updateCell(colab.id, "email", val)}
+                              placeholder=""
+                              fontClass="font-mono text-slate-650 text-[11.5px] lowercase"
+                            />
+                          </td>
+
+                          {/* Telefone de Emergencia */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.emergencyPhone} 
+                              onChange={(val) => updateCell(colab.id, "emergencyPhone", val)}
+                              placeholder=""
+                              fontClass="font-mono text-slate-650 text-[11px]"
+                            />
+                          </td>
+
+                          {/* DATA DA DEMISSÃO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.exitDate || ""} 
+                              onChange={(val) => updateCell(colab.id, "exitDate", val)}
+                              placeholder=""
+                              fontClass="font-mono text-slate-650 text-[11px]"
+                            />
+                          </td>
+
+                          {/* SITUAÇÃO (INATIVO/ATIVAR) ROW BUTTON */}
+                          <td className="px-2 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => updateCell(colab.id, "status", "Ativo")}
+                              className="group w-[100px] h-[28px] mx-auto flex items-center justify-center text-xs font-bold text-rose-700 bg-rose-50 hover:bg-emerald-50 hover:text-emerald-700 border border-rose-200 hover:border-emerald-200 rounded-lg transition-all uppercase tracking-wider text-[9.5px] cursor-pointer"
+                              title="Reativar colaborador (mover para Colaboradores)"
+                            >
+                              <span className="group-hover:hidden">Inativo</span>
+                              <span className="group-hover:inline hidden">Ativar</span>
+                            </button>
+                          </td>
+
+                          {/* DOCUMENTO ROW LINK/MODAL CONTROL */}
+                          <td className="px-4 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setActiveModalColab(colab)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 hover:bg-[#002060]/5 hover:border-[#002060]/30 hover:text-[#002060] transition-all rounded-xl text-[10.5px] font-black uppercase text-slate-700 cursor-pointer shadow-sm text-center justify-center"
+                            >
+                              <Paperclip className="w-3.5 h-3.5 shrink-0" />
+                              DOCUMENTOS ({colabDocs[colab.id]?.length || 0})
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
+
+      {/* REPOSITÓRIO DE DOCUMENTOS MODAL */}
+      <AnimatePresence>
+        {activeModalColab && (
+          <div className="fixed inset-0 bg-[#0d2040]/40 backdrop-blur-[2px] z-[999] flex items-center justify-center p-4" id="docs-repository-overlay">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden"
+              id="docs-repository-modal"
+            >
+              {/* Header */}
+              <div className="p-5 border-b border-slate-105 flex items-center justify-between bg-slate-50/50">
+                <div>
+                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                    <Paperclip className="w-4 h-4 text-[#002060]" />
+                    Pasta Digital de {activeModalColab.name}
+                  </h3>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">
+                    Histórico consolidado de documentos no Bucket Seguro da Supabase.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveModalColab(null)}
+                  className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-all cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Scrolling List */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {isUploadingDoc && (
+                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-blue-800 text-[10px] font-black uppercase tracking-wider text-center animate-pulse">
+                    Enviando arquivo ao repositório do colaborador...
+                  </div>
+                )}
+                
+                <div className="space-y-6">
+                  {DOCUMENT_TYPES.map((cat) => (
+                    <div key={cat.category} className="bg-slate-50/40 rounded-2xl p-4 border border-slate-100">
+                      <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-4 pb-1 border-b border-slate-200">
+                        {cat.category}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {cat.items.map((item) => {
+                          const uploadedFile = colabDocs[activeModalColab.id]?.find(f => f.split('.')[0] === item.key);
+                          const publicUrl = uploadedFile 
+                            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/colaboradores-documentos/${activeModalColab.id}/${uploadedFile}`
+                            : null;
+                          
+                          return (
+                            <div key={item.key} className="flex items-center justify-between gap-4 p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-slate-350 transition-all">
+                              <div className="min-w-0 pr-1 flex-1">
+                                <span className="text-[10.5px] font-black text-slate-700 block truncate">
+                                  {item.name}
+                                </span>
+                                {uploadedFile ? (
+                                  <span className="text-[8.5px] font-mono font-extrabold text-emerald-600 uppercase flex items-center gap-1 mt-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                                    ENVIADO ({uploadedFile.split('.').pop()?.toUpperCase()})
+                                  </span>
+                                ) : (
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase block mt-1">
+                                    Não enviado
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-2 shrink-0">
+                                {publicUrl ? (
+                                  <>
+                                    <a
+                                      href={publicUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="h-[30px] px-3 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-750 transition-all flex items-center justify-center gap-1 text-[9.5px] font-black uppercase shadow-sm"
+                                      title="Abrir arquivo em nova guia"
+                                    >
+                                      <Eye className="w-3.5 h-3.5 shrink-0" />
+                                      Ver
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteDocument(activeModalColab.id, item.key)}
+                                      className="h-[30px] w-[30px] flex items-center justify-center bg-rose-50 border border-rose-100 hover:bg-rose-100 rounded-xl text-rose-600 transition-all cursor-pointer shadow-sm"
+                                      title="Deletar este anexo"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <label className="h-[30px] px-3 bg-[#0d2040] hover:bg-[#0d2040]/90 text-white rounded-xl transition-all flex items-center justify-center gap-1.5 text-[9.5px] font-black uppercase cursor-pointer shadow-md">
+                                    <UploadCloud className="w-3.5 h-3.5 shrink-0" />
+                                    Sobe
+                                    <input
+                                      type="file"
+                                      className="hidden"
+                                      disabled={isUploadingDoc}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleUploadDocument(activeModalColab.id, item.key, file);
+                                      }}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="bg-slate-50 p-4 flex items-center justify-end border-t border-slate-100">
+                <Button
+                  type="button"
+                  onClick={() => setActiveModalColab(null)}
+                  className="bg-[#171717] hover:bg-[#171717]/90 text-white rounded-xl px-5 h-[36px] font-bold text-[9px] uppercase tracking-widest cursor-pointer shadow-md animate-none"
+                >
+                  Fechar Pasta Digital
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* CONFIRMAÇÃO DE DELEÇÃO CUSTOMIZADA */}
       <AnimatePresence>
@@ -1550,9 +1940,9 @@ function TextInputCell({
       onChange={(e) => setLocalVal(e.target.value)}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
-      placeholder={placeholder}
+      placeholder=""
       className={cn(
-        "w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded px-2 py-1 outline-none transition-all truncate text-[11.5px]",
+        "w-full bg-transparent border border-transparent rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none transition-all truncate hover:bg-slate-100/40 focus:border-slate-300 focus:bg-white focus:ring-1 focus:ring-slate-300",
         fontClass
       )}
     />

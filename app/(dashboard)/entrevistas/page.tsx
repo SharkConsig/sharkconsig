@@ -22,7 +22,6 @@ import {
   Check,
   X
 } from "lucide-react"
-import { toast } from "sonner"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 
 // Our main spreadsheet interview record interface
@@ -63,11 +62,11 @@ export default function EntrevistasPage() {
   // Quick Add Form States
   const [quickName, setQuickName] = useState("")
   const [quickPhone, setQuickPhone] = useState("")
-  const [quickDate, setQuickDate] = useState(new Date().toISOString().split('T')[0])
-  const [quickTime, setQuickTime] = useState("14:00")
-  const [quickFase, setQuickFase] = useState("Entrevista")
-  const [quickPlataforma, setQuickPlataforma] = useState("Instagram")
-  const [quickArea, setQuickArea] = useState("Comercial")
+  const [quickDate, setQuickDate] = useState("")
+  const [quickTime, setQuickTime] = useState("")
+  const [quickFase, setQuickFase] = useState("")
+  const [quickPlataforma, setQuickPlataforma] = useState("")
+  const [quickArea, setQuickArea] = useState("")
   const [quickNotes, setQuickNotes] = useState("")
 
   // Load and hydrate database
@@ -159,7 +158,6 @@ export default function EntrevistasPage() {
         if (supaError) {
           console.warn("Supabase database query failed on public schema:", supaError.message)
           setInterviews(initialData)
-          toast.error(`Erro ao sincronizar com Supabase: ${supaError.message}`)
         } else if (supaData) {
           console.log("Connected successfully to database on public.hr_interviews")
           if (supaData.length > 0) {
@@ -246,7 +244,6 @@ export default function EntrevistasPage() {
           .eq('id', id)
         if (error) {
           console.error("Failed to update field on Supabase:", error.message)
-          toast.error("Erro ao sincronizar com Supabase. Salvo localmente.")
         }
       } catch (err) {
         console.error("Network error on Supabase sync:", err)
@@ -258,7 +255,7 @@ export default function EntrevistasPage() {
   const handleQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!quickName.trim()) {
-      toast.error("Por favor, preencha o nome do candidato.")
+      console.warn("Por favor, preencha o nome do candidato.")
       return
     }
 
@@ -297,16 +294,14 @@ export default function EntrevistasPage() {
           .insert([newRow])
         if (error) {
           console.error("Failed to insert row on Supabase:", error.message)
-          toast.error("Salvo localmente, erro ao persistir no Supabase.")
         } else {
-          toast.success("Candidato cadastrado e sincronizado com o banco!")
+          console.log("Candidato cadastrado e sincronizado com o banco com sucesso.")
         }
       } catch (err) {
         console.error("Network sync error:", err)
-        toast.error("Salvo offline! Sincronizará quando a rede retornar.")
       }
     } else {
-      toast.success("Candidato inserido com sucesso (Modo Offline)!")
+      console.log("Candidato inserido com sucesso (Modo Offline).")
     }
 
     // Reset simple values for bulk insertion comfort (keep date, time, and drops)
@@ -331,16 +326,15 @@ export default function EntrevistasPage() {
           .eq('id', id)
         if (error) {
           console.error("Failed to delete row on Supabase:", error.message)
-          toast.error("Erro ao excluir do banco. Excluído localmente.")
         } else {
-          toast.success(`Candidato(a) ${name || "Sem Nome"} removido(a) em tempo real!`)
+          console.log(`Candidato(a) ${name || "Sem Nome"} removido(a) com sucesso.`)
           return
         }
       } catch (err) {
         console.error("Network error on Supabase sync:", err)
       }
     }
-    toast.success(`Candidato(a) ${name || "Sem Nome"} removido(a) com sucesso (Offline).`)
+    console.log(`Candidato(a) ${name || "Sem Nome"} removido(a) com sucesso (Offline).`)
   }
 
   // Client side CSV download formatted specifically for Excel to open beautifully (UTF-8 BOM)
@@ -371,7 +365,7 @@ export default function EntrevistasPage() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-    toast.success("Download iniciado! Planilha exportada idealmente para Excel.")
+    console.log("Download de planilha excel iniciado de forma silenciosa.")
   }
 
   // Filter application
@@ -462,20 +456,20 @@ export default function EntrevistasPage() {
                     <input 
                       type="text" 
                       required
-                      placeholder="Nome do candidato" 
+                      placeholder="" 
                       value={quickName} 
                       onChange={(e) => setQuickName(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none text-slate-800"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
                     />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Telefone / Contato</label>
                     <input 
                       type="text" 
-                      placeholder="e.g. (48) 99123-4567" 
+                      placeholder="" 
                       value={quickPhone} 
                       onChange={(e) => setQuickPhone(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none text-slate-800"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -484,7 +478,7 @@ export default function EntrevistasPage() {
                       type="date" 
                       value={quickDate} 
                       onChange={(e) => setQuickDate(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none text-slate-800"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -493,7 +487,7 @@ export default function EntrevistasPage() {
                       type="time" 
                       value={quickTime} 
                       onChange={(e) => setQuickTime(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none text-slate-800"
+                      className="bg-white border border-slate-205 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -501,8 +495,9 @@ export default function EntrevistasPage() {
                     <select 
                       value={quickFase}
                       onChange={(e) => setQuickFase(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none cursor-pointer text-slate-700"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none cursor-pointer focus:border-slate-350 text-slate-700"
                     >
+                      <option value=""></option>
                       {faseOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
@@ -513,8 +508,9 @@ export default function EntrevistasPage() {
                     <select 
                       value={quickPlataforma}
                       onChange={(e) => setQuickPlataforma(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none cursor-pointer text-slate-700"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none cursor-pointer focus:border-slate-350 text-slate-700"
                     >
+                      <option value=""></option>
                       {plataformaOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
@@ -525,8 +521,9 @@ export default function EntrevistasPage() {
                     <select 
                       value={quickArea}
                       onChange={(e) => setQuickArea(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none cursor-pointer text-slate-700"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none cursor-pointer focus:border-slate-350 text-slate-700"
                     >
+                      <option value=""></option>
                       {areaOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
@@ -536,10 +533,10 @@ export default function EntrevistasPage() {
                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Observações Iniciais</label>
                     <input 
                       type="text" 
-                      placeholder="e.g. Excelente comunicação, possui residência próxima..." 
+                      placeholder="" 
                       value={quickNotes} 
                       onChange={(e) => setQuickNotes(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none text-slate-800"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
                     />
                   </div>
                   <div className="col-span-1 md:col-span-4 flex justify-end gap-3 pt-2">
@@ -636,16 +633,16 @@ export default function EntrevistasPage() {
             <div className="overflow-x-auto min-h-[460px] px-6">
               <table className="w-full text-left border-collapse table-fixed min-w-[1100px]">
                 <thead>
-                  <tr className="bg-slate-50/50 border-b border-slate-100">
-                    <th className="w-[12%] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Candidato</th>
-                    <th className="w-[9%] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Contato</th>
-                    <th className="w-[8%] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data</th>
-                    <th className="w-[7%] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Horário</th>
-                    <th className="w-[14%] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Fase</th>
-                    <th className="w-[11%] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Plataforma</th>
-                    <th className="w-[9%] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Área</th>
-                    <th className="w-[26%] px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Observações</th>
-                    <th className="w-[4%] px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</th>
+                  <tr className="bg-[#171717] text-white">
+                    <th className="w-[12%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Candidato</th>
+                    <th className="w-[9%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Contato</th>
+                    <th className="w-[8%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data</th>
+                    <th className="w-[7%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Horário</th>
+                    <th className="w-[14%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Fase</th>
+                    <th className="w-[11%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Plataforma</th>
+                    <th className="w-[9%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Área</th>
+                    <th className="w-[24%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Observações</th>
+                    <th className="w-[6%] px-4 pr-6 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -900,7 +897,7 @@ function NotesCell({ value, onChange }: { value: string; onChange: (v: string) =
           onBlur={() => setIsEditing(false)}
           autoFocus
           rows={2}
-          placeholder="Escreva observações do candidato..."
+          placeholder=""
           className="w-full bg-white border border-blue-500 rounded px-2 py-1.5 text-xs font-medium text-slate-700 outline-none shadow-md resize-y"
         />
       ) : (
@@ -914,7 +911,7 @@ function NotesCell({ value, onChange }: { value: string; onChange: (v: string) =
           )}
           title={value}
         >
-          {value || "Adicionar observação..."}
+          {value || ""}
         </span>
       )}
     </div>
