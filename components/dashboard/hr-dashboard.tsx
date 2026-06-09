@@ -8,16 +8,30 @@ import {
   Calendar, 
   AlertTriangle, 
   Clock, 
-  ArrowRight, 
-  Briefcase, 
-  UserPlus,
-  Megaphone,
-  Cake
+  Cake,
+  Target,
+  TrendingUp,
+  Trophy,
+  Loader2
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { useAuth } from "@/context/auth-context"
 import { supabase } from "@/lib/supabase"
+import { cn } from "@/lib/utils"
+import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
+
+interface Interview {
+  id: string
+  name: string
+  phone: string
+  date: string
+  time: string
+  fase: string
+  plataforma: string
+  area: string
+  notes: string
+  tipo?: string
+}
 
 interface HRMetric {
   title: string
@@ -27,6 +41,59 @@ interface HRMetric {
   color: string
   bgColor: string
   href: string
+}
+
+interface RankingItem {
+  corretor_id: string
+  name: string
+  team: string
+  supervisor: string
+  totalPaid: number
+  totalInProcess: number
+  totalToday: number
+  countPaid: number
+  countInProcess: number
+  countToday: number
+}
+
+interface TicketStats {
+  total: number
+  notApproved: number
+  approved: number
+  inNegotiation: number
+  aberto: number
+  aguardandoOperacional: number
+  byStatus: { name: string; value: number; color: string }[]
+  byMainStatus: { name: string; value: number; color: string }[]
+  byOrigin: { name: string; value: number }[]
+  byConvenio: { name: string; value: number }[]
+  byBroker: { id: string; name: string; supervisor: string; value: number; approved: number; negotiation: number }[]
+}
+
+interface AdminStats {
+  monthlyGoal: number
+  monthlyProduced: number
+  annualGoal: number
+  annualProduced: number
+  dailyGoal: number
+  dailyProduced: number
+  inProcessValue: number
+  inProcessCount: number
+  pendingActionsValue: number
+  pendingActionsCount: number
+  createdTodayValue: number
+  createdTodayCount: number
+  createdWeekValue: number
+  createdWeekCount: number
+  createdMonthValue: number
+  createdMonthCount: number
+  brokerRankings: RankingItem[]
+  ticketStats?: TicketStats
+}
+
+interface HRDashboardProps {
+  stats?: AdminStats | null
+  isLoading?: boolean
 }
 
 interface DBCollaborator {
@@ -66,12 +133,14 @@ const getBirthdayMonth = (dateStr: string): number | null => {
   return null
 }
 
-export function HRDashboard() {
+export function HRDashboard({ stats, isLoading: isDashboardLoading }: HRDashboardProps) {
   const { perfil } = useAuth()
   const [colaboradoresCount, setColaboradoresCount] = useState(0)
   const [entrevistasCount, setEntrevistasCount] = useState(0)
   const [advertenciasCount, setAdvertenciasCount] = useState(0)
   const [birthdaysCount, setBirthdaysCount] = useState(0)
+  const [interviews, setInterviews] = useState<Interview[]>([])
+  const [dashboardInterviewTab, setDashboardInterviewTab] = useState<"ENTREVISTAS" | "LIGAÇÕES">("ENTREVISTAS")
 
   const firstName = useMemo(() => {
     if (!perfil?.nome) return "GESTOR"
@@ -121,6 +190,24 @@ export function HRDashboard() {
       setEntrevistasCount(interviewsLocal.length)
       setAdvertenciasCount(warningsLocal.length)
 
+      try {
+        const mappedLocal = (interviewsLocal as unknown as Interview[]).map((item) => ({
+          id: item.id || "",
+          name: item.name || "",
+          phone: item.phone || "",
+          date: item.date || "",
+          time: item.time || "",
+          fase: item.fase || "",
+          plataforma: item.plataforma || "",
+          area: item.area || "",
+          notes: item.notes || "",
+          tipo: item.tipo || "ENTREVISTAS"
+        }))
+        setInterviews(mappedLocal)
+      } catch (err) {
+        console.error("Local interviews map err:", err)
+      }
+
       const today = new Date()
       const currentMonth = today.getMonth()
 
@@ -154,10 +241,23 @@ export function HRDashboard() {
 
         const { data: interviewsData } = await supabase
           .from("hr_interviews")
-          .select("id")
+          .select("*")
         
         if (interviewsData) {
           setEntrevistasCount(interviewsData.length)
+          const mappedSupa = (interviewsData as unknown as Interview[]).map((item) => ({
+            id: item.id || "",
+            name: item.name || "",
+            phone: item.phone || "",
+            date: item.date || "",
+            time: item.time || "",
+            fase: item.fase || "",
+            plataforma: item.plataforma || "",
+            area: item.area || "",
+            notes: item.notes || "",
+            tipo: item.tipo || "ENTREVISTAS"
+          }))
+          setInterviews(mappedSupa)
         }
 
         const { data: warningsData } = await supabase
@@ -215,48 +315,23 @@ export function HRDashboard() {
     }
   ]
 
-  const modules = [
-    {
-      title: "ENTREVISTAS",
-      description: "Gerenciar banco de currículos, agendar e tabular entrevistas para novos candidatos.",
-      href: "/entrevistas",
-      icon: Calendar,
-      themeColor: "from-blue-500 to-indigo-600",
-      actionText: "Acessar Entrevistas"
-    },
-    {
-      title: "COLABORADORES",
-      description: "Pasta digital completa dos colaboradores, histórico de salários, cargos e equipes.",
-      href: "/colaboradores",
-      icon: Briefcase,
-      themeColor: "from-emerald-500 to-teal-600",
-      actionText: "Ver Colaboradores"
-    },
-    {
-      title: "ADVERTÊNCIAS",
-      description: "Lançar punições disciplinares, termos de advertência formal e suspensões.",
-      href: "/advertencias",
-      icon: AlertTriangle,
-      themeColor: "from-amber-500 to-orange-600",
-      actionText: "Acessar Advertências"
-    },
-    {
-      title: "TEMPO DE EMPRESA",
-      description: "Visualizar tempo de serviço de cada colaborador e alertas de comissões/benefícios de tempo.",
-      href: "/tempo-empresa",
-      icon: Clock,
-      themeColor: "from-purple-500 to-pink-600",
-      actionText: "Acessar Tempo de Casa"
-    },
-    {
-      title: "GESTÃO DE USUÁRIOS",
-      description: "Controle de login, definição de permissões e alteração de senha de corretores e gerentes.",
-      href: "/configuracoes/usuarios",
-      icon: UserPlus,
-      themeColor: "from-slate-700 to-slate-900",
-      actionText: "Gerenciar Logins"
-    }
-  ]
+  const getTodayDateStr = () => {
+    const d = new Date()
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const todayDateStr = getTodayDateStr()
+  const todayList = interviews.filter(i => i.date === todayDateStr && (i.tipo || "ENTREVISTAS") === dashboardInterviewTab)
+  const countToday = todayList.length
+
+  const monthlyGoal = stats?.monthlyGoal || 350000
+  const monthlyProduced = stats?.monthlyProduced || 0
+  const progressPercent = monthlyGoal > 0 ? Math.round((monthlyProduced / monthlyGoal) * 100) : 0
+  const remainingValue = Math.max(0, monthlyGoal - monthlyProduced)
+  const brokerRankings = stats?.brokerRankings || []
 
   return (
     <div className="space-y-8 animate-fade-in text-slate-800">
@@ -266,7 +341,7 @@ export function HRDashboard() {
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight uppercase text-[#1C2643]">
             Olá, {firstName}
           </h1>
-          <p className="text-[#1C2643] text-xs sm:text-sm max-w-2xl font-medium leading-relaxed">
+          <p className="text-[#1C2643] text-[11px] sm:text-[13px] max-w-2xl font-medium leading-relaxed">
             Seja bem-vindo ao painel central de Recursos Humanos. Aqui você pode gerenciar todas as rotinas internas, acompanhar contratações e acompanhar termos comportamentais.
           </p>
         </div>
@@ -308,65 +383,256 @@ export function HRDashboard() {
         })}
       </div>
 
-      {/* Modules Access Grid */}
-      <div className="space-y-4">
-        <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-widest ml-1">
-          Acesso Rápido aos Módulos
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {modules.map((mod, index) => {
-            const Icon = mod.icon
-            return (
-              <motion.div
-                key={mod.title}
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.1 + (index * 0.05) }}
-                className="group"
-              >
-                <Card className="border border-slate-200/80 rounded-2xl shadow-sm hover:shadow-lg transition-all hover:-translate-y-1 duration-300 bg-white overflow-hidden flex flex-col h-full justify-between">
-                  <CardContent className="p-6 space-y-4 flex-1 flex flex-col justify-between">
-                    <div className="space-y-2">
-                      <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${mod.themeColor} flex items-center justify-center text-white shrink-0 shadow-md`}>
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <h4 className="text-[12px] font-black text-slate-800 uppercase tracking-widest">
-                        {mod.title}
-                      </h4>
-                      <p className="text-[11px] font-medium text-slate-500 leading-relaxed">
-                        {mod.description}
+      {/* NEW SECTION: APPOINTMENTS OF THE DAY (Interviews & Calls) */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className="w-full"
+        id="dashboard-appointments-card-hr"
+      >
+        <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
+          <CardContent className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 h-full">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-6 shrink-0 md:border-r border-slate-100 pr-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+                  <Clock className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">
+                    {dashboardInterviewTab === "ENTREVISTAS" ? "Entrevistas de Hoje" : "Ligações de Hoje"}
+                  </p>
+                  <p className="text-2xl font-black text-[#1C2643] leading-none">
+                    {countToday} {countToday === 1 ? "agendada" : "agendadas"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Toggle switch inside the card */}
+              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setDashboardInterviewTab("ENTREVISTAS")}
+                  className={cn(
+                    "px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg cursor-pointer",
+                    dashboardInterviewTab === "ENTREVISTAS"
+                      ? "bg-[#1C2643] text-white shadow shadow-[#1C2643]/20"
+                      : "text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  ENTREVISTAS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDashboardInterviewTab("LIGAÇÕES")}
+                  className={cn(
+                    "px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg cursor-pointer",
+                    dashboardInterviewTab === "LIGAÇÕES"
+                      ? "bg-[#1C2643] text-white shadow shadow-[#1C2643]/20"
+                      : "text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  LIGAÇÕES
+                </button>
+              </div>
+            </div>
+
+            {/* Horários e Nomes de Hoje */}
+            <div className="flex-1 min-w-0 max-h-[120px] overflow-y-auto border-t md:border-t-0 border-slate-100 pt-3 md:pt-0 pl-1">
+              {todayList.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {todayList.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 min-w-0 hover:border-slate-200 hover:bg-slate-100/50 transition-all">
+                      <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-105 text-amber-800 bg-amber-50 border border-amber-100 shrink-0">
+                        {item.time ? item.time.substring(0, 5) : "--:--"}
+                      </span>
+                      <p className="text-[11px] font-black text-slate-700 truncate capitalize" title={item.name}>
+                        {item.name.toLowerCase()}
                       </p>
                     </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 italic text-center py-4 font-bold">Nenhum agendamento para hoje</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
-                    <div className="pt-2">
-                      <Link href={mod.href} className="w-full">
-                        <Button className="w-full bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-primary rounded-xl h-[38px] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
-                          {mod.actionText}
-                          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                        </Button>
-                      </Link>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )
-          })}
-        </div>
-      </div>
+      {/* NEW SECTION: META MENSAL DA EMPRESA & RANKING DE VENDAS */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full" id="dashboard-meta-ranking-container">
+        {/* Meta mensal da empresa (velocimetro) */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          transition={{ delay: 0.28 }}
+          className="lg:col-span-4"
+        >
+          <DashboardCard className="lg:h-[540px] flex flex-col shadow-sm border-slate-200">
+            <div className="relative z-10 flex flex-col h-full justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                   <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">Meta Mensal da Empresa</p>
+                   <div className="bg-[#1C2643]/5 p-2 rounded-xl">
+                      <Target className="w-5 h-5 text-[#1C2643]" />
+                   </div>
+                </div>
+                <p className="text-xl font-black text-[#1C2643] tracking-tighter mb-4 break-words">{formatCurrency(monthlyGoal)}</p>
+              </div>
+              
+              <div className="flex-1 flex flex-col items-center justify-center py-4 relative">
+                <div className="w-full max-w-[260px]">
+                  <Gauge value={progressPercent} producedValue={monthlyProduced} />
+                </div>
+                <div className="mt-4 flex flex-col items-center justify-center">
+                   {isDashboardLoading ? (
+                     <Loader2 className="w-8 h-8 animate-spin text-[#1C2643]" />
+                   ) : (
+                     <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#1C2643] tracking-tighter leading-none">{progressPercent}%</p>
+                   )}
+                   <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest mt-2 tracking-[0.3em]">PROGRESSO TOTAL</p>
+                </div>
+              </div>
 
-      {/* Internal Announcements Box */}
-      <div className="bg-slate-100/50 border border-slate-200 rounded-3xl p-6 lg:p-8 flex flex-col md:flex-row items-center gap-6">
-        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center text-amber-500 shrink-0">
-          <Megaphone className="w-8 h-8 animate-bounce" />
-        </div>
-        <div className="space-y-1.5 flex-1 text-center md:text-left">
-          <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">Lembrete de Conformidade Administrativa</h4>
-          <p className="text-[11px] font-medium text-slate-500 leading-relaxed max-w-3xl">
-            Sempre que gerar uma Advertência comportamento ou termo de rescisão de Contratos, recolha a assinatura física ou digital do colaborador e vincule o PDF ao cadastro digital correspondente para evitar passivo trabalhista futuramente.
-          </p>
-        </div>
-      </div>
+              <div className="space-y-4 mt-auto">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full border border-emerald-100">
+                    <TrendingUp className="w-4 h-4" />
+                    <span className="text-[11px] font-black uppercase tracking-widest text-center">
+                      ESTATÍSTICAS EM TEMPO REAL
+                    </span>
+                  </div>
+                  <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-2 text-center">
+                    {remainingValue > 0 ? (
+                      <>Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para a meta</>
+                    ) : (
+                      <span className="text-emerald-600 font-black">A meta da empresa foi superada!</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </DashboardCard>
+        </motion.div>
+
+        {/* Ranking de Vendas dos corretores */}
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }} 
+          animate={{ opacity: 1, x: 0 }} 
+          transition={{ delay: 0.3 }} 
+          className="lg:col-span-8"
+        >
+          <DashboardCard className="lg:h-[540px] shadow-sm flex flex-col bg-white border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100 shrink-0">
+               <div className="flex items-center gap-3">
+                 <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Ranking de Vendas</h3>
+                 <Trophy className="w-6 h-6 text-amber-500 fill-amber-500" />
+               </div>
+            </div>
+
+            <div className="flex-1 overflow-auto custom-scrollbar">
+            {isDashboardLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <Loader2 className="w-12 h-12 animate-spin text-[#1C2643] opacity-20" />
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] animate-pulse">
+                  Atualizando Rankings...
+                </p>
+              </div>
+            ) : brokerRankings && brokerRankings.length > 0 ? (
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-200">
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-[#1C2643] text-right bg-emerald-100/50 justify-end">Produção (Pagos)</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-[#1C2643] text-right bg-orange-100/50 justify-end">Em Andamento</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-[#1C2643] text-right bg-blue-100/50 justify-end">Digitadas Hoje</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {brokerRankings.map((rank, idx) => {
+                    const isUser = rank.corretor_id === perfil?.id
+                    const position = idx + 1
+                    return (
+                      <tr key={rank.corretor_id || idx} className={cn(
+                        "transition-colors",
+                        isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80"
+                      )}>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                              position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                              position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
+                              position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                              "bg-white text-slate-400 border-slate-100"
+                            )}>
+                              {position}º
+                            </div>
+                            <div>
+                              <p className={cn(
+                                "text-[14px] font-black tracking-tight uppercase",
+                                isUser ? "text-[#1C2643]" : "text-slate-700"
+                              )}>
+                                {rank.name} {isUser && "(Você)"}
+                              </p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">SUP: {rank.supervisor}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className={cn(
+                          "px-4 py-4 text-right transition-colors",
+                          isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
+                        )}>
+                          <div className="flex flex-col items-end">
+                            <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                              {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className={cn(
+                          "px-4 py-4 text-right transition-colors",
+                          isUser ? "bg-orange-100/70" : "bg-orange-100/25"
+                        )}>
+                          <div className="flex flex-col items-end">
+                            <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                              {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className={cn(
+                          "px-4 py-4 text-right transition-colors",
+                          isUser ? "bg-blue-100/70" : "bg-blue-100/25"
+                        )}>
+                          <div className="flex flex-col items-end">
+                            <span className={cn(
+                              "text-[14px] font-bold",
+                              rank.totalToday > 0 ? "text-blue-600" : "text-slate-400"
+                            )}>
+                              {formatCurrency(rank.totalToday)}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                              {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-10 opacity-30">
+                <Trophy className="w-12 h-12 mb-4" />
+                <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-[0.2em]">Sem resultados para este período</p>
+              </div>
+            )}
+          </div>
+        </DashboardCard>
+      </motion.div>
     </div>
+  </div>
   )
 }

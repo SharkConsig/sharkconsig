@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
+import { toast } from "sonner"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,15 +11,12 @@ import { cn } from "@/lib/utils"
 import { 
   Search, 
   Clock, 
-  CheckCircle, 
-  XCircle, 
   Trash2,
   Download,
   ChevronDown,
   Layers,
   FileSpreadsheet,
   RefreshCw,
-  Filter,
   Check,
   X
 } from "lucide-react"
@@ -58,6 +56,7 @@ export default function EntrevistasPage() {
   const [faseFilter, setFaseFilter] = useState("Todas")
   const [plataformaFilter, setPlataformaFilter] = useState("Todas")
   const [areaFilter, setAreaFilter] = useState("Todas")
+  const [dateFilter, setDateFilter] = useState("")
   const [interviews, setInterviews] = useState<Interview[]>([])
   const [loadingTable, setLoadingTable] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -253,10 +252,19 @@ export default function EntrevistasPage() {
 
   // Update a single cell directly in our state (Spreadsheet behavior!) & Sync
   const updateCell = async (id: string, field: keyof Interview, value: string) => {
+    const extraFields: Partial<Interview> = {}
+    if (field === "fase" && value === "Entrevista") {
+      const candidate = interviews.find(item => item.id === id)
+      if (candidate && candidate.tipo === "LIGAÇÕES") {
+        extraFields.tipo = "ENTREVISTAS"
+        toast.success(`Candidato ${candidate.name} movido para a aba ENTREVISTAS!`)
+      }
+    }
+
     // 1. Instant local ui update
     const updated = interviews.map(item => {
       if (item.id === id) {
-        return { ...item, [field]: value }
+        return { ...item, [field]: value, ...extraFields }
       }
       return item
     })
@@ -273,9 +281,15 @@ export default function EntrevistasPage() {
         if (field === 'time' && typeof value === 'string' && value.length === 5) {
           valueForDb = `${value}:00`
         }
+        
+        const updatePayload: Record<string, string | null | undefined> = { [field]: valueForDb }
+        if (extraFields.tipo && hasTipoColumn) {
+          updatePayload.tipo = extraFields.tipo
+        }
+
         const { error } = await supabase
           .from('hr_interviews')
-          .update({ [field]: valueForDb })
+          .update(updatePayload)
           .eq('id', id)
         if (error) {
           console.error("Failed to update field on Supabase:", error.message)
@@ -430,16 +444,27 @@ export default function EntrevistasPage() {
     const matchFase = faseFilter === "Todas" || item.fase === faseFilter
     const matchPlataforma = plataformaFilter === "Todas" || item.plataforma === plataformaFilter
     const matchArea = areaFilter === "Todas" || item.area === areaFilter
+    const matchDate = !dateFilter || item.date === dateFilter
     
-    return matchTab && matchSearch && matchFase && matchPlataforma && matchArea
+    return matchTab && matchSearch && matchFase && matchPlataforma && matchArea && matchDate
   })
 
   // Calculations for quick metrics
   const tabInterviews = interviews.filter(i => (i.tipo || "ENTREVISTAS") === activeTab)
   const totalCandidatos = tabInterviews.length
-  const totalAprovados = tabInterviews.filter(i => i.fase === "Aprovado").length
-  const totalNãoCompareceu = tabInterviews.filter(i => i.fase === "Não compareceu").length
-  const totalDesistiu = tabInterviews.filter(i => i.fase === "Desistiu").length
+
+  // Helper to get today's date string in local YYYY-MM-DD
+  const getTodayDateStr = () => {
+    const d = new Date()
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const todayDateStr = getTodayDateStr()
+  const todayList = tabInterviews.filter(i => i.date === todayDateStr)
+  const countToday = todayList.length
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50/50 min-h-screen font-sans">
@@ -450,7 +475,7 @@ export default function EntrevistasPage() {
         {/* Statistics Widgets */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
-            <CardContent className="p-6 flex items-center justify-between">
+            <CardContent className="p-6 flex items-center justify-between h-full">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Triagens</p>
                 <p className="text-3xl font-black text-slate-800 mt-1">{totalCandidatos}</p>
@@ -461,38 +486,42 @@ export default function EntrevistasPage() {
             </CardContent>
           </Card>
 
-          <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
-            <CardContent className="p-6 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aprovados</p>
-                <p className="text-3xl font-black text-slate-800 mt-1">{totalAprovados}</p>
+          <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm md:col-span-3">
+            <CardContent className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 h-full">
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+                  <Clock className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    {activeTab === "ENTREVISTAS" ? "Entrevistas de Hoje" : "Ligações de Hoje"}
+                  </p>
+                  <p className="text-2xl font-black text-slate-800 mt-1">
+                    {countToday} {countToday === 1 ? "agendada" : "agendadas"}
+                  </p>
+                </div>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
-                <CheckCircle className="w-6 h-6" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
-            <CardContent className="p-6 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Desistiram</p>
-                <p className="text-3xl font-black text-slate-800 mt-1">{totalDesistiu}</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-sky-50 flex items-center justify-center text-sky-600 shrink-0">
-                <XCircle className="w-6 h-6" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
-            <CardContent className="p-6 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Não Compareceu</p>
-                <p className="text-3xl font-black text-slate-800 mt-1">{totalNãoCompareceu}</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-rose-50 flex items-center justify-center text-rose-500 shrink-0">
-                <Clock className="w-6 h-6" />
+              
+              {/* Horários e Nomes de Hoje */}
+              <div className="flex-1 min-w-0 max-h-[100px] overflow-y-auto border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-6">
+                {todayList.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {todayList.map((item) => (
+                      <div key={item.id} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 min-w-0">
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 shrink-0">
+                          {item.time ? item.time.substring(0, 5) : "--:--"}
+                        </span>
+                        <p className="text-[11px] font-black text-slate-700 truncate capitalize" title={item.name}>
+                          {item.name.toLowerCase()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center text-slate-400 text-xs italic font-semibold h-full">
+                    Nenhum agendamento para hoje
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -511,7 +540,7 @@ export default function EntrevistasPage() {
             )}
             id="tab-entrevistas"
           >
-            ENTREVISTAS (PRESENCIAL)
+            ENTREVISTAS
           </button>
           <button
             type="button"
@@ -524,7 +553,7 @@ export default function EntrevistasPage() {
             )}
             id="tab-ligacoes"
           >
-            LIGAÇÕES (FONE)
+            LIGAÇÕES
           </button>
         </div>
 
@@ -660,8 +689,27 @@ export default function EntrevistasPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                {/* Filtro por Data */}
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 relative">
+                  <input 
+                    type="date" 
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className="bg-transparent border-none outline-none text-xs font-semibold text-slate-700 cursor-pointer w-[125px]"
+                  />
+                  {dateFilter && (
+                    <button 
+                      type="button"
+                      onClick={() => setDateFilter("")}
+                      className="text-slate-400 hover:text-slate-600 cursor-pointer ml-1 select-none"
+                      title="Limpar data"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-slate-400" />
                   <select 
                     value={faseFilter}
                     onChange={(e) => setFaseFilter(e.target.value)}
@@ -715,18 +763,18 @@ export default function EntrevistasPage() {
 
             {/* List Table */}
             <div className="overflow-x-auto min-h-[460px] px-6">
-              <table className="w-full text-left border-collapse table-fixed min-w-[1100px]">
+              <table className="w-full text-left border-collapse table-fixed min-w-[1450px]">
                 <thead>
                   <tr className="bg-[#171717] text-white">
-                    <th className="w-[12%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Candidato</th>
-                    <th className="w-[9%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Contato</th>
-                    <th className="w-[8%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data</th>
-                    <th className="w-[7%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Horário</th>
-                    <th className="w-[14%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Fase</th>
-                    <th className="w-[11%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Plataforma</th>
-                    <th className="w-[9%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Área</th>
-                    <th className="w-[24%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Observações</th>
-                    <th className="w-[6%] px-4 pr-6 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">Ações</th>
+                    <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Candidato</th>
+                    <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Contato</th>
+                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data</th>
+                    <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Horário</th>
+                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Fase</th>
+                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Plataforma</th>
+                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Área</th>
+                    <th className="w-[280px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Observações</th>
+                    <th className="w-[100px] px-4 pr-6 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1016,18 +1064,18 @@ function PillDropdown({
   const currentOpt = options.find(o => o.value === value) || options[0]
 
   return (
-    <div className={cn("relative inline-block text-left w-full max-w-full select-none", isOpen ? "z-35" : "z-10")}>
+    <div className={cn("relative inline-block text-center w-[150px] select-none", isOpen ? "z-35" : "z-10")}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "flex items-center justify-between w-full rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase transition-all shadow-sm outline-none cursor-pointer",
+          "flex items-center justify-center gap-1 w-full rounded-full px-2.5 py-1.5 text-[10px] font-black uppercase transition-all shadow-sm outline-none cursor-pointer text-center",
           currentOpt.bg,
           currentOpt.text,
           currentOpt.border ? `border ${currentOpt.border}` : "border border-transparent"
         )}
       >
-        <span className="truncate pr-1.5 text-left">{currentOpt.label}</span>
+        <span className="truncate text-center">{currentOpt.label}</span>
         <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 opacity-80", currentOpt.arrowColor || currentOpt.text)} />
       </button>
 

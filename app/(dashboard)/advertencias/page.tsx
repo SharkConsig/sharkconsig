@@ -129,18 +129,18 @@ function PillDropdown({
   const currentOpt = options.find(o => o.value === value) || options[0]
 
   return (
-    <div className={cn("relative inline-block text-left w-full max-w-full select-none", isOpen ? "z-30" : "z-10")}>
+    <div className={cn("relative inline-block text-center w-[150px] select-none", isOpen ? "z-30" : "z-10")}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "flex items-center justify-between w-full rounded-full px-3.5 py-1.5 h-[32px] text-xs font-black uppercase transition-all shadow-sm outline-none cursor-pointer",
+          "flex items-center justify-center gap-1.5 w-full rounded-full px-2.5 py-1.5 h-[32px] text-xs font-black uppercase transition-all shadow-sm outline-none cursor-pointer text-center",
           currentOpt.bg,
           currentOpt.text,
           currentOpt.border ? `border ${currentOpt.border}` : "border border-transparent"
         )}
       >
-        <span className="truncate pr-1.5 text-left">{currentOpt.label}</span>
+        <span className="truncate text-center">{currentOpt.label}</span>
         <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 opacity-80", currentOpt.text)} />
       </button>
 
@@ -788,37 +788,37 @@ export default function AdvertenciasPage() {
 
             {/* Main Interactive Grid Table in Spreadsheet Style */}
             <div className="overflow-x-auto px-6 pb-6">
-              <table className="w-full text-left border-collapse table-fixed min-w-[1100px]">
+              <table className="w-full text-left border-collapse table-fixed min-w-[1360px]">
                 <thead>
                   <tr className="bg-[#171717] text-white">
-                    <th className="w-[18%] px-5 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">
+                    <th className="w-[220px] px-5 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">
                       Colaborador
                     </th>
-                    <th className="w-[9%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
+                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Verbal
                     </th>
-                    <th className="w-[10%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
+                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Data Verbal
                     </th>
-                    <th className="w-[8%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
+                    <th className="w-[90px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Quantidade
                     </th>
-                    <th className="w-[9%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
+                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Escrita
                     </th>
-                    <th className="w-[10%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
+                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Data Escrita
                     </th>
-                    <th className="w-[8%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
+                    <th className="w-[90px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Quantidade
                     </th>
-                    <th className="w-[8%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
+                    <th className="w-[80px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Total
                     </th>
-                    <th className="w-[10%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
+                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Suspensão
                     </th>
-                    <th className="w-[10%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">
+                    <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">
                       Ações
                     </th>
                   </tr>

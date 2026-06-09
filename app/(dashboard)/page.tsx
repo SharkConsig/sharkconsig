@@ -29,6 +29,7 @@ import { cn, withRetry } from "@/lib/utils"
 import { motion, AnimatePresence } from "motion/react"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { useSidebar } from "@/context/sidebar-context"
+import { Card, CardContent } from "@/components/ui/card"
 import { DashboardCard, Gauge, formatCurrency } from "@/components/dashboard/dashboard-shared"
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard"
 import { HRDashboard } from "@/components/dashboard/hr-dashboard"
@@ -211,6 +212,19 @@ interface User {
   equipe?: string
 }
 
+interface Interview {
+  id: string
+  name: string
+  phone: string
+  date: string
+  time: string
+  fase: string
+  plataforma: string
+  area: string
+  notes: string
+  tipo?: string
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { perfil, isCorretor, isAdmin, isOperational, isDeveloper, isRecursosHumanos } = useAuth()
@@ -247,6 +261,8 @@ export default function DashboardPage() {
   const [teamPendingInconsistencyCount, setTeamPendingInconsistencyCount] = useState(0)
   const [opInProcessValue, setOpInProcessValue] = useState(0)
   const [opInProcessCount, setOpInProcessCount] = useState(0)
+  const [interviews, setInterviews] = useState<Interview[]>([])
+  const [dashboardInterviewTab, setDashboardInterviewTab] = useState<"ENTREVISTAS" | "LIGAÇÕES">("ENTREVISTAS")
   const [dashboardCampaigns, setDashboardCampaigns] = useState<Campaign[]>([])
   const [monthlyGoal, setMonthlyGoal] = useState<number>(47000)
   const [teamGoal, setTeamGoal] = useState<number>(448000)
@@ -492,8 +508,8 @@ export default function DashboardPage() {
         
         let sortedRankings: RankingItem[] = []
 
-        if (targetSupervisorId || isAdmin || isOperational || isDeveloper) {
-          const team = (isAdmin || isOperational || isDeveloper)
+        if (targetSupervisorId || isAdmin || isOperational || isDeveloper || isRecursosHumanos) {
+          const team = (isAdmin || isOperational || isDeveloper || isRecursosHumanos)
             ? allUsers.filter((u: User) => u.funcao === 'Corretor' || u.funcao === 'Supervisor' || u.funcao === 'Estágio' || u.funcao === 'Estagio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO')
             : allUsers.filter((u: User) => 
                 u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId
@@ -505,7 +521,7 @@ export default function DashboardPage() {
             .from("propostas")
             .select("corretor_id, valor_producao, status, updated_at, created_at, data_pago_cliente")
           
-          if (!(isAdmin || isOperational || isDeveloper)) {
+          if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos)) {
             teamProposalsQuery = teamProposalsQuery.in("corretor_id", teamIds)
           }
 
@@ -923,8 +939,8 @@ export default function DashboardPage() {
         
         setTicketStats(finalTicketStats)
 
-        // 4. Fetch Admin specific stats - Only if Admin or Developer
-        if (isAdmin || isDeveloper) {
+        // 4. Fetch Admin specific stats - Only if Admin or Developer or Recursos Humanos
+        if (isAdmin || isDeveloper || isRecursosHumanos) {
           const now = new Date()
           const currentYear = now.getFullYear()
           const currentMonth = now.getMonth() + 1
@@ -1004,12 +1020,57 @@ export default function DashboardPage() {
         console.error("Error fetching admin dashboard stats:", err instanceof Error ? err.message : err)
       }
 
+      // Fetch today's interviews & ligações for Dashboard Card
+      try {
+        const dForCard = new Date()
+        const yrForCard = dForCard.getFullYear()
+        const mthForCard = String(dForCard.getMonth() + 1).padStart(2, '0')
+        const dayForCard = String(dForCard.getDate()).padStart(2, '0')
+        const todayDateStrForCard = `${yrForCard}-${mthForCard}-${dayForCard}`
+
+        const { data: interviewData, error: interviewError } = await supabase
+          .from('hr_interviews')
+          .select('*')
+          .eq('date', todayDateStrForCard)
+
+        if (!interviewError && interviewData) {
+          const mappedData: Interview[] = (interviewData as {
+            id: string
+            name: string
+            phone?: string
+            date: string
+            time: string
+            fase: string
+            plataforma: string
+            area: string
+            notes?: string
+            tipo?: string
+          }[]).map((item) => ({
+            id: item.id,
+            name: item.name,
+            phone: item.phone || "",
+            date: item.date,
+            time: item.time,
+            fase: item.fase,
+            plataforma: item.plataforma,
+            area: item.area,
+            notes: item.notes || "",
+            tipo: item.tipo || "ENTREVISTAS"
+          }))
+          setInterviews(mappedData)
+        } else {
+          setInterviews([])
+        }
+      } catch (err) {
+        console.error("Error fetching interviews for dashboard:", err)
+      }
+
     } catch (error) {
       console.error("Erro dashboard:", error)
     } finally {
       setIsLoading(false)
     }
-  }, [perfil?.id, perfil?.role, perfil?.supervisor_id, isCorretor, isAdmin, isOperational, isDeveloper, isSupervisor, startDate, endDate])
+  }, [perfil, isRecursosHumanos, isCorretor, isAdmin, isOperational, isDeveloper, isSupervisor, startDate, endDate])
 
   useEffect(() => {
     setMounted(true)
@@ -1133,6 +1194,58 @@ export default function DashboardPage() {
   const dailyGoal = remainingBusinessDays > 0 ? remainingValue / remainingBusinessDays : 0
 
   const userRank = rankings.findIndex(r => r.corretor_id === perfil?.id) + 1
+
+  const missingForNextRank = useMemo(() => {
+    if (userRank > 1 && rankings.length >= userRank) {
+      const nextRankIndex = userRank - 2; // Index of the person just ahead of the user
+      const userIndex = userRank - 1; // Index of the user
+      if (nextRankIndex >= 0) {
+        const nextRankTotal = rankings[nextRankIndex].totalPaid;
+        const userTotal = rankings[userIndex].totalPaid;
+        const missing = nextRankTotal - userTotal;
+        return missing > 0 ? missing : 0;
+      }
+    }
+    return 0;
+  }, [userRank, rankings]);
+
+  const displayRankings = useMemo(() => {
+    if (rankings.length === 0) return [];
+    
+    // Convert current user ID to check matches
+    const userRankIndex = rankings.findIndex(r => r.corretor_id === perfil?.id);
+    
+    if (userRankIndex === -1) {
+      // User has no sales, show 1st place as anonymized, and user at bottom with 0
+      const list = [
+        { ...rankings[0], position: 1, isUser: false }
+      ];
+      list.push({
+        corretor_id: perfil?.id || "user-none",
+        nome: perfil?.nome || "Você",
+        totalPaid: 0,
+        countPaid: 0,
+        totalInProcess: 0,
+        countInProcess: 0,
+        totalToday: 0,
+        countToday: 0,
+        position: rankings.length + 1,
+        isUser: true
+      });
+      return list;
+    } else if (userRankIndex === 0) {
+      // User is in 1st place, only need to show user
+      return [
+        { ...rankings[0], position: 1, isUser: true }
+      ];
+    } else {
+      // User is 2nd or below, show 1st place anonymized and show user under
+      return [
+        { ...rankings[0], position: 1, isUser: false },
+        { ...rankings[userRankIndex], position: userRankIndex + 1, isUser: true }
+      ];
+    }
+  }, [rankings, perfil]);
   
   const headerContent = useMemo(() => {
     if (typeof window === 'undefined') return { greeting: "Olá", phrase: "Sua jornada para o topo começa agora" }
@@ -1157,7 +1270,7 @@ export default function DashboardPage() {
           "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
           isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
         )}>
-          <HRDashboard />
+          <HRDashboard stats={adminStats} isLoading={isLoading} />
         </div>
       </div>
     )
@@ -1607,15 +1720,15 @@ export default function DashboardPage() {
                        </div>
                      ) : nextPrizeTier ? (
                        <>
-                         <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest leading-tight">
+                         <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
                            Próximo Prêmio: {formatCurrency(nextPrizeTier.prize)}
                          </p>
-                         <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest mt-1 shrink-0">
+                         <p className="text-[7.2px] font-bold text-white/30 uppercase tracking-widest mt-1 shrink-0">
                            Faltam {formatCurrency(nextPrizeTier.goal - monthlyProduced)} em produção
                          </p>
                        </>
                      ) : (
-                       <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest leading-tight">
+                       <p className="text-[8px] font-bold text-amber-400 uppercase tracking-widest leading-tight">
                          VOCÊ ATINGIU O TOPO DAS PREMIAÇÕES!
                        </p>
                      )}
@@ -1630,18 +1743,111 @@ export default function DashboardPage() {
                       <Users className="w-6 h-6 text-[#1C2643]" />
                     </div>
                     <div className="flex flex-col min-w-0 overflow-hidden flex-1">
-                       <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest leading-tight">Meta Mensal do Time</p>
-                       <p className="text-[13px] font-black text-[#1C2643] mt-1.5 leading-none">
+                       <p className="text-[13px] font-bold text-[#718198] uppercase tracking-widest leading-tight">Meta Mensal do Time</p>
+                       <p className="text-[17px] font-black text-[#1C2643] mt-1.5 leading-none">
                          {formatCurrency(teamGoal)}
                        </p>
-                       <p className="text-2xl sm:text-3xl lg:text-5xl xl:text-7xl font-black text-[#1C2643] tracking-tighter mt-auto break-words leading-none pb-2">
-                         {Math.round((teamProduced / teamGoal) * 100)}%
-                       </p>
+                       {!isCorretor && (
+                         <p className="text-2xl sm:text-3xl lg:text-5xl xl:text-7xl font-black text-[#1C2643] tracking-tighter mt-auto break-words leading-none pb-2">
+                           {Math.round((teamProduced / teamGoal) * 100)}%
+                         </p>
+                       )}
                     </div>
                   </DashboardCard>
                 </motion.div>
               )}
             </div>
+
+            {/* NEW SECTION: APPOINTMENTS OF THE DAY (Interviews & Calls) */}
+            {isRecursosHumanos && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                transition={{ delay: 0.35 }}
+                className="lg:col-span-8"
+                id="dashboard-appointments-card"
+              >
+                <Card className="border border-slate-200 bg-white rounded-[28px] shadow-sm">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 w-full">
+                      {/* Left section: icon, stats and toggle */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-6 shrink-0 md:border-r border-slate-100 pr-6">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 shrink-0 border border-amber-100 shadow-sm">
+                            <Clock className="w-6 h-6 animate-pulse" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider">
+                                Agenda de Hoje
+                              </span>
+                            </div>
+                            <p className="text-2xl font-black text-[#1C2643] tracking-tighter mt-1">
+                              {interviews.filter(i => (i.tipo || "ENTREVISTAS") === dashboardInterviewTab).length} agendadas
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Cute tabs for the card */}
+                        <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => setDashboardInterviewTab("ENTREVISTAS")}
+                            className={cn(
+                              "px-4 py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-xl cursor-pointer",
+                              dashboardInterviewTab === "ENTREVISTAS"
+                                ? "bg-[#1C2643] text-white shadow-md shadow-[#1C2643]/10"
+                                : "text-slate-500 hover:text-slate-800"
+                            )}
+                          >
+                            ENTREVISTAS
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDashboardInterviewTab("LIGAÇÕES")}
+                            className={cn(
+                              "px-4 py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-xl cursor-pointer",
+                              dashboardInterviewTab === "LIGAÇÕES"
+                                ? "bg-[#1C2643] text-white shadow-md shadow-[#1C2643]/10"
+                                : "text-slate-500 hover:text-slate-800"
+                            )}
+                          >
+                            LIGAÇÕES
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Right section: Scheduled Names Grid */}
+                      <div className="flex-1 min-w-0 max-h-[140px] overflow-y-auto w-full">
+                        {interviews.filter(i => (i.tipo || "ENTREVISTAS") === dashboardInterviewTab).length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                            {interviews
+                              .filter(i => (i.tipo || "ENTREVISTAS") === dashboardInterviewTab)
+                              .map((item) => (
+                                <div 
+                                  key={item.id} 
+                                  className="flex items-center gap-2 bg-slate-50 border border-slate-150 rounded-2xl px-4 py-3 min-w-0 hover:border-[#1C2643]/20 hover:bg-slate-100/55 transition-all shadow-sm"
+                                >
+                                  <span className="text-[9px] font-mono font-black px-2 py-1 rounded-xl bg-amber-50 text-amber-600 shrink-0 border border-amber-100">
+                                    {item.time ? item.time.substring(0, 5) : "--:--"}
+                                  </span>
+                                  <p className="text-[12px] font-black text-[#1C2643] truncate capitalize" title={item.name}>
+                                    {item.name.toLowerCase()}
+                                  </p>
+                                </div>
+                              ))}
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center text-slate-400 text-xs italic font-bold h-full py-6">
+                            Nenhum agendamento para hoje
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
 
             {/* SECTION 3 & 4: MAPA DE OPORTUNIDADES & RANKING */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="lg:col-span-8">
@@ -1862,44 +2068,49 @@ export default function DashboardPage() {
                         </table>
                       ) : (
                         <div className="grid grid-cols-1 gap-3">
-                          {rankings.slice(0, 2).map((rank, idx) => {
-                            const isUser = rank.corretor_id === perfil?.id
-                            const position = idx + 1
+                          {displayRankings.map((rank, idx) => {
+                            const isUser = rank.isUser
+                            const position = rank.position
                             
                             return (
                               <div 
                                 key={idx} 
                                 className={cn(
-                                  "flex items-center justify-between p-4 rounded-2xl border transition-all duration-300",
+                                  "flex sm:items-center justify-between border transition-all duration-300 rounded-2xl",
                                   isUser 
-                                    ? "bg-[#1C2643] text-white border-[#1C2643] shadow-lg shadow-[#1C2643]/20 scale-[1.02]" 
-                                    : "bg-slate-50 border-slate-200 text-[#1C2643]"
+                                    ? "bg-[#1C2643] text-white border-[#1C2643] shadow-lg shadow-[#1C2643]/20 scale-[1.02] py-6 px-5 sm:py-8 sm:px-8 w-full" 
+                                    : "bg-slate-50 border-slate-200 text-[#1C2643] p-4"
                                 )}
                               >
-                                <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-4 sm:gap-6 min-w-0 w-full">
                                   <div className={cn(
-                                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0",
-                                    isUser ? "bg-white text-[#1C2643]" : "bg-white border border-slate-200 text-[#718198]"
+                                    "rounded-full flex items-center justify-center font-black shrink-0 shadow-sm",
+                                    isUser 
+                                      ? "w-14 h-14 text-lg sm:w-20 sm:h-20 sm:text-2xl bg-white text-[#1C2643]" 
+                                      : "w-8 h-8 text-xs bg-white border border-slate-200 text-[#718198]"
                                   )}>
                                     {position}º
                                   </div>
-                                  <div className="flex flex-col">
+                                  <div className="flex flex-col min-w-0">
                                     <p className={cn(
-                                      "text-[13px] font-black tracking-tight line-clamp-1",
-                                      isUser ? "text-white" : "text-[#1C2643]"
+                                      "font-black tracking-tight line-clamp-1 leading-tight",
+                                      isUser ? "text-[20px] sm:text-[28px] text-white" : "text-[13px] text-[#1C2643]"
                                     )}>
-                                      {isUser ? rank.nome : `Ranking ${position}º`}
+                                      {isUser ? (rank.nome?.split(" ")[0] || "") : `Ranking ${position}º`}
                                     </p>
+                                    
+                                    {isUser && (
+                                      <>
+                                        <p className="text-[11px] sm:text-[14px] uppercase font-black tracking-widest text-slate-300 mt-1 leading-tight">
+                                          Sua Produção
+                                        </p>
+                                        <p className="font-black text-amber-400 text-[22px] sm:text-[34px] leading-tight font-sans tracking-tight mt-1 sm:mt-1.5">
+                                          {formatCurrency(rank.totalPaid)}
+                                        </p>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
-                                {isUser && (
-                                  <p className={cn(
-                                    "text-[13px] font-black shrink-0 ml-2",
-                                    isUser ? "text-amber-400" : "text-[#718198]"
-                                  )}>
-                                    {formatCurrency(rank.totalPaid)}
-                                  </p>
-                                )}
                               </div>
                             )
                           })}
@@ -1925,7 +2136,7 @@ export default function DashboardPage() {
                          {userRank === 1 ? (
                            <span className="text-emerald-600 font-black tracking-tight">PARABÉNS! VOCÊ É O NÚMERO 1! CONTINUE LIDERANDO!</span>
                          ) : userRank > 1 ? (
-                           <>Você está na <span className="text-amber-600 font-black">{userRank}ª posição</span>. Acelere para chegar ao topo!</>
+                           <>Você está na <span className="text-amber-600 font-black">{userRank}ª posição</span>. Falta <span className="text-amber-600 font-black">{formatCurrency(missingForNextRank)}</span> para chegar na {userRank - 1}ª posição!</>
                          ) : (
                            <>Comece a produzir para entrar no <span className="font-black">Ranking</span></>
                          )}

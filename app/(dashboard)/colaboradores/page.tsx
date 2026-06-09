@@ -1803,9 +1803,7 @@ export default function ColaboradoresPage() {
                     <Paperclip className="w-4 h-4 text-[#002060]" />
                     Pasta Digital de {activeModalColab.name}
                   </h3>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">
-                    Histórico consolidado de documentos no Bucket Seguro da Supabase.
-                  </p>
+
                 </div>
                 <button
                   type="button"
@@ -2086,19 +2084,19 @@ function PillDropdown({
   }
 
   return (
-    <div className={cn("relative inline-block text-left w-full max-w-full select-none", isOpen ? "z-30" : "z-10")}>
+    <div className={cn("relative inline-block text-center w-[150px] select-none", isOpen ? "z-30" : "z-10")}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "flex items-center justify-between w-full rounded-full px-3 py-1.5 text-[9.5px] font-black uppercase transition-all shadow-sm outline-none cursor-pointer",
+          "flex items-center justify-center gap-1.5 w-full rounded-full px-2.5 py-1.5 text-[9.5px] font-black uppercase transition-all shadow-sm outline-none cursor-pointer text-center",
           currentOpt.bg,
           currentOpt.text,
           currentOpt.border ? `border ${currentOpt.border}` : "border border-transparent"
         )}
       >
-        <span className="truncate pr-1 text-left">{currentOpt.label}</span>
-        <ChevronDown className="w-3 h-3 shrink-0 opacity-85 ml-1" />
+        <span className="truncate text-center">{currentOpt.label}</span>
+        <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-85" />
       </button>
 
       {isOpen && (

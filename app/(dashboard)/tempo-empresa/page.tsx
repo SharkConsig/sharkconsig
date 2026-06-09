@@ -295,25 +295,25 @@ export default function TempoEmpresaPage() {
 
             {/* List Table */}
             <div className="overflow-x-auto px-6 pb-6 pt-4">
-              <table className="w-full text-left border-collapse table-fixed min-w-[1000px]">
+              <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
                 <thead>
                   <tr className="bg-[#171717] text-white">
-                    <th className="w-[25%] px-5 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">
+                    <th className="w-[280px] px-5 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">
                       Colaborador
                     </th>
-                    <th className="w-[15%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
+                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
                       Admissão
                     </th>
-                    <th className="w-[18%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
+                    <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
                       Tempo de Serviço
                     </th>
-                    <th className="w-[20%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
+                    <th className="w-[240px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
                       Próxima Meta (Aniversário)
                     </th>
-                    <th className="w-[12%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
+                    <th className="w-[240px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
                       Kit Aniversário Embalado?
                     </th>
-                    <th className="w-[10%] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">
+                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">
                       Festejar
                     </th>
                   </tr>
