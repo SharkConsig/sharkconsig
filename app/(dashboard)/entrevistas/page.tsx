@@ -35,6 +35,7 @@ interface Interview {
   plataforma: string
   area: string
   notes: string
+  tipo?: string
 }
 
 // Preloaded dataset starting empty to receive real new registrations
@@ -52,6 +53,8 @@ export default function EntrevistasPage() {
   }, [authLoading, isRecursosHumanos, isAdmin, isDeveloper, router])
 
   const [search, setSearch] = useState("")
+  const [activeTab, setActiveTab] = useState<"ENTREVISTAS" | "LIGAÇÕES">("ENTREVISTAS")
+  const [hasTipoColumn, setHasTipoColumn] = useState(true)
   const [faseFilter, setFaseFilter] = useState("Todas")
   const [plataformaFilter, setPlataformaFilter] = useState("Todas")
   const [areaFilter, setAreaFilter] = useState("Todas")
@@ -79,7 +82,18 @@ export default function EntrevistasPage() {
       
       if (saved) {
         try {
-          initialData = JSON.parse(saved)
+          initialData = (JSON.parse(saved) as Interview[]).map((item) => ({
+            id: item.id,
+            name: item.name || "Candidato",
+            phone: item.phone || "",
+            date: item.date || new Date().toISOString().split('T')[0],
+            time: item.time || "14:00:00",
+            fase: item.fase || "Agendada",
+            plataforma: item.plataforma || "Indeed",
+            area: item.area || "Comercial",
+            notes: item.notes || "",
+            tipo: item.tipo || "ENTREVISTAS"
+          }))
         } catch {
           initialData = DEFAULT_CANDIDATES
         }
@@ -109,7 +123,8 @@ export default function EntrevistasPage() {
               fase: item.status === "Aprovada" ? "Aprovado" : item.status === "Reprovada" ? "Reprovado" : item.status || "Agendada",
               plataforma: item.plataforma || "Instagram",
               area: item.role === "Estágio" || item.role === "Estagio" ? "Estágio" : "Comercial",
-              notes: item.notes || ""
+              notes: item.notes || "",
+              tipo: "ENTREVISTAS"
             }))
             initialData = migrated
           } catch {
@@ -160,6 +175,16 @@ export default function EntrevistasPage() {
           setInterviews(initialData)
         } else if (supaData) {
           console.log("Connected successfully to database on public.hr_interviews")
+          
+          // Dynamically query if the column 'tipo' exists using a targeted select
+          const { error: checkError } = await supabase
+            .from('hr_interviews')
+            .select('tipo')
+            .limit(1)
+          
+          const columnExists = !checkError || (checkError.code !== '42703' && !checkError.message?.toLowerCase().includes('column "tipo"'))
+          setHasTipoColumn(columnExists)
+          
           if (supaData.length > 0) {
             const mappedData: Interview[] = (supaData as unknown as Interview[]).map((item) => ({
               id: item.id,
@@ -170,7 +195,8 @@ export default function EntrevistasPage() {
               fase: item.fase,
               plataforma: item.plataforma,
               area: item.area,
-              notes: item.notes || ""
+              notes: item.notes || "",
+              tipo: item.tipo || "ENTREVISTAS"
             })).filter(item => {
               const isMockId = /^int-([1-9]|1[0-5])$/.test(item.id)
               const isMockName = mockNames.includes(item.name)
@@ -186,17 +212,23 @@ export default function EntrevistasPage() {
               localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify([]))
             } else {
               // Seed Supabase with defaults in chosen schema
-              const seedToSupa = initialData.map(item => ({
-                id: item.id,
-                name: item.name,
-                phone: item.phone || "",
-                date: item.date,
-                time: item.time,
-                fase: item.fase,
-                plataforma: item.plataforma,
-                area: item.area,
-                notes: item.notes || ""
-              }))
+              const seedToSupa = initialData.map(item => {
+                const row: Record<string, unknown> = {
+                  id: item.id,
+                  name: item.name,
+                  phone: item.phone || "",
+                  date: item.date,
+                  time: item.time,
+                  fase: item.fase,
+                  plataforma: item.plataforma,
+                  area: item.area,
+                  notes: item.notes || ""
+                }
+                if (columnExists) {
+                  row.tipo = item.tipo || "ENTREVISTAS"
+                }
+                return row
+              })
               
               const { error: insertErr } = await supabase.from('hr_interviews').upsert(seedToSupa)
               if (insertErr && insertErr.code !== '23505') {
@@ -233,6 +265,9 @@ export default function EntrevistasPage() {
 
     // 2. Sync online
     if (isSupabaseConfigured) {
+      if (field === 'tipo' && !hasTipoColumn) {
+        return; // Skip syncing tipo if the DB doesn't support it yet
+      }
       try {
         let valueForDb = value
         if (field === 'time' && typeof value === 'string' && value.length === 5) {
@@ -244,6 +279,9 @@ export default function EntrevistasPage() {
           .eq('id', id)
         if (error) {
           console.error("Failed to update field on Supabase:", error.message)
+          if (error.message?.includes('column "tipo"') || error.message?.toLowerCase().includes('does not exist')) {
+            setHasTipoColumn(false)
+          }
         }
       } catch (err) {
         console.error("Network error on Supabase sync:", err)
@@ -278,7 +316,8 @@ export default function EntrevistasPage() {
       fase: quickFase,
       plataforma: quickPlataforma,
       area: quickArea,
-      notes: quickNotes.trim()
+      notes: quickNotes.trim(),
+      tipo: activeTab // Links candidate to the current tab (ENTREVISTAS or LIGAÇÕES)
     }
 
     // 1. Instant local state & cache update
@@ -289,11 +328,22 @@ export default function EntrevistasPage() {
     // 2. Sync with database
     if (isSupabaseConfigured) {
       try {
+        const rowToSync = { ...newRow }
+        if (!hasTipoColumn) {
+          delete rowToSync.tipo
+        }
         const { error } = await supabase
           .from('hr_interviews')
-          .insert([newRow])
+          .insert([rowToSync])
         if (error) {
           console.error("Failed to insert row on Supabase:", error.message)
+          if (error.message?.includes('column "tipo"') || error.message?.toLowerCase().includes('does not exist')) {
+            setHasTipoColumn(false)
+            // Retry without 'tipo'
+            const retryRow = { ...newRow }
+            delete retryRow.tipo
+            await supabase.from('hr_interviews').insert([retryRow])
+          }
         } else {
           console.log("Candidato cadastrado e sincronizado com o banco com sucesso.")
         }
@@ -341,7 +391,8 @@ export default function EntrevistasPage() {
   const handleExportCSV = () => {
     const headers = ["Candidato", "Contato", "Data", "Horário", "Fase", "Plataforma", "Área", "Observações"]
     
-    const rows = interviews.map(item => {
+    const visibleRows = interviews.filter(item => (item.tipo || "ENTREVISTAS") === activeTab)
+    const rows = visibleRows.map(item => {
       const formattedDate = item.date ? item.date.split("-").reverse().join("/") : ""
       return [
         `"${item.name.replace(/"/g, '""')}"`,
@@ -361,7 +412,7 @@ export default function EntrevistasPage() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
-    link.setAttribute("download", `Recrutamento_RH_Excel_${new Date().toISOString().split('T')[0]}.csv`)
+    link.setAttribute("download", `Recrutamento_RH_${activeTab}_Excel_${new Date().toISOString().split('T')[0]}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -370,6 +421,8 @@ export default function EntrevistasPage() {
 
   // Filter application
   const filteredInterviews = interviews.filter(item => {
+    const matchTab = (item.tipo || "ENTREVISTAS") === activeTab
+
     const matchSearch = item.name.toLowerCase().includes(search.toLowerCase()) || 
                         item.phone.toLowerCase().includes(search.toLowerCase()) || 
                         item.notes.toLowerCase().includes(search.toLowerCase())
@@ -378,14 +431,15 @@ export default function EntrevistasPage() {
     const matchPlataforma = plataformaFilter === "Todas" || item.plataforma === plataformaFilter
     const matchArea = areaFilter === "Todas" || item.area === areaFilter
     
-    return matchSearch && matchFase && matchPlataforma && matchArea
+    return matchTab && matchSearch && matchFase && matchPlataforma && matchArea
   })
 
   // Calculations for quick metrics
-  const totalCandidatos = interviews.length
-  const totalAprovados = interviews.filter(i => i.fase === "Aprovado").length
-  const totalNãoCompareceu = interviews.filter(i => i.fase === "Não compareceu").length
-  const totalDesistiu = interviews.filter(i => i.fase === "Desistiu").length
+  const tabInterviews = interviews.filter(i => (i.tipo || "ENTREVISTAS") === activeTab)
+  const totalCandidatos = tabInterviews.length
+  const totalAprovados = tabInterviews.filter(i => i.fase === "Aprovado").length
+  const totalNãoCompareceu = tabInterviews.filter(i => i.fase === "Não compareceu").length
+  const totalDesistiu = tabInterviews.filter(i => i.fase === "Desistiu").length
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50/50 min-h-screen font-sans">
@@ -444,8 +498,38 @@ export default function EntrevistasPage() {
           </Card>
         </div>
 
+        {/* Tabs style navigation identical to colaboradores page */}
+        <div className="flex flex-wrap gap-1 px-4 sm:px-8 -mb-[1px]">
+          <button
+            type="button"
+            onClick={() => setActiveTab("ENTREVISTAS")}
+            className={cn(
+              "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 cursor-pointer",
+              activeTab === "ENTREVISTAS"
+                ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black"
+                : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            )}
+            id="tab-entrevistas"
+          >
+            ENTREVISTAS (PRESENCIAL)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("LIGAÇÕES")}
+            className={cn(
+              "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 cursor-pointer",
+              activeTab === "LIGAÇÕES"
+                ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black"
+                : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            )}
+            id="tab-ligacoes"
+          >
+            LIGAÇÕES (FONE)
+          </button>
+        </div>
+
         {/* Content Box */}
-        <Card className="border border-slate-200 overflow-hidden bg-white rounded-2xl shadow-sm">
+        <Card className="border border-slate-200 overflow-hidden bg-white rounded-2xl rounded-tl-none shadow-sm animate-in fade-in duration-300">
           <CardContent className="p-0">
 
             {/* Form Cadastro (Sempre Visível) */}

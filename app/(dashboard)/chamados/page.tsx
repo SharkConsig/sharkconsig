@@ -343,13 +343,19 @@ export default function TicketsPage() {
     return tickets.filter(ticket => {
       // Basic text search
       const searchLower = searchTerm.toLowerCase()
+      const searchDigits = searchTerm.replace(/\D/g, "")
       const ticketStatusName = (ticket.status_chamados?.nome || ticket.status || "").toLowerCase()
       
+      const ticketCpfDigits = (ticket.cliente_cpf || "").replace(/\D/g, "")
+      const ticketTelDigits = (ticket.cliente_telefone || "").replace(/\D/g, "")
+
       const matchesSearch = 
         ticket.id.toString().includes(searchTerm) ||
         ticket.cliente_nome.toLowerCase().includes(searchLower) ||
         ticket.cliente_cpf.includes(searchTerm) ||
+        (searchDigits !== "" && ticketCpfDigits.includes(searchDigits)) ||
         ticket.cliente_telefone.toLowerCase().includes(searchLower) ||
+        (searchDigits !== "" && ticketTelDigits.includes(searchDigits)) ||
         ticket.origem.toLowerCase().includes(searchLower) ||
         (normalizeConvenioName(ticket.convenio) || "").toLowerCase().includes(searchLower) ||
         ticket.equipe.toLowerCase().includes(searchLower) ||

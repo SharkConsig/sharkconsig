@@ -12,6 +12,7 @@ import {
   Search, 
   Filter,
   ChevronDown,
+  ChevronRight,
   Check,
   Trash2,
   Users,
@@ -30,29 +31,29 @@ const DOCUMENT_TYPES = [
   {
     category: "1. Documentos Pessoais",
     items: [
-      { key: "rg", name: "RG (ou CNH, etc.)" },
+      { key: "rg", name: "RG (ou documento oficial com foto, como CNH)" },
       { key: "cpf", name: "CPF" },
-      { key: "residencia", name: "Comprovante de Residência" },
-      { key: "titulo_voto", name: "Título de Eleitor e comprovante de votação" },
+      { key: "residencia", name: "Comprovante de residência recente" },
+      { key: "titulo_voto", name: "Título de Eleitor e comprovante de votação na última eleição" },
       { key: "certidao_nasc_cas", name: "Certidão de Nascimento ou Casamento" },
-      { key: "reservista", name: "Certificado de Reservista ou dispensa" }
+      { key: "reservista", name: "Certificado de Reservista ou dispensa de incorporação" }
     ]
   },
   {
     category: "2. Documentos Profissionais e Financeiros",
     items: [
-      { key: "ctps", name: "Carteira de Trabalho (CTPS)" },
+      { key: "ctps", name: "Carteira de Trabalho e Previdência Social (CTPS)" },
       { key: "pis_pasep_nis", name: "Número do PIS/PASEP/NIS" },
-      { key: "escolaridade", name: "Comprovante de Escolaridade" },
-      { key: "dados_bancarios", name: "Dados Bancários para Salário" }
+      { key: "escolaridade", name: "Comprovante de escolaridade" },
+      { key: "dados_bancarios", name: "Dados bancários para recebimento de salário" }
     ]
   },
   {
     category: "3. Documentos para Dependentes (Se houver)",
     items: [
-      { key: "dep_cpf_nasc", name: "CPF e Certidão - Filhos < 14 anos" },
-      { key: "dep_vacina", name: "Carteira de Vacinação (Até 6 anos)" },
-      { key: "dep_escola", name: "Frequência Escolar (7 a 14 anos)" }
+      { key: "dep_cpf_nasc", name: "CPF e Certidão de Nascimento dos filhos menores de 14 anos" },
+      { key: "dep_vacina", name: "Carteira de vacinação atualizada (para dependentes de até 6 anos)" },
+      { key: "dep_escola", name: "Comprovante de frequência escolar (para dependentes de 7 a 14 anos)" }
     ]
   },
   {
@@ -75,7 +76,7 @@ interface DBCollaborator {
   id?: string
   nome: string
   funcao?: string
-  cpf?: string
+  cpf?: string | null
   data_nascimento?: string
   estado_civil?: string
   endereco?: string
@@ -133,7 +134,9 @@ function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
   const db: DBCollaborator = {}
   if (c.name !== undefined) db.nome = c.name
   if (c.role !== undefined) db.funcao = c.role
-  if (c.cpf !== undefined) db.cpf = c.cpf
+  if (c.cpf !== undefined) {
+    db.cpf = c.cpf && c.cpf.trim() !== "" ? c.cpf.trim() : null
+  }
   if (c.birthDate !== undefined) db.data_nascimento = c.birthDate
   if (c.civilStatus !== undefined) db.estado_civil = c.civilStatus
   if (c.address !== undefined) db.endereco = c.address
@@ -259,6 +262,7 @@ export default function ColaboradoresPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterRole, setFilterRole] = useState("todos")
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ colabId: string; docKey: string } | null>(null)
   const [supabaseError, setSupabaseError] = useState<string | null>(null)
 
   // Document management states
@@ -266,6 +270,7 @@ export default function ColaboradoresPage() {
   const [colabDocs, setColabDocs] = useState<Record<string, string[]>>({})
   const [activeModalColab, setActiveModalColab] = useState<Collaborator | null>(null)
   const [isUploadingDoc, setIsUploadingDoc] = useState(false)
+  const [isAdmissaoDocsExpanded, setIsAdmissaoDocsExpanded] = useState(false)
   
   // Form State
   const [newName, setNewName] = useState("")
@@ -430,7 +435,13 @@ export default function ColaboradoresPage() {
   }
 
   const handleDeleteDocument = async (colabId: string, docKey: string) => {
-    if (!confirm("Deseja realmente excluir este documento?")) return;
+    setDocDeleteConfirm({ colabId, docKey })
+  }
+
+  const confirmDeleteDocument = async () => {
+    if (!docDeleteConfirm) return
+    const { colabId, docKey } = docDeleteConfirm
+    setDocDeleteConfirm(null)
     try {
       const { data: existingFiles } = await supabase.storage
         .from('colaboradores-documentos')
@@ -441,7 +452,8 @@ export default function ColaboradoresPage() {
           .filter(f => f.name.split('.')[0] === docKey)
           .map(f => `${colabId}/${f.name}`)
         if (toDelete.length > 0) {
-          await supabase.storage.from('colaboradores-documentos').remove(toDelete)
+          const { error } = await supabase.storage.from('colaboradores-documentos').remove(toDelete)
+          if (error) throw error
         }
       }
       await refreshColabDocs(colabId)
@@ -554,6 +566,16 @@ export default function ColaboradoresPage() {
     e.preventDefault()
     if (!newName) return
 
+    // Pre-insert validation for duplicate CPF in current local state
+    if (newCpf && newCpf.trim() !== "") {
+      const trimmedCpf = newCpf.trim()
+      const isDuplicate = collaborators.some(c => c.cpf && c.cpf.trim() === trimmedCpf)
+      if (isDuplicate) {
+        toast.error("Erro: Já existe um colaborador cadastrado com este CPF!")
+        return
+      }
+    }
+
     // Temporary optimistic representation until saved in database
     const tempId = `temp-${Date.now()}`
     const colabData: Partial<Collaborator> = {
@@ -632,9 +654,23 @@ export default function ColaboradoresPage() {
           toast.success("Colaborador cadastrado com sucesso!")
         }
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Erro ao salvar colaborador no Supabase:", err)
-      toast.error("Erro ao cadastrar colaborador")
+      // Revert the optimistic state update
+      setCollaborators(prev => prev.filter(c => c.id !== tempId))
+      
+      const isUniqueError = err && typeof err === "object" && (
+        ("code" in err && (err as { code: string }).code === "23505") ||
+        ("message" in err && String((err as { message: string }).message).includes("hr_colaboradores_cpf_key")) ||
+        ("message" in err && String((err as { message: string }).message).includes("duplicate key"))
+      )
+
+      if (isUniqueError) {
+        toast.error("Erro: Já existe um colaborador cadastrado com este CPF!")
+      } else {
+        toast.error("Erro ao cadastrar colaborador no banco de dados.")
+      }
+      return
     }
 
     // Reset Form
@@ -1034,59 +1070,92 @@ export default function ColaboradoresPage() {
 
                   {/* ANEXAR DOCUMENTOS */}
                   <div className="border-t border-slate-100 pt-6 mt-6">
-                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <Paperclip className="w-4 h-4 text-[#002060]" />
-                      ANEXAR DOCUMENTOS COBRADOS NA ADMISSÃO
-                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsAdmissaoDocsExpanded(!isAdmissaoDocsExpanded)}
+                      className={cn(
+                        "w-full flex items-center justify-between p-4 rounded-2xl transition-all cursor-pointer select-none group text-left border shadow-sm",
+                        isAdmissaoDocsExpanded 
+                          ? "bg-[#002060]/5 border-[#002060]/30 text-[#002060]" 
+                          : "bg-slate-50 border-slate-200 hover:bg-[#002060]/5 hover:border-[#002060]/20 text-slate-800"
+                      )}
+                    >
+                      <span className="text-xs font-black uppercase tracking-widest flex items-center gap-2.5">
+                        <Paperclip className={cn("w-4.5 h-4.5 transition-transform duration-200", isAdmissaoDocsExpanded ? "text-[#002060] rotate-45 scale-110" : "text-slate-500 group-hover:text-[#002060] group-hover:scale-110")} />
+                        ANEXAR DOCUMENTOS COBRADOS NA ADMISSÃO
+                      </span>
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-[#002060]">
+                        <span className="animate-pulse bg-[#002060]/10 px-2.5 py-1 rounded-full border border-[#002060]/20">
+                          {isAdmissaoDocsExpanded ? "Clique para Recolher ▲" : "Clique para Anexar / Expandir ▼"}
+                        </span>
+                        {isAdmissaoDocsExpanded ? (
+                          <ChevronDown className="w-4.5 h-4.5 shrink-0 transition-transform duration-200 animate-bounce" />
+                        ) : (
+                          <ChevronRight className="w-4.5 h-4.5 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5" />
+                        )}
+                      </div>
+                    </button>
                     
-                    <div className="space-y-6 text-left">
-                      {DOCUMENT_TYPES.map((cat) => (
-                        <div key={cat.category} className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
-                          <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-3 pb-1 border-b border-slate-200">
-                            {cat.category}
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {cat.items.map((item) => {
-                              const selectedFile = formDocs[item.key];
-                              return (
-                                <div key={item.key} className="flex flex-col gap-1.5 p-2 bg-white rounded-xl border border-slate-200/60 shadow-sm">
-                                  <label className="text-[10px] font-bold text-slate-600 truncate block">
-                                    {item.name}
-                                  </label>
-                                  {selectedFile ? (
-                                    <div className="flex items-center justify-between gap-2 p-1.5 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-800">
-                                      <span className="text-[10px] font-semibold truncate max-w-[120px]">
-                                        {selectedFile.name}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleFormDocChange(item.key, null)}
-                                        className="text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100 p-0.5 rounded-md transition-all cursor-pointer"
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <label className="flex items-center justify-center gap-1.5 py-1.5 px-3 border border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50 rounded-lg cursor-pointer transition-all text-slate-500 hover:text-slate-700 select-none">
-                                      <UploadCloud className="w-3.5 h-3.5" />
-                                      <span className="text-[9px] font-black uppercase tracking-wider">Selecionar</span>
-                                      <input
-                                        type="file"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0];
-                                          if (file) handleFormDocChange(item.key, file);
-                                        }}
-                                      />
-                                    </label>
-                                  )}
+                    <AnimatePresence initial={false}>
+                      {isAdmissaoDocsExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden mt-4"
+                        >
+                          <div className="space-y-6 text-left pt-2 pb-4">
+                            {DOCUMENT_TYPES.map((cat) => (
+                              <div key={cat.category} className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
+                                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-3 pb-1 border-b border-slate-200">
+                                  {cat.category}
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  {cat.items.map((item) => {
+                                    const selectedFile = formDocs[item.key];
+                                    return (
+                                      <div key={item.key} className="flex flex-col gap-1.5 p-2 bg-white rounded-xl border border-slate-200/60 shadow-sm">
+                                        <label className="text-[10px] font-bold text-slate-600 truncate block">
+                                          {item.name}
+                                        </label>
+                                        {selectedFile ? (
+                                          <div className="flex items-center justify-between gap-2 p-1.5 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-800">
+                                            <span className="text-[10px] font-semibold truncate max-w-[120px]">
+                                              {selectedFile.name}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleFormDocChange(item.key, null)}
+                                              className="text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100 p-0.5 rounded-md transition-all cursor-pointer"
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <label className="flex items-center justify-center gap-1.5 py-1.5 px-3 border border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50 rounded-lg cursor-pointer transition-all text-slate-500 hover:text-slate-700 select-none">
+                                            <UploadCloud className="w-3.5 h-3.5" />
+                                            <span className="text-[9px] font-black uppercase tracking-wider">Selecionar</span>
+                                            <input
+                                              type="file"
+                                              className="hidden"
+                                              onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) handleFormDocChange(item.key, file);
+                                              }}
+                                            />
+                                          </label>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              );
-                            })}
+                              </div>
+                            ))}
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
@@ -1889,6 +1958,52 @@ export default function ColaboradoresPage() {
                   onClick={confirmDelete}
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 text-[10px] font-black uppercase tracking-widest text-white rounded-lg transition-all cursor-pointer shadow-sm"
                   id="btn-confirm-delete"
+                >
+                  Confirmar Exclusão
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* CONFIRMAÇÃO DE DELEÇÃO DE DOCUMENTO CUSTOMIZADA */}
+      <AnimatePresence>
+        {docDeleteConfirm && (
+          <div className="fixed inset-0 bg-neutral-900/50 backdrop-blur-[2px] z-[1000] flex items-center justify-center p-4" id="doc-delete-confirmation-overlay">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.12 }}
+              className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full overflow-hidden"
+              id="doc-delete-confirmation-modal"
+            >
+              <div className="p-5 text-center">
+                <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">
+                  Excluir Documento?
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                  Tem certeza que deseja excluir permanentemente este documento? Esta operação é definitiva.
+                </p>
+              </div>
+              <div className="bg-slate-50 px-5 py-3.5 flex items-center justify-center gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setDocDeleteConfirm(null)}
+                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-600 rounded-lg transition-all cursor-pointer"
+                  id="btn-cancel-doc-delete"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteDocument}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-[10px] font-black uppercase tracking-widest text-white rounded-lg transition-all cursor-pointer shadow-sm"
+                  id="btn-confirm-doc-delete"
                 >
                   Confirmar Exclusão
                 </button>

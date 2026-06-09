@@ -16,6 +16,7 @@ import {
   FileEdit,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Settings,
   Landmark,
   Calendar,
@@ -27,7 +28,7 @@ import { useSidebar } from "@/context/sidebar-context"
 
 import { useAuth } from "@/context/auth-context"
 
-const menuItems = [
+const allMenuItems = [
   {
     title: "GESTÃO DE CLIENTES",
     items: [
@@ -96,27 +97,12 @@ const menuItems = [
         href: "/configuracoes", 
         icon: Settings, 
         roles: ["Administrador", "Desenvolvedor"] 
-      },
-      { 
-        name: "GESTÃO DE USUÁRIOS", 
-        href: "/configuracoes/usuarios", 
-        icon: Users, 
-        roles: ["Administrador", "Desenvolvedor"] 
-      },
+      }
     ]
-  }
-]
-
-const hrMenuItems = [
+  },
   {
     title: "RECURSOS HUMANOS",
     items: [
-      { 
-        name: "DASHBOARD", 
-        href: "/", 
-        icon: Landmark, 
-        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
-      },
       { 
         name: "ENTREVISTAS", 
         href: "/entrevistas", 
@@ -146,7 +132,7 @@ const hrMenuItems = [
         href: "/tempo-empresa", 
         icon: Clock, 
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
-      },
+      }
     ]
   }
 ]
@@ -161,11 +147,41 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { isCollapsed, toggleCollapse } = useSidebar()
   const { perfil, isAdmin, isRecursosHumanos } = useAuth()
   const [isHovered, setIsHovered] = useState(false)
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
 
   const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
   const effectiveCollapsed = isCollapsed && !isHovered
 
-  const activeMenuItems = (isRecursosHumanos || perfil?.role === 'Recursos Humanos') ? hrMenuItems : menuItems
+  const isCollapsibleStyle = perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isAdmin
+
+  const toggleSection = (title: string) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [title]: !prev[title]
+    }))
+  }
+
+  const activeMenuItems = (() => {
+    if (isCollapsibleStyle) {
+      return allMenuItems
+    } else if (isRecursosHumanos || perfil?.role === 'Recursos Humanos') {
+      const hrSection = allMenuItems[1]
+      return [{
+        ...hrSection,
+        items: [
+          { 
+            name: "DASHBOARD", 
+            href: "/", 
+            icon: Landmark, 
+            roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+          },
+          ...hrSection.items
+        ]
+      }]
+    } else {
+      return [allMenuItems[0]]
+    }
+  })()
 
   const filteredMenuItems = activeMenuItems.map(section => ({
     ...section,
@@ -249,39 +265,66 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         )}
 
         <nav className="flex-1 px-4 py-4 overflow-y-auto no-scrollbar">
-          {filteredMenuItems.map((section) => (
-            <div key={section.title} className="mb-8">
-              {!effectiveCollapsed && (
-                <h2 className="px-4 text-[10px] font-bold text-slate-400 tracking-widest mb-4">
-                  {section.title}
-                </h2>
-              )}
-              <div className="space-y-1">
-                {section.items.map((item) => {
-                  const isActive = pathname === item.href
-                  return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      onClick={onClose}
-                      title={effectiveCollapsed ? item.name : ""}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg text-[11px] font-semibold transition-all",
-                        effectiveCollapsed ? "justify-center p-3" : "px-4 py-3",
-                        isActive 
-                          ? "bg-primary text-white shadow-lg shadow-slate-200" 
-                          : "text-slate-500 hover:bg-slate-50 hover:text-primary",
-                        item.name === "CONFIGURAÇÕES" && !effectiveCollapsed && "mt-6"
-                      )}
-                    >
-                      <item.icon className={cn("w-[18px] h-[18px] flex-shrink-0", isActive ? "text-white" : "text-primary")} />
-                      {!effectiveCollapsed && <span>{item.name}</span>}
-                    </Link>
-                  )
-                })}
+          {filteredMenuItems.map((section) => {
+            const isCollapsed = !effectiveCollapsed && isCollapsibleStyle && !!collapsedSections[section.title]
+            return (
+              <div key={section.title} className="mb-6">
+                {!effectiveCollapsed && (
+                  <div
+                    onClick={() => isCollapsibleStyle && toggleSection(section.title)}
+                    className={cn(
+                      "flex items-center justify-between px-4 mb-3",
+                      isCollapsibleStyle && "cursor-pointer select-none group"
+                    )}
+                  >
+                    <h2 className={cn(
+                      "text-[10px] font-bold text-slate-400 tracking-widest uppercase transition-colors",
+                      isCollapsibleStyle && "group-hover:text-slate-600"
+                    )}>
+                      {section.title}
+                    </h2>
+                    {isCollapsibleStyle && (
+                      <ChevronDown
+                        className={cn(
+                          "w-3.5 h-3.5 text-slate-400 transition-transform duration-200",
+                          isCollapsed ? "-rotate-90 text-slate-400" : "rotate-0 text-slate-500"
+                        )}
+                      />
+                    )}
+                  </div>
+                )}
+                <div 
+                  className={cn(
+                    "space-y-1 overflow-hidden transition-all duration-300",
+                    isCollapsed ? "max-h-0 opacity-0 pointer-events-none" : "max-h-[1000px] opacity-100"
+                  )}
+                >
+                  {section.items.map((item) => {
+                    const isActive = pathname === item.href
+                    return (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        onClick={onClose}
+                        title={effectiveCollapsed ? item.name : ""}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg text-[11px] font-semibold transition-all",
+                          effectiveCollapsed ? "justify-center p-3" : "px-4 py-3",
+                          isActive 
+                            ? "bg-primary text-white shadow-lg shadow-slate-200" 
+                            : "text-slate-500 hover:bg-slate-50 hover:text-primary",
+                          item.name === "CONFIGURAÇÕES" && !effectiveCollapsed && "mt-6"
+                        )}
+                      >
+                        <item.icon className={cn("w-[18px] h-[18px] flex-shrink-0", isActive ? "text-white" : "text-primary")} />
+                        {!effectiveCollapsed && <span>{item.name}</span>}
+                      </Link>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </nav>
 
         {!effectiveCollapsed && (
