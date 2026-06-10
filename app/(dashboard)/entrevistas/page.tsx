@@ -806,6 +806,7 @@ export default function EntrevistasPage() {
                     <option value="Stand-by">Stand-by</option>
                     <option value="Entrevista">Entrevista</option>
                     <option value="Não compareceu">Não compareceu</option>
+                    <option value="Não atendeu">Não atendeu</option>
                     <option value="Desistiu">Desistiu</option>
                     <option value="Rep. formulário">Rep. formulário</option>
                     <option value="Outra oportunidade">Outra oportunidade</option>
@@ -1204,6 +1205,7 @@ const faseOptions = [
   { value: "Stand-by", label: "Stand-by", bg: "bg-[#fef3c7] hover:bg-[#fef3c7]/90", border: "border-[#fde68a]", text: "text-[#d97706]", arrowColor: "text-[#d97706]" },
   { value: "Entrevista", label: "Entrevista", bg: "bg-[#f3e8ff] hover:bg-[#f3e8ff]/90", border: "border-[#e9d5ff]", text: "text-[#6b21a8]", arrowColor: "text-[#6b21a8]" },
   { value: "Não compareceu", label: "Não compareceu", bg: "bg-[#fee2e2] hover:bg-[#fee2e2]/90", border: "border-[#fecaca]", text: "text-[#b91c1c]", arrowColor: "text-[#b91c1c]" },
+  { value: "Não atendeu", label: "Não atendeu", bg: "bg-[#ffedd5] hover:bg-[#ffedd5]/90", border: "border-[#fed7aa]", text: "text-[#c2410c]", arrowColor: "text-[#c2410c]" },
   { value: "Desistiu", label: "Desistiu", bg: "bg-[#e0f2fe] hover:bg-[#e0f2fe]/90", border: "border-[#bae6fd]", text: "text-[#0369a1]", arrowColor: "text-[#0369a1]" },
   { value: "Rep. formulário", label: "Rep. formulário", bg: "bg-[#f1f5f9] hover:bg-[#cbd5e1]/50", border: "border-[#cbd5e1]", text: "text-[#475569]", arrowColor: "text-[#475569]" },
   { value: "Outra oportunidade", label: "Outra oportunidade", bg: "bg-[#5c1c1c] hover:bg-[#521c1c]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
