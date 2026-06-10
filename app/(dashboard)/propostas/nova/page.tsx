@@ -254,6 +254,14 @@ function NewProposalForm() {
               outros_3: ticket.arquivo_outros_3 || null,
               outros_4: ticket.arquivo_outros_4 || null
             })
+
+            // Also ensure we populate telephone fields from the ticket if they are in formData
+            setFormData(prev => ({
+              ...prev,
+              tel_1: prev.tel_1 || ticket.cliente_telefone || "",
+              tel_2: prev.tel_2 || ticket.cliente_telefone_2 || "",
+              tel_3: prev.tel_3 || ticket.cliente_telefone_3 || "",
+            }))
           }
         } catch (err) {
           console.error("Erro ao carregar anexos do chamado:", err)

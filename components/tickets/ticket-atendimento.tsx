@@ -75,6 +75,9 @@ interface TicketAtendimentoProps {
     user_id?: string;
     user_avatar?: string | null;
     matricula?: string;
+    phone?: string;
+    phone_2?: string;
+    phone_3?: string;
     arquivo_rg_frente?: string | null;
     arquivo_rg_verso?: string | null;
     arquivo_contracheque?: string | null;
@@ -941,7 +944,10 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 nascimento: "31/01/1984",
                 idLead: ticket.matricula || ticket.id,
                 matricula: ticket.matricula || "",
-                origem: ticket.origin?.toLowerCase() || ""
+                origem: ticket.origin?.toLowerCase() || "",
+                tel1: ticket.phone || "",
+                tel2: ticket.phone_2 || "",
+                tel3: ticket.phone_3 || ""
               }).toString()}`}>
                 <Button 
                   className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2"

@@ -324,7 +324,14 @@ export function HRDashboard({ stats, isLoading: isDashboardLoading }: HRDashboar
   }
 
   const todayDateStr = getTodayDateStr()
-  const todayList = interviews.filter(i => i.date === todayDateStr && (i.tipo || "ENTREVISTAS") === dashboardInterviewTab)
+  const todayList = interviews.filter(i => {
+    if (i.date !== todayDateStr) return false
+    const itemTipo = i.tipo || "ENTREVISTAS"
+    if (dashboardInterviewTab === "ENTREVISTAS") {
+      return itemTipo === "ENTREVISTAS" || i.fase === "Entrevista"
+    }
+    return itemTipo === "LIGAÇÕES"
+  })
   const countToday = todayList.length
 
   const monthlyGoal = stats?.monthlyGoal || 350000
@@ -438,23 +445,68 @@ export function HRDashboard({ stats, isLoading: isDashboardLoading }: HRDashboar
             </div>
 
             {/* Horários e Nomes de Hoje */}
-            <div className="flex-1 min-w-0 max-h-[120px] overflow-y-auto border-t md:border-t-0 border-slate-100 pt-3 md:pt-0 pl-1">
-              {todayList.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {todayList.map((item) => (
-                    <div key={item.id} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 min-w-0 hover:border-slate-200 hover:bg-slate-100/50 transition-all">
-                      <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-105 text-amber-800 bg-amber-50 border border-amber-100 shrink-0">
-                        {item.time ? item.time.substring(0, 5) : "--:--"}
+            <div className="flex-1 min-w-0 w-full pl-1">
+              {(() => {
+                let cltCount = 0;
+                let estagioCount = 0;
+                let pjCount = 0;
+
+                todayList.forEach(i => {
+                  const areaLower = (i.area || "").toLowerCase().trim();
+                  if (areaLower === "estágio" || areaLower === "estagio") {
+                    estagioCount++;
+                  } else if (areaLower === "não estudas" || areaLower === "nao estudas" || areaLower === "pj") {
+                    pjCount++;
+                  } else if (areaLower === "comercial" || areaLower === "operacional" || areaLower === "não estudam" || areaLower === "nao estudam") {
+                    cltCount++;
+                  } else {
+                    cltCount++;
+                  }
+                });
+
+                return (
+                  <div className="grid grid-cols-3 gap-3 md:gap-4 w-full">
+                    {/* CLT block */}
+                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 mb-1 pointer-events-none">
+                        CLT
                       </span>
-                      <p className="text-[11px] font-black text-slate-700 truncate capitalize" title={item.name}>
-                        {item.name.toLowerCase()}
-                      </p>
+                      <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                        {cltCount}
+                      </span>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                        {cltCount === 1 ? "vaga" : "vagas"}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 italic text-center py-4 font-bold">Nenhum agendamento para hoje</p>
-              )}
+
+                    {/* ESTÁGIO block */}
+                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 mb-1 pointer-events-none">
+                        ESTÁGIO
+                      </span>
+                      <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                        {estagioCount}
+                      </span>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                        {estagioCount === 1 ? "vaga" : "vagas"}
+                      </span>
+                    </div>
+
+                    {/* PJ block */}
+                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 mb-1 pointer-events-none">
+                        PJ
+                      </span>
+                      <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                        {pjCount}
+                      </span>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                        {pjCount === 1 ? "vaga" : "vagas"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>

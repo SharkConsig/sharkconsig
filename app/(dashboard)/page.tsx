@@ -1551,9 +1551,9 @@ export default function DashboardPage() {
                         </span>
                         <h3 className="text-lg font-black text-[#1C2643] tracking-tight">O Jeito SharkConsig</h3>
                         <p className="text-xs text-slate-700 leading-relaxed font-semibold space-y-2">
-                          <span className="block">1. **Transparência Total**: Explicamos todas as simulações com clareza.</span>
-                          <span className="block">2. **Confiança & Ética**: Respeitamos cada cliente e suas decisões.</span>
-                          <span className="block">3. **Suporte no Cardume**: Em caso de dificuldades técnicas ou dúvidas, seu supervisor de equipe está de prontidão para ajudar. Use nossa mentoria!</span>
+                          <span className="block">1. <strong className="font-black text-[#1C2643]">Transparência Total</strong>: Explicamos todas as simulações com clareza.</span>
+                          <span className="block">2. <strong className="font-black text-[#1C2643]">Confiança & Ética</strong>: Respeitamos cada cliente e suas decisões.</span>
+                          <span className="block">3. <strong className="font-black text-[#1C2643]">Suporte no Cardume</strong>: Em caso de dificuldades técnicas ou dúvidas, seu supervisor de equipe está de prontidão para ajudar. Use nossa mentoria!</span>
                         </p>
                       </div>
                       <div className="mt-8 pt-4 border-t border-amber-200/60 flex items-center justify-between">
@@ -1783,7 +1783,13 @@ export default function DashboardPage() {
                               </span>
                             </div>
                             <p className="text-2xl font-black text-[#1C2643] tracking-tighter mt-1">
-                              {interviews.filter(i => (i.tipo || "ENTREVISTAS") === dashboardInterviewTab).length} agendadas
+                              {interviews.filter(i => {
+                                const itemTipo = i.tipo || "ENTREVISTAS"
+                                if (dashboardInterviewTab === "ENTREVISTAS") {
+                                  return itemTipo === "ENTREVISTAS" || i.fase === "Entrevista"
+                                }
+                                return itemTipo === "LIGAÇÕES"
+                              }).length} agendadas
                             </p>
                           </div>
                         </div>
@@ -1817,31 +1823,79 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      {/* Right section: Scheduled Names Grid */}
-                      <div className="flex-1 min-w-0 max-h-[140px] overflow-y-auto w-full">
-                        {interviews.filter(i => (i.tipo || "ENTREVISTAS") === dashboardInterviewTab).length > 0 ? (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                            {interviews
-                              .filter(i => (i.tipo || "ENTREVISTAS") === dashboardInterviewTab)
-                              .map((item) => (
-                                <div 
-                                  key={item.id} 
-                                  className="flex items-center gap-2 bg-slate-50 border border-slate-150 rounded-2xl px-4 py-3 min-w-0 hover:border-[#1C2643]/20 hover:bg-slate-100/55 transition-all shadow-sm"
-                                >
-                                  <span className="text-[9px] font-mono font-black px-2 py-1 rounded-xl bg-amber-50 text-amber-600 shrink-0 border border-amber-100">
-                                    {item.time ? item.time.substring(0, 5) : "--:--"}
-                                  </span>
-                                  <p className="text-[12px] font-black text-[#1C2643] truncate capitalize" title={item.name}>
-                                    {item.name.toLowerCase()}
-                                  </p>
-                                </div>
-                              ))}
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center text-slate-400 text-xs italic font-bold h-full py-6">
-                            Nenhum agendamento para hoje
-                          </div>
-                        )}
+                      {/* Right section: Scheduled Categories Quantities (CLT, ESTÁGIO, PJ) */}
+                      <div className="flex-1 min-w-0 w-full">
+                        {(() => {
+                          const activeInterviews = interviews.filter(i => {
+                            const itemTipo = i.tipo || "ENTREVISTAS"
+                            if (dashboardInterviewTab === "ENTREVISTAS") {
+                              return itemTipo === "ENTREVISTAS" || i.fase === "Entrevista"
+                            }
+                            return itemTipo === "LIGAÇÕES"
+                          });
+                          
+                          let cltCount = 0;
+                          let estagioCount = 0;
+                          let pjCount = 0;
+
+                          activeInterviews.forEach(i => {
+                            const areaLower = (i.area || "").toLowerCase().trim();
+                            if (areaLower === "estágio" || areaLower === "estagio") {
+                              estagioCount++;
+                            } else if (areaLower === "não estudas" || areaLower === "nao estudas" || areaLower === "pj") {
+                              pjCount++;
+                            } else if (areaLower === "comercial" || areaLower === "operacional" || areaLower === "não estudam" || areaLower === "nao estudam") {
+                              cltCount++;
+                            } else {
+                              // Fallback default categorization to CLT if area is specified but unmapped,
+                              // or count it as unmapped, but let's default to CLT for other standard office areas
+                              cltCount++;
+                            }
+                          });
+
+                          return (
+                            <div className="grid grid-cols-3 gap-3 md:gap-4 w-full">
+                              {/* CLT block */}
+                              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 mb-1 pointer-events-none">
+                                  CLT
+                                </span>
+                                <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                                  {cltCount}
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                                  {cltCount === 1 ? "vaga" : "vagas"}
+                                </span>
+                              </div>
+
+                              {/* ESTÁGIO block */}
+                              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 mb-1 pointer-events-none">
+                                  ESTÁGIO
+                                </span>
+                                <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                                  {estagioCount}
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                                  {estagioCount === 1 ? "vaga" : "vagas"}
+                                </span>
+                              </div>
+
+                              {/* PJ block */}
+                              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 mb-1 pointer-events-none">
+                                  PJ
+                                </span>
+                                <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                                  {pjCount}
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                                  {pjCount === 1 ? "vaga" : "vagas"}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   </CardContent>

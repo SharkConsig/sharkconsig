@@ -59,6 +59,8 @@ export interface Ticket {
   cliente_nome: string
   cliente_cpf: string
   cliente_telefone: string
+  cliente_telefone_2?: string
+  cliente_telefone_3?: string
   margem: number
   margem_liquida_5?: number
   margem_beneficio_5?: number
@@ -575,7 +577,10 @@ export default function TicketsPage() {
       nascimento: "31/01/1984", 
       idLead: ticket.matricula || ticket.id.toString(),
       matricula: ticket.matricula || "",
-      origem: ticket.origem?.toLowerCase() || ""
+      origem: ticket.origem?.toLowerCase() || "",
+      tel1: ticket.cliente_telefone || "",
+      tel2: ticket.cliente_telefone_2 || "",
+      tel3: ticket.cliente_telefone_3 || ""
     });
     router.push(`/propostas/nova?${params.toString()}`);
   }
@@ -1076,6 +1081,9 @@ export default function TicketsPage() {
                                     user_id: ticket.user_id,
                                     user_avatar: ticket.user_avatar,
                                     matricula: ticket.matricula,
+                                    phone: ticket.cliente_telefone,
+                                    phone_2: ticket.cliente_telefone_2,
+                                    phone_3: ticket.cliente_telefone_3,
                                     arquivo_rg_frente: ticket.arquivo_rg_frente,
                                     arquivo_rg_verso: ticket.arquivo_rg_verso,
                                     arquivo_contracheque: ticket.arquivo_contracheque,

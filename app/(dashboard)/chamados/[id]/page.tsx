@@ -141,7 +141,9 @@ export default function TicketDetailsPage({ params }: { params: Promise<{ id: st
       cpf: ticket.cpf,
       nascimento: "31/01/1984", // Mock birth date
       idLead: ticket.id,
-      tel1: ticket.phone || "",
+      tel1: ticket.phone || (ticket as any).cliente_telefone || "",
+      tel2: (ticket as any).cliente_telefone_2 || "",
+      tel3: (ticket as any).cliente_telefone_3 || "",
       origem: ticket.origin.toLowerCase()
     });
     router.push(`/propostas/nova?${params.toString()}`);

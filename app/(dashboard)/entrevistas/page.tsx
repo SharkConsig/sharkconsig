@@ -252,19 +252,17 @@ export default function EntrevistasPage() {
 
   // Update a single cell directly in our state (Spreadsheet behavior!) & Sync
   const updateCell = async (id: string, field: keyof Interview, value: string) => {
-    const extraFields: Partial<Interview> = {}
     if (field === "fase" && value === "Entrevista") {
       const candidate = interviews.find(item => item.id === id)
       if (candidate && candidate.tipo === "LIGAÇÕES") {
-        extraFields.tipo = "ENTREVISTAS"
-        toast.success(`Candidato ${candidate.name} movido para a aba ENTREVISTAS!`)
+        toast.success(`Candidato ${candidate.name} agora também está disponível na aba ENTREVISTAS!`)
       }
     }
 
     // 1. Instant local ui update
     const updated = interviews.map(item => {
       if (item.id === id) {
-        return { ...item, [field]: value, ...extraFields }
+        return { ...item, [field]: value }
       }
       return item
     })
@@ -283,9 +281,6 @@ export default function EntrevistasPage() {
         }
         
         const updatePayload: Record<string, string | null | undefined> = { [field]: valueForDb }
-        if (extraFields.tipo && hasTipoColumn) {
-          updatePayload.tipo = extraFields.tipo
-        }
 
         const { error } = await supabase
           .from('hr_interviews')
@@ -401,11 +396,64 @@ export default function EntrevistasPage() {
     console.log(`Candidato(a) ${name || "Sem Nome"} removido(a) com sucesso (Offline).`)
   }
 
+  // Helper to get today's date string in local YYYY-MM-DD
+  const getTodayDateStr = () => {
+    const d = new Date()
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const isCandidateInTab = (item: Interview, tab: "ENTREVISTAS" | "LIGAÇÕES") => {
+    const itemTipo = item.tipo || "ENTREVISTAS"
+    if (tab === "ENTREVISTAS") {
+      return itemTipo === "ENTREVISTAS" || item.fase === "Entrevista"
+    }
+    return itemTipo === "LIGAÇÕES"
+  }
+
+  const sortCandidates = (list: Interview[]) => {
+    const today = getTodayDateStr()
+    return [...list].sort((a, b) => {
+      const dateA = a.date || ""
+      const dateB = b.date || ""
+
+      const hasDateA = !!dateA
+      const hasDateB = !!dateB
+
+      if (hasDateA && hasDateB) {
+        const isPastA = dateA < today
+        const isPastB = dateB < today
+
+        if (isPastA !== isPastB) {
+          return isPastA ? 1 : -1
+        }
+
+        if (dateA !== dateB) {
+          if (isPastA) {
+            // Mais recente do passado vem acima (decrescente para as datas passadas)
+            return dateB.localeCompare(dateA)
+          } else {
+            // Mais proximo de hoje/futuras vem acima (crescente para datas hoje/futuras)
+            return dateA.localeCompare(dateB)
+          }
+        }
+      } else if (hasDateA !== hasDateB) {
+        return hasDateA ? -1 : 1
+      }
+
+      const timeA = a.time || ""
+      const timeB = b.time || ""
+      return timeA.localeCompare(timeB)
+    })
+  }
+
   // Client side CSV download formatted specifically for Excel to open beautifully (UTF-8 BOM)
   const handleExportCSV = () => {
     const headers = ["Candidato", "Contato", "Data", "Horário", "Fase", "Plataforma", "Área", "Observações"]
     
-    const visibleRows = interviews.filter(item => (item.tipo || "ENTREVISTAS") === activeTab)
+    const visibleRows = sortCandidates(interviews.filter(item => isCandidateInTab(item, activeTab)))
     const rows = visibleRows.map(item => {
       const formattedDate = item.date ? item.date.split("-").reverse().join("/") : ""
       return [
@@ -434,33 +482,26 @@ export default function EntrevistasPage() {
   }
 
   // Filter application
-  const filteredInterviews = interviews.filter(item => {
-    const matchTab = (item.tipo || "ENTREVISTAS") === activeTab
+  const filteredInterviews = sortCandidates(
+    interviews.filter(item => {
+      const matchTab = isCandidateInTab(item, activeTab)
 
-    const matchSearch = item.name.toLowerCase().includes(search.toLowerCase()) || 
-                        item.phone.toLowerCase().includes(search.toLowerCase()) || 
-                        item.notes.toLowerCase().includes(search.toLowerCase())
-                        
-    const matchFase = faseFilter === "Todas" || item.fase === faseFilter
-    const matchPlataforma = plataformaFilter === "Todas" || item.plataforma === plataformaFilter
-    const matchArea = areaFilter === "Todas" || item.area === areaFilter
-    const matchDate = !dateFilter || item.date === dateFilter
-    
-    return matchTab && matchSearch && matchFase && matchPlataforma && matchArea && matchDate
-  })
+      const matchSearch = item.name.toLowerCase().includes(search.toLowerCase()) || 
+                          item.phone.toLowerCase().includes(search.toLowerCase()) || 
+                          item.notes.toLowerCase().includes(search.toLowerCase())
+                          
+      const matchFase = faseFilter === "Todas" || item.fase === faseFilter
+      const matchPlataforma = plataformaFilter === "Todas" || item.plataforma === plataformaFilter
+      const matchArea = areaFilter === "Todas" || item.area === areaFilter
+      const matchDate = !dateFilter || item.date === dateFilter
+      
+      return matchTab && matchSearch && matchFase && matchPlataforma && matchArea && matchDate
+    })
+  )
 
   // Calculations for quick metrics
-  const tabInterviews = interviews.filter(i => (i.tipo || "ENTREVISTAS") === activeTab)
+  const tabInterviews = interviews.filter(i => isCandidateInTab(i, activeTab))
   const totalCandidatos = tabInterviews.length
-
-  // Helper to get today's date string in local YYYY-MM-DD
-  const getTodayDateStr = () => {
-    const d = new Date()
-    const year = d.getFullYear()
-    const month = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
-  }
 
   const todayDateStr = getTodayDateStr()
   const todayList = tabInterviews.filter(i => i.date === todayDateStr)
@@ -503,25 +544,68 @@ export default function EntrevistasPage() {
               </div>
               
               {/* Horários e Nomes de Hoje */}
-              <div className="flex-1 min-w-0 max-h-[100px] overflow-y-auto border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-6">
-                {todayList.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {todayList.map((item) => (
-                      <div key={item.id} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 min-w-0">
-                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 shrink-0">
-                          {item.time ? item.time.substring(0, 5) : "--:--"}
+              <div className="flex-1 min-w-0 md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-6 w-full">
+                {(() => {
+                  let cltCount = 0;
+                  let estagioCount = 0;
+                  let pjCount = 0;
+
+                  todayList.forEach(i => {
+                    const areaLower = (i.area || "").toLowerCase().trim();
+                    if (areaLower === "estágio" || areaLower === "estagio") {
+                      estagioCount++;
+                    } else if (areaLower === "não estudas" || areaLower === "nao estudas" || areaLower === "pj") {
+                      pjCount++;
+                    } else if (areaLower === "comercial" || areaLower === "operacional" || areaLower === "não estudam" || areaLower === "nao estudam") {
+                      cltCount++;
+                    } else {
+                      cltCount++;
+                    }
+                  });
+
+                  return (
+                    <div className="grid grid-cols-3 gap-3 md:gap-4 w-full">
+                      {/* CLT block */}
+                      <div className="bg-slate-50 border border-slate-150 rounded-2xl p-2 md:p-3 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 mb-1 pointer-events-none">
+                          CLT
                         </span>
-                        <p className="text-[11px] font-black text-slate-700 truncate capitalize" title={item.name}>
-                          {item.name.toLowerCase()}
-                        </p>
+                        <span className="text-xl md:text-2xl font-black text-[#1C2643] tracking-tighter">
+                          {cltCount}
+                        </span>
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                          {cltCount === 1 ? "vaga" : "vagas"}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center text-slate-400 text-xs italic font-semibold h-full">
-                    Nenhum agendamento para hoje
-                  </div>
-                )}
+
+                      {/* ESTÁGIO block */}
+                      <div className="bg-slate-50 border border-slate-150 rounded-2xl p-2 md:p-3 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 mb-1 pointer-events-none">
+                          ESTÁGIO
+                        </span>
+                        <span className="text-xl md:text-2xl font-black text-[#1C2643] tracking-tighter">
+                          {estagioCount}
+                        </span>
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                          {estagioCount === 1 ? "vaga" : "vagas"}
+                        </span>
+                      </div>
+
+                      {/* PJ block */}
+                      <div className="bg-slate-50 border border-slate-150 rounded-2xl p-2 md:p-3 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 mb-1 pointer-events-none">
+                          PJ
+                        </span>
+                        <span className="text-xl md:text-2xl font-black text-[#1C2643] tracking-tighter">
+                          {pjCount}
+                        </span>
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                          {pjCount === 1 ? "vaga" : "vagas"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </CardContent>
           </Card>
