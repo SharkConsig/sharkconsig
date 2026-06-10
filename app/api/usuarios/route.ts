@@ -32,6 +32,7 @@ export async function GET(request: Request) {
         nome: metadata.nome_completo || metadata.full_name || 'Sem Nome',
         username: metadata.username,
         funcao: metadata.funcao || 'Corretor',
+        regime_contratacao: metadata.regime_contratacao || '',
         equipe: metadata.equipe || 'Shark',
         supervisor_id: metadata.supervisor_id,
         supervisor_nome: supervisorNome,
@@ -67,6 +68,7 @@ export async function GET(request: Request) {
         nome: metadata.nome_completo || metadata.full_name || 'Sem Nome',
         username: metadata.username,
         funcao: metadata.funcao || 'Corretor',
+        regime_contratacao: metadata.regime_contratacao || '',
         equipe: metadata.equipe || 'Shark',
         supervisor_id: metadata.supervisor_id,
         supervisor_nome: supervisorNome,
@@ -89,7 +91,7 @@ export async function POST(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
     const body = await request.json()
-    const { email, password, nome_completo, username, funcao, avatar_url, supervisor_id } = body
+    const { email, password, nome_completo, username, funcao, regime_contratacao, avatar_url, supervisor_id } = body
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email e senha são obrigatórios' }, { status: 400 })
@@ -104,6 +106,7 @@ export async function POST(request: Request) {
         nome_completo, 
         username,
         funcao,
+        regime_contratacao,
         avatar_url,
         supervisor_id
       }
@@ -123,7 +126,7 @@ export async function PUT(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
     const body = await request.json()
-    const { id, email, password, nome_completo, username, funcao, avatar_url, supervisor_id, supervisor_nome, status } = body
+    const { id, email, password, nome_completo, username, funcao, regime_contratacao, avatar_url, supervisor_id, supervisor_nome, status } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 })
@@ -143,6 +146,7 @@ export async function PUT(request: Request) {
     if (nome_completo) metadata.nome_completo = nome_completo
     if (username) metadata.username = username
     if (funcao) metadata.funcao = funcao
+    if (regime_contratacao !== undefined) metadata.regime_contratacao = regime_contratacao
     if (status) metadata.status = status.toUpperCase()
     if (supervisor_id !== undefined) metadata.supervisor_id = supervisor_id
     if (supervisor_nome !== undefined) metadata.supervisor_nome = supervisor_nome

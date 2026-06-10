@@ -31,6 +31,7 @@ interface UsuarioData {
   nome: string
   username: string
   funcao: string
+  regime_contratacao?: string
   avatar_url?: string
   supervisor_id?: string
 }
@@ -49,6 +50,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     nome_completo: "",
     username: "",
     funcao: "",
+    regime_contratacao: "",
     senha: "",
     avatar_url: "",
     supervisor_id: ""
@@ -63,6 +65,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         nome_completo: usuario.nome || "",
         username: usuario.username || "",
         funcao: usuario.funcao || "",
+        regime_contratacao: usuario.regime_contratacao || "",
         senha: "", // Não mostramos a senha atual por segurança
         avatar_url: usuario.avatar_url || "",
         supervisor_id: usuario.supervisor_id || ""
@@ -73,6 +76,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         nome_completo: "",
         username: "",
         funcao: "",
+        regime_contratacao: "",
         senha: "",
         avatar_url: "",
         supervisor_id: ""
@@ -157,7 +161,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     e.preventDefault()
     
     // Na edição a senha é opcional
-    if (!formData.nome_completo || !formData.username || !formData.funcao || (!usuario && !formData.senha)) {
+    if (!formData.nome_completo || !formData.username || !formData.funcao || !formData.regime_contratacao || (!usuario && !formData.senha)) {
       toast.error("Preencha todos os campos obrigatórios")
       return
     }
@@ -212,6 +216,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
           nome_completo: "",
           username: "",
           funcao: "",
+          regime_contratacao: "",
           senha: "",
           avatar_url: "",
           supervisor_id: ""
@@ -275,6 +280,24 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                     className="h-[38px] bg-slate-50/50 border-slate-100 rounded-lg px-3 text-[11px] font-bold text-slate-700 focus-visible:ring-1 focus-visible:ring-slate-200 transition-all"
                     required
                   />
+                </div>
+
+                {/* Regime de Contratação */}
+                <div className="space-y-1.5">
+                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Regime de Contratação</Label>
+                  <Select 
+                    value={formData.regime_contratacao} 
+                    onValueChange={(value) => setFormData({ ...formData, regime_contratacao: value })}
+                  >
+                    <SelectTrigger className="h-[38px] bg-slate-50/50 border-slate-100 rounded-lg px-3 text-[11px] font-bold text-slate-700 focus:ring-1 focus:ring-slate-200 transition-all">
+                      <SelectValue placeholder="Selecione o regime de contratação..." />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-100 shadow-xl">
+                      <SelectItem value="CLT" className="text-[10.5px] font-medium">CLT</SelectItem>
+                      <SelectItem value="ESTÁGIO" className="text-[10.5px] font-medium">ESTÁGIO</SelectItem>
+                      <SelectItem value="PJ" className="text-[10.5px] font-medium">PJ</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Função */}
@@ -413,7 +436,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
             <Button 
               type="submit"
               disabled={isLoading}
-              className="w-[160px] h-[38px] bg-[#0a192f] hover:bg-[#0a192f]/90 text-white font-bold text-[11px] rounded-lg gap-2 transition-all uppercase tracking-widest shadow-lg shadow-slate-900/20 mr-4 mb-4"
+              className="w-auto min-w-[170px] px-5 h-[38px] bg-[#0a192f] hover:bg-[#0a192f]/90 text-white font-bold text-[10.5px] rounded-lg flex items-center justify-center gap-2 transition-all uppercase tracking-wider shadow-lg shadow-slate-900/20 mr-4 mb-4 whitespace-nowrap"
             >
               {isLoading ? (
                 <>

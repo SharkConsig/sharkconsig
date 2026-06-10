@@ -22,7 +22,12 @@ export default function LoginPage() {
         const { data: { session }, error } = await withRetry(() => supabase.auth.getSession())
         if (error) throw error
         if (session) {
-          router.replace("/")
+          const userStatus = (session.user?.user_metadata?.status || 'ATIVO').toUpperCase()
+          if (userStatus === 'INATIVO') {
+            await supabase.auth.signOut()
+          } else {
+            router.replace("/")
+          }
         }
       } catch (err) {
         console.error("Erro ao verificar sessão no login:", err)
@@ -43,13 +48,22 @@ export default function LoginPage() {
         loginEmail = `${loginEmail.replace(/\s+/g, '.')}@sharkconsig.com`
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: loginEmail,
         password,
       })
 
       if (error) {
         setError(error.message === "Invalid login credentials" ? "Usuário ou senha incorretos" : error.message)
+        setIsLoading(false)
+        return
+      }
+
+      // Check if user status is INATIVO
+      const userStatus = (data?.user?.user_metadata?.status || 'ATIVO').toUpperCase()
+      if (userStatus === 'INATIVO') {
+        await supabase.auth.signOut()
+        setError("Sua conta está inativa. Entre em contato com o administrador.")
         setIsLoading(false)
         return
       }

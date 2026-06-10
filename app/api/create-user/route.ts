@@ -4,9 +4,9 @@ import { NextResponse } from "next/server";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { nome_completo, username, senha, funcao, avatar_url, supervisor_id, supervisor_nome } = body;
+    const { nome_completo, username, senha, funcao, regime_contratacao, avatar_url, supervisor_id, supervisor_nome } = body;
 
-    if (!nome_completo || !username || !senha || !funcao) {
+    if (!nome_completo || !username || !senha || !funcao || !regime_contratacao) {
       return NextResponse.json(
         { error: "Campos obrigatórios ausentes" },
         { status: 400 }
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
         nome_completo,
         username,
         funcao,
+        regime_contratacao,
         avatar_url: safeAvatarUrl,
         supervisor_id: supervisor_id || null,
         supervisor_nome: supervisor_nome || null

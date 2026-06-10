@@ -28,7 +28,13 @@ export default function DashboardLayout({
         if (!session) {
           router.replace("/auth/login")
         } else {
-          setIsLoading(false)
+          const userStatus = (session.user?.user_metadata?.status || 'ATIVO').toUpperCase()
+          if (userStatus === 'INATIVO') {
+            await supabase.auth.signOut()
+            router.replace("/auth/login")
+          } else {
+            setIsLoading(false)
+          }
         }
       } catch (err) {
         console.error("Erro ao verificar sessão:", err)
@@ -48,7 +54,12 @@ export default function DashboardLayout({
             router.replace("/auth/login")
           }
         } else if (session) {
-          setIsLoading(false)
+          const userStatus = (session.user?.user_metadata?.status || 'ATIVO').toUpperCase()
+          if (userStatus === 'INATIVO') {
+            supabase.auth.signOut()
+          } else {
+            setIsLoading(false)
+          }
         }
       } catch (err) {
         console.error("Erro no onAuthStateChange:", err)

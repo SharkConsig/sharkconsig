@@ -47,6 +47,7 @@ interface Usuario {
   email: string
   username: string
   funcao: string
+  regime_contratacao?: string
   status: string
   avatar_url?: string
   created_at: string
