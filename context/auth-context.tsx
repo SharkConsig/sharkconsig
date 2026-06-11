@@ -15,6 +15,7 @@ interface Perfil {
   status: 'Ativo' | 'Inativo'
   permissoes: any
   avatar_url?: string
+  foto_campanha_url?: string
   supervisor_id?: string
   supervisor_nome?: string
 }
@@ -31,6 +32,7 @@ interface AuthContextType {
   isEstagio: boolean
   isRecursosHumanos: boolean
   canAccessAdminAreas: boolean
+  refreshPerfil: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -57,6 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             status: "Ativo",
             permissoes: {},
             avatar_url: metadata.avatar_url,
+            foto_campanha_url: metadata.foto_campanha_url,
             supervisor_id: metadata.supervisor_id,
             supervisor_nome: metadata.supervisor_nome
           })

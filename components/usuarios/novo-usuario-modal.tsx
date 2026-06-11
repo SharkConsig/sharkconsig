@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select"
 import { Lock, Camera, Pencil, Loader2, Eye, EyeOff, X } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import Image from "next/image"
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
@@ -33,6 +34,7 @@ interface UsuarioData {
   funcao: string
   regime_contratacao?: string
   avatar_url?: string
+  foto_campanha_url?: string
   supervisor_id?: string
 }
 
@@ -53,11 +55,18 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     regime_contratacao: "",
     senha: "",
     avatar_url: "",
+    foto_campanha_url: "",
     supervisor_id: ""
   })
   const [supervisores, setSupervisores] = useState<{ id: string, nome: string }[]>([])
+  
+  // Profile Photo State
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  // Campaign Photo State
+  const [selectedCampanhaFile, setSelectedCampanhaFile] = useState<File | null>(null)
+  const [previewCampanhaUrl, setPreviewCampanhaUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (usuario && isOpen) {
@@ -68,9 +77,11 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         regime_contratacao: usuario.regime_contratacao || "",
         senha: "", // Não mostramos a senha atual por segurança
         avatar_url: usuario.avatar_url || "",
+        foto_campanha_url: usuario.foto_campanha_url || "",
         supervisor_id: usuario.supervisor_id || ""
       })
       setPreviewUrl(usuario.avatar_url || null)
+      setPreviewCampanhaUrl(usuario.foto_campanha_url || null)
     } else if (!usuario && isOpen) {
       setFormData({
         nome_completo: "",
@@ -79,10 +90,13 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         regime_contratacao: "",
         senha: "",
         avatar_url: "",
+        foto_campanha_url: "",
         supervisor_id: ""
       })
       setPreviewUrl(null)
       setSelectedFile(null)
+      setPreviewCampanhaUrl(null)
+      setSelectedCampanhaFile(null)
     }
   }, [usuario, isOpen])
 
@@ -126,6 +140,28 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     setPreviewUrl(null)
   }
 
+  const handleCampanhaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) { 
+        toast.error("A imagem deve ter menos de 2MB")
+        return
+      }
+      
+      setSelectedCampanhaFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPreviewCampanhaUrl(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const removeCampanhaFile = () => {
+    setSelectedCampanhaFile(null)
+    setPreviewCampanhaUrl(null)
+  }
+
   const uploadAvatar = async (file: File, username: string) => {
     try {
       const fileExt = file.name.split('.').pop()
@@ -157,6 +193,37 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     }
   }
 
+  const uploadFotoCampanha = async (file: File, username: string) => {
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `campanha-${username}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `profiles/${fileName}`
+
+      const { error } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { 
+          upsert: true,
+          contentType: file.type
+        })
+
+      if (error) {
+        if (error.message.includes('bucket not found')) {
+          throw new Error("Bucket 'avatars' não encontrado. Crie-o no Supabase.")
+        }
+        throw error
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+
+      return publicUrl
+    } catch (error) {
+      console.error("Erro no upload da foto de campanha:", error)
+      throw error
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -168,6 +235,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
 
     setIsLoading(true)
     let finalAvatarUrl = formData.avatar_url // Mantém a atual if editing
+    let finalFotoCampanhaUrl = formData.foto_campanha_url // Mantém a atual if editing
 
     try {
       if (selectedFile) {
@@ -176,6 +244,17 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         } catch (uploadErr: unknown) {
           const msg = uploadErr instanceof Error ? uploadErr.message : "Erro desconhecido";
           toast.error(`Erro no upload da foto: ${msg}`)
+          setIsLoading(false)
+          return
+        }
+      }
+
+      if (selectedCampanhaFile) {
+        try {
+          finalFotoCampanhaUrl = await uploadFotoCampanha(selectedCampanhaFile, formData.username)
+        } catch (uploadCampanhaErr: unknown) {
+          const msg = uploadCampanhaErr instanceof Error ? uploadCampanhaErr.message : "Erro desconhecido";
+          toast.error(`Erro no upload da foto de campanha: ${msg}`)
           setIsLoading(false)
           return
         }
@@ -193,10 +272,11 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
             ...formData, 
             id: usuario.id, 
             avatar_url: finalAvatarUrl, 
+            foto_campanha_url: finalFotoCampanhaUrl,
             password: formData.senha || undefined,
             supervisor_nome: supervisorNome
           }
-        : { ...formData, avatar_url: finalAvatarUrl, supervisor_nome: supervisorNome }
+        : { ...formData, avatar_url: finalAvatarUrl, foto_campanha_url: finalFotoCampanhaUrl, supervisor_nome: supervisorNome }
 
       const response = await fetch(endpoint, {
         method,
@@ -219,11 +299,14 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
           regime_contratacao: "",
           senha: "",
           avatar_url: "",
+          foto_campanha_url: "",
           supervisor_id: ""
         })
       }
       setSelectedFile(null)
       setPreviewUrl(null)
+      setSelectedCampanhaFile(null)
+      setPreviewCampanhaUrl(null)
       onClose()
     } catch (error: unknown) {
       console.error("Erro ao salvar usuário:", error)
@@ -371,53 +454,110 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                 </div>
               </div>
 
-              {/* Profile Picture Section */}
-              <div className="flex flex-col items-center justify-start pt-4">
-                <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4 block text-center w-full">Foto de Perfil</Label>
-                <div className="relative group mb-4">
-                  <Avatar className="w-32 h-32 border-4 border-slate-50 shadow-xl ring-1 ring-slate-100">
-                    <AvatarImage src={previewUrl || undefined} />
-                    <AvatarFallback className="bg-slate-100 text-slate-300">
-                      <Camera className="w-10 h-10" />
-                    </AvatarFallback>
-                  </Avatar>
-                  
-                  {previewUrl ? (
-                    <button 
-                      type="button"
-                      onClick={removeFile}
-                      className="absolute -top-1 -right-1 bg-rose-500 text-white p-1.5 rounded-full shadow-lg hover:bg-rose-600 transition-all z-10"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  ) : null}
+              {/* Media Column (Profile & Campaign Photo) */}
+              <div className="flex flex-col items-center justify-start pt-4 space-y-8 h-full">
+                
+                {/* Profile Picture Section */}
+                <div className="flex flex-col items-center w-full">
+                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4 block text-center w-full">Foto de Perfil</Label>
+                  <div className="relative group mb-4">
+                    <Avatar className="w-32 h-32 border-4 border-slate-50 shadow-xl ring-1 ring-slate-100">
+                      <AvatarImage src={previewUrl || undefined} />
+                      <AvatarFallback className="bg-slate-100 text-slate-300">
+                        <Camera className="w-10 h-10" />
+                      </AvatarFallback>
+                    </Avatar>
+                    
+                    {previewUrl ? (
+                      <button 
+                        type="button"
+                        onClick={removeFile}
+                        className="absolute -top-1 -right-1 bg-rose-500 text-white p-1.5 rounded-full shadow-lg hover:bg-rose-600 transition-all z-10"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    ) : null}
 
-                  <label 
-                    htmlFor="avatar-upload"
-                    className="absolute bottom-0 right-0 bg-white border border-slate-200 p-2 rounded-lg shadow-lg cursor-pointer hover:bg-slate-50 transition-all hover:scale-110"
+                    <label 
+                      htmlFor="avatar-upload"
+                      className="absolute bottom-0 right-0 bg-white border border-slate-200 p-2 rounded-lg shadow-lg cursor-pointer hover:bg-slate-50 transition-all hover:scale-110"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-slate-600" />
+                      <input 
+                        id="avatar-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleFileChange}
+                      />
+                    </label>
+                  </div>
+                  
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById('avatar-upload')?.click()}
+                    className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest"
                   >
-                    <Pencil className="w-3.5 h-3.5 text-slate-600" />
-                    <input 
-                      id="avatar-upload"
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleFileChange}
-                    />
-                  </label>
+                    Selecionar Foto
+                  </Button>
+                </div>
+
+                {/* Campaign Photo Section (FOTO CAMPANHA) */}
+                <div className="flex flex-col items-center w-full pt-8 border-t border-slate-100">
+                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4 block text-center w-full">Foto Campanha</Label>
+                  <div className="relative group mb-4">
+                    <div className="w-32 h-[93px] relative overflow-hidden rounded-2xl border-4 border-slate-50 shadow-xl ring-1 ring-slate-100 flex items-center justify-center bg-slate-50">
+                      {previewCampanhaUrl ? (
+                        <Image 
+                          src={previewCampanhaUrl} 
+                          alt="Foto Campanha" 
+                          fill 
+                          className="object-cover rounded-xl"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <Camera className="w-8 h-8 text-slate-300" />
+                      )}
+                    </div>
+                    
+                    {previewCampanhaUrl ? (
+                      <button 
+                        type="button"
+                        onClick={removeCampanhaFile}
+                        className="absolute -top-1 -right-1 bg-rose-500 text-white p-1.5 rounded-full shadow-lg hover:bg-rose-600 transition-all z-10"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    ) : null}
+
+                    <label 
+                      htmlFor="campanha-upload"
+                      className="absolute bottom-0 right-0 bg-white border border-slate-200 p-2 rounded-lg shadow-lg cursor-pointer hover:bg-slate-50 transition-all hover:scale-110"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-slate-600" />
+                      <input 
+                        id="campanha-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleCampanhaFileChange}
+                      />
+                    </label>
+                  </div>
+                  
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById('campanha-upload')?.click()}
+                    className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest"
+                  >
+                    Selecionar Foto
+                  </Button>
                 </div>
                 
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => document.getElementById('avatar-upload')?.click()}
-                  className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest"
-                >
-                  Selecionar Foto
-                </Button>
-                
-                <p className="mt-4 text-[9px] font-medium text-slate-400 text-center leading-relaxed max-w-[160px]">
-                  Selecione uma imagem do seu computador (máx. 1MB).
+                <p className="text-[9px] font-medium text-slate-400 text-center leading-relaxed max-w-[160px]">
+                  Formatos aceitos: JPG, PNG até 2MB.
                 </p>
               </div>
             </div>

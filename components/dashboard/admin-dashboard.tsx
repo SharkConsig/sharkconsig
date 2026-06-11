@@ -12,16 +12,19 @@ import {
   Loader2,
   BarChart3,
   MessageSquare,
-  Users
+  Users,
+  Calendar
 } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
+import Image from "next/image"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
 
 interface Perfil {
   id: string
   nome: string
   role: string
+  avatar_url?: string
 }
 
 interface RankingItem {
@@ -172,7 +175,7 @@ export function AdminDashboard({
         </motion.div>
       </div>
 
-      {/* TABS SELECTION AND FILTER */}
+      {/* TABS SELECTION */}
       <div className="flex flex-col gap-4 mb-8">
         <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl">
           <button
@@ -200,68 +203,6 @@ export function AdminDashboard({
             CHAMADOS
           </button>
         </div>
-
-        {/* Filter Section - Aligned to Right, Below Tabs */}
-        <div className="flex justify-end">
-          <div className="flex items-end gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Início</span>
-              <input 
-                type="date" 
-                value={tempStartDate}
-                onChange={(e) => setTempStartDate(e.target.value)}
-                className="text-[12px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-              />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Fim</span>
-              <input 
-                type="date" 
-                value={tempEndDate}
-                onChange={(e) => setTempEndDate(e.target.value)}
-                className="text-[12px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => {
-                  setStartDate(tempStartDate);
-                  setEndDate(tempEndDate);
-                }}
-                disabled={!tempStartDate && !tempEndDate}
-                className="px-4 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm h-[34px]"
-              >
-                APLICAR
-              </button>
-              <button 
-                onClick={() => {
-                  const todayStr = format(new Date(), "yyyy-MM-dd");
-                  setTempStartDate(todayStr);
-                  setTempEndDate(todayStr);
-                  setStartDate(todayStr);
-                  setEndDate(todayStr);
-                }}
-                className="px-4 py-2 bg-slate-100 text-slate-500 text-[10px] font-black rounded-lg hover:bg-slate-200 transition-all active:scale-95 shadow-sm h-[34px]"
-              >
-                HOJE
-              </button>
-              <button 
-                onClick={() => {
-                  const now = new Date();
-                  const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
-                  const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
-                  setTempStartDate(firstDay);
-                  setTempEndDate(lastDay);
-                  setStartDate(firstDay);
-                  setEndDate(lastDay);
-                }}
-                className="px-4 py-2 bg-slate-100 text-slate-500 text-[10px] font-black rounded-lg hover:bg-slate-200 transition-all active:scale-95 shadow-sm h-[34px]"
-              >
-                MÊS
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
 
       {activeTab === 'propostas' ? (
@@ -273,84 +214,150 @@ export function AdminDashboard({
         >
           {/* Existing Proposal Content */}
           {/* 2. Meta mensal da empresa (velocimetro) */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-4 lg:row-span-2">
-          <DashboardCard className="h-full flex flex-col shadow-2xl shadow-[#1C2643]/5 overflow-hidden group border-slate-100">
-            <div className="relative z-10 flex flex-col h-full">
-              <div className="flex items-center justify-between mb-2">
-                 <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">Meta Mensal da Empresa</p>
-                 <div className="bg-[#1C2643]/5 p-2 rounded-xl">
-                    <Target className="w-5 h-5 text-[#1C2643]" />
-                 </div>
-              </div>
-              <p className="text-lg sm:text-xl lg:text-2xl font-black text-[#1C2643] tracking-tighter mb-6 break-words">{formatCurrency(monthlyGoal)}</p>
-              
-              <div className="flex-1 flex flex-col items-center justify-center py-6 relative">
-                <div className="w-full max-w-[280px]">
-                  <Gauge value={progressPercent} producedValue={monthlyProduced} />
+          {/* Subproject containing Photo and Meta cards */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            className="lg:col-span-8 lg:row-span-2 grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch"
+          >
+            {/* 1. COLLABORATOR PHOTO CARD */}
+            <div className="md:col-span-5 relative overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl shadow-[#1C2643]/5 min-h-[320px] md:min-h-0">
+              {perfil?.foto_campanha_url || perfil?.avatar_url ? (
+                <Image 
+                  src={perfil?.foto_campanha_url || perfil?.avatar_url || ""} 
+                  alt={perfil.nome || "Colaborador"} 
+                  fill 
+                  className="object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-[#1C2643]/5 flex flex-col items-center justify-center text-[#1C2643]">
+                  <Users className="w-16 h-16 opacity-35" />
+                  <span className="text-[10px] font-black text-slate-400 mt-3 uppercase tracking-widest text-center px-4">Sem foto cadastrada</span>
                 </div>
-                <div className="mt-4 flex flex-col items-center justify-center">
-                   {isLoading ? (
-                     <Loader2 className="w-8 h-8 animate-spin text-[#1C2643]" />
-                   ) : (
-                     <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#1C2643] tracking-tighter leading-none">{progressPercent}%</p>
-                   )}
-                   <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest mt-2 tracking-[0.3em]">PROGRESSO TOTAL</p>
-                </div>
-              </div>
-
-              <div className="space-y-6 mt-auto">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full border border-emerald-100">
-                    <TrendingUp className="w-4 h-4" />
-                    <span className="text-[11px] font-black uppercase tracking-widest text-center">
-                      ESTATÍSTICAS EM TEMPO REAL
-                    </span>
-                  </div>
-                  <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-2 text-center">
-                    {remainingValue > 0 ? (
-                      <>Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para a meta</>
-                    ) : (
-                      <span className="text-emerald-600 font-black">A meta da empresa foi superada!</span>
-                    )}
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
-          </DashboardCard>
-        </motion.div>
 
-        {/* 3. Meta de Hoje e 4. Meta Mensal do Time */}
-        <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Meta de Hoje */}
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
-            <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 border-slate-100">
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0 border border-amber-100">
-                  <Zap className="w-6 h-6 text-amber-500 fill-amber-500" />
+            {/* 2. Meta mensal da empresa (velocimetro) */}
+            <DashboardCard className="md:col-span-7 flex flex-col shadow-2xl shadow-[#1C2643]/5 overflow-hidden group border-slate-100">
+              <div className="relative z-10 flex flex-col h-full">
+                <div className="flex items-center justify-between mb-2">
+                   <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">Meta Mensal da Empresa</p>
+                   <div className="bg-[#1C2643]/5 p-2 rounded-xl">
+                      <Target className="w-5 h-5 text-[#1C2643]" />
+                   </div>
                 </div>
-                <div className="text-right">
+                <p className="text-lg sm:text-xl lg:text-2xl font-black text-[#1C2643] tracking-tighter mb-6 break-words">{formatCurrency(monthlyGoal)}</p>
+                
+                <div className="flex-1 flex flex-col items-center justify-center py-6 relative">
+                  <div className="w-full max-w-[280px]">
+                    <Gauge value={progressPercent} producedValue={monthlyProduced} />
+                  </div>
+                  <div className="mt-4 flex flex-col items-center justify-center">
+                     {isLoading ? (
+                       <Loader2 className="w-8 h-8 animate-spin text-[#1C2643]" />
+                     ) : (
+                       <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#1C2643] tracking-tighter leading-none">{progressPercent}%</p>
+                     )}
+                     <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest mt-2 tracking-[0.3em]">PROGRESSO TOTAL</p>
+                  </div>
                 </div>
-              </div>
-              <div>
-                 <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
-                 <p className="text-2xl lg:text-3xl font-black text-[#1C2643] tracking-tighter mt-1 leading-none">{formatCurrency(calculatedDailyGoal)}</p>
-              </div>
-              <div className="mt-auto pt-4">
-                 <div className="flex justify-between items-center mb-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE: {formatCurrency(dailyProduced)}</p>
-                    <p className="text-[10px] font-black text-[#1C2643]">{dailyProgressPercent}%</p>
-                 </div>
-                 <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${dailyProgressPercent}%` }}
-                      transition={{ duration: 1 }}
-                      className="h-full bg-gradient-to-r from-amber-400 to-amber-600 shadow-[0_0_10px_rgba(245,158,11,0.5)]" 
-                    />
-                 </div>
+
+                <div className="space-y-6 mt-auto">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full border border-emerald-100">
+                      <TrendingUp className="w-4 h-4" />
+                      <span className="text-[11px] font-black uppercase tracking-widest text-center">
+                        ESTATÍSTICAS EM TEMPO REAL
+                      </span>
+                    </div>
+                    <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-2 text-center">
+                      {remainingValue > 0 ? (
+                        <>Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para a meta</>
+                      ) : (
+                        <span className="text-emerald-600 font-black">A meta da empresa foi superada!</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
               </div>
             </DashboardCard>
           </motion.div>
+
+          {/* 3. Meta de Hoje e 4. Meta Mensal do Time */}
+          <div className="lg:col-span-4 lg:row-span-2 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-1">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05 }}>
+              <DashboardCard className="shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3.5 !p-[18px] sm:!p-5 !rounded-[24px] bg-white border border-slate-200">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+                    <Calendar className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  </div>
+                  <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-widest">Filtrar por Período</p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Início</span>
+                    <input 
+                      type="date" 
+                      value={tempStartDate}
+                      onChange={(e) => setTempStartDate(e.target.value)}
+                      className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Fim</span>
+                    <input 
+                      type="date" 
+                      value={tempEndDate}
+                      onChange={(e) => setTempEndDate(e.target.value)}
+                      className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5 mt-1">
+                  <button 
+                    onClick={() => {
+                      setStartDate(tempStartDate);
+                      setEndDate(tempEndDate);
+                    }}
+                    disabled={!tempStartDate && !tempEndDate}
+                    className="px-2.5 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center h-8"
+                  >
+                    FILTRAR
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const todayStr = format(new Date(), "yyyy-MM-dd");
+                      setTempStartDate(todayStr);
+                      setTempEndDate(todayStr);
+                      setStartDate(todayStr);
+                      setEndDate(todayStr);
+                    }}
+                    className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
+                  >
+                    HOJE
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const now = new Date();
+                      const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+                      const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+                      setTempStartDate(firstDay);
+                      setTempEndDate(lastDay);
+                      setStartDate(firstDay);
+                      setEndDate(lastDay);
+                    }}
+                    className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
+                  >
+                    MÊS
+                  </button>
+                </div>
+              </DashboardCard>
+            </motion.div>
+
+
 
           {/* Meta Anual da Empresa */}
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
@@ -391,87 +398,119 @@ export function AdminDashboard({
         </div>
 
         {/* 5. Total de contratos em andamento e Pendente de atuação */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="lg:col-span-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
-             {/* Total de contratos em andamento */}
-             <div className="bg-white rounded-[40px] p-8 border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden">
-                <div className="w-full">
-                  <div className="flex items-center gap-3 mb-8">
-                     <div className="w-12 h-12 bg-[#00C896] rounded-2xl flex items-center justify-center shrink-0">
-                        <CheckCircle2 className="w-7 h-7 text-white" />
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="lg:col-span-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+             {/* Meta de Hoje */}
+             <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm flex flex-col justify-between h-full relative overflow-hidden">
+                <div className="w-full font-sans">
+                  <div className="flex items-center gap-2 mb-4">
+                     <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0 border border-amber-100">
+                        <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
                      </div>
-                     <p className="text-[13px] font-black text-[#1C2643] tracking-tighter uppercase whitespace-nowrap">TOTAL DE CONTRATOS EM ANDAMENTO</p>
+                     <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight uppercase leading-none">META DE HOJE</p>
                   </div>
 
-                  <div className="flex flex-col items-center gap-2">
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">VALOR TOTAL EM ANDAMENTO</p>
-                    <p className="text-xl lg:text-[26px] font-black text-[#FF4A00] tracking-tighter leading-none">
-                      {formatCurrency(inProcessValue)}
+                  <div className="flex flex-col gap-1.5 mt-2">
+                    <p className="text-[9px] font-semibold text-[#718198] uppercase tracking-widest">VALOR DA META DE HOJE</p>
+                    <p className="text-2xl lg:text-3xl font-black text-[#1C2643] tracking-tighter leading-none">
+                      {formatCurrency(calculatedDailyGoal)}
                     </p>
-                    
-                    <div className="w-full h-[1px] bg-slate-100 my-6" />
-                    
-                    <p className="text-[14px] font-bold text-[#1C2643]">
-                      {inProcessCount} Contratos
-                    </p>
+                  </div>
+                </div>
 
-                    <p className="text-[13px] font-medium text-slate-500 mt-6">
-                      Você tem <span className="text-[#1C2643] font-black">{formatCurrency(pendingActionsValue)}</span> pendentes de atuação
+                <div className="mt-6 pt-3 border-t border-slate-100">
+                   <div className="flex justify-between items-center mb-1.5">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">PAGO HOJE: {formatCurrency(dailyProduced)}</p>
+                      <p className="text-[10px] font-black text-[#1C2643] leading-none">{dailyProgressPercent}%</p>
+                   </div>
+                   <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${dailyProgressPercent}%` }}
+                        transition={{ duration: 1 }}
+                        className="h-full bg-gradient-to-r from-amber-400 to-amber-600 shadow-[0_0_10px_rgba(245,158,11,0.5)]" 
+                      />
+                   </div>
+                </div>
+             </div>
+
+             {/* Total de contratos em andamento */}
+             <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                   <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-5 h-5 text-white" />
+                   </div>
+                   <div>
+                      <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none uppercase">TOTAL DE CONTRATOS EM ANDAMENTO</p>
+                   </div>
+                </div>
+
+                <div className="flex flex-col justify-center py-4 gap-1.5">
+                  <p className="text-[9px] font-semibold text-[#718198] uppercase tracking-widest text-center">Valor Total em Andamento</p>
+                  <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#FF4A00] tracking-tighter text-center leading-none">
+                    {formatCurrency(inProcessValue)}
+                  </p>
+                  <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col items-center gap-1.5">
+                    <span className="text-[11.5px] font-bold text-[#1C2643]">
+                      {inProcessCount} {inProcessCount === 1 ? 'Contrato' : 'Contratos'}
+                    </span>
+                    <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 mt-2 text-center shrink-0">
+                       Você tem <span className="text-[#1C2643] font-black">{formatCurrency(pendingActionsValue)}</span> pendentes de atuação
                     </p>
                   </div>
                 </div>
              </div>
 
              {/* Contratos Digitados (Replacing redundant Pendente de Atuação) */}
-             <div className="bg-[#1C2643] rounded-[40px] p-8 border border-[#1C2643] shadow-lg shadow-[#1C2643]/10 flex flex-col justify-between text-white">
+             <div className="bg-[#1C2643] rounded-[22px] p-4.5 border border-[#1C2643] shadow-lg shadow-[#1C2643]/10 flex flex-col justify-between text-white">
                 <div>
-                  <div className="flex items-center gap-3 mb-6">
-                     <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center">
-                        <Zap className="w-7 h-7 text-amber-400" />
+                  <div className="flex items-center gap-2 mb-3">
+                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0">
+                        <Zap className="w-5 h-5 text-amber-400" />
                      </div>
                      <div>
-                        <p className="text-[14px] font-black text-white tracking-tight uppercase">CONTRATOS DIGITADOS</p>
-                        <p className="text-[11px] font-bold text-white/40 uppercase tracking-widest leading-none">Produção Bruta</p>
+                        <p className="text-[11.5px] font-black text-white tracking-tight leading-none uppercase">CONTRATOS DIGITADOS</p>
+                        <p className="text-[8.5px] font-bold text-white/40 uppercase tracking-widest mt-1">Produção Bruta</p>
                      </div>
                   </div>
 
-                  <div className="space-y-4 mt-6">
-                    <div>
+                  <div className="space-y-2 mt-4">
+                    <div className="flex items-center justify-between">
                       <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-2xl lg:text-3xl font-black text-amber-400 tracking-tighter leading-none">
+                      <div className="flex items-baseline gap-1.5">
+                        <p className="text-[15px] font-black text-amber-400 tracking-tight">
                           {formatCurrency(createdTodayValue)}
                         </p>
-                        <span className="text-[11px] font-bold text-white/60 uppercase">{createdTodayCount} CONTRATOS</span>
+                        <span className="text-[8.5px] font-bold text-white/60 uppercase">({createdTodayCount} contr.)</span>
                       </div>
                     </div>
 
-                    <div>
+                    <div className="flex items-center justify-between">
                       <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-xl font-black text-white tracking-tighter leading-none">
+                      <div className="flex items-baseline gap-1.5">
+                        <p className="text-[14px] font-black text-white tracking-tight">
                           {formatCurrency(createdWeekValue)}
                         </p>
-                        <span className="text-[11px] font-bold text-white/60 uppercase">{createdWeekCount} CONTRATOS</span>
+                        <span className="text-[8.5px] font-bold text-white/60 uppercase">({createdWeekCount} contr.)</span>
                       </div>
                     </div>
 
-                    <div>
+                    <div className="flex items-center justify-between">
                       <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-base font-black text-white tracking-tighter leading-none">
+                      <div className="flex items-baseline gap-1.5">
+                        <p className="text-[14px] font-black text-white tracking-tight">
                           {formatCurrency(createdMonthValue)}
                         </p>
-                        <span className="text-[11px] font-bold text-white/60 uppercase">{createdMonthCount} CONTRATOS</span>
+                        <span className="text-[8.5px] font-bold text-white/60 uppercase">({createdMonthCount} contr.)</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-8 pt-4 border-t border-white/5">
-                   <div className="flex items-center gap-2">
+                <div className="mt-4 pt-3 border-t border-white/5">
+                   <div className="flex items-center gap-1.5">
                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                     <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest leading-none">
+                     <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-none">
                        Atualizado em Tempo Real
                      </p>
                    </div>

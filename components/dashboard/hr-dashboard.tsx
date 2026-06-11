@@ -18,6 +18,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useAuth } from "@/context/auth-context"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
+import Image from "next/image"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
 
 interface Interview {
@@ -354,6 +355,199 @@ export function HRDashboard({ stats, isLoading: isDashboardLoading }: HRDashboar
         </div>
       </div>
 
+      {/* NEW SECTION: PHOTO, META MENSAL DA EMPRESA & RANKING DE VENDAS */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full" id="dashboard-meta-ranking-container">
+        {/* Photo and Meta subgrid */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          transition={{ delay: 0.28 }}
+          className="lg:col-span-8 grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch"
+        >
+          {/* PHOTO CARD */}
+          <div className="md:col-span-5 relative overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm min-h-[320px] md:min-h-0">
+            {perfil?.foto_campanha_url || perfil?.avatar_url ? (
+              <Image 
+                src={perfil?.foto_campanha_url || perfil?.avatar_url || ""} 
+                alt={perfil.nome || "Colaborador"} 
+                fill 
+                className="object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="absolute inset-0 bg-[#1C2643]/5 flex flex-col items-center justify-center text-[#1C2643]">
+                <Users className="w-16 h-16 opacity-35" />
+                <span className="text-[10px] font-black text-slate-400 mt-3 uppercase tracking-widest text-center px-4">Sem foto cadastrada</span>
+              </div>
+            )}
+          </div>
+
+          {/* Meta mensal da empresa (velocimetro) */}
+          <DashboardCard className="md:col-span-7 flex flex-col shadow-sm border-slate-200">
+            <div className="relative z-10 flex flex-col h-full justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                   <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">Meta Mensal da Empresa</p>
+                   <div className="bg-[#1C2643]/5 p-2 rounded-xl">
+                      <Target className="w-5 h-5 text-[#1C2643]" />
+                   </div>
+                </div>
+                <p className="text-xl font-black text-[#1C2643] tracking-tighter mb-4 break-words">{formatCurrency(monthlyGoal)}</p>
+              </div>
+              
+              <div className="flex-1 flex flex-col items-center justify-center py-4 relative">
+                <div className="w-full max-w-[260px]">
+                  <Gauge value={progressPercent} producedValue={monthlyProduced} />
+                </div>
+                <div className="mt-4 flex flex-col items-center justify-center">
+                   {isDashboardLoading ? (
+                     <Loader2 className="w-8 h-8 animate-spin text-[#1C2643]" />
+                   ) : (
+                     <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#1C2643] tracking-tighter leading-none">{progressPercent}%</p>
+                   )}
+                   <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest mt-2 tracking-[0.3em]">PROGRESSO TOTAL</p>
+                </div>
+              </div>
+
+              <div className="space-y-4 mt-auto">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full border border-emerald-100">
+                    <TrendingUp className="w-4 h-4" />
+                    <span className="text-[11px] font-black uppercase tracking-widest text-center">
+                      ESTATÍSTICAS EM TEMPO REAL
+                    </span>
+                  </div>
+                  <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-2 text-center">
+                    {remainingValue > 0 ? (
+                      <>Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para a meta</>
+                    ) : (
+                      <span className="text-emerald-600 font-black">A meta da empresa foi superada!</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </DashboardCard>
+        </motion.div>
+
+        {/* Ranking de Vendas dos corretores */}
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }} 
+          animate={{ opacity: 1, x: 0 }} 
+          transition={{ delay: 0.3 }} 
+          className="lg:col-span-4"
+        >
+          <DashboardCard className="lg:h-[540px] shadow-sm flex flex-col bg-white border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100 shrink-0">
+               <div className="flex items-center gap-3">
+                 <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Ranking de Vendas</h3>
+                 <Trophy className="w-6 h-6 text-amber-500 fill-amber-500" />
+               </div>
+            </div>
+
+            <div className="flex-1 overflow-auto custom-scrollbar">
+            {isDashboardLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <Loader2 className="w-12 h-12 animate-spin text-[#1C2643] opacity-20" />
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] animate-pulse">
+                  Atualizando Rankings...
+                </p>
+              </div>
+            ) : brokerRankings && brokerRankings.length > 0 ? (
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-200">
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-[#1C2643] text-right bg-emerald-100/50 justify-end">Produção (Pagos)</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-[#1C2643] text-right bg-orange-100/50 justify-end">Em Andamento</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-[#1C2643] text-right bg-blue-100/50 justify-end">Digitadas Hoje</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {brokerRankings.map((rank, idx) => {
+                    const isUser = rank.corretor_id === perfil?.id
+                    const position = idx + 1
+                    return (
+                      <tr key={rank.corretor_id || idx} className={cn(
+                        "transition-colors",
+                        isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80"
+                      )}>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                              position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                              position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
+                              position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                              "bg-white text-slate-400 border-slate-100"
+                            )}>
+                              {position}º
+                            </div>
+                            <div>
+                              <p className={cn(
+                                "text-[14px] font-black tracking-tight uppercase",
+                                isUser ? "text-[#1C2643]" : "text-slate-700"
+                              )}>
+                                {rank.name} {isUser && "(Você)"}
+                              </p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">SUP: {rank.supervisor}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className={cn(
+                          "px-4 py-4 text-right transition-colors",
+                          isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
+                        )}>
+                          <div className="flex flex-col items-end">
+                            <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                              {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className={cn(
+                          "px-4 py-4 text-right transition-colors",
+                          isUser ? "bg-orange-100/70" : "bg-orange-100/25"
+                        )}>
+                          <div className="flex flex-col items-end">
+                            <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                              {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className={cn(
+                          "px-4 py-4 text-right transition-colors",
+                          isUser ? "bg-blue-100/70" : "bg-blue-100/25"
+                        )}>
+                          <div className="flex flex-col items-end">
+                            <span className={cn(
+                              "text-[14px] font-bold",
+                              rank.totalToday > 0 ? "text-blue-600" : "text-slate-400"
+                            )}>
+                              {formatCurrency(rank.totalToday)}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                              {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-10 opacity-30">
+                <Trophy className="w-12 h-12 mb-4" />
+                <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-[0.2em]">Sem resultados para este período</p>
+              </div>
+            )}
+            </div>
+          </DashboardCard>
+        </motion.div>
+      </div>
+
       {/* Grid Summary Cards (Fully functional real numbers with interactive Link wraps) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {metrics.map((metric, index) => {
@@ -511,180 +705,6 @@ export function HRDashboard({ stats, isLoading: isDashboardLoading }: HRDashboar
           </CardContent>
         </Card>
       </motion.div>
-
-      {/* NEW SECTION: META MENSAL DA EMPRESA & RANKING DE VENDAS */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full" id="dashboard-meta-ranking-container">
-        {/* Meta mensal da empresa (velocimetro) */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }} 
-          animate={{ opacity: 1, y: 0 }} 
-          transition={{ delay: 0.28 }}
-          className="lg:col-span-4"
-        >
-          <DashboardCard className="lg:h-[540px] flex flex-col shadow-sm border-slate-200">
-            <div className="relative z-10 flex flex-col h-full justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                   <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">Meta Mensal da Empresa</p>
-                   <div className="bg-[#1C2643]/5 p-2 rounded-xl">
-                      <Target className="w-5 h-5 text-[#1C2643]" />
-                   </div>
-                </div>
-                <p className="text-xl font-black text-[#1C2643] tracking-tighter mb-4 break-words">{formatCurrency(monthlyGoal)}</p>
-              </div>
-              
-              <div className="flex-1 flex flex-col items-center justify-center py-4 relative">
-                <div className="w-full max-w-[260px]">
-                  <Gauge value={progressPercent} producedValue={monthlyProduced} />
-                </div>
-                <div className="mt-4 flex flex-col items-center justify-center">
-                   {isDashboardLoading ? (
-                     <Loader2 className="w-8 h-8 animate-spin text-[#1C2643]" />
-                   ) : (
-                     <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#1C2643] tracking-tighter leading-none">{progressPercent}%</p>
-                   )}
-                   <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest mt-2 tracking-[0.3em]">PROGRESSO TOTAL</p>
-                </div>
-              </div>
-
-              <div className="space-y-4 mt-auto">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full border border-emerald-100">
-                    <TrendingUp className="w-4 h-4" />
-                    <span className="text-[11px] font-black uppercase tracking-widest text-center">
-                      ESTATÍSTICAS EM TEMPO REAL
-                    </span>
-                  </div>
-                  <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-2 text-center">
-                    {remainingValue > 0 ? (
-                      <>Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para a meta</>
-                    ) : (
-                      <span className="text-emerald-600 font-black">A meta da empresa foi superada!</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </DashboardCard>
-        </motion.div>
-
-        {/* Ranking de Vendas dos corretores */}
-        <motion.div 
-          initial={{ opacity: 0, x: 20 }} 
-          animate={{ opacity: 1, x: 0 }} 
-          transition={{ delay: 0.3 }} 
-          className="lg:col-span-8"
-        >
-          <DashboardCard className="lg:h-[540px] shadow-sm flex flex-col bg-white border-slate-200 overflow-hidden">
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100 shrink-0">
-               <div className="flex items-center gap-3">
-                 <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Ranking de Vendas</h3>
-                 <Trophy className="w-6 h-6 text-amber-500 fill-amber-500" />
-               </div>
-            </div>
-
-            <div className="flex-1 overflow-auto custom-scrollbar">
-            {isDashboardLoading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-4">
-                <Loader2 className="w-12 h-12 animate-spin text-[#1C2643] opacity-20" />
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] animate-pulse">
-                  Atualizando Rankings...
-                </p>
-              </div>
-            ) : brokerRankings && brokerRankings.length > 0 ? (
-              <table className="w-full text-left border-collapse min-w-[800px]">
-                <thead>
-                  <tr className="bg-slate-50/50 border-b border-slate-200">
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-[#1C2643] text-right bg-emerald-100/50 justify-end">Produção (Pagos)</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-[#1C2643] text-right bg-orange-100/50 justify-end">Em Andamento</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-[#1C2643] text-right bg-blue-100/50 justify-end">Digitadas Hoje</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {brokerRankings.map((rank, idx) => {
-                    const isUser = rank.corretor_id === perfil?.id
-                    const position = idx + 1
-                    return (
-                      <tr key={rank.corretor_id || idx} className={cn(
-                        "transition-colors",
-                        isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80"
-                      )}>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
-                              position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
-                              position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
-                              position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
-                              "bg-white text-slate-400 border-slate-100"
-                            )}>
-                              {position}º
-                            </div>
-                            <div>
-                              <p className={cn(
-                                "text-[14px] font-black tracking-tight uppercase",
-                                isUser ? "text-[#1C2643]" : "text-slate-700"
-                              )}>
-                                {rank.name} {isUser && "(Você)"}
-                              </p>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">SUP: {rank.supervisor}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className={cn(
-                          "px-4 py-4 text-right transition-colors",
-                          isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
-                        )}>
-                          <div className="flex flex-col items-end">
-                            <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                              {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className={cn(
-                          "px-4 py-4 text-right transition-colors",
-                          isUser ? "bg-orange-100/70" : "bg-orange-100/25"
-                        )}>
-                          <div className="flex flex-col items-end">
-                            <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                              {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className={cn(
-                          "px-4 py-4 text-right transition-colors",
-                          isUser ? "bg-blue-100/70" : "bg-blue-100/25"
-                        )}>
-                          <div className="flex flex-col items-end">
-                            <span className={cn(
-                              "text-[14px] font-bold",
-                              rank.totalToday > 0 ? "text-blue-600" : "text-slate-400"
-                            )}>
-                              {formatCurrency(rank.totalToday)}
-                            </span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                              {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-10 opacity-30">
-                <Trophy className="w-12 h-12 mb-4" />
-                <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-[0.2em]">Sem resultados para este período</p>
-              </div>
-            )}
-          </div>
-        </DashboardCard>
-      </motion.div>
     </div>
-  </div>
   )
 }

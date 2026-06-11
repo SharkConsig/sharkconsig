@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { nome_completo, username, senha, funcao, regime_contratacao, avatar_url, supervisor_id, supervisor_nome } = body;
+    const { nome_completo, username, senha, funcao, regime_contratacao, avatar_url, foto_campanha_url, supervisor_id, supervisor_nome } = body;
 
     if (!nome_completo || !username || !senha || !funcao || !regime_contratacao) {
       return NextResponse.json(
@@ -24,6 +24,10 @@ export async function POST(request: Request) {
       ? `https://picsum.photos/seed/${username}/200/200` 
       : (avatar_url || `https://picsum.photos/seed/${username}/200/200`);
 
+    const safeFotoCampanhaUrl = foto_campanha_url?.startsWith('data:image')
+      ? ""
+      : (foto_campanha_url || "");
+
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password: senha,
@@ -34,6 +38,7 @@ export async function POST(request: Request) {
         funcao,
         regime_contratacao,
         avatar_url: safeAvatarUrl,
+        foto_campanha_url: safeFotoCampanhaUrl,
         supervisor_id: supervisor_id || null,
         supervisor_nome: supervisor_nome || null
       },

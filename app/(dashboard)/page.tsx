@@ -21,7 +21,8 @@ import {
   ChevronRight,
   BookOpen,
   Compass,
-  Award
+  Award,
+  Calendar
 } from "lucide-react"
 
 import { useAuth } from "@/context/auth-context"
@@ -1338,72 +1339,6 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* FILTER SECTION SECURELY RENDERED FOR SUPERVISOR */}
-            {isSupervisor && (
-              <div className="flex flex-col gap-4 mb-8">
-                <div className="flex justify-end">
-                  <div className="flex items-end gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Início</span>
-                      <input 
-                        type="date" 
-                        value={tempStartDate}
-                        onChange={(e) => setTempStartDate(e.target.value)}
-                        className="text-[12px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                      />
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Fim</span>
-                      <input 
-                        type="date" 
-                        value={tempEndDate}
-                        onChange={(e) => setTempEndDate(e.target.value)}
-                        className="text-[12px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => {
-                          setStartDate(tempStartDate);
-                          setEndDate(tempEndDate);
-                        }}
-                        disabled={!tempStartDate && !tempEndDate}
-                        className="px-4 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm h-[34px]"
-                      >
-                        APLICAR
-                      </button>
-                      <button 
-                        onClick={() => {
-                          const todayStr = format(new Date(), "yyyy-MM-dd");
-                          setTempStartDate(todayStr);
-                          setTempEndDate(todayStr);
-                          setStartDate(todayStr);
-                          setEndDate(todayStr);
-                        }}
-                        className="px-4 py-2 bg-slate-100 text-slate-500 text-[10px] font-black rounded-lg hover:bg-slate-200 transition-all active:scale-95 shadow-sm h-[34px]"
-                      >
-                        HOJE
-                      </button>
-                      <button 
-                        onClick={() => {
-                          const now = new Date();
-                          const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
-                          const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
-                          setTempStartDate(firstDay);
-                          setTempEndDate(lastDay);
-                          setStartDate(firstDay);
-                          setEndDate(lastDay);
-                        }}
-                        className="px-4 py-2 bg-slate-100 text-slate-500 text-[10px] font-black rounded-lg hover:bg-slate-200 transition-all active:scale-95 shadow-sm h-[34px]"
-                      >
-                        MÊS
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {activeTab === 'propostas' ? (
               isEstagio ? (
                 <motion.div 
@@ -1412,33 +1347,57 @@ export default function DashboardPage() {
                   animate={{ opacity: 1, y: 0 }}
                   className="space-y-8"
                 >
-                  {/* Hero Header Card / Banner */}
-                  <div className="relative overflow-hidden bg-[#1C2643] text-white rounded-[32px] p-8 sm:p-10 shadow-xl border border-[#1C2643]/10">
-                    <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-[0.03] pointer-events-none flex items-center justify-center">
-                      <Trophy className="w-64 h-64 text-amber-400" />
+                  {/* Photo & Main Motivation Group */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                    {/* CARTÃO DA FOTO DO COLABORADOR */}
+                    <div className="lg:col-span-3 relative overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-lg shadow-[#1C2643]/5 h-[375px] w-full shrink-0">
+                      {perfil?.foto_campanha_url || perfil?.avatar_url ? (
+                        <Image 
+                          src={perfil?.foto_campanha_url || perfil?.avatar_url || ""} 
+                          alt={perfil?.nome || "Colaborador"} 
+                          fill 
+                          className="object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 bg-[#1C2643]/5 flex flex-col items-center justify-center text-[#1C2643]">
+                          <Users className="w-12 h-12 opacity-35" />
+                          <span className="text-[8.5px] font-black text-slate-400 mt-2 uppercase tracking-widest text-center px-3">Sem foto cadastrada</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="relative z-10 max-w-3xl">
-                      <span className="bg-amber-400 text-[#1C2643] text-[10px] font-black uppercase tracking-widest px-3.5 py-1.5 rounded-full inline-block mb-4">
-                        Jornada do Futuro Shark
-                      </span>
-                      <h2 className="text-3xl sm:text-4xl font-black tracking-tight mb-4 text-white">
-                        Formando os Líderes de Amanhã
-                      </h2>
-                      <p className="text-[14px] text-slate-350 font-medium leading-relaxed mb-6">
-                        Tubarões não nascem prontos; eles são moldados na consistência, no estudo e na persistência. Este período de estágio é a sua maior oportunidade de dominar o mercado, aperfeiçoar sua retórica de vendas e entender a fundo a engrenagem do crédito consignado. Cada dia é um aprendizado valioso.
-                      </p>
-                      <div className="flex flex-wrap gap-4 items-center">
-                        <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
-                          <BookOpen className="w-4 h-4 text-amber-400" />
-                          <span className="text-xs font-bold text-slate-200">Domínio Técnico</span>
+
+                    {/* Banner Column */}
+                    <div className="lg:col-span-9">
+                      {/* Hero Header Card / Banner */}
+                      <div className="relative overflow-hidden bg-[#1C2643] text-white rounded-[32px] p-8 sm:p-10 shadow-xl border border-[#1C2643]/10">
+                        <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-[0.03] pointer-events-none flex items-center justify-center">
+                          <Trophy className="w-64 h-64 text-amber-400" />
                         </div>
-                        <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
-                          <Compass className="w-4 h-4 text-[#00C896]" />
-                          <span className="text-xs font-bold text-slate-200">Forte Conexão</span>
-                        </div>
-                        <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
-                          <Award className="w-4 h-4 text-blue-400" />
-                          <span className="text-xs font-bold text-slate-200">Mentalidade Vencedora</span>
+                        <div className="relative z-10 max-w-3xl font-medium">
+                          <span className="bg-amber-400 text-[#1C2643] text-[10px] font-black uppercase tracking-widest px-3.5 py-1.5 rounded-full inline-block mb-4">
+                            Jornada do Futuro Shark
+                          </span>
+                          <h2 className="text-3xl sm:text-4xl font-black tracking-tight mb-4 text-white">
+                            Formando os Líderes de Amanhã
+                          </h2>
+                          <p className="text-[14px] text-slate-350 leading-relaxed mb-6">
+                            Tubarões não nascem prontos; eles são moldados na consistência, no estudo e na persistência. Este período de estágio é a sua maior oportunidade de dominar o mercado, aperfeiçoar sua retórica de vendas e entender a fundo a engrenagem do crédito consignado. Cada dia é um aprendizado valioso.
+                          </p>
+                          <div className="flex flex-wrap gap-4 items-center">
+                            <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
+                              <BookOpen className="w-4 h-4 text-amber-400" />
+                              <span className="text-xs font-bold text-slate-200">Domínio Técnico</span>
+                            </div>
+                            <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
+                              <Compass className="w-4 h-4 text-[#00C896]" />
+                              <span className="text-xs font-bold text-slate-200">Forte Conexão</span>
+                            </div>
+                            <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
+                              <Award className="w-4 h-4 text-blue-400" />
+                              <span className="text-xs font-bold text-slate-200">Mentalidade Vencedora</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1486,7 +1445,7 @@ export default function DashboardPage() {
                         <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">Pilar 03</span>
                         <h4 className="text-lg font-black text-[#1C2643] mt-1">Perseverança Diária</h4>
                         <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
-                          Grandes conquistas decorrem da consistência diária e da paixão pelo processo. Mantenha a resiliência ativa, celebre seu progresso constante e aproveite cada feedback recebido.
+                          Grandes conquistas decorrem da consistência diária e da paixão pelo processo. Mantenha a resiliência activa, celebre seu progresso constante e aproveite cada feedback recebido.
                         </p>
                       </div>
                       <div className="mt-auto pt-4 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
@@ -1497,7 +1456,7 @@ export default function DashboardPage() {
 
                   {/* Campaigns & Code of Ethics Grid */}
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    <div className="lg:col-span-8 bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
+                    <div className="lg:col-span-5 bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
                       <div className="flex items-center gap-3 mb-2">
                         <div className="w-10 h-10 bg-[#1C2643] rounded-xl flex items-center justify-center">
                           <Target className="w-6 h-6 text-white" />
@@ -1511,7 +1470,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="space-y-3">
                         {dashboardCampaigns.length > 0 ? (
-                          dashboardCampaigns.map((campaign) => (
+                           dashboardCampaigns.map((campaign) => (
                             <div 
                               key={campaign.id} 
                               onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
@@ -1544,7 +1503,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
 
-                    <div className="lg:col-span-4 bg-amber-50 rounded-[28px] p-6 border border-amber-100 shadow-sm flex flex-col justify-between">
+                    <div className="lg:col-span-7 bg-amber-50 rounded-[28px] p-6 border border-amber-100 shadow-sm flex flex-col justify-between">
                       <div className="space-y-4">
                         <span className="text-[10px] font-black text-amber-700 bg-white px-3 py-1 rounded-full border border-amber-200 inline-block uppercase tracking-wider">
                           Suporte & Mentoria
@@ -1572,44 +1531,75 @@ export default function DashboardPage() {
                   animate={{ opacity: 1, y: 0 }}
                   className={cn("transition-opacity duration-500", isLoading ? "opacity-50 pointer-events-none" : "opacity-100")}
                 >
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* SECTION 1: O CORAÇÃO DO DASHBOARD (Meta Individual) */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-4 lg:row-span-2">
-              <DashboardCard className="h-full flex flex-col shadow-2xl shadow-[#1C2643]/5 overflow-hidden group">
+                  <div className={cn(
+                    "grid grid-cols-1 gap-4",
+                    isSupervisor ? "lg:grid-cols-12" : "sm:grid-cols-2 lg:grid-cols-4"
+                  )}>
+            {/* SECTION 1: O CORAÇÃO DO DASHBOARD (Meta Individual e Foto do Colaborador) */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              className={cn(
+                "grid grid-cols-1 gap-4 items-stretch",
+                isSupervisor 
+                  ? "lg:col-span-8 md:grid-cols-12" 
+                  : "col-span-1 sm:col-span-2 lg:col-span-3 lg:row-span-2 md:grid-cols-12"
+              )}
+            >
+              {/* CARTÃO DA FOTO DO COLABORADOR */}
+              <div className="md:col-span-5 relative overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-lg shadow-[#1C2643]/5 min-h-[250px] md:min-h-0">
+                {perfil?.foto_campanha_url || perfil?.avatar_url ? (
+                  <Image 
+                    src={perfil?.foto_campanha_url || perfil?.avatar_url || ""} 
+                    alt={perfil.nome || "Colaborador"} 
+                    fill 
+                    className="object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-[#1C2643]/5 flex flex-col items-center justify-center text-[#1C2643]">
+                    <Users className="w-12 h-12 opacity-35" />
+                    <span className="text-[8.5px] font-black text-slate-400 mt-2 uppercase tracking-widest text-center px-3">Sem foto cadastrada</span>
+                  </div>
+                )}
+              </div>
+
+              {/* CARD DE METAS ORIGINAL */}
+              <DashboardCard className="md:col-span-7 flex flex-col shadow-lg shadow-[#1C2643]/5 overflow-hidden group !p-5 !rounded-[24px]">
                 <div className="relative z-10 flex flex-col h-full">
                   <div className="flex items-center justify-between mb-2">
-                     <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">
+                     <p className="text-[9.5px] font-black text-[#718198] uppercase tracking-widest">
                        {(perfil?.role?.toLowerCase() === 'operacional' || perfil?.role?.toLowerCase() === 'desenvolvedor' || perfil?.role?.toLowerCase() === 'administrador' || isAdmin || isDeveloper) ? "META MENSAL DA EMPRESA" : "Sua Meta Mensal"}
                      </p>
                      <div className="bg-[#1C2643]/5 p-2 rounded-xl">
-                        <Target className="w-5 h-5 text-[#1C2643]" />
+                        <Target className="w-4 h-4 text-[#1C2643]" />
                      </div>
                   </div>
-                  <p className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-black text-[#1C2643] tracking-tighter mb-6 break-words">{formatCurrency(monthlyGoal)}</p>
+                  <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[28px] font-black text-[#1C2643] tracking-tighter mb-4 break-words">{formatCurrency(monthlyGoal)}</p>
                   
-                  <div className="flex-1 flex flex-col items-center justify-center py-6 relative">
-                    <div className="w-full max-w-[280px]">
-                      <Gauge value={progressPercent} producedValue={displayMonthlyProduced} />
-                    </div>
-                    <div className="mt-4 flex flex-col items-center justify-center">
-                       {isLoading ? (
-                         <Loader2 className="w-8 h-8 animate-spin text-[#1C2643]" />
-                       ) : (
-                         <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#1C2643] tracking-tighter leading-none">{progressPercent}%</p>
-                       )}
-                       <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest mt-2">Atingido</p>
-                    </div>
+                  <div className="flex-1 flex flex-col items-center justify-center py-3.5 relative">
+                     <div className="w-full max-w-[336px]">
+                       <Gauge value={progressPercent} producedValue={displayMonthlyProduced} />
+                     </div>
+                     <div className="mt-2.5 flex flex-col items-center justify-center">
+                        {isLoading ? (
+                          <Loader2 className="w-6 h-6 animate-spin text-[#1C2643]" />
+                        ) : (
+                          <p className="text-4xl sm:text-5xl lg:text-[61px] font-black text-[#1C2643] tracking-tighter leading-none">{progressPercent}%</p>
+                        )}
+                        <p className="text-[14.4px] font-bold text-[#718198] uppercase tracking-widest mt-2">Atingido</p>
+                     </div>
                   </div>
 
-                  <div className="space-y-6 mt-auto">
+                  <div className="space-y-4 mt-auto">
                     <div className="flex flex-col items-center gap-2">
-                      <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full border border-emerald-100">
-                        <TrendingUp className="w-4 h-4" />
-                        <span className="text-[11px] font-black uppercase tracking-widest text-center">
+                      <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full border border-emerald-100">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        <span className="text-[9px] font-black uppercase tracking-widest text-center">
                           {progressPercent >= 100 ? "META ALCANÇADA! PARABÉNS!" : "Você está no caminho!"}
                         </span>
                       </div>
-                      <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-2 text-center shrink-0">
+                      <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 mt-1.5 text-center shrink-0">
                         {remainingValue > 0 ? (
                           <>Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para a meta</>
                         ) : (
@@ -1623,98 +1613,174 @@ export default function DashboardPage() {
             </motion.div>
 
             {/* SECTION 2: O FOCO DO DIA E RECOMPENSAS */}
-            <div className={cn("lg:col-span-8 grid grid-cols-1 gap-6", isSupervisor ? "md:grid-cols-2" : "md:grid-cols-2 lg:grid-cols-3")}>
-              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
-                <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4">
-                  <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mb-2 shrink-0">
-                    <Zap className="w-6 h-6 text-amber-500 fill-amber-500" />
-                  </div>
-                  <div className="flex flex-col min-w-0 overflow-hidden">
-                     <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
-                     <p className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-black text-[#1C2643] tracking-tighter mt-1 break-words leading-none">{formatCurrency(dailyGoal)}</p>
-                  </div>
-                  <div className="mt-auto pt-4">
-                     <div className="flex justify-between items-center mb-2">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
-                        <p className="text-[11px] font-black text-[#1C2643]">
-                          {isLoading ? "..." : (
-                            <span className="flex items-center gap-1">
-                              {Math.round((displayDailyProduced / dailyGoal) * 100)}%
-                              {isSupervisor && (
-                                <span className="text-slate-400 font-bold">({formatCurrency(displayDailyProduced)})</span>
-                              )}
-                            </span>
-                          )}
-                        </p>
-                     </div>
-                     <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                        <motion.div 
-                          initial={{ width: 0 }}
-                          animate={{ width: `${Math.min(100, (displayDailyProduced / dailyGoal) * 100)}%` }}
-                          transition={{ duration: 1, delay: 0.5 }}
-                          className="h-full bg-amber-500" 
+            <div className={cn(
+              "grid grid-cols-1 gap-4",
+              isOperational
+                ? "lg:col-span-4 lg:row-span-1 md:grid-cols-2 lg:grid-cols-1"
+                : (isSupervisor ? "lg:col-span-4 lg:row-span-1 md:grid-cols-2 lg:grid-cols-1" : "col-span-1 sm:col-span-2 lg:col-span-1")
+            )}>
+              {isSupervisor && (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05 }}>
+                  <DashboardCard className="shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3.5 !p-[18px] sm:!p-5 !rounded-[24px] bg-white border border-slate-200">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+                        <Calendar className="w-4 h-4 text-amber-500 fill-amber-500" />
+                      </div>
+                      <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-widest">Filtrar por Período</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Início</span>
+                        <input 
+                          type="date" 
+                          value={tempStartDate}
+                          onChange={(e) => setTempStartDate(e.target.value)}
+                          className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
                         />
-                     </div>
-                  </div>
-                </DashboardCard>
-              </motion.div>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Fim</span>
+                        <input 
+                          type="date" 
+                          value={tempEndDate}
+                          onChange={(e) => setTempEndDate(e.target.value)}
+                          className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5 mt-1">
+                      <button 
+                        onClick={() => {
+                          setStartDate(tempStartDate);
+                          setEndDate(tempEndDate);
+                        }}
+                        disabled={!tempStartDate && !tempEndDate}
+                        className="px-2.5 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center h-8"
+                      >
+                        FILTRAR
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const todayStr = format(new Date(), "yyyy-MM-dd");
+                          setTempStartDate(todayStr);
+                          setTempEndDate(todayStr);
+                          setStartDate(todayStr);
+                          setEndDate(todayStr);
+                        }}
+                        className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
+                      >
+                        HOJE
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const now = new Date();
+                          const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+                          const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+                          setTempStartDate(firstDay);
+                          setTempEndDate(lastDay);
+                          setStartDate(firstDay);
+                          setEndDate(lastDay);
+                        }}
+                        className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
+                      >
+                        MÊS
+                      </button>
+                    </div>
+                  </DashboardCard>
+                </motion.div>
+              )}
+              {!isSupervisor && (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 !p-[18px] sm:!p-5 !rounded-[24px]">
+                    <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center mb-1.5 shrink-0">
+                      <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
+                    </div>
+                    <div className="flex flex-col min-w-0 overflow-hidden">
+                       <p className="text-[9px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
+                       <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[28px] font-black text-[#1C2643] tracking-tighter mt-1 break-words leading-none">{formatCurrency(dailyGoal)}</p>
+                    </div>
+                    <div className="mt-auto pt-3.5">
+                       <div className="flex justify-between items-center mb-1.5">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
+                          <p className="text-[9.5px] font-black text-[#1C2643]">
+                            {isLoading ? "..." : (
+                              <span className="flex items-center gap-1">
+                                {Math.round((displayDailyProduced / dailyGoal) * 100)}%
+                              </span>
+                            )}
+                          </p>
+                       </div>
+                       <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min(100, (displayDailyProduced / dailyGoal) * 100)}%` }}
+                            transition={{ duration: 1, delay: 0.5 }}
+                            className="h-full bg-amber-500" 
+                          />
+                       </div>
+                    </div>
+                  </DashboardCard>
+                </motion.div>
+              )}
 
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
-                <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-[#1C2643] text-white border-[#1C2643]">
+                <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 bg-[#1C2643] text-white border-[#1C2643] !p-[18px] sm:!p-5 !rounded-[24px]">
                   <div className="flex flex-col min-w-0 overflow-hidden">
-                     <div className="flex items-center gap-2 mb-2">
+                     <div className="flex items-center gap-1.5 mb-1.5">
                        {isSupervisor ? (
-                         <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                         <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
                        ) : (
-                         <Gift className="w-4 h-4 text-amber-400" />
+                         <Gift className="w-3.5 h-3.5 text-amber-400" />
                        )}
-                       <p className="text-[13px] font-bold text-white/60 uppercase tracking-widest leading-tight">
+                       <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest leading-tight">
                          {isSupervisor ? "CONTRATOS DIGITADOS" : "PRÊMIO ALCANÇADO ATÉ AGORA:"}
                        </p>
                      </div>
-                     <div className="mt-2 space-y-3">
+                     <div className="mt-1.5 space-y-2.5">
                        {isSupervisor ? (
                          <>
                            <div>
-                             <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
-                             <div className="flex items-baseline gap-2">
-                               <p className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tighter leading-none">
+                             <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
+                             <div className="flex items-baseline gap-1.5">
+                               <p className="text-xl sm:text-2xl font-black text-amber-400 tracking-tighter leading-none">
                                  {formatCurrency(teamDailyCreatedValue)}
                                </p>
-                               <span className="text-[11px] font-bold text-white/60 uppercase">{teamDailyCreatedCount} CONTRATOS</span>
+                               <span className="text-[9px] font-bold text-white/60 uppercase">{teamDailyCreatedCount} CONTRATOS</span>
                              </div>
                            </div>
                            <div>
-                             <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
-                             <div className="flex items-baseline gap-2">
-                               <p className="text-xl font-black text-white tracking-tighter leading-none">
+                             <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
+                             <div className="flex items-baseline gap-1.5">
+                               <p className="text-lg font-black text-white tracking-tighter leading-none">
                                  {formatCurrency(teamWeeklyCreatedValue)}
                                </p>
-                               <span className="text-[11px] font-bold text-white/60 uppercase">{teamWeeklyCreatedCount} CONTRATOS</span>
+                               <span className="text-[9px] font-bold text-white/60 uppercase">{teamWeeklyCreatedCount} CONTRATOS</span>
                              </div>
                            </div>
                            <div>
-                             <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
-                             <div className="flex items-baseline gap-2">
-                               <p className="text-base font-black text-white tracking-tighter leading-none">
+                             <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
+                             <div className="flex items-baseline gap-1.5">
+                               <p className="text-[14px] font-black text-white tracking-tighter leading-none">
                                  {formatCurrency(teamMonthlyCreatedValue)}
                                </p>
-                               <span className="text-[11px] font-bold text-white/60 uppercase">{teamMonthlyCreatedCount} CONTRATOS</span>
+                               <span className="text-[9px] font-bold text-white/60 uppercase">{teamMonthlyCreatedCount} CONTRATOS</span>
                              </div>
                            </div>
                          </>
                        ) : (
-                         <p className="text-xl sm:text-2xl lg:text-3xl xl:text-5xl font-black text-amber-400 tracking-tighter mt-1 break-words leading-none">
+                         <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[38px] font-black text-amber-400 tracking-tighter mt-1 break-words leading-none">
                            {formatCurrency(currentPrize)}
                          </p>
                        )}
                      </div>
                   </div>
-                  <div className="mt-auto pt-3 border-t border-white/5">
+                  <div className="mt-auto pt-2.5 border-t border-white/5">
                      {isSupervisor ? (
-                       <div className="flex items-center gap-2">
+                       <div className="flex items-center gap-1.5">
                          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                         <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest leading-tight">
+                         <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
                            Atualizado em Tempo Real
                          </p>
                        </div>
@@ -1723,7 +1789,7 @@ export default function DashboardPage() {
                          <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
                            Próximo Prêmio: {formatCurrency(nextPrizeTier.prize)}
                          </p>
-                         <p className="text-[7.2px] font-bold text-white/30 uppercase tracking-widest mt-1 shrink-0">
+                         <p className="text-[7px] font-bold text-white/30 uppercase tracking-widest mt-0.5 shrink-0">
                            Faltam {formatCurrency(nextPrizeTier.goal - monthlyProduced)} em produção
                          </p>
                        </>
@@ -1738,17 +1804,17 @@ export default function DashboardPage() {
 
               {!isSupervisor && (
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
-                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4">
-                    <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mb-2 shrink-0">
-                      <Users className="w-6 h-6 text-[#1C2643]" />
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 !p-[18px] sm:!p-5 !rounded-[24px]">
+                    <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center mb-1.5 shrink-0">
+                      <Users className="w-5 h-5 text-[#1C2643]" />
                     </div>
                     <div className="flex flex-col min-w-0 overflow-hidden flex-1">
-                       <p className="text-[13px] font-bold text-[#718198] uppercase tracking-widest leading-tight">Meta Mensal do Time</p>
-                       <p className="text-[17px] font-black text-[#1C2643] mt-1.5 leading-none">
+                       <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest leading-tight">Meta Mensal do Time</p>
+                       <p className="text-[14px] font-black text-[#1C2643] mt-1.5 leading-none">
                          {formatCurrency(teamGoal)}
                        </p>
                        {!isCorretor && (
-                         <p className="text-2xl sm:text-3xl lg:text-5xl xl:text-7xl font-black text-[#1C2643] tracking-tighter mt-auto break-words leading-none pb-2">
+                         <p className="text-xl sm:text-2xl lg:text-[38px] xl:text-[56px] font-black text-[#1C2643] tracking-tighter mt-auto break-words leading-none pb-2">
                            {Math.round((teamProduced / teamGoal) * 100)}%
                          </p>
                        )}
@@ -1904,117 +1970,165 @@ export default function DashboardPage() {
             )}
 
             {/* SECTION 3 & 4: MAPA DE OPORTUNIDADES & RANKING */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="lg:col-span-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              transition={{ delay: 0.4 }} 
+              className={cn(
+                isOperational
+                  ? "lg:col-span-12"
+                  : (isSupervisor ? "lg:col-span-12" : "col-span-1 sm:col-span-2 lg:col-span-2")
+              )}
+            >
+              <div className={cn(
+                "grid grid-cols-1 gap-4 h-full",
+                isSupervisor ? "md:grid-cols-3" : "md:grid-cols-2"
+              )}>
+                 {/* Meta de Hoje */}
+                 {isSupervisor && (
+                   <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+                     <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 !p-[18px] sm:!p-5 !rounded-[24px]">
+                       <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center mb-1.5 shrink-0">
+                         <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
+                       </div>
+                       <div className="flex flex-col min-w-0 overflow-hidden">
+                          <p className="text-[9px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
+                          <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[28px] font-black text-[#1C2643] tracking-tighter mt-1 break-words leading-none">{formatCurrency(dailyGoal)}</p>
+                       </div>
+                       <div className="mt-auto pt-3.5">
+                          <div className="flex justify-between items-center mb-1.5">
+                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
+                             <p className="text-[9.5px] font-black text-[#1C2643]">
+                               {isLoading ? "..." : (
+                                 <span className="flex items-center gap-1">
+                                   {Math.round((displayDailyProduced / dailyGoal) * 100)}%
+                                   <span className="text-slate-400 font-bold">({formatCurrency(displayDailyProduced)})</span>
+                                 </span>
+                               )}
+                             </p>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                             <motion.div 
+                               initial={{ width: 0 }}
+                               animate={{ width: `${Math.min(100, (displayDailyProduced / dailyGoal) * 100)}%` }}
+                               transition={{ duration: 1, delay: 0.5 }}
+                               className="h-full bg-amber-500" 
+                             />
+                          </div>
+                       </div>
+                     </DashboardCard>
+                   </motion.div>
+                 )}
+
                  {/* Pagos recentemente */}
-                 <div className="bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
-                    <div className="flex items-center gap-3 mb-2">
-                       <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
-                          <CheckCircle2 className="w-6 h-6 text-white" />
+                 <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2 mb-1.5">
+                       <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+                          <CheckCircle2 className="w-5 h-5 text-white" />
                        </div>
                        <div>
-                          <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none">
+                          <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
                             {isSupervisor ? "TOTAL DE CONTRATOS EM ANDAMENTO" : "Pagos recentemente"}
                           </p>
                        </div>
                     </div>
                     {isSupervisor ? (
-                      <div className="flex flex-col justify-center py-8 gap-2">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">Valor Total em Andamento</p>
-                        <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-orange-600 tracking-tighter text-center leading-none">
+                      <div className="flex flex-col justify-center py-6 gap-1.5">
+                        <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest text-center">Valor Total em Andamento</p>
+                        <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-orange-600 tracking-tighter text-center leading-none">
                           {formatCurrency(teamInProcessValue)}
                         </p>
-                        <div className="mt-4 pt-4 border-t border-slate-200 flex flex-col items-center gap-2">
-                          <span className="text-[14px] font-bold text-[#1C2643]">
+                        <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col items-center gap-1.5">
+                          <span className="text-[11.5px] font-bold text-[#1C2643]">
                             {teamInProcessCount} {teamInProcessCount === 1 ? 'Contrato' : 'Contratos'}
                           </span>
-          <p className="text-[12px] sm:text-[13px] font-bold text-slate-500 mt-10 text-center shrink-0">
-            Você tem <span className="text-[#1C2643] font-black">{formatCurrency(teamPendingInconsistencyValue)}</span> ({teamPendingInconsistencyCount} {teamPendingInconsistencyCount === 1 ? 'pendência' : 'pendências'}) pendentes de atuação
-          </p>
+                          <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 mt-6 text-center shrink-0">
+                             Você tem <span className="text-[#1C2643] font-black">{formatCurrency(teamPendingInconsistencyValue)}</span> ({teamPendingInconsistencyCount} {teamPendingInconsistencyCount === 1 ? 'pendência' : 'pendências'}) pendentes de atuação
+                          </p>
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-2.5">
                          {recentPayments.length > 0 ? (
                            recentPayments.map((p) => (
-                             <div key={p.id_lead} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                             <div key={p.id_lead} className="flex items-center justify-between p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200">
                                <div className="flex flex-col">
-                                 <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tight">{p.nome_cliente}</span>
-                                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID: {p.id_lead}</span>
+                                 <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight">{p.nome_cliente}</span>
+                                 <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">ID: {p.id_lead}</span>
                                </div>
                                  <div className="text-right">
-                                 <p className="text-[11px] font-black text-emerald-600">
+                                 <p className="text-[9.5px] font-black text-emerald-600">
                                    {formatCurrency(parseCurrency(p.valor_producao))}
                                  </p>
-                                 <p className="text-[9px] font-bold text-slate-400">{new Date(p.updated_at).toLocaleDateString()} {new Date(p.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                 <p className="text-[8px] font-bold text-slate-400">{new Date(p.updated_at).toLocaleDateString()} {new Date(p.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                                </div>
                              </div>
                            ))
                          ) : (
-                           <div className="flex flex-col items-center justify-center py-10 opacity-30">
-                             <CheckCircle2 className="w-8 h-8 mb-2" />
-                             <p className="text-[10px] font-bold uppercase tracking-widest text-center">Nenhum pagamento registrado</p>
+                           <div className="flex flex-col items-center justify-center py-8 opacity-30">
+                             <CheckCircle2 className="w-6.5 h-6.5 mb-1.5" />
+                             <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhum pagamento registrado</p>
                            </div>
                          )}
                       </div>
                     )}
                  </div>
 
-                  {/* ACESSAR CAMPANHA (Anterior Mapa de oportunidades) */}
-                  <div className="bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
-                     <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 bg-[#1C2643] rounded-xl flex items-center justify-center">
-                           <Target className="w-6 h-6 text-white" />
+                   {/* ACESSAR CAMPANHA (Anterior Mapa de oportunidades) */}
+                  <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm space-y-3">
+                     <div className="flex items-center gap-2.5 mb-1.5">
+                        <div className="w-8 h-8 bg-[#1C2643] rounded-lg flex items-center justify-center">
+                           <Target className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                           <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none">
+                           <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
                              {isOperational ? "CONTRATOS EM ANDAMENTO (OPERACIONAL)" : "ACESSAR CAMPANHA"}
                            </p>
                         </div>
                      </div>
                      {isOperational ? (
-                       <div className="flex flex-col justify-center py-8 gap-2">
-                         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">Valor Total Operacional</p>
-                         <p className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#1C2643] tracking-tighter text-center leading-none">
+                       <div className="flex flex-col justify-center py-6 gap-1.5">
+                         <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest text-center">Valor Total Operacional</p>
+                         <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#1C2643] tracking-tighter text-center leading-none">
                            {formatCurrency(opInProcessValue)}
                          </p>
-                         <div className="mt-4 pt-4 border-t border-slate-200 flex flex-col items-center gap-2">
-                           <span className="text-[14px] font-bold text-[#1C2643]">
+                         <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col items-center gap-1.5">
+                           <span className="text-[11.5px] font-bold text-[#1C2643]">
                              {opInProcessCount} {opInProcessCount === 1 ? 'Contrato' : 'Contratos'}
                            </span>
                          </div>
                        </div>
                      ) : (
-                       <div className="space-y-3">
+                       <div className="space-y-2.5">
                           {dashboardCampaigns.length > 0 ? (
                             dashboardCampaigns.map((campaign) => (
                               <div 
                                 key={campaign.id} 
                                 onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
-                                className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200 hover:border-primary/30 hover:bg-white transition-all cursor-pointer group"
+                                className="flex items-center justify-between p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200 hover:border-primary/30 hover:bg-white transition-all cursor-pointer group"
                               >
                                 <div className="flex flex-col">
-                                  <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-primary transition-colors">
+                                  <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-primary transition-colors">
                                     {campaign.nome}
                                   </span>
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
                                     {campaign.filtros?.convenio || 'Geral'}
                                   </span>
                                 </div>
                                 <div className="text-right">
-                                  <p className="text-[11px] font-black text-[#1C2643]">
+                                  <p className="text-[9.5px] font-black text-[#1C2643]">
                                     {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
                                   </p>
-                                  <p className="text-[9px] font-bold text-slate-400">
+                                  <p className="text-[8px] font-bold text-slate-400">
                                     {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
                                   </p>
                                 </div>
                               </div>
                             ))
                           ) : (
-                            <div className="flex flex-col items-center justify-center py-8 opacity-40">
-                              <Target className="w-8 h-8 mb-2" />
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                            <div className="flex flex-col items-center justify-center py-6 opacity-40">
+                              <Target className="w-6.5 h-6.5 mb-1.5" />
+                              <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
                             </div>
                           )}
                        </div>
@@ -2023,19 +2137,26 @@ export default function DashboardPage() {
               </div>
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }} className={cn(isSupervisor ? "lg:col-span-12" : "lg:col-span-4")}>
-              <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white">
-                <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
-                   <h3 className="text-xl font-black text-[#1C2643] tracking-tight">Ranking de Vendas</h3>
-                   <div className="flex items-center gap-4">
-                     <Trophy className="w-6 h-6 text-amber-500 fill-amber-500" />
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }} 
+              animate={{ opacity: 1, x: 0 }} 
+              transition={{ delay: 0.5 }} 
+              className={cn(
+                isSupervisor ? "lg:col-span-12" : "col-span-1 sm:col-span-2 lg:col-span-2"
+              )}
+            >
+              <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px]">
+                <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">
+                   <h3 className="text-lg font-black text-[#1C2643] tracking-tight">Ranking de Vendas</h3>
+                   <div className="flex items-center gap-3">
+                     <Trophy className="w-5 h-5 text-amber-500 fill-amber-500" />
                    </div>
                 </div>
 
                 <div className="flex-1 flex flex-col">
                   {isLoading ? (
-                    <div className="flex items-center justify-center h-full py-20">
-                       <Loader2 className="w-8 h-8 animate-spin text-[#1C2643]" />
+                    <div className="flex items-center justify-center h-full py-16">
+                       <Loader2 className="w-6 h-6 animate-spin text-[#1C2643]" />
                     </div>
                   ) : rankings.length > 0 ? (
                     <div>
@@ -2043,10 +2164,10 @@ export default function DashboardPage() {
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-200">
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                              <th className="px-3 py-2.5 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                              <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                              <th className="px-3 py-2.5 text-[8.5px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                              <th className="px-3 py-2.5 text-[8.5px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -2058,10 +2179,10 @@ export default function DashboardPage() {
                                   "transition-colors",
                                   isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80"
                                 )}>
-                                  <td className="px-4 py-4">
-                                    <div className="flex items-center gap-3">
+                                  <td className="px-3 py-3">
+                                    <div className="flex items-center gap-2.5">
                                       <div className={cn(
-                                        "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shrink-0",
+                                        "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
                                         position === 1 ? "bg-amber-100 text-amber-600" : 
                                         position === 2 ? "bg-slate-100 text-slate-600" :
                                         position === 3 ? "bg-orange-100 text-orange-600" :
@@ -2070,7 +2191,7 @@ export default function DashboardPage() {
                                         {position}º
                                       </div>
                                       <span className={cn(
-                                        "text-[13px] font-black tracking-tight",
+                                        "text-[11.5px] font-black tracking-tight",
                                         isUser ? "text-[#1C2643]" : "text-slate-600"
                                       )}>
                                         {rank.nome} {isUser && "(Você)"}
@@ -2078,39 +2199,39 @@ export default function DashboardPage() {
                                     </div>
                                   </td>
                                   <td className={cn(
-                                    "px-4 py-4 text-right transition-colors",
+                                    "px-3 py-3 text-right transition-colors",
                                     isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
                                   )}>
                                     <div className="flex flex-col items-end">
-                                      <span className="text-[13px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
+                                      <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
                                         {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
                                       </span>
                                     </div>
                                   </td>
                                   <td className={cn(
-                                    "px-4 py-4 text-right transition-colors",
+                                    "px-3 py-3 text-right transition-colors",
                                     isUser ? "bg-orange-100/70" : "bg-orange-100/25"
                                   )}>
                                     <div className="flex flex-col items-end">
-                                      <span className="text-[13px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
+                                      <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
                                         {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
                                       </span>
                                     </div>
                                   </td>
                                   <td className={cn(
-                                    "px-4 py-4 text-right transition-colors",
+                                    "px-3 py-3 text-right transition-colors",
                                     isUser ? "bg-blue-100/70" : "bg-blue-100/25"
                                   )}>
                                     <div className="flex flex-col items-end">
                                       <span className={cn(
-                                        "text-[13px] font-bold",
+                                        "text-[11.5px] font-bold",
                                         rank.totalToday > 0 ? "text-emerald-600" : "text-slate-400"
                                       )}>
                                         {formatCurrency(rank.totalToday)}
                                       </span>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
                                         {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
                                       </span>
                                     </div>
@@ -2121,7 +2242,7 @@ export default function DashboardPage() {
                           </tbody>
                         </table>
                       ) : (
-                        <div className="grid grid-cols-1 gap-3">
+                        <div className="grid grid-cols-1 gap-2.5">
                           {displayRankings.map((rank, idx) => {
                             const isUser = rank.isUser
                             const position = rank.position
@@ -2130,35 +2251,35 @@ export default function DashboardPage() {
                               <div 
                                 key={idx} 
                                 className={cn(
-                                  "flex sm:items-center justify-between border transition-all duration-300 rounded-2xl",
+                                  "flex sm:items-center justify-between border transition-all duration-300 rounded-xl",
                                   isUser 
-                                    ? "bg-[#1C2643] text-white border-[#1C2643] shadow-lg shadow-[#1C2643]/20 scale-[1.02] py-6 px-5 sm:py-8 sm:px-8 w-full" 
-                                    : "bg-slate-50 border-slate-200 text-[#1C2643] p-4"
+                                    ? "bg-[#1C2643] text-white border-[#1C2643] shadow-md shadow-[#1C2643]/20 scale-[1.01] py-4.5 px-4 sm:py-5 sm:px-5 w-full" 
+                                    : "bg-slate-50 border-slate-200 text-[#1C2643] p-3"
                                 )}
                               >
-                                <div className="flex items-center gap-4 sm:gap-6 min-w-0 w-full">
+                                <div className="flex items-center gap-3 sm:gap-4.5 min-w-0 w-full">
                                   <div className={cn(
                                     "rounded-full flex items-center justify-center font-black shrink-0 shadow-sm",
                                     isUser 
-                                      ? "w-14 h-14 text-lg sm:w-20 sm:h-20 sm:text-2xl bg-white text-[#1C2643]" 
-                                      : "w-8 h-8 text-xs bg-white border border-slate-200 text-[#718198]"
+                                      ? "w-11 h-11 text-base sm:w-16 sm:h-16 sm:text-xl bg-white text-[#1C2643]" 
+                                      : "w-6.5 h-6.5 text-[10px] bg-white border border-slate-200 text-[#718198]"
                                   )}>
                                     {position}º
                                   </div>
                                   <div className="flex flex-col min-w-0">
                                     <p className={cn(
                                       "font-black tracking-tight line-clamp-1 leading-tight",
-                                      isUser ? "text-[20px] sm:text-[28px] text-white" : "text-[13px] text-[#1C2643]"
+                                      isUser ? "text-[16px] sm:text-[21px] text-white" : "text-[11px] text-[#1C2643]"
                                     )}>
                                       {isUser ? (rank.nome?.split(" ")[0] || "") : `Ranking ${position}º`}
                                     </p>
                                     
                                     {isUser && (
                                       <>
-                                        <p className="text-[11px] sm:text-[14px] uppercase font-black tracking-widest text-slate-300 mt-1 leading-tight">
+                                        <p className="text-[9px] sm:text-[11px] uppercase font-black tracking-widest text-slate-300 mt-0.5 leading-tight">
                                           Sua Produção
                                         </p>
-                                        <p className="font-black text-amber-400 text-[22px] sm:text-[34px] leading-tight font-sans tracking-tight mt-1 sm:mt-1.5">
+                                        <p className="font-black text-amber-400 text-[18px] sm:text-[26px] leading-tight font-sans tracking-tight mt-0.5 sm:mt-1">
                                           {formatCurrency(rank.totalPaid)}
                                         </p>
                                       </>
@@ -2168,25 +2289,23 @@ export default function DashboardPage() {
                               </div>
                             )
                           })}
-                          
-                          {/* Redundant position message removed as requested */}
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-full py-10 opacity-40">
-                       <Trophy className="w-12 h-12 mb-4" />
-                       <p className="text-sm font-bold uppercase tracking-widest text-[#1C2643]">Sem rankings ainda</p>
+                    <div className="flex flex-col items-center justify-center h-full py-8 opacity-40">
+                       <Trophy className="w-10 h-10 mb-3" />
+                       <p className="text-xs font-bold uppercase tracking-widest text-[#1C2643]">Sem rankings ainda</p>
                     </div>
                   )}
                 </div>
 
-                <div className="mt-8 pt-6 border-t border-slate-50">
-                   <div className="bg-amber-50 p-4 rounded-2xl flex items-center gap-4 border border-amber-100">
-                      <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center shrink-0">
-                         <Target className="w-5 h-5 text-amber-500" />
+                <div className="mt-5 pt-4 border-t border-slate-50">
+                   <div className="bg-amber-50 p-3 rounded-xl flex items-center gap-3 border border-amber-100">
+                      <div className="w-8.5 h-8.5 bg-white rounded-lg shadow-sm flex items-center justify-center shrink-0">
+                         <Target className="w-4 h-4 text-amber-500" />
                       </div>
-                      <p className="text-[12px] font-bold text-[#1C2643] leading-tight flex-1">
+                      <p className="text-[10px] font-bold text-[#1C2643] leading-tight flex-1">
                          {userRank === 1 ? (
                            <span className="text-emerald-600 font-black tracking-tight">PARABÉNS! VOCÊ É O NÚMERO 1! CONTINUE LIDERANDO!</span>
                          ) : userRank > 1 ? (
@@ -2202,7 +2321,12 @@ export default function DashboardPage() {
 
             {/* SECTION 5: CAMPANHA DINÂMICA OU MODO TUBARÃO */}
             {!isSupervisor && (
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="lg:col-span-8">
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                transition={{ delay: 0.6 }} 
+                className="col-span-1 sm:col-span-2 lg:col-span-4"
+              >
                 {banners.length > 0 ? (
                   <DashboardCard className="relative overflow-hidden text-white w-full aspect-video flex flex-col p-3 sm:p-4 border-none bg-transparent group">
                     <div className="w-full h-full relative">

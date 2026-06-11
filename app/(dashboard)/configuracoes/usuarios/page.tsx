@@ -50,6 +50,7 @@ interface Usuario {
   regime_contratacao?: string
   status: string
   avatar_url?: string
+  foto_campanha_url?: string
   created_at: string
   supervisor_id?: string
 }
