@@ -390,9 +390,33 @@ export function HRDashboard({
 
   return (
     <div className="space-y-8 animate-fade-in text-slate-800">
-      {/* Greetings Hero & Period Filter (Aligned on the same line) */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 py-2">
-        <div className="space-y-2 max-w-xl">
+      {/* Greetings Hero & Campaign Photo Row (Photo on the left, Greetings on the right) */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-4 w-full items-stretch py-2" id="dashboard-greetings-photo-container">
+        {/* PHOTO CARD (Matched exactly to other dashboards proportions and size) */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          transition={{ delay: 0.28 }}
+          className="md:col-span-3 relative overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-lg shadow-[#1C2643]/5 h-[315px] md:h-[336px] lg:h-[406px] xl:h-[448px] w-full max-w-[343px] shrink-0"
+        >
+          {perfil?.foto_campanha_url || perfil?.avatar_url ? (
+            <Image 
+              src={perfil?.foto_campanha_url || perfil?.avatar_url || ""} 
+              alt={perfil.nome || "Colaborador"} 
+              fill 
+              className="object-cover object-top"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-[#1C2643]/5 flex flex-col items-center justify-center text-[#1C2643]">
+              <Users className="w-16 h-16 opacity-35" />
+              <span className="text-[10px] font-black text-slate-400 mt-3 uppercase tracking-widest text-center px-4">Sem foto cadastrada</span>
+            </div>
+          )}
+        </motion.div>
+
+        {/* GREETINGS HERO (Located on the right side of the photo) */}
+        <div className="md:col-span-9 flex flex-col justify-center space-y-2 md:pl-[6px]">
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight uppercase text-[#1C2643]">
             Olá, {firstName}
           </h1>
@@ -400,120 +424,262 @@ export function HRDashboard({
             Seja bem-vindo ao painel central de Recursos Humanos. Aqui você pode gerenciar todas as rotinas internas, acompanhar contratações e acompanhar termos comportamentais.
           </p>
         </div>
-
-        {/* Dynamic Period Filter UI in HR Dashboard */}
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }} 
-          animate={{ opacity: 1, scale: 1 }} 
-          transition={{ delay: 0.05 }} 
-          className="w-full lg:max-w-[380px]"
-        >
-          <DashboardCard className="shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3.5 !p-[18px] sm:!p-5 !rounded-[24px] bg-white border border-slate-200">
-            <div className="flex items-center gap-2 mb-0.5">
-              <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
-                <Calendar className="w-4 h-4 text-amber-500 fill-amber-500" />
-              </div>
-              <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-widest">Filtrar por Período</p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Início</span>
-                <input 
-                  type="date" 
-                  value={tempStartDate}
-                  onChange={(e) => setTempStartDate(e.target.value)}
-                  className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Fim</span>
-                <input 
-                  type="date" 
-                  value={tempEndDate}
-                  onChange={(e) => setTempEndDate(e.target.value)}
-                  className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-1.5 mt-1">
-              <button 
-                onClick={() => {
-                  if (setStartDate && setEndDate) {
-                    setStartDate(tempStartDate);
-                    setEndDate(tempEndDate);
-                  }
-                }}
-                disabled={!tempStartDate && !tempEndDate}
-                className="px-2.5 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center h-8"
-              >
-                FILTRAR
-              </button>
-              <button 
-                onClick={() => {
-                  const todayStr = format(new Date(), "yyyy-MM-dd");
-                  setTempStartDate(todayStr);
-                  setTempEndDate(todayStr);
-                  if (setStartDate && setEndDate) {
-                    setStartDate(todayStr);
-                    setEndDate(todayStr);
-                  }
-                }}
-                className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
-              >
-                HOJE
-              </button>
-              <button 
-                onClick={() => {
-                  const now = new Date();
-                  const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
-                  const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
-                  setTempStartDate(firstDay);
-                  setTempEndDate(lastDay);
-                  if (setStartDate && setEndDate) {
-                    setStartDate(firstDay);
-                    setEndDate(lastDay);
-                  }
-                }}
-                className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
-              >
-                MÊS
-              </button>
-            </div>
-          </DashboardCard>
-        </motion.div>
       </div>
 
-      {/* NEW SECTION: PHOTO, META MENSAL DA EMPRESA & RANKING DE VENDAS */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full" id="dashboard-meta-ranking-container">
-        {/* Photo and Meta subgrid */}
+      {/* ROW 1: SUMMARY CARDS (TWO COLUMNS, TWO ROWS) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full" id="dashboard-summary-cards-grid">
+        {metrics.map((metric, index) => {
+          const Icon = metric.icon
+          return (
+            <motion.div
+              key={metric.title}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.05 }}
+            >
+              <Link href={metric.href} className="block transition-all hover:-translate-y-1 duration-200 h-full">
+                <Card className="border border-slate-150 rounded-2xl shadow-sm hover:shadow-md bg-white overflow-hidden h-full">
+                  <CardContent className="p-6 flex items-center justify-between h-full">
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        {metric.title}
+                      </p>
+                      <p className="text-2xl font-black text-[#1C2643]">
+                        {metric.value}
+                      </p>
+                      <p className="text-[10px] font-medium text-slate-500">
+                        {metric.description}
+                      </p>
+                    </div>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${metric.bgColor} ${metric.color}`}>
+                      <Icon className="w-6 h-6" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </motion.div>
+          )
+        })}
+      </div>
+
+      {/* ROW 2: APPOINTMENTS OF THE DAY (Interviews & Calls) */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className="w-full"
+        id="dashboard-appointments-card-hr"
+      >
+        <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
+          <CardContent className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 h-full">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-6 shrink-0 md:border-r border-slate-100 pr-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+                  <Clock className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">
+                    {dashboardInterviewTab === "ENTREVISTAS" ? "Entrevistas de Hoje" : "Ligações de Hoje"}
+                  </p>
+                  <p className="text-2xl font-black text-[#1C2643] leading-none">
+                    {countToday} {countToday === 1 ? "agendada" : "agendadas"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Toggle switch inside the card */}
+              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setDashboardInterviewTab("ENTREVISTAS")}
+                  className={cn(
+                    "px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg cursor-pointer",
+                    dashboardInterviewTab === "ENTREVISTAS"
+                      ? "bg-[#1C2643] text-white shadow shadow-[#1C2643]/20"
+                      : "text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  ENTREVISTAS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDashboardInterviewTab("LIGAÇÕES")}
+                  className={cn(
+                    "px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg cursor-pointer",
+                    dashboardInterviewTab === "LIGAÇÕES"
+                      ? "bg-[#1C2643] text-white shadow shadow-[#1C2643]/20"
+                      : "text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  LIGAÇÕES
+                </button>
+              </div>
+            </div>
+
+            {/* Horários e Nomes de Hoje */}
+            <div className="flex-1 min-w-0 w-full pl-1">
+              {(() => {
+                let cltCount = 0;
+                let estagioCount = 0;
+                let pjCount = 0;
+
+                todayList.forEach(i => {
+                  const areaLower = (i.area || "").toLowerCase().trim();
+                  if (areaLower === "estágio" || areaLower === "estagio") {
+                    estagioCount++;
+                  } else if (areaLower === "não estudas" || areaLower === "nao estudas" || areaLower === "pj") {
+                    pjCount++;
+                  } else if (areaLower === "comercial" || areaLower === "operacional" || areaLower === "não estudam" || areaLower === "nao estudam") {
+                    cltCount++;
+                  } else {
+                    cltCount++;
+                  }
+                });
+
+                return (
+                  <div className="grid grid-cols-3 gap-3 md:gap-4 w-full">
+                    {/* CLT block */}
+                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 mb-1 pointer-events-none">
+                        CLT
+                      </span>
+                      <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                        {cltCount}
+                      </span>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                        {cltCount === 1 ? "vaga" : "vagas"}
+                      </span>
+                    </div>
+
+                    {/* ESTÁGIO block */}
+                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 mb-1 pointer-events-none">
+                        ESTÁGIO
+                      </span>
+                      <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                        {estagioCount}
+                      </span>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                        {estagioCount === 1 ? "vaga" : "vagas"}
+                      </span>
+                    </div>
+
+                    {/* PJ block */}
+                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 mb-1 pointer-events-none">
+                        PJ
+                      </span>
+                      <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                        {pjCount}
+                      </span>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                        {pjCount === 1 ? "vaga" : "vagas"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ROW 3: HORIZONTAL PERIOD FILTER */}
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ delay: 0.26 }} 
+        className="w-full"
+      >
+        <DashboardCard className="shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-slate-200">
+          {/* Title & Icon */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+              <Calendar className="w-4 h-4 text-amber-500 fill-amber-500" />
+            </div>
+            <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-widest">Filtrar por Período</p>
+          </div>
+          
+          {/* Date Picker inputs */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1 max-w-xl">
+            <div className="flex items-center gap-2 w-full">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Início</span>
+              <input 
+                type="date" 
+                value={tempStartDate}
+                onChange={(e) => setTempStartDate(e.target.value)}
+                className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+              />
+            </div>
+            <div className="flex items-center gap-2 w-full">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Fim</span>
+              <input 
+                type="date" 
+                value={tempEndDate}
+                onChange={(e) => setTempEndDate(e.target.value)}
+                className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+              />
+            </div>
+          </div>
+
+          {/* Buttons on the right */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button 
+              onClick={() => {
+                if (setStartDate && setEndDate) {
+                  setStartDate(tempStartDate);
+                  setEndDate(tempEndDate);
+                }
+              }}
+              disabled={!tempStartDate && !tempEndDate}
+              className="px-4 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm h-8 flex items-center justify-center cursor-pointer"
+            >
+              FILTRAR
+            </button>
+            <button 
+              onClick={() => {
+                const todayStr = format(new Date(), "yyyy-MM-dd");
+                setTempStartDate(todayStr);
+                setTempEndDate(todayStr);
+                if (setStartDate && setEndDate) {
+                  setStartDate(todayStr);
+                  setEndDate(todayStr);
+                }
+              }}
+              className="px-4 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm h-8 flex items-center justify-center cursor-pointer"
+            >
+              HOJE
+            </button>
+            <button 
+              onClick={() => {
+                const now = new Date();
+                const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+                const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+                setTempStartDate(firstDay);
+                setTempEndDate(lastDay);
+                if (setStartDate && setEndDate) {
+                  setStartDate(firstDay);
+                  setEndDate(lastDay);
+                }
+              }}
+              className="px-4 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm h-8 flex items-center justify-center cursor-pointer"
+            >
+              MÊS
+            </button>
+          </div>
+        </DashboardCard>
+      </motion.div>
+
+      {/* ROW 4: META MENSAL DA EMPRESA & RANKING DE VENDAS */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+        {/* Meta mensal da empresa (velocimetro) */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }} 
           animate={{ opacity: 1, y: 0 }} 
           transition={{ delay: 0.28 }}
-          className="lg:col-span-8 grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch"
+          className="lg:col-span-4"
         >
-          {/* PHOTO CARD */}
-          <div className="md:col-span-5 relative overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm min-h-[320px] md:min-h-0">
-            {perfil?.foto_campanha_url || perfil?.avatar_url ? (
-              <Image 
-                src={perfil?.foto_campanha_url || perfil?.avatar_url || ""} 
-                alt={perfil.nome || "Colaborador"} 
-                fill 
-                className="object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="absolute inset-0 bg-[#1C2643]/5 flex flex-col items-center justify-center text-[#1C2643]">
-                <Users className="w-16 h-16 opacity-35" />
-                <span className="text-[10px] font-black text-slate-400 mt-3 uppercase tracking-widest text-center px-4">Sem foto cadastrada</span>
-              </div>
-            )}
-          </div>
-
-          {/* Meta mensal da empresa (velocimetro) */}
-          <DashboardCard className="md:col-span-7 flex flex-col shadow-sm border-slate-200">
+          <DashboardCard className="flex flex-col shadow-sm border-slate-200 h-full">
             <div className="relative z-10 flex flex-col h-full justify-between">
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -565,9 +731,9 @@ export function HRDashboard({
           initial={{ opacity: 0, x: 20 }} 
           animate={{ opacity: 1, x: 0 }} 
           transition={{ delay: 0.3 }} 
-          className="lg:col-span-4"
+          className="lg:col-span-8"
         >
-          <DashboardCard className="lg:h-[540px] shadow-sm flex flex-col bg-white border-slate-200 overflow-hidden">
+          <DashboardCard className="lg:h-[540px] shadow-sm flex flex-col bg-white border-slate-200 overflow-hidden h-full">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100 shrink-0">
                <div className="flex items-center gap-3">
                  <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Ranking de Vendas</h3>
@@ -761,164 +927,6 @@ export function HRDashboard({
           </DashboardCard>
         </motion.div>
       </div>
-
-      {/* Grid Summary Cards (Fully functional real numbers with interactive Link wraps) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {metrics.map((metric, index) => {
-          const Icon = metric.icon
-          return (
-            <motion.div
-              key={metric.title}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-            >
-              <Link href={metric.href} className="block transition-all hover:-translate-y-1 duration-200">
-                <Card className="border border-slate-150 rounded-2xl shadow-sm hover:shadow-md bg-white overflow-hidden">
-                  <CardContent className="p-6 flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        {metric.title}
-                      </p>
-                      <p className="text-2xl font-black text-[#1C2643]">
-                        {metric.value}
-                      </p>
-                      <p className="text-[10px] font-medium text-slate-500">
-                        {metric.description}
-                      </p>
-                    </div>
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${metric.bgColor} ${metric.color}`}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            </motion.div>
-          )
-        })}
-      </div>
-
-      {/* NEW SECTION: APPOINTMENTS OF THE DAY (Interviews & Calls) */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-        className="w-full"
-        id="dashboard-appointments-card-hr"
-      >
-        <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
-          <CardContent className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 h-full">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-6 shrink-0 md:border-r border-slate-100 pr-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
-                  <Clock className="w-6 h-6 animate-pulse" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">
-                    {dashboardInterviewTab === "ENTREVISTAS" ? "Entrevistas de Hoje" : "Ligações de Hoje"}
-                  </p>
-                  <p className="text-2xl font-black text-[#1C2643] leading-none">
-                    {countToday} {countToday === 1 ? "agendada" : "agendadas"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Toggle switch inside the card */}
-              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setDashboardInterviewTab("ENTREVISTAS")}
-                  className={cn(
-                    "px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg cursor-pointer",
-                    dashboardInterviewTab === "ENTREVISTAS"
-                      ? "bg-[#1C2643] text-white shadow shadow-[#1C2643]/20"
-                      : "text-slate-500 hover:text-slate-800"
-                  )}
-                >
-                  ENTREVISTAS
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDashboardInterviewTab("LIGAÇÕES")}
-                  className={cn(
-                    "px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg cursor-pointer",
-                    dashboardInterviewTab === "LIGAÇÕES"
-                      ? "bg-[#1C2643] text-white shadow shadow-[#1C2643]/20"
-                      : "text-slate-500 hover:text-slate-800"
-                  )}
-                >
-                  LIGAÇÕES
-                </button>
-              </div>
-            </div>
-
-            {/* Horários e Nomes de Hoje */}
-            <div className="flex-1 min-w-0 w-full pl-1">
-              {(() => {
-                let cltCount = 0;
-                let estagioCount = 0;
-                let pjCount = 0;
-
-                todayList.forEach(i => {
-                  const areaLower = (i.area || "").toLowerCase().trim();
-                  if (areaLower === "estágio" || areaLower === "estagio") {
-                    estagioCount++;
-                  } else if (areaLower === "não estudas" || areaLower === "nao estudas" || areaLower === "pj") {
-                    pjCount++;
-                  } else if (areaLower === "comercial" || areaLower === "operacional" || areaLower === "não estudam" || areaLower === "nao estudam") {
-                    cltCount++;
-                  } else {
-                    cltCount++;
-                  }
-                });
-
-                return (
-                  <div className="grid grid-cols-3 gap-3 md:gap-4 w-full">
-                    {/* CLT block */}
-                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 mb-1 pointer-events-none">
-                        CLT
-                      </span>
-                      <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
-                        {cltCount}
-                      </span>
-                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
-                        {cltCount === 1 ? "vaga" : "vagas"}
-                      </span>
-                    </div>
-
-                    {/* ESTÁGIO block */}
-                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 mb-1 pointer-events-none">
-                        ESTÁGIO
-                      </span>
-                      <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
-                        {estagioCount}
-                      </span>
-                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
-                        {estagioCount === 1 ? "vaga" : "vagas"}
-                      </span>
-                    </div>
-
-                    {/* PJ block */}
-                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 mb-1 pointer-events-none">
-                        PJ
-                      </span>
-                      <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
-                        {pjCount}
-                      </span>
-                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
-                        {pjCount === 1 ? "vaga" : "vagas"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
     </div>
   )
 }

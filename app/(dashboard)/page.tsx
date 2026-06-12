@@ -237,6 +237,7 @@ interface User {
   supervisor_id: string
   supervisor_nome?: string
   equipe?: string
+  status?: string
 }
 
 interface Interview {
@@ -538,9 +539,9 @@ export default function DashboardPage() {
 
         if (targetSupervisorId || isAdmin || isOperational || isDeveloper || isRecursosHumanos) {
           const team = (isAdmin || isOperational || isDeveloper || isRecursosHumanos)
-            ? allUsers.filter((u: User) => u.funcao === 'Corretor' || u.funcao === 'Supervisor' || u.funcao === 'Estágio' || u.funcao === 'Estagio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO')
+            ? allUsers.filter((u: User) => (u.funcao === 'Corretor' || u.funcao === 'Supervisor' || u.funcao === 'Estágio' || u.funcao === 'Estagio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO') && u.status?.toUpperCase() !== 'INATIVO')
             : allUsers.filter((u: User) => 
-                u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId
+                (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId) && u.status?.toUpperCase() !== 'INATIVO'
               )
           const teamIds = team.map((m: User) => m.id)
 
@@ -619,6 +620,23 @@ export default function DashboardPage() {
         }) => {
           const numericVal = isNaN(parseCurrency(curr.valor_producao)) ? 0 : parseCurrency(curr.valor_producao)
           const brokerId = curr.corretor_id || ""
+
+          const brokerUser = allUsers.find((u: User) => u.id === brokerId)
+          const isIntern = brokerUser?.funcao === 'Estágio' || 
+                           brokerUser?.funcao === 'Estagio' || 
+                           brokerUser?.funcao === 'Processo Seletivo' || 
+                           brokerUser?.funcao === 'PROCESSO SELETIVO'
+          const supervisorId = brokerUser?.supervisor_id || ""
+
+          let targetBrokerIdForMetrics = brokerId
+          if (isIntern && supervisorId && brokerMetrics[supervisorId]) {
+            targetBrokerIdForMetrics = supervisorId
+          }
+
+          let targetBrokerIdForColabs = brokerId
+          if (isIntern && supervisorId && brokerColaboracoes[supervisorId]) {
+            targetBrokerIdForColabs = supervisorId
+          }
           
           const createdDate = new Date(curr.created_at)
           const updatedDate = new Date(curr.updated_at)
@@ -662,9 +680,9 @@ export default function DashboardPage() {
             teamTotal += numericVal
             if (isTodayPaid) teamDailyTotal += numericVal
             
-            if (brokerMetrics[brokerId]) {
-              brokerMetrics[brokerId].totalPaid += numericVal
-              brokerMetrics[brokerId].countPaid += 1
+            if (brokerMetrics[targetBrokerIdForMetrics]) {
+              brokerMetrics[targetBrokerIdForMetrics].totalPaid += numericVal
+              brokerMetrics[targetBrokerIdForMetrics].countPaid += 1
             }
           }
 
@@ -675,9 +693,9 @@ export default function DashboardPage() {
               teamPendingInconsistencyValueCalc += numericVal
               teamPendingInconsistencyCountCalc += 1
             }
-            if (brokerMetrics[brokerId]) {
-              brokerMetrics[brokerId].totalInProcess += numericVal
-              brokerMetrics[brokerId].countInProcess += 1
+            if (brokerMetrics[targetBrokerIdForMetrics]) {
+              brokerMetrics[targetBrokerIdForMetrics].totalInProcess += numericVal
+              brokerMetrics[targetBrokerIdForMetrics].countInProcess += 1
             }
           }
 
@@ -693,9 +711,9 @@ export default function DashboardPage() {
           if (isCreatedInRange && !isCancelled && !isRetroactivePayment) {
             teamCreatedTodayValue += numericVal
             teamCreatedTodayCount += 1
-            if (brokerMetrics[brokerId]) {
-              brokerMetrics[brokerId].totalToday += numericVal
-              brokerMetrics[brokerId].countToday += 1
+            if (brokerMetrics[targetBrokerIdForMetrics]) {
+              brokerMetrics[targetBrokerIdForMetrics].totalToday += numericVal
+              brokerMetrics[targetBrokerIdForMetrics].countToday += 1
             }
           }
 
@@ -710,19 +728,19 @@ export default function DashboardPage() {
           }
 
           // Accumulate Intern Collaborations & Self-Production (propria)
-          if (brokerColaboracoes[brokerId]) {
-            const estId = curr.estagiario_colaborador_id
-            const estNome = curr.estagiario_colaborador_nome
+          if (brokerColaboracoes[targetBrokerIdForColabs]) {
+            const estId = isIntern ? brokerId : curr.estagiario_colaborador_id
+            const estNome = isIntern ? (brokerUser?.nome || "Estagiário") : curr.estagiario_colaborador_nome
             
             if (estId && estId.trim() !== "") {
-              if (!brokerColaboracoes[brokerId].estagiarios[estId]) {
-                brokerColaboracoes[brokerId].estagiarios[estId] = {
+              if (!brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId]) {
+                brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId] = {
                   estagiario_id: estId,
                   nome: estNome || "Estagiário",
                   totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0
                 }
               }
-              const est = brokerColaboracoes[brokerId].estagiarios[estId]
+              const est = brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId]
               if (isPaid && isPaidInRange) {
                 est.totalPaid += numericVal
                 est.countPaid += 1
@@ -736,7 +754,7 @@ export default function DashboardPage() {
                 est.countToday += 1
               }
             } else {
-              const prop = brokerColaboracoes[brokerId].propria
+              const prop = brokerColaboracoes[targetBrokerIdForColabs].propria
               if (isPaid && isPaidInRange) {
                 prop.totalPaid += numericVal
                 prop.countPaid += 1
@@ -771,7 +789,15 @@ export default function DashboardPage() {
         setOpInProcessCount(opInProcessCountCalc)
 
         // Form rankings for supervisor
-        sortedRankings = team.map((m: User) => {
+        const filteredTeam = team.filter((m: User) => {
+          const isUserIntern = m.funcao === 'Estágio' || 
+                               m.funcao === 'Estagio' || 
+                               m.funcao === 'Processo Seletivo' || 
+                               m.funcao === 'PROCESSO SELETIVO'
+          return !isUserIntern && m.status?.toUpperCase() !== 'INATIVO'
+        })
+
+        sortedRankings = filteredTeam.map((m: User) => {
           const colData = brokerColaboracoes[m.id]
           const estagiariosList = colData ? Object.values(colData.estagiarios) : []
           return {
@@ -816,6 +842,20 @@ export default function DashboardPage() {
           const val = parseCurrency(curr.valor_producao)
           const id = curr.corretor_id || "unknown"
           
+          const userInList = allUsers.find((u: User) => u.id === id)
+          if (userInList?.status?.toUpperCase() === 'INATIVO') {
+            return acc
+          }
+
+          const isUserIntern = userInList?.funcao === 'Estágio' ||
+                               userInList?.funcao === 'Estagio' ||
+                               userInList?.funcao === 'Processo Seletivo' ||
+                               userInList?.funcao === 'PROCESSO SELETIVO'
+
+          if (isUserIntern) {
+            return acc
+          }
+
           // For Corretor ranking (when not admin/supervisor), check range here too if needed
           // but normally the query handles it. Let's respect data_pago_cliente if it ever gets used here.
           const effectiveDate = curr.data_pago_cliente ? new Date(curr.data_pago_cliente) : new Date(curr.updated_at)
@@ -832,16 +872,19 @@ export default function DashboardPage() {
         }, {})
 
         sortedRankings = Object.entries(aggregated)
-          .map(([corretor_id, total]) => ({ 
-            corretor_id, 
-            nome: `Ranking ${corretor_id.substring(0, 4)}`, 
-            totalPaid: total as number,
-            countPaid: 0,
-            totalInProcess: 0,
-            countInProcess: 0,
-            totalToday: 0,
-            countToday: 0
-          }))
+          .map(([corretor_id, total]) => {
+            const userInList = allUsers.find((u: User) => u.id === corretor_id)
+            return { 
+              corretor_id, 
+              nome: userInList?.nome || `Ranking ${corretor_id.substring(0, 4)}`, 
+              totalPaid: total as number,
+              countPaid: 0,
+              totalInProcess: 0,
+              countInProcess: 0,
+              totalToday: 0,
+              countToday: 0
+            }
+          })
           .sort((a, b) => b.totalPaid - a.totalPaid)
         
         setRankings(sortedRankings)
