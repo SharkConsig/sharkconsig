@@ -88,7 +88,8 @@ interface TicketAtendimentoProps {
 }
 
 export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoProps) {
-  const { perfil, user } = useAuth()
+  const { perfil, user, isEstagio } = useAuth()
+  const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const [messages, setMessages] = useState<Message[]>([])
   const [initialDesc, setInitialDesc] = useState(ticket.descricao || ticket.description || ticket.content || "")
 
@@ -938,24 +939,27 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 <ImageIcon className="w-3.5 h-3.5" />
                 Anexar Arquivos
               </Button>
-              <Link href={`/propostas/nova?${new URLSearchParams({
-                nome: ticket.client || "",
-                cpf: ticket.cpf || "",
-                nascimento: "31/01/1984",
-                idLead: ticket.matricula || ticket.id,
-                matricula: ticket.matricula || "",
-                origem: ticket.origin?.toLowerCase() || "",
-                tel1: ticket.phone || "",
-                tel2: ticket.phone_2 || "",
-                tel3: ticket.phone_3 || ""
-              }).toString()}`}>
-                <Button 
-                  className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  DIGITAR PROPOSTA
-                </Button>
-              </Link>
+              {!isUserEstagio && (
+                <Link href={`/propostas/nova?${new URLSearchParams({
+                  nome: ticket.client || "",
+                  cpf: ticket.cpf || "",
+                  nascimento: "31/01/1984",
+                  idLead: ticket.matricula || ticket.id,
+                  idChamado: ticket.id || "",
+                  matricula: ticket.matricula || "",
+                  origem: ticket.origin?.toLowerCase() || "",
+                  tel1: ticket.phone || "",
+                  tel2: ticket.phone_2 || "",
+                  tel3: ticket.phone_3 || "",
+                }).toString()}`}>
+                  <Button 
+                    className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    DIGITAR PROPOSTA
+                  </Button>
+                </Link>
+              )}
             </div>
             <p className="text-[9px] text-slate-400 max-w-sm leading-relaxed">Pressione <kbd className="bg-slate-100 px-1 rounded font-bold">Ctrl + Enter</kbd> para enviar rapidamente. Tamanho máximo 20mb (jpg, png, pdf, docx, xlsx).</p>
           </div>

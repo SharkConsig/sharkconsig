@@ -84,13 +84,13 @@ const allMenuItems = [
         name: "DIGITAR PROPOSTA", 
         href: "/propostas/nova", 
         icon: FileEdit, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
       },
       { 
         name: "PROPOSTAS", 
         href: "/propostas", 
         icon: ClipboardList, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
       },
       { 
         name: "CONFIGURAÇÕES", 

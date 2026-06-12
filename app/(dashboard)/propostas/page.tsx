@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -129,8 +130,16 @@ interface Proposal {
 }
 
 export default function ProposalsPage() {
-  const { perfil, isCorretor, isAdmin, isDeveloper, isOperational, isSupervisor } = useAuth()
+  const { perfil, isCorretor, isAdmin, isDeveloper, isOperational, isSupervisor, isEstagio } = useAuth()
+  const router = useRouter()
   const { isCollapsed } = useSidebar()
+
+  useEffect(() => {
+    if (perfil && (isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio')) {
+      toast.error("Você não tem acesso a esta página.")
+      router.push("/dashboard")
+    }
+  }, [perfil, isEstagio, router])
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [counts, setCounts] = useState<{[key: string]: number}>({})
   const [isLoading, setIsLoading] = useState(false)
@@ -758,8 +767,8 @@ export default function ProposalsPage() {
           )}
         </div>
 
-        {/* Export Button Row - Only for Operacional and Admin */}
-        {(isAdmin || isOperational) && (
+        {/* Export Button Row - For Operacional, Admin, Developer and Supervisor */}
+        {(isAdmin || isOperational || isDeveloper || isSupervisor) && (
           <div className="flex justify-end pt-4">
             <Button
               variant="outline"
@@ -783,6 +792,7 @@ export default function ProposalsPage() {
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ADE</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">CORRETOR</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">SUPERVISOR (EQUIPE)</th>
+                  <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ESTAGIÁRIO (COLABORADOR)</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">CPF</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">CLIENTE</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">BANCO/CONVÊNIO</th>
@@ -797,7 +807,7 @@ export default function ProposalsPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading && proposals.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
+                    <td colSpan={14} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
                       Carregando propostas...
                     </td>
                   </tr>
@@ -829,6 +839,7 @@ export default function ProposalsPage() {
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.ade || '-'}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-blue-50/20">{proposal.nome_corretor || '-'}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-indigo-50/20">{proposal.equipe || '-'}</td>
+                          <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-amber-50/20">{proposal.estagiario_colaborador_nome || '-'}</td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.cliente_cpf}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-700 uppercase tracking-tight">{proposal.nome_cliente}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.banco}/{proposal.convenio}</td>
@@ -943,7 +954,7 @@ export default function ProposalsPage() {
                         </tr>
                         {expandedProposalId === proposal.id_lead && (
                           <tr>
-                            <td colSpan={13} className="p-0 border-b border-slate-200">
+                            <td colSpan={14} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
                                 <ProposalDetailsAccordion 
                                   proposal={proposal} 
@@ -966,7 +977,7 @@ export default function ProposalsPage() {
                     )})
                 ) : (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
+                    <td colSpan={14} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium">
                       Nenhuma proposta encontrada com os filtros selecionados.
                     </td>
                   </tr>

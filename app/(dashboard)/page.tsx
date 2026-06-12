@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo, useCallback } from "react"
+import { useEffect, useState, useMemo, useCallback, Fragment } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { format } from "date-fns"
@@ -22,7 +22,10 @@ import {
   BookOpen,
   Compass,
   Award,
-  Calendar
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  GraduationCap
 } from "lucide-react"
 
 import { useAuth } from "@/context/auth-context"
@@ -43,6 +46,17 @@ interface ProposalSummary {
   data_pago_cliente?: string
 }
 
+interface InternCollaboration {
+  estagiario_id: string
+  nome: string
+  totalPaid: number
+  countPaid: number
+  totalInProcess: number
+  countInProcess: number
+  totalToday: number
+  countToday: number
+}
+
 interface RankingItem {
   corretor_id: string
   nome: string
@@ -52,6 +66,18 @@ interface RankingItem {
   countPaid: number
   countInProcess: number
   countToday: number
+  funcao?: string
+  colaboracoes?: {
+    propria: {
+      totalPaid: number
+      countPaid: number
+      totalInProcess: number
+      countInProcess: number
+      totalToday: number
+      countToday: number
+    }
+    estagiarios: InternCollaboration[]
+  }
 }
 
 interface TicketStats {
@@ -236,6 +262,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [userProposals, setUserProposals] = useState<ProposalSummary[]>([])
   const [rankings, setRankings] = useState<RankingItem[]>([])
+  const [expandedSupervisorIds, setExpandedSupervisorIds] = useState<Record<string, boolean>>({})
   const [teamProduced, setTeamProduced] = useState(0)
   const [teamMTDProduced, setTeamMTDProduced] = useState(0)
   const [monthlyMTDProduced, setMonthlyMTDProduced] = useState(0)
@@ -330,9 +357,9 @@ export default function DashboardPage() {
       startOfMonth.setHours(0, 0, 0, 0)
       startOfMonth.setDate(1)
 
-      // Custom range for Supervisor and Admin and Operational
-      const customStart = (isSupervisor || isAdmin || isOperational) && startDate ? new Date(startDate + 'T00:00:00') : null
-      const customEnd = (isSupervisor || isAdmin || isOperational) && endDate ? new Date(endDate + 'T23:59:59') : null
+      // Custom range for Supervisor and Admin and Operational and Recursos Humanos
+      const customStart = (isSupervisor || isAdmin || isOperational || isRecursosHumanos) && startDate ? new Date(startDate + 'T00:00:00') : null
+      const customEnd = (isSupervisor || isAdmin || isOperational || isRecursosHumanos) && endDate ? new Date(endDate + 'T23:59:59') : null
 
       const startOfWeek = new Date()
       startOfWeek.setHours(0, 0, 0, 0)
@@ -520,7 +547,7 @@ export default function DashboardPage() {
           // Fetch proposals for the team (or all if admin/operational)
           let teamProposalsQuery = supabase
             .from("propostas")
-            .select("corretor_id, valor_producao, status, updated_at, created_at, data_pago_cliente")
+            .select("corretor_id, valor_producao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
           
           if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos)) {
             teamProposalsQuery = teamProposalsQuery.in("corretor_id", teamIds)
@@ -551,6 +578,17 @@ export default function DashboardPage() {
           countToday: number 
         }> = {}
 
+        const brokerColaboracoes: Record<string, {
+          propria: {
+            totalPaid: number, countPaid: number, totalInProcess: number, countInProcess: number, totalToday: number, countToday: number
+          },
+          estagiarios: Record<string, {
+            estagiario_id: string,
+            nome: string,
+            totalPaid: number, countPaid: number, totalInProcess: number, countInProcess: number, totalToday: number, countToday: number
+          }>
+        }> = {}
+
         // Initialize everyone with 0
         team.forEach((m: { id: string }) => {
           brokerMetrics[m.id] = { 
@@ -561,9 +599,24 @@ export default function DashboardPage() {
             totalToday: 0,
             countToday: 0 
           }
+          brokerColaboracoes[m.id] = {
+            propria: {
+              totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0
+            },
+            estagiarios: {}
+          }
         })
 
-        teamProposals?.forEach((curr: { corretor_id: string, valor_producao: string | number, updated_at: string, created_at: string, status: string, data_pago_cliente?: string }) => {
+        teamProposals?.forEach((curr: { 
+          corretor_id: string, 
+          valor_producao: string | number, 
+          updated_at: string, 
+          created_at: string, 
+          status: string, 
+          data_pago_cliente?: string,
+          estagiario_colaborador_id?: string,
+          estagiario_colaborador_nome?: string
+        }) => {
           const numericVal = isNaN(parseCurrency(curr.valor_producao)) ? 0 : parseCurrency(curr.valor_producao)
           const brokerId = curr.corretor_id || ""
           
@@ -655,6 +708,49 @@ export default function DashboardPage() {
             teamCreatedMonthValue += numericVal
             teamCreatedMonthCount += 1
           }
+
+          // Accumulate Intern Collaborations & Self-Production (propria)
+          if (brokerColaboracoes[brokerId]) {
+            const estId = curr.estagiario_colaborador_id
+            const estNome = curr.estagiario_colaborador_nome
+            
+            if (estId && estId.trim() !== "") {
+              if (!brokerColaboracoes[brokerId].estagiarios[estId]) {
+                brokerColaboracoes[brokerId].estagiarios[estId] = {
+                  estagiario_id: estId,
+                  nome: estNome || "Estagiário",
+                  totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0
+                }
+              }
+              const est = brokerColaboracoes[brokerId].estagiarios[estId]
+              if (isPaid && isPaidInRange) {
+                est.totalPaid += numericVal
+                est.countPaid += 1
+              }
+              if (isInProcess) {
+                est.totalInProcess += numericVal
+                est.countInProcess += 1
+              }
+              if (isCreatedInRange && !isCancelled && !isRetroactivePayment) {
+                est.totalToday += numericVal
+                est.countToday += 1
+              }
+            } else {
+              const prop = brokerColaboracoes[brokerId].propria
+              if (isPaid && isPaidInRange) {
+                prop.totalPaid += numericVal
+                prop.countPaid += 1
+              }
+              if (isInProcess) {
+                prop.totalInProcess += numericVal
+                prop.countInProcess += 1
+              }
+              if (isCreatedInRange && !isCancelled && !isRetroactivePayment) {
+                prop.totalToday += numericVal
+                prop.countToday += 1
+              }
+            }
+          }
         })
 
         setTeamProduced(teamTotal)
@@ -675,16 +771,25 @@ export default function DashboardPage() {
         setOpInProcessCount(opInProcessCountCalc)
 
         // Form rankings for supervisor
-        sortedRankings = team.map((m: { id: string, nome: string }) => ({
-          corretor_id: m.id,
-          nome: m.nome,
-          totalPaid: brokerMetrics[m.id]?.totalPaid || 0,
-          countPaid: brokerMetrics[m.id]?.countPaid || 0,
-          totalInProcess: brokerMetrics[m.id]?.totalInProcess || 0,
-          countInProcess: brokerMetrics[m.id]?.countInProcess || 0,
-          totalToday: brokerMetrics[m.id]?.totalToday || 0,
-          countToday: brokerMetrics[m.id]?.countToday || 0
-        })).sort((a: RankingItem, b: RankingItem) => {
+        sortedRankings = team.map((m: User) => {
+          const colData = brokerColaboracoes[m.id]
+          const estagiariosList = colData ? Object.values(colData.estagiarios) : []
+          return {
+            corretor_id: m.id,
+            nome: m.nome,
+            funcao: m.funcao || "",
+            totalPaid: brokerMetrics[m.id]?.totalPaid || 0,
+            countPaid: brokerMetrics[m.id]?.countPaid || 0,
+            totalInProcess: brokerMetrics[m.id]?.totalInProcess || 0,
+            countInProcess: brokerMetrics[m.id]?.countInProcess || 0,
+            totalToday: brokerMetrics[m.id]?.totalToday || 0,
+            countToday: brokerMetrics[m.id]?.countToday || 0,
+            colaboracoes: {
+              propria: colData?.propria || { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },
+              estagiarios: estagiariosList
+            }
+          }
+        }).sort((a: RankingItem, b: RankingItem) => {
           if (b.totalPaid !== a.totalPaid) {
             return b.totalPaid - a.totalPaid
           }
@@ -1006,12 +1111,14 @@ export default function DashboardPage() {
                 name: userData?.nome || r.nome,
                 team: userData?.equipe || "Shark",
                 supervisor: supervisorName,
+                funcao: userData?.funcao || r.funcao || "",
                 totalPaid: r.totalPaid,
                 totalInProcess: r.totalInProcess,
                 totalToday: r.totalToday,
                 countPaid: r.countPaid,
                 countInProcess: r.countInProcess,
-                countToday: r.countToday
+                countToday: r.countToday,
+                colaboracoes: r.colaboracoes
               }
             }),
             ticketStats: finalTicketStats
@@ -1115,13 +1222,13 @@ export default function DashboardPage() {
 
   const monthlyProduced = useMemo(() => {
     // Respect custom filter if applied, otherwise use current month
-    const startThreshold = (isSupervisor || isAdmin || isOperational) && startDate 
+    const startThreshold = (isSupervisor || isAdmin || isOperational || isRecursosHumanos) && startDate 
       ? new Date(startDate + 'T00:00:00') 
       : new Date(new Date().getFullYear(), new Date().getMonth(), 1)
     
     startThreshold.setHours(0, 0, 0, 0)
 
-    const endThreshold = (isSupervisor || isAdmin || isOperational) && endDate 
+    const endThreshold = (isSupervisor || isAdmin || isOperational || isRecursosHumanos) && endDate 
       ? new Date(endDate + 'T23:59:59') 
       : null
 
@@ -1136,7 +1243,7 @@ export default function DashboardPage() {
         const val = parseCurrency(p.valor_producao)
         return acc + (isNaN(val) ? 0 : val)
       }, 0)
-  }, [userProposals, startDate, endDate, isSupervisor, isAdmin, isOperational, isDeveloper])
+  }, [userProposals, startDate, endDate, isSupervisor, isAdmin, isOperational, isDeveloper, isRecursosHumanos])
 
   const dailyProduced = useMemo(() => {
     const startOfToday = new Date()
@@ -1271,7 +1378,14 @@ export default function DashboardPage() {
           "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
           isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
         )}>
-          <HRDashboard stats={adminStats} isLoading={isLoading} />
+          <HRDashboard 
+            stats={adminStats} 
+            isLoading={isLoading} 
+            startDate={startDate}
+            endDate={endDate}
+            setStartDate={setStartDate}
+            setEndDate={setEndDate}
+          />
         </div>
       </div>
     )
@@ -1854,7 +1968,7 @@ export default function DashboardPage() {
                                 if (dashboardInterviewTab === "ENTREVISTAS") {
                                   return itemTipo === "ENTREVISTAS" || i.fase === "Entrevista"
                                 }
-                                return itemTipo === "LIGAÇÕES"
+                                return itemTipo === "LIGAÇÕES" && i.fase !== "Entrevista"
                               }).length} agendadas
                             </p>
                           </div>
@@ -1897,7 +2011,7 @@ export default function DashboardPage() {
                             if (dashboardInterviewTab === "ENTREVISTAS") {
                               return itemTipo === "ENTREVISTAS" || i.fase === "Entrevista"
                             }
-                            return itemTipo === "LIGAÇÕES"
+                            return itemTipo === "LIGAÇÕES" && i.fase !== "Entrevista"
                           });
                           
                           let cltCount = 0;
@@ -2174,69 +2288,153 @@ export default function DashboardPage() {
                             {rankings.map((rank, idx) => {
                               const isUser = rank.corretor_id === perfil?.id
                               const position = idx + 1
+                              const isSupervisorRow = rank.funcao?.toLowerCase() === 'supervisor'
+                              const isExpanded = !!expandedSupervisorIds[rank.corretor_id]
                               return (
-                                <tr key={rank.corretor_id} className={cn(
-                                  "transition-colors",
-                                  isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80"
-                                )}>
-                                  <td className="px-3 py-3">
-                                    <div className="flex items-center gap-2.5">
-                                      <div className={cn(
-                                        "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
-                                        position === 1 ? "bg-amber-100 text-amber-600" : 
-                                        position === 2 ? "bg-slate-100 text-slate-600" :
-                                        position === 3 ? "bg-orange-100 text-orange-600" :
-                                        "bg-slate-50 text-slate-400"
-                                      )}>
-                                        {position}º
+                                <Fragment key={rank.corretor_id}>
+                                  <tr 
+                                    onClick={isSupervisorRow ? () => {
+                                      setExpandedSupervisorIds(prev => ({
+                                        ...prev,
+                                        [rank.corretor_id]: !prev[rank.corretor_id]
+                                      }))
+                                    } : undefined}
+                                    className={cn(
+                                      "transition-colors",
+                                      isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80",
+                                      isSupervisorRow && "cursor-pointer"
+                                    )}
+                                  >
+                                    <td className="px-3 py-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className={cn(
+                                          "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
+                                          position === 1 ? "bg-amber-100 text-amber-600" : 
+                                          position === 2 ? "bg-slate-100 text-slate-600" :
+                                          position === 3 ? "bg-orange-100 text-orange-600" :
+                                          "bg-slate-50 text-slate-400"
+                                        )}>
+                                          {position}º
+                                        </div>
+                                        <div className="flex items-center gap-1.5 min-w-[100px]">
+                                          <span className={cn(
+                                            "text-[11.5px] font-black tracking-tight",
+                                            isUser ? "text-[#1C2643]" : "text-slate-600"
+                                          )}>
+                                            {rank.nome} {isUser && "(Você)"}
+                                          </span>
+                                          {isSupervisorRow && (
+                                            isExpanded ? (
+                                              <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                            ) : (
+                                              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                            )
+                                          )}
+                                        </div>
                                       </div>
-                                      <span className={cn(
-                                        "text-[11.5px] font-black tracking-tight",
-                                        isUser ? "text-[#1C2643]" : "text-slate-600"
-                                      )}>
-                                        {rank.nome} {isUser && "(Você)"}
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className={cn(
-                                    "px-3 py-3 text-right transition-colors",
-                                    isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
-                                  )}>
-                                    <div className="flex flex-col items-end">
-                                      <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
-                                      <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
-                                        {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className={cn(
-                                    "px-3 py-3 text-right transition-colors",
-                                    isUser ? "bg-orange-100/70" : "bg-orange-100/25"
-                                  )}>
-                                    <div className="flex flex-col items-end">
-                                      <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
-                                      <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
-                                        {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className={cn(
-                                    "px-3 py-3 text-right transition-colors",
-                                    isUser ? "bg-blue-100/70" : "bg-blue-100/25"
-                                  )}>
-                                    <div className="flex flex-col items-end">
-                                      <span className={cn(
-                                        "text-[11.5px] font-bold",
-                                        rank.totalToday > 0 ? "text-emerald-600" : "text-slate-400"
-                                      )}>
-                                        {formatCurrency(rank.totalToday)}
-                                      </span>
-                                      <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
-                                        {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
-                                      </span>
-                                    </div>
-                                  </td>
-                                </tr>
+                                    </td>
+                                    <td className={cn(
+                                      "px-3 py-3 text-right transition-colors",
+                                      isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
+                                    )}>
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
+                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                          {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className={cn(
+                                      "px-3 py-3 text-right transition-colors",
+                                      isUser ? "bg-orange-100/70" : "bg-orange-100/25"
+                                    )}>
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
+                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                          {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className={cn(
+                                      "px-3 py-3 text-right transition-colors",
+                                      isUser ? "bg-blue-100/70" : "bg-blue-100/25"
+                                    )}>
+                                      <div className="flex flex-col items-end">
+                                        <span className={cn(
+                                          "text-[11.5px] font-bold",
+                                          rank.totalToday > 0 ? "text-emerald-600" : "text-slate-400"
+                                        )}>
+                                          {formatCurrency(rank.totalToday)}
+                                        </span>
+                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                          {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                  </tr>
+
+                                  {isSupervisorRow && isExpanded && (
+                                    <tr className="bg-slate-50/50">
+                                      <td colSpan={4} className="p-3 border-t border-b border-dashed border-slate-200">
+                                        <div className="space-y-3.5 pl-4 select-none">
+                                          <div className="flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+                                            <Users className="w-3.5 h-3.5 text-[#1C2643]" />
+                                            <h4 className="text-[9px] font-black text-[#1C2643] uppercase tracking-wider">
+                                              Detalhamento de Colaboração (Estagiários)
+                                            </h4>
+                                          </div>
+                                          
+                                          {/* Propria section */}
+                                          <div className="grid grid-cols-4 gap-2 text-slate-600 bg-white p-2 border border-slate-100 shadow-sm rounded-xl">
+                                            <div className="font-bold text-[9px] text-[#1C2643] uppercase tracking-wider flex items-center">
+                                              Produção Própria
+                                            </div>
+                                            <div className="text-right">
+                                              <div className="text-[9.5px] text-emerald-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalPaid || 0)}</div>
+                                              <div className="text-[7.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countPaid || 0} PG</div>
+                                            </div>
+                                            <div className="text-right">
+                                              <div className="text-[9.5px] text-orange-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalInProcess || 0)}</div>
+                                              <div className="text-[7.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countInProcess || 0} AND</div>
+                                            </div>
+                                            <div className="text-right">
+                                              <div className="text-[9.5px] text-blue-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalToday || 0)}</div>
+                                              <div className="text-[7.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countToday || 0} DIG</div>
+                                            </div>
+                                          </div>
+
+                                          {/* Estagiarios section */}
+                                          {(!rank.colaboracoes?.estagiarios || rank.colaboracoes.estagiarios.length === 0) ? (
+                                            <p className="text-[9px] font-bold text-slate-400 italic">Nenhuma colaboração de estagiário neste período.</p>
+                                          ) : (
+                                            <div className="space-y-1.5">
+                                              {rank.colaboracoes.estagiarios.map((est) => (
+                                                <div key={est.estagiario_id} className="grid grid-cols-4 gap-2 text-slate-600 bg-emerald-50/30 p-2 border border-slate-50 shadow-sm rounded-xl hover:bg-emerald-50/50 transition-colors">
+                                                  <div className="font-extrabold text-[9px] text-[#1C2643] truncate flex items-center gap-1 uppercase">
+                                                    <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                                    {est.nome}
+                                                  </div>
+                                                  <div className="text-right">
+                                                    <div className="text-[9.5px] text-emerald-600 font-extrabold">{formatCurrency(est.totalPaid)}</div>
+                                                    <div className="text-[7.5px] text-slate-400 font-bold uppercase">{est.countPaid} PG</div>
+                                                  </div>
+                                                  <div className="text-right">
+                                                    <div className="text-[9.5px] text-orange-600 font-extrabold">{formatCurrency(est.totalInProcess)}</div>
+                                                    <div className="text-[7.5px] text-slate-400 font-bold uppercase">{est.countInProcess} AND</div>
+                                                  </div>
+                                                  <div className="text-right">
+                                                    <div className="text-[9.5px] text-blue-600 font-extrabold">{formatCurrency(est.totalToday)}</div>
+                                                    <div className="text-[7.5px] text-slate-400 font-bold uppercase">{est.countToday} DIG</div>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
                               )
                             })}
                           </tbody>

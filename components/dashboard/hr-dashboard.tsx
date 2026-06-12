@@ -12,7 +12,10 @@ import {
   Target,
   TrendingUp,
   Trophy,
-  Loader2
+  Loader2,
+  ChevronDown,
+  ChevronUp,
+  GraduationCap
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { useAuth } from "@/context/auth-context"
@@ -20,6 +23,7 @@ import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
+import { format } from "date-fns"
 
 interface Interview {
   id: string
@@ -44,6 +48,17 @@ interface HRMetric {
   href: string
 }
 
+interface InternCollaboration {
+  estagiario_id: string
+  nome: string
+  totalPaid: number
+  countPaid: number
+  totalInProcess: number
+  countInProcess: number
+  totalToday: number
+  countToday: number
+}
+
 interface RankingItem {
   corretor_id: string
   name: string
@@ -55,6 +70,18 @@ interface RankingItem {
   countPaid: number
   countInProcess: number
   countToday: number
+  funcao?: string
+  colaboracoes?: {
+    propria: {
+      totalPaid: number
+      countPaid: number
+      totalInProcess: number
+      countInProcess: number
+      totalToday: number
+      countToday: number
+    }
+    estagiarios: InternCollaboration[]
+  }
 }
 
 interface TicketStats {
@@ -95,6 +122,10 @@ interface AdminStats {
 interface HRDashboardProps {
   stats?: AdminStats | null
   isLoading?: boolean
+  startDate?: string
+  endDate?: string
+  setStartDate?: (d: string) => void
+  setEndDate?: (d: string) => void
 }
 
 interface DBCollaborator {
@@ -134,14 +165,30 @@ const getBirthdayMonth = (dateStr: string): number | null => {
   return null
 }
 
-export function HRDashboard({ stats, isLoading: isDashboardLoading }: HRDashboardProps) {
+export function HRDashboard({ 
+  stats, 
+  isLoading: isDashboardLoading,
+  startDate = "",
+  endDate = "",
+  setStartDate,
+  setEndDate
+}: HRDashboardProps) {
   const { perfil } = useAuth()
   const [colaboradoresCount, setColaboradoresCount] = useState(0)
+  const [expandedSupervisorIds, setExpandedSupervisorIds] = useState<Record<string, boolean>>({})
   const [entrevistasCount, setEntrevistasCount] = useState(0)
   const [advertenciasCount, setAdvertenciasCount] = useState(0)
   const [birthdaysCount, setBirthdaysCount] = useState(0)
   const [interviews, setInterviews] = useState<Interview[]>([])
   const [dashboardInterviewTab, setDashboardInterviewTab] = useState<"ENTREVISTAS" | "LIGAÇÕES">("ENTREVISTAS")
+
+  const [tempStartDate, setTempStartDate] = useState(startDate)
+  const [tempEndDate, setTempEndDate] = useState(endDate)
+
+  useEffect(() => {
+    setTempStartDate(startDate)
+    setTempEndDate(endDate)
+  }, [startDate, endDate])
 
   const firstName = useMemo(() => {
     if (!perfil?.nome) return "GESTOR"
@@ -331,7 +378,7 @@ export function HRDashboard({ stats, isLoading: isDashboardLoading }: HRDashboar
     if (dashboardInterviewTab === "ENTREVISTAS") {
       return itemTipo === "ENTREVISTAS" || i.fase === "Entrevista"
     }
-    return itemTipo === "LIGAÇÕES"
+    return itemTipo === "LIGAÇÕES" && i.fase !== "Entrevista"
   })
   const countToday = todayList.length
 
@@ -343,16 +390,99 @@ export function HRDashboard({ stats, isLoading: isDashboardLoading }: HRDashboar
 
   return (
     <div className="space-y-8 animate-fade-in text-slate-800">
-      {/* Greetings Hero (Clean structure with specific #1C2643 typography color) */}
-      <div className="py-2">
-        <div className="space-y-2">
+      {/* Greetings Hero & Period Filter (Aligned on the same line) */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 py-2">
+        <div className="space-y-2 max-w-xl">
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight uppercase text-[#1C2643]">
             Olá, {firstName}
           </h1>
-          <p className="text-[#1C2643] text-[11px] sm:text-[13px] max-w-2xl font-medium leading-relaxed">
+          <p className="text-[#1C2643] text-[11px] sm:text-[13px] font-medium leading-relaxed">
             Seja bem-vindo ao painel central de Recursos Humanos. Aqui você pode gerenciar todas as rotinas internas, acompanhar contratações e acompanhar termos comportamentais.
           </p>
         </div>
+
+        {/* Dynamic Period Filter UI in HR Dashboard */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }} 
+          animate={{ opacity: 1, scale: 1 }} 
+          transition={{ delay: 0.05 }} 
+          className="w-full lg:max-w-[380px]"
+        >
+          <DashboardCard className="shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3.5 !p-[18px] sm:!p-5 !rounded-[24px] bg-white border border-slate-200">
+            <div className="flex items-center gap-2 mb-0.5">
+              <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+                <Calendar className="w-4 h-4 text-amber-500 fill-amber-500" />
+              </div>
+              <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-widest">Filtrar por Período</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="flex flex-col">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Início</span>
+                <input 
+                  type="date" 
+                  value={tempStartDate}
+                  onChange={(e) => setTempStartDate(e.target.value)}
+                  className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Fim</span>
+                <input 
+                  type="date" 
+                  value={tempEndDate}
+                  onChange={(e) => setTempEndDate(e.target.value)}
+                  className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5 mt-1">
+              <button 
+                onClick={() => {
+                  if (setStartDate && setEndDate) {
+                    setStartDate(tempStartDate);
+                    setEndDate(tempEndDate);
+                  }
+                }}
+                disabled={!tempStartDate && !tempEndDate}
+                className="px-2.5 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center h-8"
+              >
+                FILTRAR
+              </button>
+              <button 
+                onClick={() => {
+                  const todayStr = format(new Date(), "yyyy-MM-dd");
+                  setTempStartDate(todayStr);
+                  setTempEndDate(todayStr);
+                  if (setStartDate && setEndDate) {
+                    setStartDate(todayStr);
+                    setEndDate(todayStr);
+                  }
+                }}
+                className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
+              >
+                HOJE
+              </button>
+              <button 
+                onClick={() => {
+                  const now = new Date();
+                  const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+                  const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+                  setTempStartDate(firstDay);
+                  setTempEndDate(lastDay);
+                  if (setStartDate && setEndDate) {
+                    setStartDate(firstDay);
+                    setEndDate(lastDay);
+                  }
+                }}
+                className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
+              >
+                MÊS
+              </button>
+            </div>
+          </DashboardCard>
+        </motion.div>
       </div>
 
       {/* NEW SECTION: PHOTO, META MENSAL DA EMPRESA & RANKING DE VENDAS */}
@@ -467,72 +597,156 @@ export function HRDashboard({ stats, isLoading: isDashboardLoading }: HRDashboar
                   {brokerRankings.map((rank, idx) => {
                     const isUser = rank.corretor_id === perfil?.id
                     const position = idx + 1
+                    const isSupervisorRow = rank.funcao?.toLowerCase() === "supervisor"
+                    const isExpanded = !!expandedSupervisorIds[rank.corretor_id]
                     return (
-                      <tr key={rank.corretor_id || idx} className={cn(
-                        "transition-colors",
-                        isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80"
-                      )}>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
-                              position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
-                              position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
-                              position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
-                              "bg-white text-slate-400 border-slate-100"
-                            )}>
-                              {position}º
-                            </div>
-                            <div>
-                              <p className={cn(
-                                "text-[14px] font-black tracking-tight uppercase",
-                                isUser ? "text-[#1C2643]" : "text-slate-700"
+                      <React.Fragment key={rank.corretor_id || idx}>
+                        <tr 
+                          onClick={isSupervisorRow ? () => {
+                            setExpandedSupervisorIds(prev => ({
+                              ...prev,
+                              [rank.corretor_id]: !prev[rank.corretor_id]
+                            }))
+                          } : undefined}
+                          className={cn(
+                            "transition-colors",
+                            isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80",
+                            isSupervisorRow && "cursor-pointer"
+                          )}
+                        >
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                                position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
+                                position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                "bg-white text-slate-400 border-slate-100"
                               )}>
-                                {rank.name} {isUser && "(Você)"}
-                              </p>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">SUP: {rank.supervisor}</p>
+                                {position}º
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5 min-w-[120px]">
+                                  <p className={cn(
+                                    "text-[14px] font-black tracking-tight uppercase",
+                                    isUser ? "text-[#1C2643]" : "text-slate-700"
+                                  )}>
+                                    {rank.name} {isUser && "(Você)"}
+                                  </p>
+                                  {isSupervisorRow && (
+                                    isExpanded ? (
+                                      <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                                    )
+                                  )}
+                                </div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">SUP: {rank.supervisor}</p>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className={cn(
-                          "px-4 py-4 text-right transition-colors",
-                          isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
-                        )}>
-                          <div className="flex flex-col items-end">
-                            <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                              {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className={cn(
-                          "px-4 py-4 text-right transition-colors",
-                          isUser ? "bg-orange-100/70" : "bg-orange-100/25"
-                        )}>
-                          <div className="flex flex-col items-end">
-                            <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                              {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className={cn(
-                          "px-4 py-4 text-right transition-colors",
-                          isUser ? "bg-blue-100/70" : "bg-blue-100/25"
-                        )}>
-                          <div className="flex flex-col items-end">
-                            <span className={cn(
-                              "text-[14px] font-bold",
-                              rank.totalToday > 0 ? "text-blue-600" : "text-slate-400"
-                            )}>
-                              {formatCurrency(rank.totalToday)}
-                            </span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                              {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
+                          </td>
+                          <td className={cn(
+                            "px-4 py-4 text-right transition-colors",
+                            isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
+                          )}>
+                            <div className="flex flex-col items-end">
+                              <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className={cn(
+                            "px-4 py-4 text-right transition-colors",
+                            isUser ? "bg-orange-100/70" : "bg-orange-100/25"
+                          )}>
+                            <div className="flex flex-col items-end">
+                              <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className={cn(
+                            "px-4 py-4 text-right transition-colors",
+                            isUser ? "bg-blue-100/70" : "bg-blue-100/25"
+                          )}>
+                            <div className="flex flex-col items-end">
+                              <span className={cn(
+                                "text-[14px] font-bold",
+                                rank.totalToday > 0 ? "text-blue-600" : "text-slate-400"
+                              )}>
+                                {formatCurrency(rank.totalToday)}
+                              </span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {isSupervisorRow && isExpanded && (
+                          <tr className="bg-slate-50/50">
+                            <td colSpan={4} className="p-4 border-t border-b border-dashed border-slate-250">
+                              <div className="space-y-4 pl-6 select-none">
+                                <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                                  <Users className="w-4 h-4 text-[#1C2643]" />
+                                  <h4 className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider">
+                                    Detalhamento de Colaboração (Estagiários)
+                                  </h4>
+                                </div>
+                                
+                                {/* Propria section */}
+                                <div className="grid grid-cols-4 gap-4 text-slate-600 bg-white p-3 border border-slate-100 shadow-sm rounded-2xl">
+                                  <div className="font-bold text-[10px] text-[#1C2643] uppercase tracking-wider flex items-center">
+                                    Produção Própria
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-[11.5px] text-emerald-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalPaid || 0)}</div>
+                                    <div className="text-[8.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countPaid || 0} PG</div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-[11.5px] text-orange-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalInProcess || 0)}</div>
+                                    <div className="text-[8.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countInProcess || 0} AND</div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-[11.5px] text-blue-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalToday || 0)}</div>
+                                    <div className="text-[8.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countToday || 0} DIG</div>
+                                  </div>
+                                </div>
+
+                                {/* Estagiarios section */}
+                                {(!rank.colaboracoes?.estagiarios || rank.colaboracoes.estagiarios.length === 0) ? (
+                                  <p className="text-[10px] font-bold text-slate-400 italic">Nenhuma colaboração de estagiário neste período.</p>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {rank.colaboracoes.estagiarios.map((est) => (
+                                      <div key={est.estagiario_id} className="grid grid-cols-4 gap-4 text-slate-600 bg-emerald-50/20 p-3 border border-slate-50 shadow-sm rounded-2xl hover:bg-emerald-50/40 transition-colors">
+                                        <div className="font-extrabold text-[10px] text-[#1C2643] truncate flex items-center gap-1.5 uppercase">
+                                          <GraduationCap className="w-4.5 h-4.5 text-emerald-500 shrink-0" />
+                                          {est.nome}
+                                        </div>
+                                        <div className="text-right">
+                                          <div className="text-[11.5px] text-emerald-600 font-extrabold">{formatCurrency(est.totalPaid)}</div>
+                                          <div className="text-[8.5px] text-slate-400 font-bold uppercase">{est.countPaid} PG</div>
+                                        </div>
+                                        <div className="text-right">
+                                          <div className="text-[11.5px] text-orange-600 font-extrabold">{formatCurrency(est.totalInProcess)}</div>
+                                          <div className="text-[8.5px] text-slate-400 font-bold uppercase">{est.countInProcess} AND</div>
+                                        </div>
+                                        <div className="text-right">
+                                          <div className="text-[11.5px] text-blue-600 font-extrabold">{formatCurrency(est.totalToday)}</div>
+                                          <div className="text-[8.5px] text-slate-400 font-bold uppercase">{est.countToday} DIG</div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     )
                   })}
                 </tbody>

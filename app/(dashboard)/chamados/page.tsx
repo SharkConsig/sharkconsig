@@ -178,7 +178,8 @@ const normalizeConvenioName = (convenio: string | null | undefined) => {
 
 export default function TicketsPage() {
   const router = useRouter()
-  const { perfil, user, isOperational, isAdmin, isSupervisor, isDeveloper } = useAuth()
+  const { perfil, user, isOperational, isAdmin, isSupervisor, isDeveloper, isEstagio } = useAuth()
+  const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const { isCollapsed } = useSidebar()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>("ABERTO")
@@ -571,11 +572,16 @@ export default function TicketsPage() {
   }
 
   const handleDigitarProposta = (ticket: Ticket) => {
+    if (isUserEstagio) {
+      toast.error("Você não tem permissão para digitar propostas.")
+      return
+    }
     const params = new URLSearchParams({
       nome: ticket.cliente_nome,
       cpf: ticket.cliente_cpf,
       nascimento: "31/01/1984", 
       idLead: ticket.matricula || ticket.id.toString(),
+      idChamado: ticket.id.toString(),
       matricula: ticket.matricula || "",
       origem: ticket.origem?.toLowerCase() || "",
       tel1: ticket.cliente_telefone || "",
@@ -886,8 +892,8 @@ export default function TicketsPage() {
           ))}
         </div>
 
-        {/* Export Button Row - Only for Operacional and Admin */}
-        {(isOperational || isAdmin) && (
+        {/* Export Button Row - For Operacional, Admin, Developer and Supervisor */}
+        {(isOperational || isAdmin || isDeveloper || isSupervisor) && (
           <div className="flex justify-end pt-4">
             <Button
               variant="outline"
@@ -1047,18 +1053,20 @@ export default function TicketsPage() {
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-10 w-10 text-amber-600 hover:bg-amber-50 rounded-full transition-all cursor-pointer"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleDigitarProposta(ticket)
-                                }}
-                                title="Digitar Proposta"
-                              >
-                                <FileEdit className="w-5 h-5" />
-                              </Button>
+                              {!isUserEstagio && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-10 w-10 text-amber-600 hover:bg-amber-50 rounded-full transition-all cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDigitarProposta(ticket)
+                                  }}
+                                  title="Digitar Proposta"
+                                >
+                                  <FileEdit className="w-5 h-5" />
+                                </Button>
+                              )}
                             </div>
                           </td>
                         </tr>

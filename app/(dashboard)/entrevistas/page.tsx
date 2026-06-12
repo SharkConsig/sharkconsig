@@ -410,7 +410,7 @@ export default function EntrevistasPage() {
     if (tab === "ENTREVISTAS") {
       return itemTipo === "ENTREVISTAS" || item.fase === "Entrevista"
     }
-    return itemTipo === "LIGAÇÕES"
+    return itemTipo === "LIGAÇÕES" && item.fase !== "Entrevista"
   }
 
   const sortCandidates = (list: Interview[]) => {

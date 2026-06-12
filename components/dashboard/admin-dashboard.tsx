@@ -13,18 +13,36 @@ import {
   BarChart3,
   MessageSquare,
   Users,
-  Calendar
+  Calendar,
+  FileSpreadsheet,
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  GraduationCap
 } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 
 interface Perfil {
   id: string
   nome: string
   role: string
   avatar_url?: string
+}
+
+interface InternCollaboration {
+  estagiario_id: string
+  nome: string
+  totalPaid: number
+  countPaid: number
+  totalInProcess: number
+  countInProcess: number
+  totalToday: number
+  countToday: number
 }
 
 interface RankingItem {
@@ -38,6 +56,18 @@ interface RankingItem {
   countPaid: number
   countInProcess: number
   countToday: number
+  funcao?: string
+  colaboracoes?: {
+    propria: {
+      totalPaid: number
+      countPaid: number
+      totalInProcess: number
+      countInProcess: number
+      totalToday: number
+      countToday: number
+    }
+    estagiarios: InternCollaboration[]
+  }
 }
 
 interface TicketStats {
@@ -120,6 +150,7 @@ export function AdminDashboard({
   const [tempStartDate, setTempStartDate] = React.useState(startDate)
   const [tempEndDate, setTempEndDate] = React.useState(endDate)
   const [activeTab, setActiveTab] = React.useState<'propostas' | 'chamados'>('propostas')
+  const [expandedSupervisorIds, setExpandedSupervisorIds] = React.useState<Record<string, boolean>>({})
 
   React.useEffect(() => {
     setTempStartDate(startDate)
@@ -181,7 +212,7 @@ export function AdminDashboard({
           <button
             onClick={() => setActiveTab('propostas')}
             className={cn(
-              "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2",
+              "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
               activeTab === 'propostas' 
                 ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
                 : "text-slate-400 hover:text-slate-600"
@@ -193,7 +224,7 @@ export function AdminDashboard({
           <button
             onClick={() => setActiveTab('chamados')}
             className={cn(
-              "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2",
+              "px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
               activeTab === 'chamados' 
                 ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
                 : "text-slate-400 hover:text-slate-600"
@@ -551,72 +582,156 @@ export function AdminDashboard({
                     {brokerRankings.map((rank, idx) => {
                       const isUser = rank.corretor_id === perfil?.id
                       const position = idx + 1
+                      const isSupervisorRow = rank.funcao?.toLowerCase() === "supervisor"
+                      const isExpanded = !!expandedSupervisorIds[rank.corretor_id]
                       return (
-                        <tr key={rank.corretor_id || idx} className={cn(
-                          "transition-colors",
-                          isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80"
-                        )}>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className={cn(
-                                "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
-                                position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
-                                position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
-                                position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
-                                "bg-white text-slate-400 border-slate-100"
-                              )}>
-                                {position}º
-                              </div>
-                              <div>
-                                <p className={cn(
-                                  "text-[14px] font-black tracking-tight uppercase",
-                                  isUser ? "text-[#1C2643]" : "text-slate-700"
+                        <React.Fragment key={rank.corretor_id || idx}>
+                          <tr 
+                            onClick={isSupervisorRow ? () => {
+                              setExpandedSupervisorIds(prev => ({
+                                ...prev,
+                                [rank.corretor_id]: !prev[rank.corretor_id]
+                              }))
+                            } : undefined}
+                            className={cn(
+                              "transition-colors",
+                              isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80",
+                              isSupervisorRow && "cursor-pointer"
+                            )}
+                          >
+                            <td className="px-4 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className={cn(
+                                  "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                                  position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                  position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
+                                  position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                  "bg-white text-slate-400 border-slate-100"
                                 )}>
-                                  {rank.name} {isUser && "(Você)"}
-                                </p>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">SUP: {rank.supervisor}</p>
+                                  {position}º
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-1.5 min-w-[120px]">
+                                    <p className={cn(
+                                      "text-[14px] font-black tracking-tight uppercase",
+                                      isUser ? "text-[#1C2643]" : "text-slate-700"
+                                    )}>
+                                      {rank.name} {isUser && "(Você)"}
+                                    </p>
+                                    {isSupervisorRow && (
+                                      isExpanded ? (
+                                        <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+                                      ) : (
+                                        <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                                      )
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">SUP: {rank.supervisor}</p>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className={cn(
-                            "px-4 py-4 text-right transition-colors",
-                            isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
-                          )}>
-                            <div className="flex flex-col items-end">
-                              <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className={cn(
-                            "px-4 py-4 text-right transition-colors",
-                            isUser ? "bg-orange-100/70" : "bg-orange-100/25"
-                          )}>
-                            <div className="flex flex-col items-end">
-                              <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className={cn(
-                            "px-4 py-4 text-right transition-colors",
-                            isUser ? "bg-blue-100/70" : "bg-blue-100/25"
-                          )}>
-                            <div className="flex flex-col items-end">
-                              <span className={cn(
-                                "text-[14px] font-bold",
-                                rank.totalToday > 0 ? "text-blue-600" : "text-slate-400"
-                              )}>
-                                {formatCurrency(rank.totalToday)}
-                              </span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
+                            </td>
+                            <td className={cn(
+                              "px-4 py-4 text-right transition-colors",
+                              isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
+                            )}>
+                              <div className="flex flex-col items-end">
+                                <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                  {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className={cn(
+                              "px-4 py-4 text-right transition-colors",
+                              isUser ? "bg-orange-100/70" : "bg-orange-100/25"
+                            )}>
+                              <div className="flex flex-col items-end">
+                                <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                  {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className={cn(
+                              "px-4 py-4 text-right transition-colors",
+                              isUser ? "bg-blue-100/70" : "bg-blue-100/25"
+                            )}>
+                              <div className="flex flex-col items-end">
+                                <span className={cn(
+                                  "text-[14px] font-bold",
+                                  rank.totalToday > 0 ? "text-blue-600" : "text-slate-400"
+                                )}>
+                                  {formatCurrency(rank.totalToday)}
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                  {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {isSupervisorRow && isExpanded && (
+                            <tr className="bg-slate-50/50">
+                              <td colSpan={4} className="p-4 border-t border-b border-dashed border-slate-250">
+                                <div className="space-y-4 pl-6 select-none">
+                                  <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                                    <Users className="w-4 h-4 text-[#1C2643]" />
+                                    <h4 className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider">
+                                      Detalhamento de Colaboração (Estagiários)
+                                    </h4>
+                                  </div>
+                                  
+                                  {/* Propria section */}
+                                  <div className="grid grid-cols-4 gap-4 text-slate-600 bg-white p-3 border border-slate-100 shadow-sm rounded-2xl">
+                                    <div className="font-bold text-[10px] text-[#1C2643] uppercase tracking-wider flex items-center">
+                                      Produção Própria
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-[11.5px] text-emerald-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalPaid || 0)}</div>
+                                      <div className="text-[8.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countPaid || 0} PG</div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-[11.5px] text-orange-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalInProcess || 0)}</div>
+                                      <div className="text-[8.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countInProcess || 0} AND</div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-[11.5px] text-blue-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalToday || 0)}</div>
+                                      <div className="text-[8.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countToday || 0} DIG</div>
+                                    </div>
+                                  </div>
+
+                                  {/* Estagiarios section */}
+                                  {(!rank.colaboracoes?.estagiarios || rank.colaboracoes.estagiarios.length === 0) ? (
+                                    <p className="text-[10px] font-bold text-slate-400 italic">Nenhuma colaboração de estagiário neste período.</p>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      {rank.colaboracoes.estagiarios.map((est) => (
+                                        <div key={est.estagiario_id} className="grid grid-cols-4 gap-4 text-slate-600 bg-emerald-50/20 p-3 border border-slate-50 shadow-sm rounded-2xl hover:bg-emerald-50/40 transition-colors">
+                                          <div className="font-extrabold text-[10px] text-[#1C2643] truncate flex items-center gap-1.5 uppercase">
+                                            <GraduationCap className="w-4.5 h-4.5 text-emerald-500 shrink-0" />
+                                            {est.nome}
+                                          </div>
+                                          <div className="text-right">
+                                            <div className="text-[11.5px] text-emerald-600 font-extrabold">{formatCurrency(est.totalPaid)}</div>
+                                            <div className="text-[8.5px] text-slate-400 font-bold uppercase">{est.countPaid} PG</div>
+                                          </div>
+                                          <div className="text-right">
+                                            <div className="text-[11.5px] text-orange-600 font-extrabold">{formatCurrency(est.totalInProcess)}</div>
+                                            <div className="text-[8.5px] text-slate-400 font-bold uppercase">{est.countInProcess} AND</div>
+                                          </div>
+                                          <div className="text-right">
+                                            <div className="text-[11.5px] text-blue-600 font-extrabold">{formatCurrency(est.totalToday)}</div>
+                                            <div className="text-[8.5px] text-slate-400 font-bold uppercase">{est.countToday} DIG</div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       )
                     })}
                   </tbody>

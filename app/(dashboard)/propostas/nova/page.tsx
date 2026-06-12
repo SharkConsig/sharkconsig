@@ -35,9 +35,16 @@ import {
 import { useAuth } from "@/context/auth-context"
 
 function NewProposalForm() {
-  const { isCorretor, perfil } = useAuth()
+  const { isCorretor, perfil, isEstagio } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (perfil && (isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio')) {
+      toast.error("Você não tem acesso a esta página.")
+      router.push("/dashboard")
+    }
+  }, [perfil, isEstagio, router])
   
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
@@ -48,6 +55,7 @@ function NewProposalForm() {
   const [dbBancos, setDbBancos] = useState<{id: string, nome: string}[]>([])
   const [dbOperacoes, setDbOperacoes] = useState<{id: string, nome: string}[]>([])
   const [dbProdutosConfigs, setDbProdutosConfigs] = useState<ProdutoConfig[]>([])
+  const [dbEstagiarios, setDbEstagiarios] = useState<{id: string, nome: string}[]>([])
   
   const [selectedCoefValue, setSelectedCoefValue] = useState<number | null>(null)
   const [selectedProdPercent, setSelectedProdPercent] = useState<number | null>(null)
@@ -102,7 +110,9 @@ function NewProposalForm() {
     coeficiente_prazo: "",
     prazo: "",
     valor_producao_corretor: "",
-    observacoes: ""
+    observacoes: "",
+    estagiario_colaborador_id: "",
+    estagiario_colaborador_nome: ""
   })
 
   const [selectedFiles, setSelectedFiles] = useState<{ [key: string]: File | null }>({
@@ -230,16 +240,50 @@ function NewProposalForm() {
   }, [])
 
   useEffect(() => {
+    async function loadEstagiarios() {
+      try {
+        const res = await fetch("/api/usuarios")
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data)) {
+            const filtered = data
+              .filter((u: { id: string; nome: string; funcao?: string; status?: string }) => {
+                const funcao = (u.funcao || '').toLowerCase();
+                const status = (u.status || '').toUpperCase();
+                return (funcao === 'estágio' || funcao === 'estagio') && status === 'ATIVO';
+              })
+              .map((u: { id: string; nome: string }) => ({ id: u.id, nome: u.nome }))
+            setDbEstagiarios(filtered)
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao carregar estagiários:", error)
+      }
+    }
+    loadEstagiarios()
+  }, [])
+
+  useEffect(() => {
     async function loadTicketAttachments() {
       const idLead = searchParams.get("idLead")
+      const idChamado = searchParams.get("idChamado")
       const origem = searchParams.get("origem")
 
-      if (idLead && (origem === "chamado" || searchParams.has("idLead"))) {
+      const targetId = idChamado || idLead
+
+      if (targetId) {
+        // Validar se targetId é um UUID válido ou um ID numérico para não dar erro na busca do Supabase
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const numRegex = /^\d+$/;
+        if (!uuidRegex.test(targetId) && !numRegex.test(targetId)) {
+          return
+        }
+
         try {
           const { data: ticket, error } = await supabase
             .from('chamados')
             .select('*')
-            .eq('id', idLead)
+            .eq('id', targetId)
             .maybeSingle()
 
           if (ticket && !error) {
@@ -262,6 +306,27 @@ function NewProposalForm() {
               tel_2: prev.tel_2 || ticket.cliente_telefone_2 || "",
               tel_3: prev.tel_3 || ticket.cliente_telefone_3 || "",
             }))
+
+            // Se o chamado foi aberto por um estagiário ativo, preenche automaticamente o campo de colaboração
+            if (ticket.user_id) {
+              try {
+                const resUser = await fetch(`/api/usuarios?id=${ticket.user_id}`)
+                if (resUser.ok) {
+                  const userData = await resUser.json()
+                  const funcao = (userData.funcao || '').toLowerCase()
+                  const status = (userData.status || '').toUpperCase()
+                  if ((funcao === 'estágio' || funcao === 'estagio') && status === 'ATIVO') {
+                    setFormData(prev => ({
+                      ...prev,
+                      estagiario_colaborador_id: userData.id,
+                      estagiario_colaborador_nome: userData.nome
+                    }))
+                  }
+                }
+              } catch (userErr) {
+                console.error("Erro ao verificar estagiário do chamado:", userErr)
+              }
+            }
           }
         } catch (err) {
           console.error("Erro ao carregar anexos do chamado:", err)
@@ -762,6 +827,8 @@ function NewProposalForm() {
         corretor: perfil?.nome,
         equipe: formData.equipe,
         status: currentStatus,
+        estagiario_colaborador_id: formData.estagiario_colaborador_id || null,
+        estagiario_colaborador_nome: formData.estagiario_colaborador_nome || null,
         naturalidade: formData.naturalidade,
         uf_naturalidade: formData.uf_naturalidade,
         identidade: formData.identidade,
@@ -1127,6 +1194,33 @@ function NewProposalForm() {
 
       <Card className="card-shadow border border-slate-200 bg-white">
         <CardContent className="p-10 space-y-16">
+          {/* Campo atribuição estagiário para Supervisor */}
+          {perfil?.role === 'Supervisor' && (
+            <div className="p-5 bg-amber-50/30 border border-amber-100 rounded-xl space-y-2 max-w-md">
+              <label className="text-[10px] font-bold text-amber-900 uppercase tracking-widest block">
+                Atribuir Colaboração com Estagiário (Opcional)
+              </label>
+              <select
+                value={formData.estagiario_colaborador_id}
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  const selectedName = dbEstagiarios.find(u => u.id === selectedId)?.nome || "";
+                  setFormData(prev => ({
+                    ...prev,
+                    estagiario_colaborador_id: selectedId,
+                    estagiario_colaborador_nome: selectedName
+                  }));
+                }}
+                className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-amber-400 focus:outline-none transition-colors text-amber-950"
+              >
+                <option value="">Sem colaboração (Nenhum)</option>
+                {dbEstagiarios.map((est) => (
+                  <option key={est.id} value={est.id}>{est.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Top Fields */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="space-y-2">

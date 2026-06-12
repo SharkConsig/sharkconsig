@@ -113,7 +113,8 @@ interface ConvenioProfile {
 
 export default function SearchClientPage() {
   const router = useRouter()
-  const { } = useAuth()
+  const { perfil, isEstagio } = useAuth()
+  const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const [searchQuery, setSearchQuery] = useState("")
   const [showProfile, setShowProfile] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -1200,27 +1201,29 @@ export default function SearchClientPage() {
                             <MessageSquare className="w-4 h-4 mr-2" />
                             Abrir Chamado
                           </Button>
-                          <Button 
-                            onClick={() => {
-                              const params = new URLSearchParams({
-                                nome: client.nome || "NOME NÃO INFORMADO",
-                                cpf: client.cpf,
-                                nascimento: formatDate(client.data_nascimento),
-                                matricula: allRegs[activeRegIndex].numero_matricula || "",
-                                idLead: allRegs[activeRegIndex].numero_matricula,
-                                tel1: unmaskPhone(client.telefone_1),
-                                tel2: unmaskPhone(client.telefone_2),
-                                tel3: unmaskPhone(client.telefone_3),
-                                origem: "pesquisa",
-                                convenio: "FEDERAL"
-                              });
-                              router.push(`/propostas/nova?${params.toString()}`);
-                            }}
-                            className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
-                          >
-                            <FileEdit className="w-4 h-4 mr-2" />
-                            Digitar Proposta
-                          </Button>
+                          {!isUserEstagio && (
+                            <Button 
+                              onClick={() => {
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: client.cpf,
+                                  nascimento: formatDate(client.data_nascimento),
+                                  matricula: allRegs[activeRegIndex].numero_matricula || "",
+                                  idLead: allRegs[activeRegIndex].numero_matricula,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  origem: "pesquisa",
+                                  convenio: "FEDERAL"
+                                });
+                                router.push(`/propostas/nova?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                            >
+                              <FileEdit className="w-4 h-4 mr-2" />
+                              Digitar Proposta
+                            </Button>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -1458,27 +1461,29 @@ export default function SearchClientPage() {
                               <MessageSquare className="w-4 h-4 mr-2" />
                               Abrir Chamado
                             </Button>
-                            <Button 
-                              onClick={() => {
-                                const params = new URLSearchParams({
-                                  nome: client.nome || "NOME NÃO INFORMADO",
-                                  cpf: client.cpf,
-                                  nascimento: formatDate(client.data_nascimento),
-                                  matricula: reg.identificacao || "",
-                                  idLead: reg.identificacao,
-                                  tel1: unmaskPhone(client.telefone_1),
-                                  tel2: unmaskPhone(client.telefone_2),
-                                  tel3: unmaskPhone(client.telefone_3),
-                                  origem: "pesquisa",
-                                  convenio: "GOVERNO SP"
-                                });
-                                router.push(`/propostas/nova?${params.toString()}`);
-                              }}
-                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
-                            >
-                              <FileEdit className="w-4 h-4 mr-2" />
-                              Digitar Proposta
-                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.identificacao || "",
+                                    idLead: reg.identificacao,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "GOVERNO SP"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -1629,27 +1634,29 @@ export default function SearchClientPage() {
                               <MessageSquare className="w-4 h-4 mr-2" />
                               Abrir Chamado
                             </Button>
-                            <Button 
-                              onClick={() => {
-                                const params = new URLSearchParams({
-                                  nome: client.nome || "NOME NÃO INFORMADO",
-                                  cpf: client.cpf,
-                                  nascimento: formatDate(client.data_nascimento),
-                                  matricula: reg.matricula || "",
-                                  idLead: reg.matricula,
-                                  tel1: unmaskPhone(client.telefone_1),
-                                  tel2: unmaskPhone(client.telefone_2),
-                                  tel3: unmaskPhone(client.telefone_3),
-                                  origem: "pesquisa",
-                                  convenio: "GOVERNO MARANHÃO"
-                                });
-                                router.push(`/propostas/nova?${params.toString()}`);
-                              }}
-                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
-                            >
-                              <FileEdit className="w-4 h-4 mr-2" />
-                              Digitar Proposta
-                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "GOVERNO MARANHÃO"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -1800,27 +1807,29 @@ export default function SearchClientPage() {
                               <MessageSquare className="w-4 h-4 mr-2" />
                               Abrir Chamado
                             </Button>
-                            <Button 
-                              onClick={() => {
-                                const params = new URLSearchParams({
-                                  nome: client.nome || "NOME NÃO INFORMADO",
-                                  cpf: client.cpf,
-                                  nascimento: formatDate(client.data_nascimento),
-                                  matricula: reg.matricula || "",
-                                  idLead: reg.matricula,
-                                  tel1: unmaskPhone(client.telefone_1),
-                                  tel2: unmaskPhone(client.telefone_2),
-                                  tel3: unmaskPhone(client.telefone_3),
-                                  origem: "pesquisa",
-                                  convenio: "GOVERNO PIAUÍ"
-                                });
-                                router.push(`/propostas/nova?${params.toString()}`);
-                              }}
-                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
-                            >
-                              <FileEdit className="w-4 h-4 mr-2" />
-                              Digitar Proposta
-                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "GOVERNO PIAUÍ"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -2024,27 +2033,29 @@ export default function SearchClientPage() {
                               <MessageSquare className="w-4 h-4 mr-2" />
                               Abrir Chamado
                             </Button>
-                            <Button 
-                              onClick={() => {
-                                const params = new URLSearchParams({
-                                  nome: client.nome || "NOME NÃO INFORMADO",
-                                  cpf: client.cpf,
-                                  nascimento: formatDate(client.data_nascimento),
-                                  matricula: reg.identificacao || "",
-                                  idLead: reg.identificacao,
-                                  tel1: unmaskPhone(client.telefone_1),
-                                  tel2: unmaskPhone(client.telefone_2),
-                                  tel3: unmaskPhone(client.telefone_3),
-                                  origem: "pesquisa",
-                                  convenio: "PREFEITURA SP"
-                                });
-                                router.push(`/propostas/nova?${params.toString()}`);
-                              }}
-                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
-                            >
-                              <FileEdit className="w-4 h-4 mr-2" />
-                              Digitar Proposta
-                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.identificacao || "",
+                                    idLead: reg.identificacao,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "PREFEITURA SP"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -2173,27 +2184,29 @@ export default function SearchClientPage() {
                               <MessageSquare className="w-4 h-4 mr-2" />
                               Abrir Chamado
                             </Button>
-                            <Button 
-                              onClick={() => {
-                                const params = new URLSearchParams({
-                                  nome: client.nome || "NOME NÃO INFORMADO",
-                                  cpf: client.cpf,
-                                  nascimento: formatDate(client.data_nascimento),
-                                  matricula: reg.matricula || "",
-                                  idLead: reg.matricula,
-                                  tel1: unmaskPhone(client.telefone_1),
-                                  tel2: unmaskPhone(client.telefone_2),
-                                  tel3: unmaskPhone(client.telefone_3),
-                                  origem: "pesquisa",
-                                  convenio: "GOVERNO RORAIMA"
-                                });
-                                router.push(`/propostas/nova?${params.toString()}`);
-                              }}
-                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
-                            >
-                              <FileEdit className="w-4 h-4 mr-2" />
-                              Digitar Proposta
-                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "GOVERNO RORAIMA"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
                           </div>
                         </CardContent>
                       </Card>

@@ -25,6 +25,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
+import { useAuth } from "@/context/auth-context"
 
 const messages = [
   {
@@ -94,6 +95,8 @@ const tickets = [
 export default function TicketDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  const { perfil, isEstagio } = useAuth()
+  const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const [reply, setReply] = useState<string>(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem(`ticket_detail_draft_${id}`) || ""
@@ -142,6 +145,7 @@ export default function TicketDetailsPage({ params }: { params: Promise<{ id: st
       cpf: ticketObj.cpf || "",
       nascimento: "31/01/1984", // Mock birth date
       idLead: ticketObj.id || "",
+      idChamado: ticketObj.id || "",
       tel1: ticketObj.phone || ticketObj.cliente_telefone || "",
       tel2: ticketObj.cliente_telefone_2 || "",
       tel3: ticketObj.cliente_telefone_3 || "",
@@ -265,13 +269,15 @@ export default function TicketDetailsPage({ params }: { params: Promise<{ id: st
                   </Button>
                 </div>
                 
-                <Button 
-                  onClick={handleDigitarProposta}
-                  className="bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 px-8 h-[34px] text-[10.5px] font-bold rounded-lg transition-all w-full sm:w-auto flex items-center gap-2"
-                >
-                  <FileEdit className="w-4 h-4 mr-2" />
-                  DIGITAR PROPOSTA
-                </Button>
+                {!isUserEstagio && (
+                  <Button 
+                    onClick={handleDigitarProposta}
+                    className="bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 px-8 h-[34px] text-[10.5px] font-bold rounded-lg transition-all w-full sm:w-auto flex items-center gap-2"
+                  >
+                    <FileEdit className="w-4 h-4 mr-2" />
+                    DIGITAR PROPOSTA
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>
