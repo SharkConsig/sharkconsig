@@ -669,6 +669,13 @@ export default function DashboardPage() {
             isPaidInRange = effectivePaymentDate >= startOfMonth
           }
 
+          const isCreatedInRange = (customStart || customEnd)
+            ? ((!customStart || createdDate >= customStart) && (!customEnd || createdDate <= customEnd))
+            : isTodayCreated
+
+          const isDigitadaHoje = isCreatedInRange && !isCancelled && !isRetroactivePayment && !isPaid
+          const isEffectiveInProcess = isInProcess || isDigitadaHoje
+
           if (isPaid && isMTDPaid) {
             teamMTDTotal += numericVal
             if (brokerId === perfil?.id) {
@@ -686,7 +693,7 @@ export default function DashboardPage() {
             }
           }
 
-          if (isInProcess) {
+          if (isEffectiveInProcess) {
             teamInProcessValueCalc += numericVal
             teamInProcessCountCalc += 1
             if (curr.status === "COM INCONSISTÊNCIA NO BANCO" || curr.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL") {
@@ -703,10 +710,6 @@ export default function DashboardPage() {
             opInProcessValueCalc += numericVal
             opInProcessCountCalc += 1
           }
-
-          const isCreatedInRange = (customStart || customEnd)
-            ? ((!customStart || createdDate >= customStart) && (!customEnd || createdDate <= customEnd))
-            : isTodayCreated
 
           if (isCreatedInRange && !isCancelled && !isRetroactivePayment) {
             teamCreatedTodayValue += numericVal
@@ -745,7 +748,7 @@ export default function DashboardPage() {
                 est.totalPaid += numericVal
                 est.countPaid += 1
               }
-              if (isInProcess) {
+              if (isEffectiveInProcess) {
                 est.totalInProcess += numericVal
                 est.countInProcess += 1
               }
@@ -759,7 +762,7 @@ export default function DashboardPage() {
                 prop.totalPaid += numericVal
                 prop.countPaid += 1
               }
-              if (isInProcess) {
+              if (isEffectiveInProcess) {
                 prop.totalInProcess += numericVal
                 prop.countInProcess += 1
               }
