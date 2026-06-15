@@ -709,6 +709,12 @@ export default function ColaboradoresPage() {
     return details && details.month === currentMonthNum
   })
 
+  const getRoleOrder = (roleName: string | undefined): number => {
+    if (!roleName) return 999
+    const idx = roleOptions.findIndex(opt => opt.value === roleName || opt.label === roleName)
+    return idx === -1 ? 999 : idx
+  }
+
   const filteredCollaborators = activeCollaborators.filter(c => {
     const query = searchQuery.toLowerCase()
     const matchesSearch = 
@@ -721,6 +727,24 @@ export default function ColaboradoresPage() {
 
     const matchesRole = filterRole === "todos" || c.role === filterRole
     return matchesSearch && matchesRole
+  }).sort((a, b) => {
+    const roleA = a.role || ""
+    const roleB = b.role || ""
+    const orderA = getRoleOrder(roleA)
+    const orderB = getRoleOrder(roleB)
+
+    if (orderA !== orderB) {
+      return orderA - orderB
+    }
+
+    if (orderA === 999 && orderB === 999) {
+      const cmpRole = roleA.localeCompare(roleB, 'pt', { sensitivity: 'base' })
+      if (cmpRole !== 0) return cmpRole
+    }
+
+    const nameA = a.name || ""
+    const nameB = b.name || ""
+    return nameA.localeCompare(nameB, 'pt', { sensitivity: 'base' })
   })
 
   const filteredExCollaborators = inactiveCollaborators.filter(c => {
@@ -735,6 +759,24 @@ export default function ColaboradoresPage() {
 
     const matchesRole = filterRole === "todos" || c.role === filterRole
     return matchesSearch && matchesRole
+  }).sort((a, b) => {
+    const roleA = a.role || ""
+    const roleB = b.role || ""
+    const orderA = getRoleOrder(roleA)
+    const orderB = getRoleOrder(roleB)
+
+    if (orderA !== orderB) {
+      return orderA - orderB
+    }
+
+    if (orderA === 999 && orderB === 999) {
+      const cmpRole = roleA.localeCompare(roleB, 'pt', { sensitivity: 'base' })
+      if (cmpRole !== 0) return cmpRole
+    }
+
+    const nameA = a.name || ""
+    const nameB = b.name || ""
+    return nameA.localeCompare(nameB, 'pt', { sensitivity: 'base' })
   })
 
   return (

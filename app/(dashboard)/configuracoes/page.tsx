@@ -121,6 +121,67 @@ interface UsuarioAPI {
   id: string
   nome: string
   funcao: string
+  regime_contratacao?: string
+  status?: string
+}
+
+interface HorarioDia {
+  enabled: boolean
+  start: string
+  end: string
+}
+
+interface HorariosColaborador {
+  seg: HorarioDia
+  ter: HorarioDia
+  qua: HorarioDia
+  qui: HorarioDia
+  sex: HorarioDia
+  sab: HorarioDia
+}
+
+const DEFAULT_HOURS_CLT = {
+  seg: { enabled: true, start: "08:00", end: "19:00" },
+  ter: { enabled: true, start: "08:00", end: "19:00" },
+  qua: { enabled: true, start: "08:00", end: "19:00" },
+  qui: { enabled: true, start: "08:00", end: "19:00" },
+  sex: { enabled: true, start: "08:00", end: "19:00" },
+  sab: { enabled: true, start: "09:00", end: "15:00" }
+}
+
+const DEFAULT_HOURS_PJ = {
+  seg: { enabled: true, start: "08:00", end: "19:00" },
+  ter: { enabled: true, start: "08:00", end: "19:00" },
+  qua: { enabled: true, start: "08:00", end: "19:00" },
+  qui: { enabled: true, start: "08:00", end: "19:00" },
+  sex: { enabled: true, start: "08:00", end: "19:00" },
+  sab: { enabled: true, start: "09:00", end: "15:00" }
+}
+
+const DEFAULT_HOURS_ESTAGIO = {
+  seg: { enabled: true, start: "07:45", end: "19:45" },
+  ter: { enabled: true, start: "07:45", end: "19:45" },
+  qua: { enabled: true, start: "07:45", end: "19:45" },
+  qui: { enabled: true, start: "07:45", end: "19:45" },
+  sex: { enabled: true, start: "07:45", end: "19:45" },
+  sab: { enabled: false, start: "00:00", end: "00:00" }
+}
+
+const TIME_OPTIONS = Array.from({ length: 96 }, (_, i) => {
+  const h = Math.floor(i / 4).toString().padStart(2, "0")
+  const m = ((i % 4) * 15).toString().padStart(2, "0")
+  return `${h}:${m}`
+})
+
+const getStandardDefaultHours = (regimeRaw: string | undefined) => {
+  const norm = (regimeRaw || "").toUpperCase().trim()
+  if (norm === "ESTÁGIO" || norm === "ESTAGIO") {
+    return JSON.parse(JSON.stringify(DEFAULT_HOURS_ESTAGIO))
+  }
+  if (norm === "PJ") {
+    return JSON.parse(JSON.stringify(DEFAULT_HOURS_PJ))
+  }
+  return JSON.parse(JSON.stringify(DEFAULT_HOURS_CLT))
 }
 
 export default function SettingsPage() {
@@ -143,6 +204,12 @@ export default function SettingsPage() {
   const [isProdutosExpanded, setIsProdutosExpanded] = useState(false)
   const [isMetasPremiosExpanded, setIsMetasPremiosExpanded] = useState(false)
   const [isBannersExpanded, setIsBannersExpanded] = useState(false)
+  const [isHorariosExpanded, setIsHorariosExpanded] = useState(false)
+
+  // Controle de Horários do Sistema State
+  const [systemUsers, setSystemUsers] = useState<UsuarioAPI[]>([])
+  const [accessHoursConfig, setAccessHoursConfig] = useState<{ [userId: string]: HorariosColaborador }>({})
+  const [searchHorariosQuery, setSearchHorariosQuery] = useState("")
 
   // Metas & Prêmios State
   const [metas, setMetas] = useState<MetaConfig[]>([])
@@ -470,6 +537,48 @@ export default function SettingsPage() {
     }
   }
 
+  const handleSaveAccessHours = async () => {
+    setIsSubmitting(true)
+    try {
+      // Find if we already have the banner row for system access hours
+      const hoursBanner = banners.find(b => b.title === 'SYSTEM_ACCESS_HOURS')
+      
+      const payload = {
+        title: 'SYSTEM_ACCESS_HOURS',
+        image_url: JSON.stringify(accessHoursConfig),
+        is_active: false
+      }
+      
+      let error = null
+      if (hoursBanner) {
+        const { error: updateError } = await supabase
+          .from('dashboard_banners')
+          .update(payload)
+          .eq('id', hoursBanner.id)
+        error = updateError
+      } else {
+        const { data: insertedData, error: insertError } = await supabase
+          .from('dashboard_banners')
+          .insert(payload)
+          .select()
+        error = insertError
+        if (!insertError && insertedData) {
+          // Update local banners state so next save knows the ID
+          setBanners(prev => [...prev, insertedData[0]])
+        }
+      }
+      
+      if (error) throw error
+      toast.success("Horários de acesso salvos com sucesso!")
+    } catch (e: unknown) {
+      console.error("Erro ao salvar horários de acesso:", e)
+      const errorMsg = e instanceof Error ? e.message : String(e)
+      toast.error("Erro ao salvar os horários de acesso: " + errorMsg)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const fetchStatuses = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -504,6 +613,21 @@ export default function SettingsPage() {
       setFaixasMetas(faixasMetasData || [])
 
       const perfisData: UsuarioAPI[] = usuariosResponse.ok ? await usuariosResponse.json() : []
+      setSystemUsers(perfisData || [])
+
+      // Parse custom access hours configuration if present
+      const hoursBanner = bannersData?.find(b => b.title === 'SYSTEM_ACCESS_HOURS')
+      if (hoursBanner && hoursBanner.image_url) {
+        try {
+          setAccessHoursConfig(JSON.parse(hoursBanner.image_url))
+        } catch (e) {
+          console.error("Erro ao fazer parse dos horários de acesso salvos:", e)
+          setAccessHoursConfig({})
+        }
+      } else {
+        setAccessHoursConfig({})
+      }
+
       const brokers = perfisData?.filter((p) => p.funcao === 'Corretor' || p.funcao === 'Estágio' || p.funcao === 'Processo Seletivo' || p.funcao === 'PROCESSO SELETIVO').map((p) => ({ id: p.id, nome: p.nome })) || []
       const supervisors = perfisData?.filter((p) => p.funcao === 'Supervisor' || p.funcao === 'Administrador').map((p) => ({ id: p.id, nome: p.nome })) || []
       setCorretoresList(brokers)
@@ -1084,6 +1208,247 @@ export default function SettingsPage() {
       <Header title="CONFIGURAÇÕES DO SISTEMA" />
       
       <main className="flex-1 p-4 lg:p-8 space-y-8">
+        {/* CONTROLE DE HORÁRIOS DE ACESSO */}
+        <section className="space-y-6">
+          <div 
+            className="flex items-center justify-between cursor-pointer group select-none"
+            onClick={() => setIsHorariosExpanded(!isHorariosExpanded)}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
+                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                  CONTROLE DE HORÁRIOS DE ACESSO AO SISTEMA
+                  {isHorariosExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
+                </h2>
+              </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Administrar faixas de horários permitidos por colaborador</p>
+            </div>
+            
+          </div>
+
+          <AnimatePresence>
+            {isHorariosExpanded && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }} 
+                animate={{ height: "auto", opacity: 1 }} 
+                exit={{ height: 0, opacity: 0 }} 
+                className="overflow-hidden space-y-4"
+              >
+                <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white p-6">
+                  <div className="flex flex-col gap-4">
+                    {/* Search bar & info */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="relative flex-1 max-w-sm">
+                        <Input
+                          type="text"
+                          placeholder="Buscar colaborador..."
+                          value={searchHorariosQuery}
+                          onChange={(e) => setSearchHorariosQuery(e.target.value)}
+                          className="h-9 pl-9 pr-4 text-[12px] border-slate-200 rounded-lg placeholder-slate-400"
+                        />
+                        <div className="absolute left-3 top-2.5 text-slate-400">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 leading-relaxed self-start md:self-auto">
+                        ℹ️ Horários padrão por regime (CLT/PJ: 08:00 - 19:00, Sáb: 09:00 - 15:00 • Estágio: Seg a Sex: 07:45 - 19:45, Sáb: Bloqueado).
+                      </div>
+                    </div>
+
+                    {/* Table Grouped by Contract Regime */}
+                    <div className="border border-slate-100 rounded-xl overflow-hidden">
+                      <Table>
+                        <TableHeader className="bg-slate-50/50">
+                          <TableRow className="hover:bg-transparent border-slate-100">
+                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 pl-6 w-[200px]">Colaborador</TableHead>
+                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Segunda</TableHead>
+                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Terça</TableHead>
+                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Quarta</TableHead>
+                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Quinta</TableHead>
+                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Sexta</TableHead>
+                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Sábado</TableHead>
+                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-right pr-6 w-[120px]">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        
+                        <TableBody>
+                          {systemUsers.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={8} className="h-32 text-center">
+                                <div className="flex flex-col items-center justify-center gap-2">
+                                  <Loader2 className="w-8 h-8 text-slate-300 animate-spin" />
+                                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Carregando colaboradores...</span>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            ["CLT", "PJ", "Estágio", "Outros"].map(regime => {
+                              const usersInRegime = systemUsers.filter(u => {
+                                // Somente colaboradores ativos
+                                const statusRaw = (u.status || "ATIVO").trim().toUpperCase();
+                                if (statusRaw !== "ATIVO") return false;
+
+                                const userRegRaw = (u.regime_contratacao || "").trim().toLowerCase();
+                                const isSearchMatch = u.nome.toLowerCase().includes(searchHorariosQuery.toLowerCase());
+                                if (!isSearchMatch) return false;
+
+                                if (regime === "CLT" && (userRegRaw === "clt" || userRegRaw === "")) return true;
+                                if (regime === "PJ" && userRegRaw === "pj") return true;
+                                if (regime === "Estágio" && (userRegRaw === "estágio" || userRegRaw === "estagio")) return true;
+                                if (regime === "Outros" && userRegRaw !== "clt" && userRegRaw !== "" && userRegRaw !== "pj" && userRegRaw !== "estágio" && userRegRaw !== "estagio") return true;
+                                return false;
+                              }).sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
+
+                              if (usersInRegime.length === 0) return null;
+
+                              return (
+                                <React.Fragment key={regime}>
+                                  <TableRow className="bg-slate-50/70 border-y border-slate-100/80 hover:bg-slate-50/70">
+                                    <TableCell colSpan={8} className="py-2.5 pl-6">
+                                      <span className="text-[10px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-primary" />
+                                        Grupo: {regime} ({usersInRegime.length})
+                                      </span>
+                                    </TableCell>
+                                  </TableRow>
+
+                                  {usersInRegime.map(u => {
+                                    const customConfigObj = accessHoursConfig[u.id] || getStandardDefaultHours(u.regime_contratacao)
+                                    const days = ["seg", "ter", "qua", "qui", "sex", "sab"] as const
+
+                                    return (
+                                      <TableRow key={u.id} className="hover:bg-slate-50/40 border-slate-100">
+                                        <TableCell className="py-3 pl-6">
+                                          <div className="flex flex-col">
+                                            <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wide truncate max-w-[180px]">{u.nome}</span>
+                                            <span className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">{u.funcao || 'Corretor'}</span>
+                                          </div>
+                                        </TableCell>
+
+                                        {days.map(day => {
+                                          const dayConfig = customConfigObj[day] || { enabled: false, start: "00:00", end: "00:00" }
+                                          
+                                          return (
+                                            <TableCell key={day} className="py-1 text-center">
+                                              <div className="flex flex-col items-center justify-center gap-1">
+                                                <div className="flex items-center gap-1">
+                                                  <input 
+                                                    type="checkbox" 
+                                                    id={`chk-${u.id}-${day}`}
+                                                    checked={dayConfig.enabled}
+                                                    onChange={(e) => {
+                                                      const updatedConfig = { ...customConfigObj }
+                                                      updatedConfig[day] = {
+                                                        ...dayConfig,
+                                                        enabled: e.target.checked,
+                                                        start: dayConfig.start && dayConfig.start !== "00:00" ? dayConfig.start : (day === "sab" ? "09:00" : "08:00"),
+                                                        end: dayConfig.end && dayConfig.end !== "00:00" ? dayConfig.end : (day === "sab" ? "15:00" : "19:00")
+                                                      }
+                                                      setAccessHoursConfig(prev => ({
+                                                        ...prev,
+                                                        [u.id]: updatedConfig
+                                                      }))
+                                                    }}
+                                                    className="w-3 h-3 rounded border-slate-300 text-primary focus:ring-primary/25 cursor-pointer accent-slate-800"
+                                                  />
+                                                  <label htmlFor={`chk-${u.id}-${day}`} className="text-[8.5px] font-bold uppercase tracking-wider cursor-pointer text-slate-500">
+                                                    {dayConfig.enabled ? "Ativo" : "Bloqueado"}
+                                                  </label>
+                                                </div>
+
+                                                {dayConfig.enabled ? (
+                                                  <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
+                                                    <select 
+                                                      value={dayConfig.start || "08:00"} 
+                                                      onChange={(e) => {
+                                                        const updatedConfig = { ...customConfigObj }
+                                                        updatedConfig[day] = { ...dayConfig, start: e.target.value }
+                                                        setAccessHoursConfig(prev => ({
+                                                          ...prev,
+                                                          [u.id]: updatedConfig
+                                                        }))
+                                                      }}
+                                                      className="bg-transparent border-none text-[10px] font-bold text-slate-700 p-0 focus:outline-none focus:ring-0 cursor-pointer max-w-[50px]"
+                                                    >
+                                                      {TIME_OPTIONS.map(opt => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                      ))}
+                                                    </select>
+                                                    <span className="text-slate-300 font-bold text-[9px]">-</span>
+                                                    <select 
+                                                      value={dayConfig.end || "19:00"} 
+                                                      onChange={(e) => {
+                                                        const updatedConfig = { ...customConfigObj }
+                                                        updatedConfig[day] = { ...dayConfig, end: e.target.value }
+                                                        setAccessHoursConfig(prev => ({
+                                                          ...prev,
+                                                          [u.id]: updatedConfig
+                                                        }))
+                                                      }}
+                                                      className="bg-transparent border-none text-[10px] font-bold text-slate-700 p-0 focus:outline-none focus:ring-0 cursor-pointer max-w-[50px]"
+                                                    >
+                                                      {TIME_OPTIONS.map(opt => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                      ))}
+                                                    </select>
+                                                  </div>
+                                                ) : (
+                                                  <div className="text-[8px] font-black text-rose-500/80 uppercase bg-rose-50 border border-rose-100 rounded px-1.5 py-0.5">
+                                                    Bloqueado
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </TableCell>
+                                          )
+                                        })}
+
+                                        <TableCell className="py-2 text-right pr-6">
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="text-[9px] font-black text-slate-400 hover:text-slate-700 uppercase tracking-widest h-8"
+                                            onClick={() => {
+                                              const updated = { ...accessHoursConfig }
+                                              delete updated[u.id]
+                                              setAccessHoursConfig(updated)
+                                              toast.info(`Horários de de ${u.nome} restaurados.`)
+                                            }}
+                                          >
+                                            Padrão
+                                          </Button>
+                                        </TableCell>
+                                      </TableRow>
+                                    )
+                                  })}
+                                </React.Fragment>
+                              )
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Bottom Save bar */}
+                    <div className="flex justify-end pt-2 border-t border-slate-100">
+                      <Button
+                        onClick={handleSaveAccessHours}
+                        disabled={isSubmitting}
+                        className="bg-[#171717] hover:bg-[#171717]/90 text-white px-8 h-10 rounded-xl gap-2 shadow-lg shadow-slate-200"
+                      >
+                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        <span className="text-[10.5px] font-bold uppercase tracking-widest">Salvar Horários</span>
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+
         {/* GERENCIAR METAS E PRÊMIOS */}
         <section className="space-y-6">
           <div 
@@ -2117,6 +2482,7 @@ export default function SettingsPage() {
             )}
           </AnimatePresence>
         </section>
+
       </main>
 
       {/* Modal Gerenciar Mês (Central de Comandos) */}

@@ -116,6 +116,12 @@ const allMenuItems = [
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
       },
       { 
+        name: "BANCO DE TALENTOS", 
+        href: "/banco-talentos", 
+        icon: ClipboardList, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
+      { 
         name: "GESTÃO DE USUÁRIOS", 
         href: "/configuracoes/usuarios", 
         icon: Users, 
