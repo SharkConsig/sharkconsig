@@ -137,7 +137,7 @@ export default function ProposalsPage() {
   useEffect(() => {
     if (perfil && (isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio')) {
       toast.error("Você não tem acesso a esta página.")
-      router.push("/dashboard")
+      router.push("/")
     }
   }, [perfil, isEstagio, router])
   const [proposals, setProposals] = useState<Proposal[]>([])

@@ -14,7 +14,7 @@ const TARGET_STATUSES = [
 ]
 
 export function NotificationBanner() {
-  const { isCorretor, user } = useAuth()
+  const { isCorretor, isEstagio, user } = useAuth()
   const pathname = usePathname()
   const [proposalsWithIssue, setProposalsWithIssue] = useState<number>(0)
   const [isVisible, setIsVisible] = useState(true)
@@ -74,7 +74,7 @@ export function NotificationBanner() {
 
   const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
 
-  if (!isCorretor || proposalsWithIssue === 0 || !isVisible || isCampanhaAtendimento) {
+  if (!isCorretor || isEstagio || proposalsWithIssue === 0 || !isVisible || isCampanhaAtendimento) {
     return null
   }
 
