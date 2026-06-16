@@ -281,7 +281,7 @@ export default function NewCampaignPage() {
         margem: 4,
         saldo: 0,
         loans: 0,
-        cards: 0,
+        cards: 5,
       };
     }
 
@@ -1743,8 +1743,8 @@ export default function NewCampaignPage() {
                 </div>
               </CardContent>
             </Card>
-          ) : activeConvenio === 'governo_pi' ? (
-            /* 4. MARGEM DOS CARTÕES (For Governo Piauí) */
+          ) : (activeConvenio === 'governo_pi' || activeConvenio === 'governo_ma') ? (
+            /* MARGEM DOS CARTÕES (For Governo Piauí and Governo Maranhão) */
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.cardMargemMin || filters.cardBeneficioMin) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1776,7 +1776,7 @@ export default function NewCampaignPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO CONSIGNADO (Mínima)</label>
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO CONSIGNADO (MÍNIMA)</label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
                       <Input 
@@ -1789,7 +1789,7 @@ export default function NewCampaignPage() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO BENEFÍCIO (Mínima)</label>
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO BENEFÍCIO (MÍNIMA)</label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
                       <Input 

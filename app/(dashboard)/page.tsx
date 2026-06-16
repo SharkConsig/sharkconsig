@@ -25,7 +25,8 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
-  GraduationCap
+  GraduationCap,
+  Briefcase
 } from "lucide-react"
 
 import { useAuth } from "@/context/auth-context"
@@ -49,6 +50,7 @@ interface ProposalSummary {
 interface InternCollaboration {
   estagiario_id: string
   nome: string
+  supervisor?: string
   totalPaid: number
   countPaid: number
   totalInProcess: number
@@ -365,8 +367,29 @@ export default function DashboardPage() {
       const startOfWeek = new Date()
       startOfWeek.setHours(0, 0, 0, 0)
       const day = startOfWeek.getDay()
-      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Munday
+      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Monday
       startOfWeek.setDate(diff)
+
+      // O card 'CONTRATOS DIGITADOS' não deve alterar de acordo com a aplicação do filtro por período.
+      // Definimos o refDate como a data física real atual (now) para mostrar sempre os valores do dia/semana/mês em exercício.
+      const refDate = new Date()
+
+      const targetDayStart = new Date(refDate)
+      targetDayStart.setHours(0, 0, 0, 0)
+      const targetDayEnd = new Date(refDate)
+      targetDayEnd.setHours(23, 59, 59, 999)
+
+      const targetWeekStart = new Date(refDate)
+      targetWeekStart.setHours(0, 0, 0, 0)
+      const dayNum = targetWeekStart.getDay()
+      const diffToMonday = targetWeekStart.getDate() - dayNum + (dayNum === 0 ? -6 : 1)
+      targetWeekStart.setDate(diffToMonday)
+      const targetWeekEnd = new Date(targetWeekStart)
+      targetWeekEnd.setDate(targetWeekStart.getDate() + 6)
+      targetWeekEnd.setHours(23, 59, 59, 999)
+
+      const targetMonthStart = new Date(refDate.getFullYear(), refDate.getMonth(), 1, 0, 0, 0, 0)
+      const targetMonthEnd = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0, 23, 59, 59, 999)
 
       // Fetch Banners for everyone first
       const { data: bannerData } = await withRetry(() => 
@@ -539,7 +562,10 @@ export default function DashboardPage() {
 
         if (targetSupervisorId || isAdmin || isOperational || isDeveloper || isRecursosHumanos) {
           const team = (isAdmin || isOperational || isDeveloper || isRecursosHumanos)
-            ? allUsers.filter((u: User) => (u.funcao === 'Corretor' || u.funcao === 'Supervisor' || u.funcao === 'Estágio' || u.funcao === 'Estagio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO') && u.status?.toUpperCase() !== 'INATIVO')
+            ? allUsers.filter((u: User) => {
+                const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
+                return ((u.funcao === 'Corretor' || u.funcao === 'Supervisor' || u.funcao === 'Estágio' || u.funcao === 'Estagio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO') || isPJ) && u.status?.toUpperCase() !== 'INATIVO'
+              })
             : allUsers.filter((u: User) => 
                 (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId) && u.status?.toUpperCase() !== 'INATIVO'
               )
@@ -554,11 +580,11 @@ export default function DashboardPage() {
             teamProposalsQuery = teamProposalsQuery.in("corretor_id", teamIds)
           }
 
-          // Ensure we always fetch at least the full current month for MTD calculations
-          let queryStart = startOfCurrentMonth.toISOString()
-          if (customStart && customStart < startOfCurrentMonth) {
-            queryStart = customStart.toISOString()
-          }
+          // Ensure we always fetch at least the full current month for MTD calculations, and the week and month of the selected filter to avoid missing entries
+          const datesToCompare = [startOfCurrentMonth, targetMonthStart, targetWeekStart]
+          if (customStart) datesToCompare.push(customStart)
+          const queryStartDate = new Date(Math.min(...datesToCompare.map(d => d.getTime())))
+          const queryStart = queryStartDate.toISOString()
           
           teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte.${queryStart},created_at.gte.${queryStart}`)
         
@@ -590,9 +616,9 @@ export default function DashboardPage() {
           }>
         }> = {}
 
-        // Initialize everyone with 0
-        team.forEach((m: { id: string }) => {
-          brokerMetrics[m.id] = { 
+        // Initialize everyone stable with 0
+        allUsers.forEach((u: User) => {
+          brokerMetrics[u.id] = { 
             totalPaid: 0, 
             countPaid: 0, 
             totalInProcess: 0, 
@@ -600,7 +626,7 @@ export default function DashboardPage() {
             totalToday: 0,
             countToday: 0 
           }
-          brokerColaboracoes[m.id] = {
+          brokerColaboracoes[u.id] = {
             propria: {
               totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0
             },
@@ -626,17 +652,9 @@ export default function DashboardPage() {
                            brokerUser?.funcao === 'Estagio' || 
                            brokerUser?.funcao === 'Processo Seletivo' || 
                            brokerUser?.funcao === 'PROCESSO SELETIVO'
-          const supervisorId = brokerUser?.supervisor_id || ""
-
-          let targetBrokerIdForMetrics = brokerId
-          if (isIntern && supervisorId && brokerMetrics[supervisorId]) {
-            targetBrokerIdForMetrics = supervisorId
-          }
-
-          let targetBrokerIdForColabs = brokerId
-          if (isIntern && supervisorId && brokerColaboracoes[supervisorId]) {
-            targetBrokerIdForColabs = supervisorId
-          }
+          // Individual-first attribution: no rerouting interns to supervisors
+          const targetBrokerIdForMetrics = brokerId
+          const targetBrokerIdForColabs = brokerId
           
           const createdDate = new Date(curr.created_at)
           const updatedDate = new Date(curr.updated_at)
@@ -653,13 +671,6 @@ export default function DashboardPage() {
           // We use startOfMonth as the threshold for current month activity
           const isRetroactivePayment = isPaid && (effectivePaymentDate < startOfMonth)
           
-          const isTodayCreated = createdDate >= startOfToday
-          const isThisWeekCreated = createdDate >= startOfWeek
-          const isThisMonthCreated = createdDate >= startOfMonth
-          const isTodayPaid = effectivePaymentDate >= startOfToday
-          
-          const isMTDPaid = effectivePaymentDate >= startOfCurrentMonth && effectivePaymentDate <= endOfCurrentMonth
-
           // Fix range logic: allow filtering even if only one date is provided
           let isPaidInRange = true
           if (customStart || customEnd) {
@@ -669,11 +680,14 @@ export default function DashboardPage() {
             isPaidInRange = effectivePaymentDate >= startOfMonth
           }
 
-          const isCreatedInRange = (customStart || customEnd)
-            ? ((!customStart || createdDate >= customStart) && (!customEnd || createdDate <= customEnd))
-            : isTodayCreated
+          const isTodayCreated = createdDate >= targetDayStart && createdDate <= targetDayEnd
+          const isThisWeekCreated = createdDate >= targetWeekStart && createdDate <= targetWeekEnd
+          const isThisMonthCreated = createdDate >= targetMonthStart && createdDate <= targetMonthEnd
+          
+          const isTodayPaid = (effectivePaymentDate >= startOfToday) && isPaidInRange
+          const isMTDPaid = effectivePaymentDate >= startOfCurrentMonth && effectivePaymentDate <= endOfCurrentMonth
 
-          const isDigitadaHoje = isCreatedInRange && !isCancelled && !isRetroactivePayment && !isPaid
+          const isDigitadaHoje = isTodayCreated && !isCancelled && !isRetroactivePayment && !isPaid
           const isEffectiveInProcess = isInProcess || isDigitadaHoje
 
           if (isPaid && isMTDPaid) {
@@ -711,7 +725,7 @@ export default function DashboardPage() {
             opInProcessCountCalc += 1
           }
 
-          if (isCreatedInRange && !isCancelled && !isRetroactivePayment) {
+          if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
             teamCreatedTodayValue += numericVal
             teamCreatedTodayCount += 1
             if (brokerMetrics[targetBrokerIdForMetrics]) {
@@ -752,7 +766,7 @@ export default function DashboardPage() {
                 est.totalInProcess += numericVal
                 est.countInProcess += 1
               }
-              if (isCreatedInRange && !isCancelled && !isRetroactivePayment) {
+              if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
                 est.totalToday += numericVal
                 est.countToday += 1
               }
@@ -766,7 +780,7 @@ export default function DashboardPage() {
                 prop.totalInProcess += numericVal
                 prop.countInProcess += 1
               }
-              if (isCreatedInRange && !isCancelled && !isRetroactivePayment) {
+              if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
                 prop.totalToday += numericVal
                 prop.countToday += 1
               }
@@ -791,18 +805,102 @@ export default function DashboardPage() {
         setOpInProcessValue(opInProcessValueCalc)
         setOpInProcessCount(opInProcessCountCalc)
 
-        // Form rankings for supervisor
-        const filteredTeam = team.filter((m: User) => {
-          const isUserIntern = m.funcao === 'Estágio' || 
-                               m.funcao === 'Estagio' || 
-                               m.funcao === 'Processo Seletivo' || 
-                               m.funcao === 'PROCESSO SELETIVO'
-          return !isUserIntern && m.status?.toUpperCase() !== 'INATIVO'
-        })
+        // Helper to check for PJ regime or funcao
+        const isUserPJ = (u: User) => {
+          const regime = (u.regime_contratacao || "").trim().toLowerCase();
+          const func = (u.funcao || "").trim().toLowerCase();
+          if (func === 'desenvolvedor' || func === 'developer') return false;
+          return regime === 'pj' || func === 'pj';
+        }
 
-        sortedRankings = filteredTeam.map((m: User) => {
-          const colData = brokerColaboracoes[m.id]
-          const estagiariosList = colData ? Object.values(colData.estagiarios) : []
+        // Helper to check for Intern regime or funcao
+        const isUserEstagio = (u: User) => {
+          const func = (u.funcao || "").trim().toLowerCase();
+          const regime = (u.regime_contratacao || "").trim().toLowerCase();
+          if (func === 'desenvolvedor' || func === 'developer') return false;
+          return func === 'estágio' || func === 'estagio' || func === 'processo seletivo' || func === 'processo seletivo' || regime === 'estágio' || regime === 'estagio';
+        }
+
+        // Form rankings for supervisor, group interns and PJs together, CLT and Supervisors individually
+        const individualCompetitors = team.filter((m: User) => {
+          if (m.status?.toUpperCase() === 'INATIVO') return false;
+          const func = (m.funcao || "").trim().toLowerCase();
+          if (func === 'desenvolvedor' || func === 'developer') return false;
+          return !isUserPJ(m) && !isUserEstagio(m);
+        });
+
+        const groupedUsers = team.filter((m: User) => {
+          if (m.status?.toUpperCase() === 'INATIVO') return false;
+          const func = (m.funcao || "").trim().toLowerCase();
+          if (func === 'desenvolvedor' || func === 'developer') return false;
+          return isUserPJ(m) || isUserEstagio(m);
+        });
+
+        // Sum up total metrics for the group
+        let groupTotalPaid = 0;
+        let groupCountPaid = 0;
+        let groupTotalInProcess = 0;
+        let groupCountInProcess = 0;
+        let groupTotalToday = 0;
+        let groupCountToday = 0;
+
+        groupedUsers.forEach((u: User) => {
+          const m = brokerMetrics[u.id] || { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 };
+          groupTotalPaid += m.totalPaid;
+          groupCountPaid += m.countPaid;
+          groupTotalInProcess += m.totalInProcess;
+          groupCountInProcess += m.countInProcess;
+          groupTotalToday += m.totalToday;
+          groupCountToday += m.countToday;
+        });
+
+        const groupMembersDetailList = groupedUsers.map((m: User) => {
+          const metrics = brokerMetrics[m.id] || { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 };
+          const supervisorName = m.supervisor_nome || 
+                                 (allUsers as User[]).find((u: User) => u.id === m.supervisor_id)?.nome || 
+                                 'NÃO INFORMADO';
+          return {
+            estagiario_id: m.id,
+            nome: m.nome,
+            supervisor: supervisorName,
+            totalPaid: metrics.totalPaid,
+            countPaid: metrics.countPaid,
+            totalInProcess: metrics.totalInProcess,
+            countInProcess: metrics.countInProcess,
+            totalToday: metrics.totalToday,
+            countToday: metrics.countToday,
+            isPJ: isUserPJ(m)
+          };
+        });
+
+        // Sort inside group by totalPaid descending, then totalInProcess descending, then totalToday descending
+        groupMembersDetailList.sort((a, b) => {
+          if (b.totalPaid !== a.totalPaid) {
+            return b.totalPaid - a.totalPaid;
+          }
+          if (b.totalInProcess !== a.totalInProcess) {
+            return b.totalInProcess - a.totalInProcess;
+          }
+          return b.totalToday - a.totalToday;
+        });
+
+        const groupRankingItem: RankingItem = {
+          corretor_id: "ESTAGIL_AND_PJ",
+          nome: "ESTÁGIO & PJ",
+          funcao: "grupo_estagio_pj",
+          totalPaid: groupTotalPaid,
+          countPaid: groupCountPaid,
+          totalInProcess: groupTotalInProcess,
+          countInProcess: groupCountInProcess,
+          totalToday: groupTotalToday,
+          countToday: groupCountToday,
+          colaboracoes: {
+            propria: { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },
+            estagiarios: groupMembersDetailList
+          }
+        };
+
+        sortedRankings = individualCompetitors.map((m: User) => {
           return {
             corretor_id: m.id,
             nome: m.nome,
@@ -814,11 +912,17 @@ export default function DashboardPage() {
             totalToday: brokerMetrics[m.id]?.totalToday || 0,
             countToday: brokerMetrics[m.id]?.countToday || 0,
             colaboracoes: {
-              propria: colData?.propria || { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },
-              estagiarios: estagiariosList
+              propria: { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },
+              estagiarios: []
             }
           }
-        }).sort((a: RankingItem, b: RankingItem) => {
+        });
+
+        if (groupedUsers.length > 0) {
+          sortedRankings.push(groupRankingItem);
+        }
+
+        sortedRankings.sort((a: RankingItem, b: RankingItem) => {
           if (b.totalPaid !== a.totalPaid) {
             return b.totalPaid - a.totalPaid
           }
@@ -826,7 +930,7 @@ export default function DashboardPage() {
             return b.totalInProcess - a.totalInProcess
           }
           return b.totalToday - a.totalToday
-        })
+        });
 
         setRankings(sortedRankings)
       } else {
@@ -1094,12 +1198,17 @@ export default function DashboardPage() {
         // 4. Fetch Admin specific stats - Only if Admin or Developer or Recursos Humanos
         if (isAdmin || isDeveloper || isRecursosHumanos) {
           const now = new Date()
-          const currentYear = now.getFullYear()
-          const currentMonth = now.getMonth() + 1
-          const startOfYearDate = new Date(currentYear, 0, 1)
+          const targetYear = startDate 
+            ? new Date(startDate + 'T00:00:00').getFullYear() 
+            : (endDate ? new Date(endDate + 'T00:00:00').getFullYear() : now.getFullYear())
+          const targetMonth = startDate 
+            ? new Date(startDate + 'T00:00:00').getMonth() + 1 
+            : (endDate ? new Date(endDate + 'T00:00:00').getMonth() + 1 : now.getMonth() + 1)
+          const startOfYearDate = new Date(targetYear, 0, 1)
           const startOfYearISO = startOfYearDate.toISOString()
 
-          // Fetch annual produced - use same paidStatuses as above
+          // Fetch annual produced - ignore date filters completely (from Jan 1st of targetYear onwards)
+          // Since it only shows the accumulated production from start of year to today, we do not filter by custom date range
           const annualQuery = supabase
             .from('propostas')
             .select('valor_producao, updated_at, data_pago_cliente')
@@ -1107,12 +1216,20 @@ export default function DashboardPage() {
             .or(`updated_at.gte.${startOfYearISO},data_pago_cliente.gte.${startOfYearISO}`)
           
           const annualProposals = await fetchAll(annualQuery)
-          const annualProducedValue = (annualProposals || []).reduce((acc, p) => {
+
+          // Jan-Mar 2026 pre-system production value: R$ 1.463.607,97
+          const baseAccumulatedPast = targetYear === 2026 ? 1463607.97 : 0
+
+          const annualProducedValue = baseAccumulatedPast + (annualProposals || []).reduce((acc, p) => {
             const val = parseCurrency(p.valor_producao)
             const pDate = p.data_pago_cliente ? new Date(p.data_pago_cliente) : new Date(p.updated_at)
             
-            // Only count if it was paid within the current year and not in a future year (edge case)
-            if (pDate >= startOfYearDate && pDate.getFullYear() === currentYear) {
+            // Only count if it is within the target year (e.g. 2026)
+            if (pDate.getFullYear() === targetYear) {
+              // If we are in 2026, we ignore any database contracts paid before April 1st, 2026 to avoid double-counting
+              if (targetYear === 2026 && pDate < new Date('2026-04-01T00:00:00')) {
+                return acc
+              }
               return acc + (isNaN(val) ? 0 : val)
             }
             return acc
@@ -1121,18 +1238,18 @@ export default function DashboardPage() {
           const { data: goalsData } = await supabase
             .from('metas_config')
             .select('*')
-            .eq('ano', currentYear)
+            .eq('ano', targetYear)
 
           const annualGoalConfig = goalsData?.find(g => g.tipo === 'empresa' && g.mes === 0)
           const annualGoalValue = annualGoalConfig?.valor_mensal || 0
-          const monthlyTeamConfigs = goalsData?.filter(g => g.tipo === 'time' && g.mes === currentMonth) || []
+          const monthlyTeamConfigs = goalsData?.filter(g => g.tipo === 'time' && g.mes === targetMonth) || []
           const monthlyGoalValue = monthlyTeamConfigs.length > 0 
             ? monthlyTeamConfigs.reduce((sum, g) => sum + (g.valor_mensal || 0), 0)
             : (annualGoalValue / 12)
 
           setAdminStats({
             monthlyGoal: monthlyGoalValue,
-            monthlyProduced: teamMTDTotal,
+            monthlyProduced: teamTotal,
             annualGoal: annualGoalValue,
             annualProduced: annualProducedValue,
             dailyGoal: monthlyGoalValue / getRemainingBusinessDays(),
@@ -1318,7 +1435,7 @@ export default function DashboardPage() {
 
 
   
-  const displayMonthlyProduced = (isSupervisor || isOperational || isAdmin) ? teamMTDProduced : monthlyMTDProduced
+  const displayMonthlyProduced = (isSupervisor || isOperational || isAdmin) ? teamProduced : monthlyProduced
   const displayDailyProduced = (isSupervisor || isOperational || isAdmin) ? teamDailyProduced : dailyProduced
 
   const prizeTiers = useMemo(() => [
@@ -1370,6 +1487,29 @@ export default function DashboardPage() {
     const userRankIndex = rankings.findIndex(r => r.corretor_id === perfil?.id);
     
     if (userRankIndex === -1) {
+      // Check if user is in ESTAGIL_AND_PJ group
+      const groupItem = rankings.find(r => r.corretor_id === 'ESTAGIL_AND_PJ');
+      const userInGroup = groupItem?.colaboracoes?.estagiarios?.find((item: InternCollaboration) => item.estagiario_id === perfil?.id);
+      
+      if (userInGroup) {
+        const groupPosition = rankings.indexOf(groupItem) + 1;
+        return [
+          { ...rankings[0], position: 1, isUser: false },
+          {
+            corretor_id: perfil?.id || 'group-user',
+            nome: perfil?.nome || 'Você',
+            totalPaid: userInGroup.totalPaid,
+            countPaid: userInGroup.countPaid,
+            totalInProcess: userInGroup.totalInProcess,
+            countInProcess: userInGroup.countInProcess,
+            totalToday: userInGroup.totalToday,
+            countToday: userInGroup.countToday,
+            position: groupPosition,
+            isUser: true
+          }
+        ];
+      }
+
       // User has no sales, show 1st place as anonymized, and user at bottom with 0
       const list = [
         { ...rankings[0], position: 1, isUser: false }
@@ -1858,16 +1998,16 @@ export default function DashboardPage() {
                       <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
                     </div>
                     <div className="flex flex-col min-w-0 overflow-hidden">
-                       <p className="text-[9px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
+                       <p className="text-[9px] font-bold text-[#718198] uppercase tracking-widest">{startDate || endDate ? "Média Diária" : "Meta de Hoje"}</p>
                        <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[28px] font-black text-[#1C2643] tracking-tighter mt-1 break-words leading-none">{formatCurrency(dailyGoal)}</p>
                     </div>
                     <div className="mt-auto pt-3.5">
                        <div className="flex justify-between items-center mb-1.5">
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{startDate || endDate ? "PAGO NO PERÍODO" : "PAGO HOJE"}</p>
                           <p className="text-[9.5px] font-black text-[#1C2643]">
                             {isLoading ? "..." : (
                               <span className="flex items-center gap-1">
-                                {Math.round((displayDailyProduced / dailyGoal) * 100)}%
+                                {Math.round(((startDate || endDate ? displayMonthlyProduced : displayDailyProduced) / dailyGoal) * 100)}%
                               </span>
                             )}
                           </p>
@@ -1875,7 +2015,7 @@ export default function DashboardPage() {
                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                           <motion.div 
                             initial={{ width: 0 }}
-                            animate={{ width: `${Math.min(100, (displayDailyProduced / dailyGoal) * 100)}%` }}
+                            animate={{ width: `${Math.min(100, ((startDate || endDate ? displayMonthlyProduced : displayDailyProduced) / dailyGoal) * 100)}%` }}
                             transition={{ duration: 1, delay: 0.5 }}
                             className="h-full bg-amber-500" 
                           />
@@ -2157,11 +2297,11 @@ export default function DashboardPage() {
                        </div>
                        <div className="mt-auto pt-3.5">
                           <div className="flex justify-between items-center mb-1.5">
-                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
+                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{startDate || endDate ? "PAGO NO PERÍODO" : "PAGO HOJE"}</p>
                              <p className="text-[9.5px] font-black text-[#1C2643]">
                                {isLoading ? "..." : (
                                  <span className="flex items-center gap-1">
-                                   {Math.round((displayDailyProduced / dailyGoal) * 100)}%
+                                   {Math.round(((startDate || endDate ? displayMonthlyProduced : displayDailyProduced) / dailyGoal) * 100)}%
                                    <span className="text-slate-400 font-bold">({formatCurrency(displayDailyProduced)})</span>
                                  </span>
                                )}
@@ -2170,7 +2310,7 @@ export default function DashboardPage() {
                           <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                              <motion.div 
                                initial={{ width: 0 }}
-                               animate={{ width: `${Math.min(100, (displayDailyProduced / dailyGoal) * 100)}%` }}
+                               animate={{ width: `${Math.min(100, ((startDate || endDate ? displayMonthlyProduced : displayDailyProduced) / dailyGoal) * 100)}%` }}
                                transition={{ duration: 1, delay: 0.5 }}
                                className="h-full bg-amber-500" 
                              />
@@ -2335,11 +2475,12 @@ export default function DashboardPage() {
                               const isUser = rank.corretor_id === perfil?.id
                               const position = idx + 1
                               const isSupervisorRow = rank.funcao?.toLowerCase() === 'supervisor'
+                              const isGroupRow = rank.corretor_id === 'ESTAGIL_AND_PJ'
                               const isExpanded = !!expandedSupervisorIds[rank.corretor_id]
                               return (
                                 <Fragment key={rank.corretor_id}>
                                   <tr 
-                                    onClick={isSupervisorRow ? () => {
+                                    onClick={isGroupRow ? () => {
                                       setExpandedSupervisorIds(prev => ({
                                         ...prev,
                                         [rank.corretor_id]: !prev[rank.corretor_id]
@@ -2348,7 +2489,7 @@ export default function DashboardPage() {
                                     className={cn(
                                       "transition-colors",
                                       isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80",
-                                      isSupervisorRow && "cursor-pointer"
+                                      isGroupRow && "cursor-pointer"
                                     )}
                                   >
                                     <td className="px-3 py-3">
@@ -2367,9 +2508,9 @@ export default function DashboardPage() {
                                             "text-[11.5px] font-black tracking-tight",
                                             isUser ? "text-[#1C2643]" : "text-slate-600"
                                           )}>
-                                            {rank.nome} {isUser && "(Você)"}
+                                            {rank.nome} {isUser && !isSupervisorRow && "(Você)"}
                                           </span>
-                                          {isSupervisorRow && (
+                                          {isGroupRow && (
                                             isExpanded ? (
                                               <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                             ) : (
@@ -2419,46 +2560,43 @@ export default function DashboardPage() {
                                     </td>
                                   </tr>
 
-                                  {isSupervisorRow && isExpanded && (
+                                  {isGroupRow && isExpanded && (
                                     <tr className="bg-slate-50/50">
                                       <td colSpan={4} className="p-3 border-t border-b border-dashed border-slate-200">
                                         <div className="space-y-3.5 pl-4 select-none">
                                           <div className="flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
                                             <Users className="w-3.5 h-3.5 text-[#1C2643]" />
                                             <h4 className="text-[9px] font-black text-[#1C2643] uppercase tracking-wider">
-                                              Detalhamento de Colaboração (Estagiários)
+                                              Detalhamento do Grupo (Estágio & PJ)
                                             </h4>
                                           </div>
                                           
-                                          {/* Propria section */}
-                                          <div className="grid grid-cols-4 gap-2 text-slate-600 bg-white p-2 border border-slate-100 shadow-sm rounded-xl">
-                                            <div className="font-bold text-[9px] text-[#1C2643] uppercase tracking-wider flex items-center">
-                                              Produção Própria
-                                            </div>
-                                            <div className="text-right">
-                                              <div className="text-[9.5px] text-emerald-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalPaid || 0)}</div>
-                                              <div className="text-[7.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countPaid || 0} PG</div>
-                                            </div>
-                                            <div className="text-right">
-                                              <div className="text-[9.5px] text-orange-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalInProcess || 0)}</div>
-                                              <div className="text-[7.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countInProcess || 0} AND</div>
-                                            </div>
-                                            <div className="text-right">
-                                              <div className="text-[9.5px] text-blue-600 font-extrabold">{formatCurrency(rank.colaboracoes?.propria.totalToday || 0)}</div>
-                                              <div className="text-[7.5px] text-slate-400 font-bold uppercase">{rank.colaboracoes?.propria.countToday || 0} DIG</div>
-                                            </div>
-                                          </div>
-
-                                          {/* Estagiarios section */}
                                           {(!rank.colaboracoes?.estagiarios || rank.colaboracoes.estagiarios.length === 0) ? (
-                                            <p className="text-[9px] font-bold text-slate-400 italic">Nenhuma colaboração de estagiário neste período.</p>
+                                            <p className="text-[9px] font-bold text-slate-400 italic">Nenhum colaborador estágio ou PJ ativo neste período.</p>
                                           ) : (
                                             <div className="space-y-1.5">
-                                              {rank.colaboracoes.estagiarios.map((est) => (
+                                              {rank.colaboracoes.estagiarios.map((est, idx) => (
                                                 <div key={est.estagiario_id} className="grid grid-cols-4 gap-2 text-slate-600 bg-emerald-50/30 p-2 border border-slate-50 shadow-sm rounded-xl hover:bg-emerald-50/50 transition-colors">
-                                                  <div className="font-extrabold text-[9px] text-[#1C2643] truncate flex items-center gap-1 uppercase">
-                                                    <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                                    {est.nome}
+                                                  <div className="font-extrabold text-[9px] text-[#1C2643] truncate flex flex-col justify-center uppercase min-w-0">
+                                                    <div className="flex items-center gap-1">
+                                                      <span className="text-[8.5px] font-black text-[#1C2643]/70 bg-slate-100 border border-slate-200 rounded px-1 shrink-0 min-w-[16px] text-center mr-0.5">
+                                                        {idx + 1}º
+                                                      </span>
+                                                      {est.isPJ ? (
+                                                        <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                                      ) : (
+                                                        <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                                      )}
+                                                      <span className="truncate">{est.nome}</span>
+                                                      <span className="text-[7.5px] text-slate-400 ml-1 shrink-0">
+                                                        ({est.isPJ ? "PJ" : "ESTÁGIO"})
+                                                      </span>
+                                                    </div>
+                                                    {est.supervisor && (
+                                                      <span className="text-[7.5px] font-bold text-slate-400 mt-0.5 pl-[36px] block shrink-0">
+                                                        SUP: {est.supervisor}
+                                                      </span>
+                                                    )}
                                                   </div>
                                                   <div className="text-right">
                                                     <div className="text-[9.5px] text-emerald-600 font-extrabold">{formatCurrency(est.totalPaid)}</div>
