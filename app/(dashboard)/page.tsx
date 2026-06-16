@@ -2029,17 +2029,17 @@ export default function DashboardPage() {
                 <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 bg-[#1C2643] text-white border-[#1C2643] !p-[18px] sm:!p-5 !rounded-[24px]">
                   <div className="flex flex-col min-w-0 overflow-hidden">
                      <div className="flex items-center gap-1.5 mb-1.5">
-                       {isSupervisor ? (
+                       {(isSupervisor || isOperational) ? (
                          <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
                        ) : (
                          <Gift className="w-3.5 h-3.5 text-amber-400" />
                        )}
                        <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest leading-tight">
-                         {isSupervisor ? "CONTRATOS DIGITADOS" : "PRÊMIO ALCANÇADO ATÉ AGORA:"}
+                         {(isSupervisor || isOperational) ? "CONTRATOS DIGITADOS" : "PRÊMIO ALCANÇADO ATÉ AGORA:"}
                        </p>
                      </div>
                      <div className="mt-1.5 space-y-2.5">
-                       {isSupervisor ? (
+                       {(isSupervisor || isOperational) ? (
                          <>
                            <div>
                              <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
@@ -2077,7 +2077,7 @@ export default function DashboardPage() {
                      </div>
                   </div>
                   <div className="mt-auto pt-2.5 border-t border-white/5">
-                     {isSupervisor ? (
+                     {(isSupervisor || isOperational) ? (
                        <div className="flex items-center gap-1.5">
                          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                          <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
