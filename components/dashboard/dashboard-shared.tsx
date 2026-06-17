@@ -4,10 +4,11 @@ import React from "react"
 import { motion } from "motion/react"
 import { cn } from "@/lib/utils"
 
-export function DashboardCard({ children, className, id }: { children: React.ReactNode, className?: string, id?: string }) {
+export function DashboardCard({ children, className, id, onClick }: { children: React.ReactNode, className?: string, id?: string, onClick?: () => void }) {
   return (
     <div 
       id={id}
+      onClick={onClick}
       className={cn(
         "bg-white p-6 sm:p-8 rounded-[32px] sm:rounded-[40px] border border-slate-200 transition-all duration-500",
         className

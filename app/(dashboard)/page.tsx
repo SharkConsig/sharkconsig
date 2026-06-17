@@ -29,11 +29,12 @@ import {
   Briefcase,
   Check,
   Star,
-  ClipboardCheck
+  ClipboardCheck,
+  X
 } from "lucide-react"
 
 import { useAuth } from "@/context/auth-context"
-import { cn, withRetry } from "@/lib/utils"
+import { cn, withRetry, formatName } from "@/lib/utils"
 import { motion, AnimatePresence } from "motion/react"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { useSidebar } from "@/context/sidebar-context"
@@ -48,6 +49,17 @@ interface ProposalSummary {
   valor_producao: string | number
   updated_at: string
   data_pago_cliente?: string
+}
+
+interface InternProposalDetail {
+  id: number
+  status: string
+  valor_producao: string | number
+  estagiario_colaborador_id: string | null
+  nome_cliente: string | null
+  banco: string | null
+  convenio: string | null
+  tipo_operacao: string | null
 }
 
 interface InternCollaboration {
@@ -268,6 +280,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [userProposals, setUserProposals] = useState<ProposalSummary[]>([])
   const [rankings, setRankings] = useState<RankingItem[]>([])
+  const [estagioRankingGroup, setEstagioRankingGroup] = useState<RankingItem | null>(null)
   const [expandedSupervisorIds, setExpandedSupervisorIds] = useState<Record<string, boolean>>({})
   const [teamProduced, setTeamProduced] = useState(0)
   const [teamMTDProduced, setTeamMTDProduced] = useState(0)
@@ -286,6 +299,8 @@ export default function DashboardPage() {
   const [internAdvancedCount, setInternAdvancedCount] = useState(0)
   const [internPaidCount, setInternPaidCount] = useState(0)
   const [internTotalMovedValue, setInternTotalMovedValue] = useState(0)
+  const [internPaidProposals, setInternPaidProposals] = useState<InternProposalDetail[]>([])
+  const [isInternProposalsModalOpen, setIsInternProposalsModalOpen] = useState(false)
   const [banners, setBanners] = useState<{image_url: string, title: string | null}[]>([])
   const [currentBanner, setCurrentBanner] = useState(0)
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
@@ -555,38 +570,70 @@ export default function DashboardPage() {
           const { data: internProposals, error: internPropsError } = await withRetry(() =>
             supabase
               .from("propostas")
-              .select("status, valor_producao, estagiario_colaborador_id")
+              .select("id, status, valor_producao, estagiario_colaborador_id, nome_cliente, banco, convenio, tipo_operacao")
               .eq("estagiario_colaborador_id", perfil?.id)
           )
 
           if (internProposals && !internPropsError) {
-            let advCount = internProposals.length
             let paidCount = 0
             let totalMoved = 0
+            const matchedProps: InternProposalDetail[] = []
 
             internProposals.forEach(p => {
-              if (p.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA") {
+              if (p.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA" || p.status === "PÓS-VENDA REALIZADA") {
                 paidCount++
                 const moneyVal = parseCurrency(p.valor_producao)
                 if (!isNaN(moneyVal)) {
                   totalMoved += moneyVal
                 }
+                matchedProps.push(p)
               }
             })
 
-            setInternAdvancedCount(advCount)
             setInternPaidCount(paidCount)
             setInternTotalMovedValue(totalMoved)
+            setInternPaidProposals(matchedProps)
           } else {
-            setInternAdvancedCount(0)
             setInternPaidCount(0)
             setInternTotalMovedValue(0)
+            setInternPaidProposals([])
           }
+
+          // Fetch only approved tickets/chamados in the current month in exercise
+          const { data: monthTickets, error: monthTicketsError } = await withRetry(() =>
+            supabase
+              .from("chamados")
+              .select("status, created_at, user_id")
+              .eq("user_id", perfil?.id)
+              .gte("created_at", targetMonthStart.toISOString())
+              .lte("created_at", targetMonthEnd.toISOString())
+          )
+
+          let approvedCount = 0
+          if (monthTickets && !monthTicketsError) {
+            monthTickets.forEach(ticket => {
+              const ticketStatusUpper = (ticket.status || 'ABERTO').toUpperCase()
+              const ticketStatusNormalized = normalizeStatus(ticket.status || 'ABERTO')
+              
+              const isApproved = APROVADOS_LABELS.some(label => {
+                const u = label.toUpperCase()
+                const ua = normalizeStatus(u)
+                return ticketStatusUpper === u || ticketStatusNormalized === ua
+              })
+              
+              if (isApproved) {
+                approvedCount++
+              }
+            })
+          }
+          setInternAdvancedCount(approvedCount)
+
         } catch (e) {
           console.error("Error fetching intern metrics:", e)
-          setInternAdvancedCount(0)
           setInternPaidCount(0)
           setInternTotalMovedValue(0)
+          setInternAdvancedCount(0)
+          setInternPaidProposals([])
         }
       }
 
@@ -699,8 +746,10 @@ export default function DashboardPage() {
                            brokerUser?.funcao === 'Estagio' || 
                            brokerUser?.funcao === 'Processo Seletivo' || 
                            brokerUser?.funcao === 'PROCESSO SELETIVO'
-          // Individual-first attribution: no rerouting interns to supervisors
-          const targetBrokerIdForMetrics = brokerId
+          // Individual-first attribution: no rerouting interns to supervisors (use collaborator ID if present)
+          const targetBrokerIdForMetrics = (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "")
+            ? curr.estagiario_colaborador_id
+            : brokerId
           const targetBrokerIdForColabs = brokerId
           
           const createdDate = new Date(curr.created_at)
@@ -966,7 +1015,9 @@ export default function DashboardPage() {
         });
 
         if (groupedUsers.length > 0) {
-          sortedRankings.push(groupRankingItem);
+          setEstagioRankingGroup(groupRankingItem);
+        } else {
+          setEstagioRankingGroup(null);
         }
 
         sortedRankings.sort((a: RankingItem, b: RankingItem) => {
@@ -1535,11 +1586,11 @@ export default function DashboardPage() {
     
     if (userRankIndex === -1) {
       // Check if user is in ESTAGIL_AND_PJ group
-      const groupItem = rankings.find(r => r.corretor_id === 'ESTAGIL_AND_PJ');
+      const groupItem = estagioRankingGroup;
       const userInGroup = groupItem?.colaboracoes?.estagiarios?.find((item: InternCollaboration) => item.estagiario_id === perfil?.id);
       
       if (userInGroup) {
-        const groupPosition = rankings.indexOf(groupItem) + 1;
+        const groupPosition = (groupItem?.colaboracoes?.estagiarios?.indexOf(userInGroup) ?? 0) + 1;
         return [
           { ...rankings[0], position: 1, isUser: false },
           {
@@ -1586,7 +1637,7 @@ export default function DashboardPage() {
         { ...rankings[userRankIndex], position: userRankIndex + 1, isUser: true }
       ];
     }
-  }, [rankings, perfil]);
+  }, [rankings, perfil, estagioRankingGroup]);
   
   const headerContent = useMemo(() => {
     if (typeof window === 'undefined') return { greeting: "Olá", phrase: "Sua jornada para o topo começa agora" }
@@ -1618,6 +1669,7 @@ export default function DashboardPage() {
             endDate={endDate}
             setStartDate={setStartDate}
             setEndDate={setEndDate}
+            estagioRankingGroup={estagioRankingGroup}
           />
         </div>
       </div>
@@ -1643,6 +1695,7 @@ export default function DashboardPage() {
             endDate={endDate}
             setStartDate={setStartDate}
             setEndDate={setEndDate}
+            estagioRankingGroup={estagioRankingGroup}
           />
         )}
         
@@ -1785,7 +1838,10 @@ export default function DashboardPage() {
                     </DashboardCard>
 
                     {/* Card 2: Participação na Jornada */}
-                    <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group">
+                    <DashboardCard 
+                      className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group cursor-pointer hover:border-blue-300 transition-all active:scale-[0.98] hover:shadow-xl hover:shadow-blue-500/5 duration-300"
+                      onClick={() => setIsInternProposalsModalOpen(true)}
+                    >
                       <div className="flex items-center justify-between mb-2">
                         <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100">
                           <ClipboardCheck className="w-6 h-6 text-blue-600" />
@@ -2585,7 +2641,7 @@ export default function DashboardPage() {
                                             "text-[11.5px] font-black tracking-tight",
                                             isUser ? "text-[#1C2643]" : "text-slate-600"
                                           )}>
-                                            {rank.nome} {isUser && !isSupervisorRow && "(Você)"}
+                                            {formatName(rank.nome)} {isUser && !isSupervisorRow && "(Você)"}
                                           </span>
                                           {isGroupRow && (
                                             isExpanded ? (
@@ -2654,7 +2710,7 @@ export default function DashboardPage() {
                                             <div className="space-y-1.5">
                                               {rank.colaboracoes.estagiarios.map((est, idx) => (
                                                 <div key={est.estagiario_id} className="grid grid-cols-4 gap-2 text-slate-600 bg-emerald-50/30 p-2 border border-slate-50 shadow-sm rounded-xl hover:bg-emerald-50/50 transition-colors">
-                                                  <div className="font-extrabold text-[9px] text-[#1C2643] truncate flex flex-col justify-center uppercase min-w-0">
+                                                  <div className="font-extrabold text-[9px] text-[#1C2643] truncate flex flex-col justify-center min-w-0">
                                                     <div className="flex items-center gap-1">
                                                       <span className="text-[8.5px] font-black text-[#1C2643]/70 bg-slate-100 border border-slate-200 rounded px-1 shrink-0 min-w-[16px] text-center mr-0.5">
                                                         {idx + 1}º
@@ -2664,7 +2720,7 @@ export default function DashboardPage() {
                                                       ) : (
                                                         <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                                                       )}
-                                                      <span className="truncate">{est.nome}</span>
+                                                      <span className="truncate">{formatName(est.nome)}</span>
                                                       <span className="text-[7.5px] text-slate-400 ml-1 shrink-0">
                                                         ({est.isPJ ? "PJ" : "ESTÁGIO"})
                                                       </span>
@@ -2777,6 +2833,109 @@ export default function DashboardPage() {
                 </div>
               </DashboardCard>
             </motion.div>
+
+            {(isSupervisor || isOperational) && estagioRankingGroup && estagioRankingGroup.colaboracoes?.estagiarios && estagioRankingGroup.colaboracoes.estagiarios.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }} 
+                animate={{ opacity: 1, x: 0 }} 
+                transition={{ delay: 0.55 }} 
+                className="lg:col-span-12 mt-6"
+                id="estagio-pj-ranking-card"
+              >
+                <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px]">
+                  <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">
+                     <div className="flex items-center gap-2">
+                       <GraduationCap className="w-5 h-5 text-emerald-500" />
+                       <h3 className="text-lg font-black text-[#1C2643] tracking-tight">Estagiários e Colaboradores PJ</h3>
+                     </div>
+                  </div>
+
+                  <div className="flex-1 flex flex-col overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50/50 border-b border-slate-200">
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {estagioRankingGroup.colaboracoes.estagiarios.map((est, idx) => {
+                          const position = idx + 1
+                          return (
+                            <tr key={est.estagiario_id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="px-3 py-3">
+                                <div className="flex items-center gap-2.5">
+                                  <div className={cn(
+                                    "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
+                                    position === 1 ? "bg-amber-100 text-amber-600" : 
+                                    position === 2 ? "bg-slate-100 text-slate-600" :
+                                    position === 3 ? "bg-orange-100 text-orange-600" :
+                                    "bg-slate-50 text-slate-400"
+                                  )}>
+                                    {position}º
+                                  </div>
+                                  <div className="flex flex-col min-w-[100px]">
+                                    <div className="flex items-center gap-1.5">
+                                      {est.isPJ ? (
+                                        <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                      ) : (
+                                        <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      )}
+                                      <span className="text-[11.5px] font-black tracking-tight text-[#1C2643]">
+                                        {formatName(est.nome)}
+                                      </span>
+                                      <span className="text-[8px] font-black text-slate-400">
+                                        ({est.isPJ ? "PJ" : "ESTÁGIO"})
+                                      </span>
+                                    </div>
+                                    {est.supervisor && (
+                                      <span className="text-[8px] font-bold text-slate-400 mt-0.5">
+                                        SUPERVISOR: {formatName(est.supervisor)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-emerald-100/25">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-orange-100/25">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-blue-100/25">
+                                <div className="flex flex-col items-end">
+                                  <span className={cn(
+                                    "text-[11.5px] font-bold",
+                                    est.totalToday > 0 ? "text-emerald-600" : "text-slate-400"
+                                  )}>
+                                    {formatCurrency(est.totalToday)}
+                                  </span>
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </DashboardCard>
+              </motion.div>
+            )}
 
             {/* SECTION 5: CAMPANHA DINÂMICA OU MODO TUBARÃO */}
             {!isSupervisor && (
@@ -3049,8 +3208,118 @@ export default function DashboardPage() {
         )}
       </>
     )}
+    </div>
+
+    <AnimatePresence>
+      {isInternProposalsModalOpen && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 md:p-10">
+          {/* Backdrop with a clean dark overlay */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsInternProposalsModalOpen(false)}
+            className="absolute inset-0 bg-[#0F172A]/50 backdrop-blur-sm"
+            id="intern-modal-backdrop"
+          />
+
+          {/* Modal Card - Centered and detached from layout headers */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 16 }}
+            transition={{ type: "spring", duration: 0.5 }}
+            className="relative w-full max-w-xl bg-white rounded-[24px] border border-slate-100 shadow-2xl p-5 sm:p-6.5 overflow-hidden flex flex-col max-h-[80vh] z-10"
+            id="intern-modal-card"
+          >
+            {/* Header - Subtitle "Propostas Contabilizadas" removed, sizes/weights reduced by 20% */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+              <div>
+                <h3 className="text-[14px] font-extrabold text-[#1C2643] uppercase tracking-wider">
+                  Participação na Jornada
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsInternProposalsModalOpen(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-[#1C2643] hover:bg-slate-50 transition-colors"
+                id="intern-modal-close-btn"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content / List - Font sizes & weights decreased by 20% */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-3.5" id="intern-modal-list">
+              {internPaidProposals.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-300 border border-slate-100 mb-2.5">
+                    <ClipboardCheck className="w-5 h-5" />
+                  </div>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                    Nenhuma proposta encontrada
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3.5">
+                  {internPaidProposals.map((prop, idx) => (
+                    <motion.div
+                      key={prop.id || idx}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="p-4 rounded-[20px] border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-300"
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-0.5">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">
+                            CLIENTE
+                          </span>
+                          <h4 className="text-[11px] font-bold text-[#1C2643] uppercase tracking-normal">
+                            {prop.nome_cliente || "Cliente Não Informado"}
+                          </h4>
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">
+                            BANCO / CONVÊNIO
+                          </span>
+                          <p className="text-[10px] font-medium text-slate-600 uppercase">
+                            {prop.banco || "Não Informado"} / {prop.convenio || "Não Informado"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">
+                          OPERAÇÃO
+                        </span>
+                        <span className="text-[9.5px] font-bold text-slate-700 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-lg uppercase tracking-wider">
+                          {prop.tipo_operacao || "Não Informada"}
+                        </span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsInternProposalsModalOpen(false)}
+                className="px-5 py-2.5 bg-[#1C2643] hover:bg-[#28355a] text-[10px] font-bold text-white rounded-lg shadow-md hover:shadow-lg shadow-[#1C2643]/10 uppercase tracking-wider transition-all duration-200"
+                id="intern-modal-close-footer-btn"
+              >
+                Fechar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   </div>
-</div>
 )
 }
 

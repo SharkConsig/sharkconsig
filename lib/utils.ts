@@ -37,3 +37,20 @@ export function normalizeText(text: string | null | undefined): string {
     .toUpperCase()
     .trim();
 }
+
+export function formatName(name: string | null | undefined): string {
+  if (!name) return "";
+  const lowercasePrepositions = ["de", "da", "do", "das", "dos", "e"];
+  return name
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word, index, arr) => {
+      if (word.length === 0) return "";
+      if (lowercasePrepositions.includes(word) && index > 0 && index < arr.length - 1) {
+        return word;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
