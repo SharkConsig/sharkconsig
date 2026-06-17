@@ -586,7 +586,6 @@ export function AdminDashboard({
                     {brokerRankings.map((rank, idx) => {
                       const isUser = rank.corretor_id === perfil?.id
                       const position = idx + 1
-                      const isSupervisorRow = rank.funcao?.toLowerCase() === "supervisor"
                       const isGroupRow = rank.corretor_id === 'ESTAGIL_AND_PJ'
                       const isExpanded = !!expandedSupervisorIds[rank.corretor_id]
                       return (
@@ -621,7 +620,7 @@ export function AdminDashboard({
                                       "text-[14px] font-black tracking-tight",
                                       isUser ? "text-[#1C2643]" : "text-slate-700"
                                     )}>
-                                      {formatName(rank.name)} {isUser && !isSupervisorRow && !isGroupRow && "(Você)"}
+                                      {formatName(rank.name)}
                                     </p>
                                     {isGroupRow && (
                                       isExpanded ? (
