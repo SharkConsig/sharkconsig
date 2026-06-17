@@ -30,12 +30,18 @@ import { useAuth } from "@/context/auth-context"
 
 const allMenuItems = [
   {
-    title: "GESTÃO DE CLIENTES",
+    title: "",
     items: [
       { 
         name: "DASHBOARD", 
         href: "/", 
         icon: Landmark, 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Recursos Humanos"] 
+      },
+      { 
+        name: "ACESSAR CLIENTE", 
+        href: "/pesquisa", 
+        icon: Search, 
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
       },
       { 
@@ -43,7 +49,12 @@ const allMenuItems = [
         href: "/importar", 
         icon: FileUp, 
         roles: ["Administrador", "Desenvolvedor"] 
-      },
+      }
+    ]
+  },
+  {
+    title: "CAMPANHA",
+    items: [
       { 
         name: "CRIAR CAMPANHA", 
         href: "/campanhas/nova", 
@@ -57,17 +68,16 @@ const allMenuItems = [
         roles: ["Administrador", "Desenvolvedor"] 
       },
       { 
-        name: "ACESSAR CLIENTE", 
-        href: "/pesquisa", 
-        icon: Search, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
-      },
-      { 
         name: "ACESSAR CAMPANHA", 
         href: "/campanhas/distribuicao", 
         icon: Users, 
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
-      },
+      }
+    ]
+  },
+  {
+    title: "CHAMADOS",
+    items: [
       { 
         name: "ABRIR CHAMADO", 
         href: "/chamados/novo", 
@@ -79,7 +89,12 @@ const allMenuItems = [
         href: "/chamados", 
         icon: MessageSquareText, 
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
-      },
+      }
+    ]
+  },
+  {
+    title: "PROPOSTAS",
+    items: [
       { 
         name: "DIGITAR PROPOSTA", 
         href: "/propostas/nova", 
@@ -91,12 +106,6 @@ const allMenuItems = [
         href: "/propostas", 
         icon: ClipboardList, 
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
-      },
-      { 
-        name: "CONFIGURAÇÕES", 
-        href: "/configuracoes", 
-        icon: Settings, 
-        roles: ["Administrador", "Desenvolvedor"] 
       }
     ]
   },
@@ -140,6 +149,17 @@ const allMenuItems = [
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
       }
     ]
+  },
+  {
+    title: "",
+    items: [
+      { 
+        name: "CONFIGURAÇÕES", 
+        href: "/configuracoes", 
+        icon: Settings, 
+        roles: ["Administrador", "Desenvolvedor"] 
+      }
+    ]
   }
 ]
 
@@ -153,7 +173,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { isCollapsed, toggleCollapse } = useSidebar()
   const { perfil, isAdmin, isRecursosHumanos } = useAuth()
   const [isHovered, setIsHovered] = useState(false)
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
 
   const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
   const effectiveCollapsed = isCollapsed && !isHovered
@@ -161,51 +181,31 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const isCollapsibleStyle = perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isAdmin
 
   const toggleSection = (title: string) => {
-    setCollapsedSections(prev => ({
+    setExpandedSections(prev => ({
       ...prev,
       [title]: !prev[title]
     }))
   }
 
-  const activeMenuItems = (() => {
-    if (isCollapsibleStyle) {
-      return allMenuItems
-    } else if (isRecursosHumanos || perfil?.role === 'Recursos Humanos') {
-      const hrSection = allMenuItems[1]
-      return [{
-        ...hrSection,
-        items: [
-          { 
-            name: "DASHBOARD", 
-            href: "/", 
-            icon: Landmark, 
-            roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
-          },
-          ...hrSection.items
-        ]
-      }]
-    } else {
-      return [allMenuItems[0]]
-    }
-  })()
-
-  const filteredMenuItems = activeMenuItems.map(section => ({
-    ...section,
-    items: section.items.filter(item => {
-      // Se for admin via email (superadmin), vê tudo
-      if (isAdmin) return true
-      
-      // Se tiver o perfil carregado, verifica a role
-      if (perfil?.role) {
-        const effectiveRole = (perfil.role === 'Processo Seletivo' || perfil.role === 'PROCESSO SELETIVO') ? 'Corretor' : perfil.role
-        if (item.roles.includes(effectiveRole)) {
-          return true
+  const filteredMenuItems = allMenuItems
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        // Se for admin via email (superadmin), vê tudo
+        if (isAdmin) return true
+        
+        // Se tiver o perfil carregado, verifica a role
+        if (perfil?.role) {
+          const effectiveRole = (perfil.role === 'Processo Seletivo' || perfil.role === 'PROCESSO SELETIVO') ? 'Corretor' : perfil.role
+          if (item.roles.includes(effectiveRole)) {
+            return true
+          }
         }
-      }
-      
-      return false
-    })
-  }))
+        
+        return false
+      })
+    }))
+    .filter(section => section.items.length > 0)
 
   return (
     <>
@@ -271,11 +271,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         )}
 
         <nav className="flex-1 px-4 py-4 overflow-y-auto no-scrollbar">
-          {filteredMenuItems.map((section) => {
-            const isCollapsed = !effectiveCollapsed && isCollapsibleStyle && !!collapsedSections[section.title]
+          {filteredMenuItems.map((section, idx) => {
+            const isCollapsed = !effectiveCollapsed && isCollapsibleStyle && section.title ? !expandedSections[section.title] : false
             return (
-              <div key={section.title} className="mb-6">
-                {!effectiveCollapsed && (
+              <div key={section.title || `flat-${idx}`} className="mb-6">
+                {!effectiveCollapsed && section.title && (
                   <div
                     onClick={() => isCollapsibleStyle && toggleSection(section.title)}
                     className={cn(

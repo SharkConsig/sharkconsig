@@ -26,7 +26,10 @@ import {
   ChevronDown,
   ChevronUp,
   GraduationCap,
-  Briefcase
+  Briefcase,
+  Check,
+  Star,
+  ClipboardCheck
 } from "lucide-react"
 
 import { useAuth } from "@/context/auth-context"
@@ -280,6 +283,9 @@ export default function DashboardPage() {
   const [teamInProcessValue, setTeamInProcessValue] = useState(0)
   const [teamInProcessCount, setTeamInProcessCount] = useState(0)
   const [teamPendingInconsistencyValue, setTeamPendingInconsistencyValue] = useState(0)
+  const [internAdvancedCount, setInternAdvancedCount] = useState(0)
+  const [internPaidCount, setInternPaidCount] = useState(0)
+  const [internTotalMovedValue, setInternTotalMovedValue] = useState(0)
   const [banners, setBanners] = useState<{image_url: string, title: string | null}[]>([])
   const [currentBanner, setCurrentBanner] = useState(0)
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
@@ -542,6 +548,47 @@ export default function DashboardPage() {
 
       const userPaid = await fetchAll(userPaidQuery)
       setUserProposals(userPaid || [])
+
+      // For intern, fetch their associated proposals to calculate custom dashboard metrics
+      if (isEstagio) {
+        try {
+          const { data: internProposals, error: internPropsError } = await withRetry(() =>
+            supabase
+              .from("propostas")
+              .select("status, valor_producao, estagiario_colaborador_id")
+              .eq("estagiario_colaborador_id", perfil?.id)
+          )
+
+          if (internProposals && !internPropsError) {
+            let advCount = internProposals.length
+            let paidCount = 0
+            let totalMoved = 0
+
+            internProposals.forEach(p => {
+              if (p.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA") {
+                paidCount++
+                const moneyVal = parseCurrency(p.valor_producao)
+                if (!isNaN(moneyVal)) {
+                  totalMoved += moneyVal
+                }
+              }
+            })
+
+            setInternAdvancedCount(advCount)
+            setInternPaidCount(paidCount)
+            setInternTotalMovedValue(totalMoved)
+          } else {
+            setInternAdvancedCount(0)
+            setInternPaidCount(0)
+            setInternTotalMovedValue(0)
+          }
+        } catch (e) {
+          console.error("Error fetching intern metrics:", e)
+          setInternAdvancedCount(0)
+          setInternPaidCount(0)
+          setInternTotalMovedValue(0)
+        }
+      }
 
       // 2. Fetch team and their proposals
       const usersRes = await withRetry(async () => {
@@ -1703,56 +1750,76 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Motivational Cards Grid */}
+                  {/* Seu Atendimento em Destaque Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-100 pt-8 mt-4 animate-fade-in">
+                    <div>
+                      <h3 className="text-xl font-extrabold text-[#1C2643] tracking-tight">
+                        Seu Atendimento em Destaque
+                      </h3>
+                      <p className="text-[13px] font-medium text-slate-500 mt-1">
+                        Acompanhe sua contribuição na jornada de atendimento e o seu desenvolvimento ao longo do período.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-full px-3.5 py-1.5 self-start sm:self-center">
+                      <span className="w-2 h-2 bg-[#00C896] rounded-full animate-pulse shrink-0" />
+                      <span className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider">Período atual</span>
+                    </div>
+                  </div>
+
+                  {/* 3 Metrics Cards */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Card 1: Clientes que Avançaram */}
                     <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group">
-                      <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mb-2 shrink-0 border border-amber-100">
-                        <BookOpen className="w-6 h-6 text-amber-600" />
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100">
+                          <TrendingUp className="w-6 h-6 text-emerald-600" />
+                        </div>
                       </div>
                       <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest block">Pilar 01</span>
-                        <h4 className="text-lg font-black text-[#1C2643] mt-1">Conhecimento Técnico</h4>
+                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block">Clientes que Avançaram</span>
+                        <h4 className="text-4xl font-black text-[#1C2643] mt-2 tracking-tight">{internAdvancedCount}</h4>
                         <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
-                          Não se compare com os outros, mas sim com quem você era ontem. Dedique tempo para estudar os scripts de vendas, entender os fluxos operacionais e dominar os detalhes dos principais convênios.
+                          Atendimentos realizados por você que seguiram para análise especializada.
                         </p>
-                      </div>
-                      <div className="mt-auto pt-4 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
-                        <span>Foco em Evolução</span>
                       </div>
                     </DashboardCard>
 
+                    {/* Card 2: Participação na Jornada */}
                     <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group">
-                      <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mb-2 shrink-0 border border-emerald-100">
-                        <Compass className="w-6 h-6 text-emerald-600" />
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100">
+                          <ClipboardCheck className="w-6 h-6 text-blue-600" />
+                        </div>
                       </div>
                       <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block">Pilar 02</span>
-                        <h4 className="text-lg font-black text-[#1C2643] mt-1">Conexão & Empatia</h4>
+                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">Participação na Jornada</span>
+                        <h4 className="text-4xl font-black text-[#1C2643] mt-2 tracking-tight">
+                          {internPaidCount} <span className="text-sm font-bold text-slate-500 tracking-normal block sm:inline">clientes já receberam</span>
+                        </h4>
                         <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
-                          Nossos clientes buscam segurança e acolhimento. Pratique a escuta ativa, demonstre empatia sincera e construa verdadeira proximidade em cada ligação de atendimento realizados.
+                          Cada contato contribui para a sua experiência prática.
                         </p>
-                      </div>
-                      <div className="mt-auto pt-4 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
-                        <span>Sintonia & Atendimento</span>
                       </div>
                     </DashboardCard>
 
+                    {/* Card 3: Valor Movimentado */}
                     <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group">
-                      <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mb-2 shrink-0 border border-blue-100">
-                        <Award className="w-6 h-6 text-blue-600" />
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="w-12 h-12 bg-violet-50 rounded-2xl flex items-center justify-center shrink-0 border border-violet-100">
+                          <span className="text-xl font-black text-violet-600 font-mono">$</span>
+                        </div>
                       </div>
                       <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">Pilar 03</span>
-                        <h4 className="text-lg font-black text-[#1C2643] mt-1">Perseverança Diária</h4>
+                        <span className="text-[10px] font-black text-violet-600 uppercase tracking-widest block">Valor Movimentado</span>
+                        <h4 className="text-3xl font-black text-[#1C2643] mt-2.5 tracking-tight">{formatCurrency(internTotalMovedValue)}</h4>
                         <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
-                          Grandes conquistas decorrem da consistência diária e da paixão pelo processo. Mantenha a resiliência activa, celebre seu progresso constante e aproveite cada feedback recebido.
+                          Volume associado aos atendimentos finalizados com sucesso.
                         </p>
-                      </div>
-                      <div className="mt-auto pt-4 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
-                        <span>Paciência & Consistência</span>
                       </div>
                     </DashboardCard>
                   </div>
+
+
 
                   {/* Campaigns & Code of Ethics Grid */}
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1822,6 +1889,16 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Alerta inferior */}
+                  <div className="bg-[#FAFAFA] border border-slate-200 rounded-[24px] p-5 flex items-center gap-4 shadow-sm">
+                    <div className="w-11 h-11 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0 border border-amber-100">
+                      <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
+                    </div>
+                    <p className="text-[13px] font-bold text-slate-700 leading-tight">
+                      Continue registrando bons atendimentos e fortalecendo a sua experiência profissional.
+                    </p>
                   </div>
                 </motion.div>
               ) : (
