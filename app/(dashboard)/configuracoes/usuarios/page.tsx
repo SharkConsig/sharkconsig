@@ -324,6 +324,7 @@ export default function UsuariosPage() {
                       <SelectItem value="Corretor">Corretor</SelectItem>
                       <SelectItem value="Supervisor">Supervisor</SelectItem>
                       <SelectItem value="Operacional">Operacional</SelectItem>
+                      <SelectItem value="Monitoramento">Monitoramento</SelectItem>
                       <SelectItem value="Estágio">Estágio</SelectItem>
                       <SelectItem value="Processo Seletivo">Processo Seletivo</SelectItem>
                       <SelectItem value="Desenvolvedor">Desenvolvedor</SelectItem>

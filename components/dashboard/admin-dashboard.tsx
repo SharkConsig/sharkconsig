@@ -758,11 +758,11 @@ export function AdminDashboard({
             className="lg:col-span-12 mt-6"
             id="estagio-pj-ranking-card-admin"
           >
-            <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px] border-slate-100">
-              <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">
-                 <div className="flex items-center gap-2">
-                   <GraduationCap className="w-5 h-5 text-emerald-500" />
-                   <h3 className="text-lg font-black text-[#1C2643] tracking-tight uppercase">Estagiários e Colaboradores PJ</h3>
+            <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white border-slate-100">
+              <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
+                 <div className="flex items-center gap-3">
+                   <GraduationCap className="w-6 h-6 text-emerald-500" />
+                   <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Estagiários e Colaboradores PJ</h3>
                  </div>
               </div>
 
@@ -770,10 +770,10 @@ export function AdminDashboard({
                 <table className="w-full text-left border-collapse min-w-[800px]">
                   <thead>
                     <tr className="bg-slate-50/50 border-b border-slate-200">
-                      <th className="px-3 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
-                      <th className="px-3 py-2.5 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
-                      <th className="px-3 py-2.5 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
-                      <th className="px-3 py-2.5 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                      <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                      <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                      <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                      <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -781,64 +781,64 @@ export function AdminDashboard({
                       const position = idx + 1
                       return (
                         <tr key={est.estagiario_id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="px-3 py-3">
-                            <div className="flex items-center gap-2.5">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-3">
                               <div className={cn(
-                                "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
-                                position === 1 ? "bg-amber-100 text-amber-600" : 
-                                position === 2 ? "bg-slate-100 text-slate-600" :
-                                position === 3 ? "bg-orange-100 text-orange-600" :
-                                "bg-slate-50 text-slate-400"
+                                "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                                position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
+                                position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                "bg-white text-slate-400 border-slate-100"
                               )}>
                                 {position}º
                               </div>
                               <div className="flex flex-col min-w-[100px]">
                                 <div className="flex items-center gap-1.5">
                                   {est.isPJ ? (
-                                    <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                    <Briefcase className="w-4 h-4 text-blue-500 shrink-0" />
                                   ) : (
-                                    <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                    <GraduationCap className="w-4 h-4 text-emerald-500 shrink-0" />
                                   )}
-                                  <span className="text-[11.5px] font-black tracking-tight text-[#1C2643]">
+                                  <span className="text-[14px] font-black tracking-tight text-[#1C2643]">
                                     {formatName(est.nome)}
                                   </span>
-                                  <span className="text-[8px] font-black text-slate-400">
+                                  <span className="text-[10px] font-black text-slate-400">
                                     ({est.isPJ ? "PJ" : "ESTÁGIO"})
                                   </span>
                                 </div>
                                 {est.supervisor && (
-                                  <span className="text-[8px] font-bold text-slate-400 mt-0.5">
+                                  <span className="text-[10px] font-bold text-slate-400 mt-0.5 tracking-tighter">
                                     SUPERVISOR: {formatName(est.supervisor)}
                                   </span>
                                 )}
                               </div>
                             </div>
                           </td>
-                          <td className="px-3 py-3 text-right bg-emerald-100/25">
+                          <td className="px-4 py-4 text-right bg-emerald-100/25">
                             <div className="flex flex-col items-end">
-                              <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
-                              <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                              <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
                                 {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
                               </span>
                             </div>
                           </td>
-                          <td className="px-3 py-3 text-right bg-orange-100/25">
+                          <td className="px-4 py-4 text-right bg-orange-100/25">
                             <div className="flex flex-col items-end">
-                              <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
-                              <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                              <span className="text-[14px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
                                 {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
                               </span>
                             </div>
                           </td>
-                          <td className="px-3 py-3 text-right bg-blue-100/25">
+                          <td className="px-4 py-4 text-right bg-blue-100/25">
                             <div className="flex flex-col items-end">
                               <span className={cn(
-                                "text-[11.5px] font-bold",
+                                "text-[14px] font-bold",
                                 est.totalToday > 0 ? "text-blue-600" : "text-slate-400"
                               )}>
                                 {formatCurrency(est.totalToday)}
                               </span>
-                              <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
                                 {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
                               </span>
                             </div>

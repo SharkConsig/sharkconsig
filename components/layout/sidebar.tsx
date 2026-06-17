@@ -196,7 +196,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         
         // Se tiver o perfil carregado, verifica a role
         if (perfil?.role) {
-          const effectiveRole = (perfil.role === 'Processo Seletivo' || perfil.role === 'PROCESSO SELETIVO') ? 'Corretor' : perfil.role
+          const effectiveRole = 
+            (perfil.role === 'Processo Seletivo' || perfil.role === 'PROCESSO SELETIVO') ? 'Corretor' : 
+            (perfil.role === 'Monitoramento' || perfil.role === 'MONITORAMENTO') ? 'Operacional' : 
+            perfil.role
           if (item.roles.includes(effectiveRole)) {
             return true
           }

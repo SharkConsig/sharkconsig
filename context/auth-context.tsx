@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase"
 import { User } from "@supabase/supabase-js"
 import { Lock } from "lucide-react"
 
-export type UserRole = 'Desenvolvedor' | 'Administrador' | 'Operacional' | 'Supervisor' | 'Corretor' | 'Estágio' | 'Processo Seletivo' | 'PROCESSO SELETIVO' | 'Recursos Humanos'
+export type UserRole = 'Desenvolvedor' | 'Administrador' | 'Operacional' | 'Supervisor' | 'Corretor' | 'Estágio' | 'Processo Seletivo' | 'PROCESSO SELETIVO' | 'Recursos Humanos' | 'Monitoramento' | 'MONITORAMENTO'
 
 interface Perfil {
   id: string
@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAdmin = user?.email ? adminEmails.includes(user.email) || perfil?.role === 'Administrador' || perfil?.role === 'Admin' || perfil?.role === 'Administrativo' : false
   const isDeveloper = isAdmin || perfil?.role === 'Desenvolvedor'
   const isSupervisor = isAdmin || perfil?.role === 'Supervisor'
-  const isOperational = isAdmin || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo'
+  const isOperational = isAdmin || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO'
   const isCorretor = perfil?.role === 'Corretor' || perfil?.role === 'Estágio' || perfil?.role === 'Processo Seletivo' || perfil?.role === 'PROCESSO SELETIVO' || (!isAdmin && !!user && !perfil?.role)
   const isEstagio = perfil?.role === 'Estágio'
   const isRecursosHumanos = perfil?.role === 'Recursos Humanos'

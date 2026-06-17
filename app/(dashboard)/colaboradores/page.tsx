@@ -196,6 +196,7 @@ const roleOptions = [
   { value: "Promotor de Vendas", label: "Promotor de Vendas", bg: "bg-[#bae6fd] hover:bg-[#7dd3fc]", border: "border-[#38bdf8]", text: "text-[#0369a1]" },
   { value: "Supervisora Operacional", label: "Supervisora Operacional", bg: "bg-[#7c3aed] hover:bg-[#6d28d9]", border: "border-transparent", text: "text-white" },
   { value: "Operacional", label: "Operacional", bg: "bg-[#f3e8ff] hover:bg-[#e9d5ff]", border: "border-[#c084fc]", text: "text-[#6b21a8]" },
+  { value: "Monitoramento", label: "Monitoramento", bg: "bg-[#f3e8ff] hover:bg-[#e9d5ff]", border: "border-[#c084fc]", text: "text-[#6b21a8]" },
   { value: "RH", label: "RH", bg: "bg-[#2dd4bf] hover:bg-[#14b8a6]", border: "border-transparent", text: "text-[#115e59]" },
   { value: "Marketing", label: "Marketing", bg: "bg-[#b91c1c] hover:bg-[#991b1b]", border: "border-transparent", text: "text-white" },
   { value: "Serviços Gerais", label: "Serviços Gerais", bg: "bg-[#fef3c7] hover:bg-[#fde68a]", border: "border-[#fcd34d]", text: "text-[#92400e]" },

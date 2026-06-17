@@ -246,22 +246,30 @@ function NewProposalForm() {
         if (res.ok) {
           const data = await res.json()
           if (Array.isArray(data)) {
+            const isMon = (perfil?.role || '').toLowerCase() === 'monitoramento';
             const filtered = data
               .filter((u: { id: string; nome: string; funcao?: string; status?: string }) => {
                 const funcao = (u.funcao || '').toLowerCase();
                 const status = (u.status || '').toUpperCase();
-                return (funcao === 'estágio' || funcao === 'estagio') && status === 'ATIVO';
+                
+                if (status !== 'ATIVO') return false;
+                
+                if (isMon) {
+                  return funcao === 'corretor' || funcao === 'supervisor' || funcao === 'estágio' || funcao === 'estagio';
+                } else {
+                  return funcao === 'estágio' || funcao === 'estagio';
+                }
               })
               .map((u: { id: string; nome: string }) => ({ id: u.id, nome: u.nome }))
             setDbEstagiarios(filtered)
           }
         }
       } catch (error) {
-        console.error("Erro ao carregar estagiários:", error)
+        console.error("Erro ao carregar colaboradores:", error)
       }
     }
     loadEstagiarios()
-  }, [])
+  }, [perfil?.role])
 
   useEffect(() => {
     async function loadTicketAttachments() {
@@ -315,7 +323,13 @@ function NewProposalForm() {
                   const userData = await resUser.json()
                   const funcao = (userData.funcao || '').toLowerCase()
                   const status = (userData.status || '').toUpperCase()
-                  if ((funcao === 'estágio' || funcao === 'estagio') && status === 'ATIVO') {
+                  
+                  const isMon = (perfil?.role || '').toLowerCase() === 'monitoramento'
+                  const isAllowed = isMon 
+                    ? (funcao === 'corretor' || funcao === 'supervisor' || funcao === 'estágio' || funcao === 'estagio')
+                    : (funcao === 'estágio' || funcao === 'estagio');
+
+                  if (isAllowed && status === 'ATIVO') {
                     setFormData(prev => ({
                       ...prev,
                       estagiario_colaborador_id: userData.id,
@@ -324,7 +338,7 @@ function NewProposalForm() {
                   }
                 }
               } catch (userErr) {
-                console.error("Erro ao verificar estagiário do chamado:", userErr)
+                console.error("Erro ao verificar colaborador do chamado:", userErr)
               }
             }
           }
@@ -334,7 +348,7 @@ function NewProposalForm() {
       }
     }
     loadTicketAttachments()
-  }, [searchParams])
+  }, [searchParams, perfil?.role])
 
   // Fetch product configurations
   useEffect(() => {
@@ -1194,11 +1208,13 @@ function NewProposalForm() {
 
       <Card className="card-shadow border border-slate-200 bg-white">
         <CardContent className="p-10 space-y-16">
-          {/* Campo atribuição estagiário para Supervisor */}
-          {perfil?.role === 'Supervisor' && (
+          {/* Campo atribuição estagiário/colaborador para Supervisor ou Monitoramento */}
+          {(perfil?.role === 'Supervisor' || (perfil?.role || '').toLowerCase() === 'monitoramento') && (
             <div className="p-5 bg-amber-50/30 border border-amber-100 rounded-xl space-y-2 max-w-md">
               <label className="text-[10px] font-bold text-amber-900 uppercase tracking-widest block">
-                Atribuir Colaboração com Estagiário (Opcional)
+                {(perfil?.role || '').toLowerCase() === 'monitoramento' 
+                  ? "Atribuir Colaboração com Colaborador (Opcional)"
+                  : "Atribuir Colaboração com Estagiário (Opcional)"}
               </label>
               <select
                 value={formData.estagiario_colaborador_id}

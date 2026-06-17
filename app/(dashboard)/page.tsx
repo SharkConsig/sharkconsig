@@ -273,7 +273,7 @@ interface Interview {
 export default function DashboardPage() {
   const router = useRouter()
   const { perfil, isCorretor, isAdmin, isOperational, isDeveloper, isRecursosHumanos } = useAuth()
-  const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isAdmin || isDeveloper
+  const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO' || isAdmin || isDeveloper
   const isEstagio = perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const { isCollapsed } = useSidebar()
   const [mounted, setMounted] = useState(false)
@@ -2002,7 +2002,7 @@ export default function DashboardPage() {
                 <div className="relative z-10 flex flex-col h-full">
                   <div className="flex items-center justify-between mb-2">
                      <p className="text-[9.5px] font-black text-[#718198] uppercase tracking-widest">
-                       {(perfil?.role?.toLowerCase() === 'operacional' || perfil?.role?.toLowerCase() === 'desenvolvedor' || perfil?.role?.toLowerCase() === 'administrador' || isAdmin || isDeveloper) ? "META MENSAL DA EMPRESA" : "Sua Meta Mensal"}
+                       {(isOperational || isDeveloper) ? "META MENSAL DA EMPRESA" : "Sua Meta Mensal"}
                      </p>
                      <div className="bg-[#1C2643]/5 p-2 rounded-xl">
                         <Target className="w-4 h-4 text-[#1C2643]" />
