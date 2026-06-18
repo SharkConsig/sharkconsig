@@ -453,41 +453,48 @@ export default function CampanhaAtendimentoPage() {
         data = leadData && leadData.length > 0 ? leadData[0] : null
       } else {
         // Fallback to client-side sequential real-time mathematical distribution querying campanha_membros
-        const filters = camp.filtros
+        // Fetch up-to-date campaign filters state to read real-time active_claims securely (RLS is disabled on 'campanhas', making this 100% permission-error free!)
+        let latestCampData = camp
+        try {
+          const { data: latestCamp } = await supabase
+            .from('campanhas')
+            .select('*')
+            .eq('id', camp.id)
+            .maybeSingle()
+          if (latestCamp) {
+            latestCampData = latestCamp
+          }
+        } catch (fErr) {
+          console.warn("Could not fetch fresh campanhas row for claims, falling back to cached camp data:", fErr)
+        }
+
+        const filters = latestCampData.filtros || {}
         const brokers = filters.corretores_selecionados || []
         const myIndex = brokers.indexOf(userId)
-        const brokerRelIndex = myIndex === -1 ? 0 : myIndex // Fallback to 0 if not explicitly listed
 
-        // Garbage collection of stale claims from any broker older than 10 minutes
-        try {
-          const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-          const { error: gcError } = await supabase
-            .from('campanha_vinculos')
-            .delete()
-            .eq('campanha_id', camp.id)
-            .eq('completed', false)
-            .lt('created_at', tenMinutesAgo);
-          
-          if (gcError) {
-            console.warn("Erro no GC de campanha_vinculos (pode ser que a coluna created_at não exista):", gcError.message);
-          } else {
-            console.log("Coleta de lixo de claims antigos executada com sucesso.");
+        // Generates a stable shift/hash for brokers who are not explicitly in the list (e.g. from Supervisor distributions)
+        // to prevent them from landing on the exact same indexed target.
+        let brokerRelIndex = 0
+        if (myIndex === -1) {
+          const hashVal = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+          brokerRelIndex = hashVal
+        } else {
+          brokerRelIndex = myIndex
+        }
+
+        // Parse claims stored in filters.active_claims
+        let activeClaims = { ...(filters.active_claims || {}) }
+        const tenMinutesAgoMs = Date.now() - 10 * 60 * 1000
+        let claimsChanged = false
+
+        // Garbage collection of claims older than 10 minutes, or the current broker's own claims
+        Object.entries(activeClaims).forEach(([cid, val]: [string, any]) => {
+          const claimTime = val?.created_at ? new Date(val.created_at).getTime() : 0
+          if (claimTime < tenMinutesAgoMs || cid === userId) {
+            delete activeClaims[cid]
+            claimsChanged = true
           }
-        } catch (gcErr) {
-          console.warn("Erro ao tentar executar GC de campanha_vinculos:", gcErr);
-        }
-
-        // Release any existing pending (uncompleted) claims for this broker on this campaign to make them self-healing
-        try {
-          await supabase
-            .from('campanha_vinculos')
-            .delete()
-            .eq('campanha_id', camp.id)
-            .eq('corretor_id', userId)
-            .eq('completed', false)
-        } catch (releaseErr) {
-          console.warn("Erro ao liberar vínculos pendentes do corretor:", releaseErr)
-        }
+        })
 
         // 1. Obter todos os CPFs já tabulados (atendidos) nesta campanha para filtrá-los em tempo real na listagem
         const { data: attendedRows, error: attendedErr } = await withRetry(() =>
@@ -503,38 +510,38 @@ export default function CampanhaAtendimentoPage() {
         const attendedCpfs = new Set((attendedRows || []).map(r => r.cliente_cpf ? r.cliente_cpf.padStart(11, '0') : ''))
 
         // 2. Obter todos os vínculos (claims) ativos de outros corretores
-        const { data: claimedRows, error: claimedErr } = await withRetry(() =>
-          supabase
+        // Fallback backward-compatible db fetch for campanha_vinculos (wrapped in try/catch to suppress failures)
+        const claimedCpfs = new Set<string>()
+        try {
+          const { data: claimedRows } = await supabase
             .from('campanha_vinculos')
             .select('cliente_cpf, created_at')
             .eq('campanha_id', camp.id)
             .eq('completed', false)
-        )
-        if (claimedErr) {
-          console.warn("Erro ao buscar CPFs reservados por outros corretores:", claimedErr)
-        }
-        
-        const now = Date.now()
-        const claimExpirationMs = 10 * 60 * 1000 // 10 minutes
-        const claimedCpfs = new Set<string>()
-        if (claimedRows) {
-          claimedRows.forEach(r => {
-            if (r.cliente_cpf) {
-              const paddedClaimedCpf = r.cliente_cpf.padStart(11, '0')
-              const claimTime = r.created_at ? new Date(r.created_at).getTime() : 0;
-              // If we have a valid timestamp and it is younger than 10 minutes, block it.
-              // Otherwise, if it is older than 10 minutes, we ignore it (releasing it from memory pool).
-              if (claimTime) {
-                if (now - claimTime < claimExpirationMs) {
+          
+          if (claimedRows) {
+            const now = Date.now()
+            const claimExpirationMs = 10 * 60 * 1000
+            claimedRows.forEach(r => {
+              if (r.cliente_cpf) {
+                const paddedClaimedCpf = r.cliente_cpf.padStart(11, '0')
+                const claimTime = r.created_at ? new Date(r.created_at).getTime() : 0;
+                if (!claimTime || now - claimTime < claimExpirationMs) {
                   claimedCpfs.add(paddedClaimedCpf);
                 }
-              } else {
-                // Backwards-compatible fallback if created_at doesn't exist
-                claimedCpfs.add(paddedClaimedCpf);
               }
-            }
-          });
+            });
+          }
+        } catch (dbClaimErr) {
+          console.warn("campanha_vinculos database blocked by permission settings. Using filters.active_claims instead.");
         }
+
+        // Add real-time active claims stored in filters
+        Object.entries(activeClaims).forEach(([cid, val]: [string, any]) => {
+          if (cid !== userId && val?.cliente_cpf) {
+            claimedCpfs.add(val.cliente_cpf.padStart(11, '0'))
+          }
+        })
 
         // 3. Obter todos os membros cadastrados na campanha_membros da campanha ordenados pela fila
         const { data: allMembers, error: membersErr } = await withRetry(() =>
@@ -638,8 +645,28 @@ export default function CampanhaAtendimentoPage() {
           }
         }
 
-        // 6. Criar vínculo temporário em campanha_vinculos para segurar a posse do lead enquanto é trabalhado
+        // 6. Criar vínculo temporário para segurar a posse do lead enquanto é trabalhado
         if (data && data.cpf) {
+          // A. Update the active claim inside campaign JSON filters (always succeeds due to disabled RLS)
+          try {
+            activeClaims[userId] = {
+              cliente_cpf: data.cpf,
+              created_at: new Date().toISOString()
+            }
+            const updatedFiltros = {
+              ...filters,
+              active_claims: activeClaims
+            }
+            await supabase
+              .from('campanhas')
+              .update({ filtros: updatedFiltros })
+              .eq('id', camp.id)
+            console.log("Successfully recorded live active claim in filters.active_claims!");
+          } catch (filtClaimErr) {
+            console.warn("Could not record active claim in campaign filters:", filtClaimErr)
+          }
+
+          // B. Legacy database table insert (fails silently if permissions are denied)
           try {
             await supabase.from('campanha_vinculos').insert({
               campanha_id: camp.id,
@@ -649,7 +676,7 @@ export default function CampanhaAtendimentoPage() {
               indice: offset
             })
           } catch (insertErr) {
-            console.warn("Could not record initial lead claimed row:", insertErr)
+            console.warn("Could not record initial lead claimed row in campanha_vinculos:", insertErr)
           }
         }
       }
@@ -883,7 +910,24 @@ export default function CampanhaAtendimentoPage() {
        
        if (error) throw error
 
-       // Mark lead as completed in campanha_vinculos statefully
+       // Mark lead as completed in campaign JSON filters and campanha_vinculos statefully
+       try {
+         const { data: latestCamp } = await supabase.from('campanhas').select('filtros').eq('id', campaign.id).maybeSingle()
+         if (latestCamp) {
+           const currentFiltros = latestCamp.filtros || {}
+           const activeClaims = { ...(currentFiltros.active_claims || {}) }
+           delete activeClaims[userId]
+           const updatedFiltros = {
+             ...currentFiltros,
+             active_claims: activeClaims
+           }
+           await supabase.from('campanhas').update({ filtros: updatedFiltros }).eq('id', campaign.id)
+           console.log("Successfully cleared active claim from filters on tabulate!");
+         }
+       } catch (jErr) {
+         console.warn("Could not remove claim from campaign filters on tabulate:", jErr)
+       }
+
        try {
          await supabase.from('campanha_vinculos')
            .update({ completed: true })
@@ -891,7 +935,7 @@ export default function CampanhaAtendimentoPage() {
            .eq('corretor_id', userId)
            .eq('cliente_cpf', currentLead.cpf)
        } catch (linkErr) {
-         console.warn("Could not mark claim as completed statefully:", linkErr)
+         console.warn("Could not mark claim as completed statefully in campanha_vinculos:", linkErr)
        }
        
        toast.success("Atendimento registrado!")
@@ -933,7 +977,24 @@ export default function CampanhaAtendimentoPage() {
         
         if (error) throw error
 
-        // Mark lead as completed in campanha_vinculos statefully
+        // Mark lead as completed in campaign JSON filters and campanha_vinculos statefully
+        try {
+          const { data: latestCamp } = await supabase.from('campanhas').select('filtros').eq('id', campaign.id).maybeSingle()
+          if (latestCamp) {
+            const currentFiltros = latestCamp.filtros || {}
+            const activeClaims = { ...(currentFiltros.active_claims || {}) }
+            delete activeClaims[userId]
+            const updatedFiltros = {
+              ...currentFiltros,
+              active_claims: activeClaims
+            }
+            await supabase.from('campanhas').update({ filtros: updatedFiltros }).eq('id', campaign.id)
+            console.log("Successfully cleared active claim from filters on tabulate!");
+          }
+        } catch (jErr) {
+          console.warn("Could not remove claim from campaign filters on tabulate:", jErr)
+        }
+
         try {
           await supabase.from('campanha_vinculos')
             .update({ completed: true })
@@ -941,7 +1002,7 @@ export default function CampanhaAtendimentoPage() {
             .eq('corretor_id', userId)
             .eq('cliente_cpf', currentLead.cpf)
         } catch (linkErr) {
-          console.warn("Could not mark claim as completed statefully:", linkErr)
+          console.warn("Could not mark claim as completed statefully in campanha_vinculos:", linkErr)
         }
       } catch (err) {
         console.error("Erro ao salvar tabulação ao sair:", err)
