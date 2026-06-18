@@ -252,17 +252,23 @@ export default function EntrevistasPage() {
 
   // Update a single cell directly in our state (Spreadsheet behavior!) & Sync
   const updateCell = async (id: string, field: keyof Interview, value: string) => {
+    let overrideTipo: string | undefined = undefined
     if (field === "fase" && value === "Entrevista") {
       const candidate = interviews.find(item => item.id === id)
       if (candidate && candidate.tipo === "LIGAÇÕES") {
-        toast.success(`Candidato ${candidate.name} agora também está disponível na aba ENTREVISTAS!`)
+        toast.success(`Candidato ${candidate.name} agora foi migrado definitivamente para a aba ENTREVISTAS!`)
+        overrideTipo = "ENTREVISTAS"
       }
     }
 
     // 1. Instant local ui update
     const updated = interviews.map(item => {
       if (item.id === id) {
-        return { ...item, [field]: value }
+        const updatedItem = { ...item, [field]: value }
+        if (overrideTipo) {
+          updatedItem.tipo = overrideTipo
+        }
+        return updatedItem
       }
       return item
     })
@@ -281,6 +287,9 @@ export default function EntrevistasPage() {
         }
         
         const updatePayload: Record<string, string | null | undefined> = { [field]: valueForDb }
+        if (overrideTipo && hasTipoColumn) {
+          updatePayload.tipo = overrideTipo
+        }
 
         const { error } = await supabase
           .from('hr_interviews')
