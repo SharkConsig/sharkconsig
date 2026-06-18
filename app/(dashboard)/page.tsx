@@ -1837,7 +1837,7 @@ export default function DashboardPage() {
                       </div>
                     </DashboardCard>
 
-                    {/* Card 2: Participação na Jornada */}
+                    {/* Card 2: Conexões Concretizadas */}
                     <DashboardCard 
                       className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group cursor-pointer hover:border-blue-300 transition-all active:scale-[0.98] hover:shadow-xl hover:shadow-blue-500/5 duration-300"
                       onClick={() => setIsInternProposalsModalOpen(true)}
@@ -1848,12 +1848,12 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">Participação na Jornada</span>
+                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">Conexões Concretizadas</span>
                         <h4 className="text-4xl font-black text-[#1C2643] mt-2 tracking-tight">
-                          {internPaidCount} <span className="text-sm font-bold text-slate-500 tracking-normal block sm:inline">clientes já receberam</span>
+                          {internPaidCount} <span className="text-sm font-bold text-slate-500 tracking-normal block sm:inline">casos consolidados</span>
                         </h4>
                         <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
-                          Cada contato contribui para a sua experiência prática.
+                          A qualidade do seu contato inicial permitiu que o especialista finalizasse o atendimento com êxito.
                         </p>
                       </div>
                     </DashboardCard>
@@ -2815,22 +2815,24 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                <div className="mt-5 pt-4 border-t border-slate-50">
-                   <div className="bg-amber-50 p-3 rounded-xl flex items-center gap-3 border border-amber-100">
-                      <div className="w-8.5 h-8.5 bg-white rounded-lg shadow-sm flex items-center justify-center shrink-0">
-                         <Target className="w-4 h-4 text-amber-500" />
-                      </div>
-                      <p className="text-[10px] font-bold text-[#1C2643] leading-tight flex-1">
-                         {userRank === 1 ? (
-                           <span className="text-emerald-600 font-black tracking-tight">PARABÉNS! VOCÊ É O NÚMERO 1! CONTINUE LIDERANDO!</span>
-                         ) : userRank > 1 ? (
-                           <>Você está na <span className="text-amber-600 font-black">{userRank}ª posição</span>. Falta <span className="text-amber-600 font-black">{formatCurrency(missingForNextRank)}</span> para chegar na {userRank - 1}ª posição!</>
-                         ) : (
-                           <>Comece a produzir para entrar no <span className="font-black">Ranking</span></>
-                         )}
-                      </p>
-                   </div>
-                </div>
+                {!(perfil?.role?.toLowerCase() === 'monitoramento' || perfil?.role?.toLowerCase() === 'operacional') && (
+                  <div className="mt-5 pt-4 border-t border-slate-50">
+                     <div className="bg-amber-50 p-3 rounded-xl flex items-center gap-3 border border-amber-100">
+                        <div className="w-8.5 h-8.5 bg-white rounded-lg shadow-sm flex items-center justify-center shrink-0">
+                           <Target className="w-4 h-4 text-amber-500" />
+                        </div>
+                        <p className="text-[10px] font-bold text-[#1C2643] leading-tight flex-1">
+                           {userRank === 1 ? (
+                             <span className="text-emerald-600 font-black tracking-tight">PARABÉNS! VOCÊ É O NÚMERO 1! CONTINUE LIDERANDO!</span>
+                           ) : userRank > 1 ? (
+                             <>Você está na <span className="text-amber-600 font-black">{userRank}ª posição</span>. Falta <span className="text-[#1C2643] font-black">{formatCurrency(missingForNextRank)}</span> para chegar na {userRank - 1}ª posição!</>
+                           ) : (
+                             <>Comece a produzir para entrar no <span className="font-black">Ranking</span></>
+                           )}
+                        </p>
+                     </div>
+                  </div>
+                )}
               </DashboardCard>
             </motion.div>
 
@@ -3236,7 +3238,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
               <div>
                 <h3 className="text-[14px] font-extrabold text-[#1C2643] uppercase tracking-wider">
-                  Participação na Jornada
+                  Conexões Concretizadas
                 </h3>
               </div>
               <button
