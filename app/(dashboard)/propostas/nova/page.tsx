@@ -35,7 +35,7 @@ import {
 import { useAuth } from "@/context/auth-context"
 
 function NewProposalForm() {
-  const { isCorretor, perfil, isEstagio } = useAuth()
+  const { isCorretor, perfil, isEstagio, isMonitoramento } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -246,19 +246,15 @@ function NewProposalForm() {
         if (res.ok) {
           const data = await res.json()
           if (Array.isArray(data)) {
-            const isMon = (perfil?.role || '').toLowerCase() === 'monitoramento';
+            const isMon = perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO';
+            const targetRoles = isMon 
+              ? ['corretor', 'estágio', 'estagio', 'supervisor', 'processo seletivo']
+              : ['estágio', 'estagio'];
             const filtered = data
               .filter((u: { id: string; nome: string; funcao?: string; status?: string }) => {
                 const funcao = (u.funcao || '').toLowerCase();
                 const status = (u.status || '').toUpperCase();
-                
-                if (status !== 'ATIVO') return false;
-                
-                if (isMon) {
-                  return funcao === 'corretor' || funcao === 'supervisor' || funcao === 'estágio' || funcao === 'estagio';
-                } else {
-                  return funcao === 'estágio' || funcao === 'estagio';
-                }
+                return targetRoles.includes(funcao) && status === 'ATIVO';
               })
               .map((u: { id: string; nome: string }) => ({ id: u.id, nome: u.nome }))
             setDbEstagiarios(filtered)
@@ -323,13 +319,7 @@ function NewProposalForm() {
                   const userData = await resUser.json()
                   const funcao = (userData.funcao || '').toLowerCase()
                   const status = (userData.status || '').toUpperCase()
-                  
-                  const isMon = (perfil?.role || '').toLowerCase() === 'monitoramento'
-                  const isAllowed = isMon 
-                    ? (funcao === 'corretor' || funcao === 'supervisor' || funcao === 'estágio' || funcao === 'estagio')
-                    : (funcao === 'estágio' || funcao === 'estagio');
-
-                  if (isAllowed && status === 'ATIVO') {
+                  if ((funcao === 'estágio' || funcao === 'estagio') && status === 'ATIVO') {
                     setFormData(prev => ({
                       ...prev,
                       estagiario_colaborador_id: userData.id,
@@ -338,7 +328,7 @@ function NewProposalForm() {
                   }
                 }
               } catch (userErr) {
-                console.error("Erro ao verificar colaborador do chamado:", userErr)
+                console.error("Erro ao verificar estagiário do chamado:", userErr)
               }
             }
           }
@@ -348,7 +338,7 @@ function NewProposalForm() {
       }
     }
     loadTicketAttachments()
-  }, [searchParams, perfil?.role])
+  }, [searchParams])
 
   // Fetch product configurations
   useEffect(() => {
@@ -1208,12 +1198,12 @@ function NewProposalForm() {
 
       <Card className="card-shadow border border-slate-200 bg-white">
         <CardContent className="p-10 space-y-16">
-          {/* Campo atribuição estagiário/colaborador para Supervisor ou Monitoramento */}
-          {(perfil?.role === 'Supervisor' || (perfil?.role || '').toLowerCase() === 'monitoramento') && (
+          {/* Campo atribuição para Supervisor ou Monitoramento */}
+          {(perfil?.role === 'Supervisor' || isMonitoramento) && (
             <div className="p-5 bg-amber-50/30 border border-amber-100 rounded-xl space-y-2 max-w-md">
               <label className="text-[10px] font-bold text-amber-900 uppercase tracking-widest block">
-                {(perfil?.role || '').toLowerCase() === 'monitoramento' 
-                  ? "Atribuir Colaboração com Colaborador (Opcional)"
+                {isMonitoramento 
+                  ? "Atribuir Digitação para Colaborador (Opcional)" 
                   : "Atribuir Colaboração com Estagiário (Opcional)"}
               </label>
               <select
@@ -1229,7 +1219,9 @@ function NewProposalForm() {
                 }}
                 className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-amber-400 focus:outline-none transition-colors text-amber-950"
               >
-                <option value="">Sem colaboração (Nenhum)</option>
+                <option value="">
+                  {isMonitoramento ? "Digitar eu mesmo (Nenhum)" : "Sem colaboração (Nenhum)"}
+                </option>
                 {dbEstagiarios.map((est) => (
                   <option key={est.id} value={est.id}>{est.nome}</option>
                 ))}

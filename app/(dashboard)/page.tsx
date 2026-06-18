@@ -658,8 +658,7 @@ export default function DashboardPage() {
           const team = (isAdmin || isOperational || isDeveloper || isRecursosHumanos)
             ? allUsers.filter((u: User) => {
                 const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
-                const uFuncao = (u.funcao || "").trim().toLowerCase();
-                return ((u.funcao === 'Corretor' || u.funcao === 'Supervisor' || u.funcao === 'Estágio' || u.funcao === 'Estagio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO' || uFuncao === 'monitoramento') || isPJ) && u.status?.toUpperCase() !== 'INATIVO'
+                return ((u.funcao === 'Corretor' || u.funcao === 'Supervisor' || u.funcao === 'Estágio' || u.funcao === 'Estagio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO') || isPJ) && u.status?.toUpperCase() !== 'INATIVO'
               })
             : allUsers.filter((u: User) => 
                 (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId) && u.status?.toUpperCase() !== 'INATIVO'
@@ -2608,6 +2607,7 @@ export default function DashboardPage() {
                             {rankings.map((rank, idx) => {
                               const isUser = rank.corretor_id === perfil?.id
                               const position = idx + 1
+                              const isSupervisorRow = rank.funcao?.toLowerCase() === 'supervisor'
                               const isGroupRow = rank.corretor_id === 'ESTAGIL_AND_PJ'
                               const isExpanded = !!expandedSupervisorIds[rank.corretor_id]
                               return (
@@ -2641,7 +2641,7 @@ export default function DashboardPage() {
                                             "text-[11.5px] font-black tracking-tight",
                                             isUser ? "text-[#1C2643]" : "text-slate-600"
                                           )}>
-                                            {formatName(rank.nome)}
+                                            {formatName(rank.nome)} {isUser && !isSupervisorRow && "(Você)"}
                                           </span>
                                           {isGroupRow && (
                                             isExpanded ? (

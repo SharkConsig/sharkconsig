@@ -767,6 +767,7 @@ export function HRDashboard({
                     {brokerRankings.map((rank, idx) => {
                       const isUser = rank.corretor_id === perfil?.id
                       const position = idx + 1
+                      const isSupervisorRow = rank.funcao?.toLowerCase() === "supervisor"
                       const isGroupRow = rank.corretor_id === 'ESTAGIL_AND_PJ'
                       const isExpanded = !!expandedSupervisorIds[rank.corretor_id]
                       return (
@@ -801,7 +802,7 @@ export function HRDashboard({
                                       "text-[14px] font-black tracking-tight",
                                       isUser ? "text-[#1C2643]" : "text-slate-700"
                                     )}>
-                                      {formatName(rank.name)}
+                                      {formatName(rank.name)} {isUser && !isSupervisorRow && !isGroupRow && "(Você)"}
                                     </p>
                                     {isGroupRow && (
                                       isExpanded ? (
@@ -936,11 +937,11 @@ export function HRDashboard({
             className="lg:col-span-12 mt-6 animate-fade-in"
             id="estagio-pj-ranking-card-hr"
           >
-            <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white border border-slate-100">
+            <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px] border border-slate-100">
               <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
                  <div className="flex items-center gap-3">
-                   <GraduationCap className="w-6 h-6 text-emerald-500" />
                    <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Estagiários e Colaboradores PJ</h3>
+                   <GraduationCap className="w-6 h-6 text-emerald-500" />
                  </div>
               </div>
 
@@ -963,31 +964,31 @@ export function HRDashboard({
                             <div className="flex items-center gap-3">
                               <div className={cn(
                                 "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
-                                position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
-                                position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
-                                position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
-                                "bg-white text-slate-400 border-slate-100"
+                                position === 1 ? "bg-amber-100 text-amber-600" : 
+                                position === 2 ? "bg-slate-100 text-slate-600" :
+                                position === 3 ? "bg-orange-100 text-orange-600" :
+                                "bg-slate-50 text-slate-400"
                               )}>
                                 {position}º
                               </div>
-                              <div className="flex flex-col min-w-[100px]">
+                              <div className="flex flex-col">
                                 <div className="flex items-center gap-1.5">
                                   {est.isPJ ? (
-                                    <Briefcase className="w-4 h-4 text-blue-500 shrink-0" />
+                                    <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                                   ) : (
-                                    <GraduationCap className="w-4 h-4 text-emerald-500 shrink-0" />
+                                    <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                                   )}
                                   <span className="text-[14px] font-black tracking-tight text-[#1C2643]">
                                     {formatName(est.nome)}
                                   </span>
-                                  <span className="text-[10px] font-black text-slate-400">
+                                  <span className="text-[10px] font-black text-slate-400 ml-1">
                                     ({est.isPJ ? "PJ" : "ESTÁGIO"})
                                   </span>
                                 </div>
                                 {est.supervisor && (
-                                  <span className="text-[10px] font-bold text-slate-400 mt-0.5 tracking-tighter">
-                                    SUPERVISOR: {formatName(est.supervisor)}
-                                  </span>
+                                  <p className="text-[10px] font-bold text-slate-400 tracking-tighter mt-0.5">
+                                    SUP: {formatName(est.supervisor)}
+                                  </p>
                                 )}
                               </div>
                             </div>

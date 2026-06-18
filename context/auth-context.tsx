@@ -30,6 +30,7 @@ interface AuthContextType {
   isDeveloper: boolean
   isSupervisor: boolean
   isOperational: boolean
+  isMonitoramento: boolean
   isCorretor: boolean
   isEstagio: boolean
   isRecursosHumanos: boolean
@@ -154,7 +155,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAdmin = user?.email ? adminEmails.includes(user.email) || perfil?.role === 'Administrador' || perfil?.role === 'Admin' || perfil?.role === 'Administrativo' : false
   const isDeveloper = isAdmin || perfil?.role === 'Desenvolvedor'
   const isSupervisor = isAdmin || perfil?.role === 'Supervisor'
-  const isOperational = isAdmin || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO'
+  const isMonitoramento = perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO'
+  const isOperational = isAdmin || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || isMonitoramento
   const isCorretor = perfil?.role === 'Corretor' || perfil?.role === 'Estágio' || perfil?.role === 'Processo Seletivo' || perfil?.role === 'PROCESSO SELETIVO' || (!isAdmin && !!user && !perfil?.role)
   const isEstagio = perfil?.role === 'Estágio'
   const isRecursosHumanos = perfil?.role === 'Recursos Humanos'
@@ -278,6 +280,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isDeveloper,
       isSupervisor,
       isOperational,
+      isMonitoramento,
       isCorretor,
       isEstagio,
       isRecursosHumanos,

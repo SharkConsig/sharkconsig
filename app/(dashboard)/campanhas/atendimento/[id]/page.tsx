@@ -443,7 +443,6 @@ export default function CampanhaAtendimentoPage() {
       }
       
       let data = null;
-      let isClaimedInsideLoop = false;
 
       if (targetCpf) {
         const paddedTargetCpf = targetCpf.padStart(11, '0')
@@ -629,80 +628,18 @@ export default function CampanhaAtendimentoPage() {
             if (fullLeadError) throw fullLeadError
             
             if (fullLead && fullLead.length > 0) {
-              const candidateLead = fullLead[0]
-              const targetCpfForLock = candidateLead.cpf
-
-              try {
-                // 1. Inserir tentativa de reserva do lead
-                const { error: insertErr } = await supabase.from('campanha_vinculos').insert({
-                  campanha_id: camp.id,
-                  corretor_id: userId,
-                  cliente_cpf: targetCpfForLock,
-                  completed: false,
-                  indice: offset
-                })
-
-                if (insertErr) {
-                  console.warn(`Lead ${targetCpfForLock} erro de claims insert, assumindo ocupado:`, insertErr.message)
-                  continue; // CPF já está ativo ou houve erro de restrição, continua buscando outros
-                }
-
-                // 2. Buscar claims ativos para esta campanha e CPF, ordenados pelo mais antigo
-                const { data: claims, error: checkErr } = await supabase
-                  .from('campanha_vinculos')
-                  .select('*')
-                  .eq('campanha_id', camp.id)
-                  .eq('cliente_cpf', targetCpfForLock)
-                  .eq('completed', false)
-                  .order('created_at', { ascending: true })
-
-                if (checkErr) {
-                  console.warn(`Erro na dupla checagem de claims para o CPF ${targetCpfForLock}:`, checkErr.message)
-                  // Remover nossa tentativa por segurança
-                  await supabase
-                    .from('campanha_vinculos')
-                    .delete()
-                    .eq('campanha_id', camp.id)
-                    .eq('corretor_id', userId)
-                    .eq('cliente_cpf', targetCpfForLock)
-                    .eq('completed', false)
-                  continue;
-                }
-
-                if (claims && claims.length > 0) {
-                  const oldestClaim = claims[0]
-                  if (oldestClaim.corretor_id === userId) {
-                    // SUCESSO! Somos o detentor original do vínculo mais antigo disponível. Lock garantido!
-                    data = candidateLead
-                    table = tempTable
-                    isClaimedInsideLoop = true
-                    break; // Sai do loop de busca, lead com garantia de exclusividade!
-                  } else {
-                    // CONCORRÊNCIA DETECTADA: Outro corretor inseriu milissegundos antes!
-                    console.warn(`Concorrência detectada para o CPF ${targetCpfForLock}. Limpando nossa tentativa e buscando o próximo...`)
-                    await supabase
-                      .from('campanha_vinculos')
-                      .delete()
-                      .eq('campanha_id', camp.id)
-                      .eq('corretor_id', userId)
-                      .eq('cliente_cpf', targetCpfForLock)
-                      .eq('completed', false)
-                    // Continue o loop para buscar o próximo disponível
-                  }
-                } else {
-                  console.warn(`Inesperado: Não encontramos a tentativa de claim inserida para o CPF ${targetCpfForLock}`)
-                }
-              } catch (claimErr) {
-                console.error(`Erro no processo de reserva/lock para o CPF ${targetCpfForLock}:`, claimErr)
-              }
+              // Found a valid existing lead
+              data = fullLead[0]
+              table = tempTable
+              break; // exit search loop
             } else {
               console.warn(`CPF ${tempCpf} cadastrado na campanha não foi localizado em nenhuma tabela de consulta. Pulando...`);
             }
           }
         }
 
-        // 6. Criar vínculo temporário em campanha_vinculos para segurar a posse do lead se não foi reservado no loop
-        if (data && data.cpf && !isClaimedInsideLoop) {
+        // 6. Criar vínculo temporário em campanha_vinculos para segurar a posse do lead enquanto é trabalhado
+        if (data && data.cpf) {
           try {
             await supabase.from('campanha_vinculos').insert({
               campanha_id: camp.id,
