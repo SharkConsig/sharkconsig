@@ -692,13 +692,16 @@ export default function DashboardPage() {
 
         const teamProposals = await fetchAll(teamProposalsQuery)
 
-        // Fetch approved tickets for this month to populate intern/PJ ranking columns
+        // Fetch approved tickets for selected period (or current month fallback) to populate intern/PJ ranking columns
+        const approvedTicketsStart = customStart || targetMonthStart
+        const approvedTicketsEnd = customEnd || targetMonthEnd
+
         const { data: monthApprovedTicketsRes, error: monthApprovedTicketsError } = await withRetry(() =>
           supabase
             .from("chamados")
             .select("status, created_at, user_id")
-            .gte("created_at", targetMonthStart.toISOString())
-            .lte("created_at", targetMonthEnd.toISOString())
+            .gte("created_at", approvedTicketsStart.toISOString())
+            .lte("created_at", approvedTicketsEnd.toISOString())
         )
 
         const approvedTicketsByUser: Record<string, number> = {}
