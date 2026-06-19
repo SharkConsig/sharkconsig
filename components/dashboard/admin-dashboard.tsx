@@ -45,6 +45,8 @@ interface InternCollaboration {
   countInProcess: number
   totalToday: number
   countToday: number
+  isPJ?: boolean
+  approvedTicketsCount: number
 }
 
 interface RankingItem {
@@ -771,6 +773,7 @@ export function AdminDashboard({
                   <thead>
                     <tr className="bg-slate-50/50 border-b border-slate-200">
                       <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                      <th className="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
                       <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
                       <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
                       <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
@@ -812,6 +815,14 @@ export function AdminDashboard({
                                   </p>
                                 )}
                               </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-right bg-slate-50/50">
+                            <div className="flex flex-col items-end">
+                              <span className="text-[14px] font-black text-[#1C2643]">{est.approvedTicketsCount || 0}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                {(est.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                              </span>
                             </div>
                           </td>
                           <td className="px-4 py-4 text-right bg-emerald-100/25">

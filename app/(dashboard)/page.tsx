@@ -72,6 +72,8 @@ interface InternCollaboration {
   countInProcess: number
   totalToday: number
   countToday: number
+  isPJ?: boolean
+  approvedTicketsCount: number
 }
 
 interface RankingItem {
@@ -690,6 +692,34 @@ export default function DashboardPage() {
 
         const teamProposals = await fetchAll(teamProposalsQuery)
 
+        // Fetch approved tickets for this month to populate intern/PJ ranking columns
+        const { data: monthApprovedTicketsRes, error: monthApprovedTicketsError } = await withRetry(() =>
+          supabase
+            .from("chamados")
+            .select("status, created_at, user_id")
+            .gte("created_at", targetMonthStart.toISOString())
+            .lte("created_at", targetMonthEnd.toISOString())
+        )
+
+        const approvedTicketsByUser: Record<string, number> = {}
+        if (monthApprovedTicketsRes && !monthApprovedTicketsError) {
+          monthApprovedTicketsRes.forEach(ticket => {
+            if (!ticket.user_id) return
+            const ticketStatusUpper = (ticket.status || 'ABERTO').toUpperCase()
+            const ticketStatusNormalized = normalizeStatus(ticket.status || 'ABERTO')
+            
+            const isApproved = APROVADOS_LABELS.some(label => {
+              const u = label.toUpperCase()
+              const ua = normalizeStatus(u)
+              return ticketStatusUpper === u || ticketStatusNormalized === ua
+            })
+            
+            if (isApproved) {
+              approvedTicketsByUser[ticket.user_id] = (approvedTicketsByUser[ticket.user_id] || 0) + 1
+            }
+          })
+        }
+
         const brokerMetrics: Record<string, { 
           totalPaid: number, 
           countPaid: number, 
@@ -965,7 +995,8 @@ export default function DashboardPage() {
             countInProcess: metrics.countInProcess,
             totalToday: metrics.totalToday,
             countToday: metrics.countToday,
-            isPJ: isUserPJ(m)
+            isPJ: isUserPJ(m),
+            approvedTicketsCount: approvedTicketsByUser[m.id] || 0
           };
         });
 
@@ -2857,6 +2888,7 @@ export default function DashboardPage() {
                       <thead>
                         <tr className="bg-slate-50/50 border-b border-slate-200">
                           <th className="px-3 py-2.5 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
                           <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
                           <th className="px-3 py-2.5 text-[8.5px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
                           <th className="px-3 py-2.5 text-[8.5px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
@@ -2898,6 +2930,14 @@ export default function DashboardPage() {
                                       </span>
                                     )}
                                   </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-slate-50/50">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[11.5px] font-black text-[#1C2643]">{est.approvedTicketsCount || 0}</span>
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    {(est.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                  </span>
                                 </div>
                               </td>
                               <td className="px-3 py-3 text-right bg-emerald-100/25">

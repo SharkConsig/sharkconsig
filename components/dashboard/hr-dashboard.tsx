@@ -59,6 +59,8 @@ interface InternCollaboration {
   countInProcess: number
   totalToday: number
   countToday: number
+  isPJ?: boolean
+  approvedTicketsCount: number
 }
 
 interface RankingItem {
@@ -950,6 +952,7 @@ export function HRDashboard({
                   <thead>
                     <tr className="bg-slate-50/50 border-b border-slate-200">
                       <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                      <th className="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
                       <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
                       <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
                       <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
@@ -964,10 +967,10 @@ export function HRDashboard({
                             <div className="flex items-center gap-3">
                               <div className={cn(
                                 "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
-                                position === 1 ? "bg-amber-100 text-amber-600" : 
-                                position === 2 ? "bg-slate-100 text-slate-600" :
-                                position === 3 ? "bg-orange-100 text-orange-600" :
-                                "bg-slate-50 text-slate-400"
+                                position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                position === 2 ? "bg-slate-500 text-white border-slate-500" :
+                                position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                "bg-slate-50 text-slate-400 border-slate-100"
                               )}>
                                 {position}º
                               </div>
@@ -991,6 +994,14 @@ export function HRDashboard({
                                   </p>
                                 )}
                               </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-right bg-slate-50/50">
+                            <div className="flex flex-col items-end">
+                              <span className="text-[14px] font-black text-[#1C2643]">{est.approvedTicketsCount || 0}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                {(est.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                              </span>
                             </div>
                           </td>
                           <td className="px-4 py-4 text-right bg-emerald-100/25">
