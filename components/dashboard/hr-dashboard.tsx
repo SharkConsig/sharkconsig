@@ -760,6 +760,7 @@ export function HRDashboard({
                 <thead>
                   <tr className="bg-slate-50/50 border-b border-slate-200">
                     <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
                     <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-[#1C2643] text-right bg-emerald-100/50 justify-end">Produção (Pagos)</th>
                     <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-[#1C2643] text-right bg-orange-100/50 justify-end">Em Andamento</th>
                     <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-[#1C2643] text-right bg-blue-100/50 justify-end">Digitadas Hoje</th>
@@ -818,6 +819,14 @@ export function HRDashboard({
                                 </div>
                               </div>
                             </td>
+                            <td className="px-4 py-4 text-right bg-slate-50/50">
+                              <div className="flex flex-col items-end">
+                                <span className="text-[14px] font-black text-[#1C2643]">{rank.approvedTicketsCount || 0}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                  {(rank.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                </span>
+                              </div>
+                            </td>
                             <td className={cn(
                               "px-4 py-4 text-right transition-colors",
                               isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
@@ -860,7 +869,7 @@ export function HRDashboard({
 
                           {isGroupRow && isExpanded && (
                             <tr className="bg-slate-50/50">
-                              <td colSpan={4} className="p-4 border-t border-b border-dashed border-slate-250">
+                              <td colSpan={5} className="p-4 border-t border-b border-dashed border-slate-250">
                                 <div className="space-y-4 pl-6 select-none">
                                   <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
                                     <Users className="w-4 h-4 text-[#1C2643]" />
@@ -874,7 +883,7 @@ export function HRDashboard({
                                   ) : (
                                     <div className="space-y-2">
                                       {rank.colaboracoes.estagiarios.map((est, idx) => (
-                                        <div key={est.estagiario_id} className="grid grid-cols-4 gap-4 text-slate-600 bg-emerald-50/20 p-3 border border-slate-50 shadow-sm rounded-2xl hover:bg-emerald-50/40 transition-colors">
+                                        <div key={est.estagiario_id} className="grid grid-cols-5 gap-4 text-slate-600 bg-emerald-50/20 p-3 border border-slate-50 shadow-sm rounded-2xl hover:bg-emerald-50/40 transition-colors">
                                           <div className="font-extrabold text-[10px] text-[#1C2643] truncate flex flex-col justify-center min-w-0">
                                             <div className="flex items-center gap-1.5">
                                               <span className="text-[9px] font-black text-[#1C2643]/70 bg-slate-100 border border-slate-200 rounded px-1 shrink-0 min-w-[18px] text-center">
@@ -895,6 +904,10 @@ export function HRDashboard({
                                                 SUP: {formatName(est.supervisor)}
                                               </span>
                                             )}
+                                          </div>
+                                          <div className="text-right">
+                                            <div className="text-[11.5px] text-[#1C2643] font-extrabold">{est.approvedTicketsCount || 0}</div>
+                                            <div className="text-[8.5px] text-slate-400 font-bold uppercase">Chamados</div>
                                           </div>
                                           <div className="text-right">
                                             <div className="text-[11.5px] text-emerald-600 font-extrabold">{formatCurrency(est.totalPaid)}</div>

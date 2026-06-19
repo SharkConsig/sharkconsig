@@ -1011,6 +1011,11 @@ export default function DashboardPage() {
           return b.totalToday - a.totalToday;
         });
 
+        let groupApprovedTickets = 0;
+        groupMembersDetailList.forEach((est: InternCollaboration) => {
+          groupApprovedTickets += (est.approvedTicketsCount || 0);
+        });
+
         const groupRankingItem: RankingItem = {
           corretor_id: "ESTAGIL_AND_PJ",
           nome: "ESTÁGIO & PJ",
@@ -1021,6 +1026,7 @@ export default function DashboardPage() {
           countInProcess: groupCountInProcess,
           totalToday: groupTotalToday,
           countToday: groupCountToday,
+          approvedTicketsCount: groupApprovedTickets,
           colaboracoes: {
             propria: { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },
             estagiarios: groupMembersDetailList
@@ -1038,6 +1044,7 @@ export default function DashboardPage() {
             countInProcess: brokerMetrics[m.id]?.countInProcess || 0,
             totalToday: brokerMetrics[m.id]?.totalToday || 0,
             countToday: brokerMetrics[m.id]?.countToday || 0,
+            approvedTicketsCount: approvedTicketsByUser[m.id] || 0,
             colaboracoes: {
               propria: { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },
               estagiarios: []
@@ -1410,6 +1417,7 @@ export default function DashboardPage() {
                 countPaid: r.countPaid,
                 countInProcess: r.countInProcess,
                 countToday: r.countToday,
+                approvedTicketsCount: r.approvedTicketsCount || 0,
                 colaboracoes: r.colaboracoes
               }
             }),
@@ -2629,6 +2637,7 @@ export default function DashboardPage() {
                           <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-200">
                               <th className="px-3 py-2.5 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                              <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
                               <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
                               <th className="px-3 py-2.5 text-[8.5px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
                               <th className="px-3 py-2.5 text-[8.5px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
@@ -2684,6 +2693,14 @@ export default function DashboardPage() {
                                         </div>
                                       </div>
                                     </td>
+                                    <td className="px-3 py-3 text-right bg-slate-50/50">
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-black text-[#1C2643]">{rank.approvedTicketsCount || 0}</span>
+                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                          {(rank.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                        </span>
+                                      </div>
+                                    </td>
                                     <td className={cn(
                                       "px-3 py-3 text-right transition-colors",
                                       isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
@@ -2726,7 +2743,7 @@ export default function DashboardPage() {
 
                                   {isGroupRow && isExpanded && (
                                     <tr className="bg-slate-50/50">
-                                      <td colSpan={4} className="p-3 border-t border-b border-dashed border-slate-200">
+                                      <td colSpan={5} className="p-3 border-t border-b border-dashed border-slate-200">
                                         <div className="space-y-3.5 pl-4 select-none">
                                           <div className="flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
                                             <Users className="w-3.5 h-3.5 text-[#1C2643]" />
@@ -2740,7 +2757,7 @@ export default function DashboardPage() {
                                           ) : (
                                             <div className="space-y-1.5">
                                               {rank.colaboracoes.estagiarios.map((est, idx) => (
-                                                <div key={est.estagiario_id} className="grid grid-cols-4 gap-2 text-slate-600 bg-emerald-50/30 p-2 border border-slate-50 shadow-sm rounded-xl hover:bg-emerald-50/50 transition-colors">
+                                                <div key={est.estagiario_id} className="grid grid-cols-5 gap-2 text-slate-600 bg-emerald-50/30 p-2 border border-slate-50 shadow-sm rounded-xl hover:bg-emerald-50/50 transition-colors">
                                                   <div className="font-extrabold text-[9px] text-[#1C2643] truncate flex flex-col justify-center min-w-0">
                                                     <div className="flex items-center gap-1">
                                                       <span className="text-[8.5px] font-black text-[#1C2643]/70 bg-slate-100 border border-slate-200 rounded px-1 shrink-0 min-w-[16px] text-center mr-0.5">
@@ -2761,6 +2778,10 @@ export default function DashboardPage() {
                                                         SUP: {est.supervisor}
                                                       </span>
                                                     )}
+                                                  </div>
+                                                  <div className="text-right">
+                                                    <div className="text-[9.5px] text-[#1C2643] font-extrabold">{est.approvedTicketsCount || 0}</div>
+                                                    <div className="text-[7.5px] text-slate-400 font-bold uppercase">Chamados</div>
                                                   </div>
                                                   <div className="text-right">
                                                     <div className="text-[9.5px] text-emerald-600 font-extrabold">{formatCurrency(est.totalPaid)}</div>
