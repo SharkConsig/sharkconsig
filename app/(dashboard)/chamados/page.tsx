@@ -181,6 +181,12 @@ export default function TicketsPage() {
   const { perfil, user, isOperational, isAdmin, isSupervisor, isDeveloper, isEstagio } = useAuth()
   const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const { isCollapsed } = useSidebar()
+  const canChangeStatus = !!(perfil?.role && [
+    "Operacional",
+    "Administrador",
+    "Admin",
+    "Desenvolvedor"
+  ].some(r => r.toLowerCase() === perfil.role.toLowerCase()));
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>("ABERTO")
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
@@ -1008,59 +1014,63 @@ export default function TicketsPage() {
         <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
           <CardContent className="p-0">
             {/* Barra de Ações em Massa */}
-            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={selectedTicketIds.length === 0}
-                  onClick={() => setIsBulkModalOpen(true)}
-                  className={cn(
-                    "h-10 px-6 bg-white border-primary/20 text-primary hover:bg-primary/5 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-sm cursor-pointer border-2 min-w-[200px] disabled:opacity-50 disabled:cursor-not-allowed"
-                  )}
-                >
-                  ALTERAR STATUS
-                  {selectedTicketIds.length > 0 && (
-                    <Badge variant="secondary" className="h-[20px] min-w-[20px] px-1.5 text-[10px] bg-primary/10 text-primary border-none font-bold rounded-full flex items-center justify-center">
-                      {selectedTicketIds.length}
-                    </Badge>
-                  )}
-                </Button>
-                {selectedTicketIds.length > 0 && (
+            {canChangeStatus && (
+              <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    onClick={() => setSelectedTicketIds([])}
-                    className="text-xs text-rose-500 hover:text-rose-600 font-bold hover:bg-rose-50 cursor-pointer h-10 px-4 rounded-xl transition-all"
+                    disabled={selectedTicketIds.length === 0}
+                    onClick={() => setIsBulkModalOpen(true)}
+                    className={cn(
+                      "h-10 px-6 bg-white border-primary/20 text-primary hover:bg-primary/5 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-sm cursor-pointer border-2 min-w-[200px] disabled:opacity-50 disabled:cursor-not-allowed"
+                    )}
                   >
-                    Limpar Seleção
+                    ALTERAR STATUS
+                    {selectedTicketIds.length > 0 && (
+                      <Badge variant="secondary" className="h-[20px] min-w-[20px] px-1.5 text-[10px] bg-primary/10 text-primary border-none font-bold rounded-full flex items-center justify-center">
+                        {selectedTicketIds.length}
+                      </Badge>
+                    )}
                   </Button>
-                )}
+                  {selectedTicketIds.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedTicketIds([])}
+                      className="text-xs text-rose-500 hover:text-rose-600 font-bold hover:bg-rose-50 cursor-pointer h-10 px-4 rounded-xl transition-all"
+                    >
+                      Limpar Seleção
+                    </Button>
+                  )}
+                </div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest font-mono">
+                  {selectedTicketIds.length} selecionado(s) de {filteredTickets.length} chamados
+                </span>
               </div>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest font-mono">
-                {selectedTicketIds.length} selecionado(s) de {filteredTickets.length} chamados
-              </span>
-            </div>
+            )}
 
             <div className="overflow-x-auto min-h-[400px]">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/50">
-                    <th className="px-4 py-4 w-[40px] text-center">
-                      <input
-                        type="checkbox"
-                        checked={paginatedTickets.length > 0 && paginatedTickets.every(t => selectedTicketIds.includes(t.id.toString()))}
-                        onChange={(e) => {
-                          const idsOnPage = paginatedTickets.map(t => t.id.toString())
-                          if (e.target.checked) {
-                            setSelectedTicketIds(prev => Array.from(new Set([...prev, ...idsOnPage])))
-                          } else {
-                            setSelectedTicketIds(prev => prev.filter(id => !idsOnPage.includes(id)))
-                          }
-                        }}
-                        className="w-[18px] h-[18px] rounded border-slate-300 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer transition-all"
-                      />
-                    </th>
+                    {canChangeStatus && (
+                      <th className="px-4 py-4 w-[40px] text-center">
+                        <input
+                          type="checkbox"
+                          checked={paginatedTickets.length > 0 && paginatedTickets.every(t => selectedTicketIds.includes(t.id.toString()))}
+                          onChange={(e) => {
+                            const idsOnPage = paginatedTickets.map(t => t.id.toString())
+                            if (e.target.checked) {
+                              setSelectedTicketIds(prev => Array.from(new Set([...prev, ...idsOnPage])))
+                            } else {
+                              setSelectedTicketIds(prev => prev.filter(id => !idsOnPage.includes(id)))
+                            }
+                          }}
+                          className="w-[18px] h-[18px] rounded border-slate-300 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer transition-all"
+                        />
+                      </th>
+                    )}
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[80px]">Número</th>
                     {(isOperational || isAdmin || isSupervisor || isDeveloper) && (
                       <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[120px]">Corretor</th>
@@ -1079,7 +1089,7 @@ export default function TicketsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoading && tickets.length === 0 ? (
                     <tr>
-                      <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11} className="px-4 py-12 text-center">
+                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11) - (canChangeStatus ? 0 : 1)} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <Loader2 className="w-6 h-6 text-primary animate-spin" />
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando chamados...</span>
@@ -1098,22 +1108,24 @@ export default function TicketsPage() {
                           )}
                           onClick={() => toggleTicketExpansion(ticket.id.toString())}
                         >
-                          <td className="px-4 py-4 w-[40px] text-center" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={selectedTicketIds.includes(ticket.id.toString())}
-                              onChange={() => {
-                                setSelectedTicketIds(prev => {
-                                  if (prev.includes(ticket.id.toString())) {
-                                    return prev.filter(id => id !== ticket.id.toString())
-                                  } else {
-                                    return [...prev, ticket.id.toString()]
-                                  }
-                                })
-                              }}
-                              className="w-[18px] h-[18px] rounded border-slate-300 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer transition-all"
-                            />
-                          </td>
+                          {canChangeStatus && (
+                            <td className="px-4 py-4 w-[40px] text-center" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={selectedTicketIds.includes(ticket.id.toString())}
+                                onChange={() => {
+                                  setSelectedTicketIds(prev => {
+                                    if (prev.includes(ticket.id.toString())) {
+                                      return prev.filter(id => id !== ticket.id.toString())
+                                    } else {
+                                      return [...prev, ticket.id.toString()]
+                                    }
+                                  })
+                                }}
+                                className="w-[18px] h-[18px] rounded border-slate-300 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer transition-all"
+                              />
+                            </td>
+                          )}
                           <td className="px-4 py-4 text-[12px] font-bold text-slate-400">#{ticket.id}</td>
                           {(isOperational || isAdmin || isSupervisor || isDeveloper) && (
                             <td className="px-4 py-4">
@@ -1235,7 +1247,7 @@ export default function TicketsPage() {
                         </tr>
                         {expandedTicketId === ticket.id.toString() && (
                           <tr className={cn(index % 2 === 0 ? "bg-slate-100" : "bg-white")}>
-                            <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11} className="p-0 border-b border-slate-200">
+                            <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11) - (canChangeStatus ? 0 : 1)} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
                                 <TicketAtendimento 
                                   ticket={{
@@ -1283,7 +1295,7 @@ export default function TicketsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
+                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11) - (canChangeStatus ? 0 : 1)} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
                         Nenhum chamado encontrado.
                       </td>
                     </tr>

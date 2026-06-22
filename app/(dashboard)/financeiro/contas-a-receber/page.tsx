@@ -108,7 +108,7 @@ export default function ContasAReceberPage() {
   // Redirect if unauthorized
   useEffect(() => {
     if (perfil) {
-      const allowedRoles = ["Administrador", "Desenvolvedor", "Operacional", "Supervisor"]
+      const allowedRoles = ["Administrativo", "Desenvolvedor", "Administrador"]
       const roleStr = perfil?.role || ""
       const isAllowed = allowedRoles.some(role => roleStr.toLowerCase() === role.toLowerCase()) || isAdmin
       
@@ -180,94 +180,152 @@ export default function ContasAReceberPage() {
   const [statusObsOperacional, setObsOperacional] = useState("")
 
   const getCommissionPercentage = useCallback((proposal: Proposal) => {
-    if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
+    if (dbProdutosConfigs.length === 0) {
       return null
     }
 
     const allOptions = dbProdutosConfigs.flatMap(config => {
-      if (config.regras && config.regras.length > 0) {
-        return config.regras
-          .filter((r: { ativo?: boolean }) => r.ativo !== false)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((regra: any) => ({
-            nome_tabela: config.nome_tabela,
-            prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
-            coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
-            percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
-            percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao) : null,
-            convenioNome: config.convenios?.nome
-          }));
+      let rulesArray: any[] = [];
+      if (config.regras) {
+        if (Array.isArray(config.regras)) {
+          rulesArray = config.regras;
+        } else if (typeof config.regras === "string") {
+          try {
+            rulesArray = JSON.parse(config.regras);
+          } catch (e) {
+            console.error("Error parsing regras JSON in getCommissionPercentage:", e);
+          }
+        }
       }
+
+      if (rulesArray && rulesArray.length > 0) {
+        return rulesArray
+          .filter((r: { ativo?: boolean }) => r.ativo !== false)
+          .map((regra: any) => {
+            let pComissao = null;
+            if (regra.percentual_comissao !== undefined && regra.percentual_comissao !== null && regra.percentual_comissao !== "") {
+              pComissao = typeof regra.percentual_comissao === "string" 
+                ? parseFloat(regra.percentual_comissao.replace(",", ".")) 
+                : regra.percentual_comissao;
+            } else if (config.percentual_comissao !== undefined && config.percentual_comissao !== null && config.percentual_comissao !== "") {
+              pComissao = typeof config.percentual_comissao === "string"
+                ? parseFloat(config.percentual_comissao.replace(",", "."))
+                : config.percentual_comissao;
+            }
+
+            return {
+              nome_tabela: config.nome_tabela,
+              prazo: typeof regra.prazo === "string" ? parseInt(regra.prazo) : regra.prazo,
+              coeficiente: typeof regra.coeficiente === "string" ? parseFloat(regra.coeficiente.replace(",", ".")) : regra.coeficiente,
+              percentual_producao: typeof regra.percentual_producao === "string" ? parseFloat(regra.percentual_producao.replace(",", ".")) : regra.percentual_producao,
+              percentual_comissao: pComissao,
+              convenioNome: config.convenios?.nome
+            };
+          });
+      }
+
       return [{
         nome_tabela: config.nome_tabela,
         prazo: config.prazo || 0,
         coeficiente: config.coeficiente || 0,
         percentual_producao: config.percentual_producao || 0,
-        percentual_comissao: config.percentual_comissao !== undefined ? config.percentual_comissao : null,
+        percentual_comissao: config.percentual_comissao !== undefined ? (typeof config.percentual_comissao === "string" ? parseFloat(config.percentual_comissao.replace(",", ".")) : config.percentual_comissao) : null,
         convenioNome: config.convenios?.nome
       }];
     });
 
-    // 1st Level: Exact Match (Trimming)
-    let option = allOptions.find(opt => {
-      const labelText = opt.nome_tabela 
-        ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
-        : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente}`;
+    let option = null;
+
+    if (proposal.coeficiente_prazo) {
+      // 1st Level: Exact Match on Normalized strings
+      const normalizedProp = proposal.coeficiente_prazo.trim().replace(/,/g, ".").toLowerCase();
       
-      return labelText.trim() === proposal.coeficiente_prazo!.trim();
-    });
-
-    // 2nd Level: Match by name starting / prefix
-    if (!option) {
       option = allOptions.find(opt => {
-        return opt.nome_tabela && proposal.coeficiente_prazo!.startsWith(opt.nome_tabela);
+        const labelText = opt.nome_tabela 
+          ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
+          : `${opt.convenioNome || "Tabela"} - ${opt.prazo}x ${opt.coeficiente}`;
+        
+        const normalizedLabel = labelText.trim().replace(/,/g, ".").toLowerCase();
+        return normalizedLabel === normalizedProp;
       });
-    }
 
-    // 3rd Level: Robust Regex Deconstruction Match
-    if (!option) {
-      const pStr = proposal.coeficiente_prazo.trim();
-      let parsedName: string | null = null;
-      let parsedPrazo: number | null = null;
-      let parsedCoef: number | null = null;
-
-      // Try Case 1: "NOME (Prazox | Coef)"
-      const match1 = pStr.match(/^(.+?)\s*\(\s*(\d+)\s*x\s*\|\s*([\d.,]+)\s*\)$/i);
-      if (match1) {
-        parsedName = match1[1].trim();
-        parsedPrazo = parseInt(match1[2], 10);
-        parsedCoef = parseFloat(match1[3].replace(',', '.'));
-      } else {
-        // Try Case 2: "CONVÊNIO - Prazo_x Coef"
-        const match2 = pStr.match(/^(.+?)\s*-\s*(\d+)\s*x\s*([\d.,]+)$/i);
-        if (match2) {
-          parsedName = match2[1].trim();
-          parsedPrazo = parseInt(match2[2], 10);
-          parsedCoef = parseFloat(match2[3].replace(',', '.'));
-        }
+      // 2nd Level: Match by name starting / prefix
+      if (!option) {
+        option = allOptions.find(opt => {
+          return opt.nome_tabela && normalizedProp.startsWith(opt.nome_tabela.trim().toLowerCase());
+        });
       }
 
-      if (parsedPrazo !== null && parsedCoef !== null) {
+      // 3rd Level: Robust Regex Deconstruction Match
+      if (!option) {
+        const pStr = proposal.coeficiente_prazo.trim();
+        let parsedName: string | null = null;
+        let parsedPrazo: number | null = null;
+        let parsedCoef: number | null = null;
+
+        // Try Case 1: "NOME (Prazox | Coef)"
+        const match1 = pStr.match(/^(.+?)\s*\(\s*(\d+)\s*x\s*\|\s*([\d.,]+)\s*\)$/i);
+        if (match1) {
+          parsedName = match1[1].trim();
+          parsedPrazo = parseInt(match1[2], 10);
+          parsedCoef = parseFloat(match1[3].replace(",", "."));
+        } else {
+          // Try Case 2: "CONVÊNIO - Prazo_x Coef"
+          const match2 = pStr.match(/^(.+?)\s*-\s*(\d+)\s*x\s*([\d.,]+)$/i);
+          if (match2) {
+            parsedName = match2[1].trim();
+            parsedPrazo = parseInt(match2[2], 10);
+            parsedCoef = parseFloat(match2[3].replace(",", "."));
+          }
+        }
+
+        if (parsedPrazo !== null && parsedCoef !== null) {
+          option = allOptions.find(opt => {
+            const nameMatches = opt.nome_tabela 
+              ? opt.nome_tabela.trim().toLowerCase() === parsedName?.toLowerCase()
+              : true;
+
+            const coefDiff = Math.abs(opt.coeficiente - parsedCoef!);
+            const coefMatches = coefDiff < 0.00001;
+            const prazoMatches = opt.prazo === parsedPrazo;
+
+            return nameMatches && coefMatches && prazoMatches;
+          });
+        }
+      }
+    }
+
+    // 4th Level Fallback: Direct property match on proposal's own prazo and coeficiente fields
+    if (!option) {
+      const propPrazo = typeof proposal.prazo === "number" 
+        ? proposal.prazo 
+        : (proposal.prazo ? parseInt(proposal.prazo.toString(), 10) : null);
+        
+      const propCoef = typeof proposal.coeficiente === "number" 
+        ? proposal.coeficiente 
+        : (proposal.coeficiente ? parseFloat(proposal.coeficiente.toString().replace(",", ".")) : null);
+
+      if (propPrazo !== null && propCoef !== null) {
         option = allOptions.find(opt => {
-          // If option has name_tabela, check if it matches parsedName
-          const nameMatches = opt.nome_tabela 
-            ? opt.nome_tabela.trim().toLowerCase() === parsedName?.toLowerCase()
-            : true;
-
-          // Allow extremely small epsilon float difference
-          const coefDiff = Math.abs(opt.coeficiente - parsedCoef!);
+          const coefDiff = Math.abs(opt.coeficiente - propCoef);
           const coefMatches = coefDiff < 0.00001;
-
-          const prazoMatches = opt.prazo === parsedPrazo;
-
-          return nameMatches && coefMatches && prazoMatches;
+          const prazoMatches = opt.prazo === propPrazo;
+          
+          let bancoMatches = true;
+          if (proposal.banco && opt.nome_tabela) {
+            const cleanPropBanco = proposal.banco.toLowerCase().replace(/\bbanco\b/g, "").replace(/[\s\-_]/g, "").trim();
+            const cleanOptTable = opt.nome_tabela.toLowerCase().replace(/\bbanco\b/g, "").replace(/[\s\-_]/g, "").trim();
+            bancoMatches = cleanOptTable.includes(cleanPropBanco) || cleanPropBanco.includes(cleanOptTable);
+          }
+          
+          return prazoMatches && coefMatches && bancoMatches;
         });
       }
     }
 
     if (option && option.percentual_comissao !== undefined && option.percentual_comissao !== null) {
-      const comPercent = typeof option.percentual_comissao === 'string' 
-        ? parseFloat(option.percentual_comissao.replace(',', '.')) 
+      const comPercent = typeof option.percentual_comissao === "string" 
+        ? parseFloat(option.percentual_comissao.replace(",", ".")) 
         : option.percentual_comissao;
       return isNaN(comPercent) ? null : comPercent;
     }

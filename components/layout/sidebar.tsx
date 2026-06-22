@@ -208,6 +208,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
+        // Se for financeiro, somente visível para Administrativo, Desenvolvedor e Administrador
+        if (item.href?.startsWith("/financeiro")) {
+          const roleStr = perfil?.role || ""
+          return ["Administrativo", "Desenvolvedor", "Administrador"].some(
+            r => r.toLowerCase() === roleStr.toLowerCase()
+          )
+        }
+
         // Se for admin via email (superadmin), vê tudo
         if (isAdmin) return true
         
