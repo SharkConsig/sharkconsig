@@ -71,6 +71,8 @@ interface ProdutoRegra {
   prazo: string
   coeficiente: string
   percentual_producao: string
+  percentual_comissao?: string
+  ativo?: boolean
 }
 
 interface ProdutoConfig {
@@ -82,6 +84,7 @@ interface ProdutoConfig {
   prazo?: number
   coeficiente?: number
   percentual_producao?: number
+  percentual_comissao?: number
   regras?: ProdutoRegra[]
   ativo: boolean
   created_at: string
@@ -294,9 +297,7 @@ export default function SettingsPage() {
   const [selectedConvenioForProd, setSelectedConvenioForProd] = useState<GenericConfig | null>(null)
   const [tempNomeTabela, setTempNomeTabela] = useState<string>("")
   const [tempOperacoes, setTempOperacoes] = useState<string[]>([])
-  const [tempPrazo, setTempPrazo] = useState<string>("")
-  const [tempCoeficiente, setTempCoeficiente] = useState<string>("")
-  const [tempPercentualProducao, setTempPercentualProducao] = useState<string>("")
+
   const [tempRegras, setTempRegras] = useState<ProdutoRegra[]>([])
   
   // Generic Modal States
@@ -772,6 +773,30 @@ export default function SettingsPage() {
     }
   }
 
+  const toggleRegraAtiva = async (prodId: string, regras: ProdutoRegra[], ruleIndex: number) => {
+    try {
+      const updatedRegras = (regras || []).map((r, i) => {
+        if (i === ruleIndex) {
+          const currentAtivo = r.ativo !== false
+          return { ...r, ativo: !currentAtivo }
+        }
+        return r
+      })
+
+      const { error } = await supabase
+        .from('produtos_config')
+        .update({ regras: updatedRegras })
+        .eq('id', prodId)
+
+      if (error) throw error
+      toast.success("Status do coeficiente atualizado")
+      fetchStatuses()
+    } catch (error) {
+      console.error("Erro ao alternar status de coeficiente:", error)
+      toast.error("Erro ao alternar status de coeficiente")
+    }
+  }
+
   const handleRemoveProduto = (id: string) => {
     setDeleteData({ id, type: 'produto', label: 'Configuração de Produto' })
     setIsDeleteDialogOpen(true)
@@ -784,26 +809,32 @@ export default function SettingsPage() {
     try {
       // Validate rules values to avoid NaN
       const validateNumber = (val: string | number | undefined, isFloat = true) => {
-        if (!val) return null
+        if (val === undefined || val === null || val === '') return null
         const strVal = val.toString().replace(',', '.')
         const parsed = isFloat ? parseFloat(strVal) : parseInt(strVal)
         return isNaN(parsed) ? null : parsed
       }
 
-      const formattedRegras = tempRegras.map(r => ({
-        prazo: validateNumber(r.prazo, false)?.toString() || "",
-        coeficiente: validateNumber(r.coeficiente, true)?.toString() || "",
-        percentual_producao: validateNumber(r.percentual_producao, true)?.toString() || ""
-      }))
+      // Validamos e formatamos todas as regras da lista tempRegras
+      const formattedRegras = tempRegras
+        .map(r => ({
+          prazo: validateNumber(r.prazo, false)?.toString() || "",
+          coeficiente: validateNumber(r.coeficiente, true)?.toString() || "",
+          percentual_producao: validateNumber(r.percentual_producao, true)?.toString() || "",
+          percentual_comissao: validateNumber(r.percentual_comissao, true)?.toString() || "",
+          ativo: r.ativo !== undefined ? r.ativo : false
+        }))
+        // Filtra regras que estão totalmente vazias
+        .filter(r => r.prazo !== "" || r.coeficiente !== "" || r.percentual_producao !== "" || r.percentual_comissao !== "")
 
       const payload = {
         nome_tabela: tempNomeTabela || null,
         operacoes: tempOperacoes,
         regras: formattedRegras,
         // Mantemos os campos antigos para compatibilidade, pegando da primeira regra se houver
-        prazo: formattedRegras.length > 0 ? parseInt(formattedRegras[0].prazo) : validateNumber(tempPrazo, false),
-        coeficiente: formattedRegras.length > 0 ? parseFloat(formattedRegras[0].coeficiente) : validateNumber(tempCoeficiente, true),
-        percentual_producao: formattedRegras.length > 0 ? parseFloat(formattedRegras[0].percentual_producao) : validateNumber(tempPercentualProducao, true)
+        prazo: (formattedRegras.length > 0 && formattedRegras[0].prazo) ? parseInt(formattedRegras[0].prazo) : null,
+        coeficiente: (formattedRegras.length > 0 && formattedRegras[0].coeficiente) ? parseFloat(formattedRegras[0].coeficiente) : null,
+        percentual_producao: (formattedRegras.length > 0 && formattedRegras[0].percentual_producao) ? parseFloat(formattedRegras[0].percentual_producao) : null
       }
 
       let result;
@@ -2235,7 +2266,7 @@ export default function SettingsPage() {
                                               "px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest",
                                               prod.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
                                             )}>
-                                              {prod.ativo !== false ? "ATIVO" : "INATIVO"}
+                                              {prod.ativo !== false ? "ATIVA" : "INATIVA"}
                                             </span>
                                           </div>
                                         </div>
@@ -2271,20 +2302,43 @@ export default function SettingsPage() {
                                             {prod.regras && prod.regras.length > 0 ? (
                                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                 {prod.regras.map((regra, idx) => (
-                                                  <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5">
-                                                    <div className="flex flex-col">
-                                                      <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prazo</span>
-                                                      <span className="text-[10px] font-bold text-slate-700">{regra.prazo}x</span>
+                                                  <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prazo</span>
+                                                        <span className="text-[10px] font-bold text-slate-700">{regra.prazo}x</span>
+                                                      </div>
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Coef</span>
+                                                        <span className="text-[10px] font-bold text-slate-700">{regra.coeficiente}</span>
+                                                      </div>
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prod</span>
+                                                        <span className="text-[10px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
+                                                      </div>
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Comissão</span>
+                                                        <span className="text-[10px] font-bold text-sky-600">{regra.percentual_comissao ? `${regra.percentual_comissao}%` : '--'}</span>
+                                                      </div>
                                                     </div>
-                                                    <div className="w-[1px] h-4 bg-slate-200 mx-1" />
-                                                    <div className="flex flex-col">
-                                                      <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Coef</span>
-                                                      <span className="text-[10px] font-bold text-slate-700">{regra.coeficiente}</span>
-                                                    </div>
-                                                    <div className="w-[1px] h-4 bg-slate-200 mx-1" />
-                                                    <div className="flex flex-col">
-                                                      <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prod</span>
-                                                      <span className="text-[10px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
+
+                                                    <div className="flex items-center">
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => toggleRegraAtiva(prod.id, prod.regras || [], idx)}
+                                                        className={cn(
+                                                          "h-5 px-1.5 rounded text-[8px] font-extrabold uppercase tracking-wide transition-all border",
+                                                          regra.ativo !== false 
+                                                            ? "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100" 
+                                                            : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"
+                                                        )}
+                                                      >
+                                                        {regra.ativo !== false ? "ATIVA" : "INATIVA"}
+                                                      </button>
                                                     </div>
                                                   </div>
                                                 ))}
@@ -2303,6 +2357,14 @@ export default function SettingsPage() {
                                                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Produção</span>
                                                   <span className="text-[10px] font-extrabold text-emerald-600">{prod.percentual_producao ? `${prod.percentual_producao}%` : '--'}</span>
                                                 </div>
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Comissão</span>
+                                                  <span className="text-[10px] font-extrabold text-sky-600">
+                                                    {(prod.regras && prod.regras[0]?.percentual_comissao) 
+                                                      ? `${prod.regras[0].percentual_comissao}%` 
+                                                      : (prod.percentual_comissao ? `${prod.percentual_comissao}%` : '--')}
+                                                  </span>
+                                                </div>
                                               </div>
                                             )}
                                           </div>
@@ -2319,7 +2381,7 @@ export default function SettingsPage() {
                                               : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"
                                           )}
                                         >
-                                          {prod.ativo !== false ? "ATIVO" : "INATIVO"}
+                                          {prod.ativo !== false ? "ATIVA" : "INATIVA"}
                                         </button>
 
                                         {/* Botão Editar */}
@@ -2333,10 +2395,35 @@ export default function SettingsPage() {
                                             setSelectedConvenioForProd(convenio)
                                             setTempOperacoes(prod.operacoes || [])
                                             setTempNomeTabela(prod.nome_tabela || "")
-                                            setTempPrazo(prod.prazo?.toString() || "")
-                                            setTempCoeficiente(prod.coeficiente?.toString().replace('.', ',') || "")
-                                            setTempPercentualProducao(prod.percentual_producao?.toString().replace('.', ',') || "")
-                                            setTempRegras(prod.regras || [])
+                                            const initialRegras = []
+                                             if (prod.regras && prod.regras.length > 0) {
+                                               prod.regras.forEach(r => {
+                                                 initialRegras.push({
+                                                   prazo: r.prazo?.toString() || '',
+                                                   coeficiente: r.coeficiente?.toString().replace('.', ',') || '',
+                                                   percentual_producao: r.percentual_producao?.toString().replace('.', ',') || '',
+                                                   percentual_comissao: r.percentual_comissao?.toString().replace('.', ',') || '',
+                                                   ativo: r.ativo !== undefined ? r.ativo : true
+                                                 })
+                                               })
+                                             } else if (prod.prazo || prod.coeficiente || prod.percentual_producao || prod.percentual_comissao) {
+                                               initialRegras.push({
+                                                 prazo: prod.prazo?.toString() || '',
+                                                 coeficiente: prod.coeficiente?.toString().replace('.', ',') || '',
+                                                 percentual_producao: prod.percentual_producao?.toString().replace('.', ',') || '',
+                                                 percentual_comissao: prod.percentual_comissao?.toString().replace('.', ',') || '',
+                                                 ativo: true
+                                               })
+                                             } else {
+                                               initialRegras.push({
+                                                 prazo: '',
+                                                 coeficiente: '',
+                                                 percentual_producao: '',
+                                                 percentual_comissao: '',
+                                                 ativo: false
+                                               })
+                                             }
+                                             setTempRegras(initialRegras as ProdutoRegra[])
                                             setIsAddOperacaoModalOpen(true)
                                           }}
                                         >
@@ -3008,10 +3095,7 @@ export default function SettingsPage() {
                   setSelectedProductConfig(null)
                   setTempNomeTabela("")
                   setTempOperacoes([])
-                  setTempPrazo("")
-                  setTempCoeficiente("")
-                  setTempPercentualProducao("")
-                  setTempRegras([])
+                  setTempRegras([{ prazo: "", coeficiente: "", percentual_producao: "", percentual_comissao: "", ativo: false }])
                   setIsAddConvenioModalOpen(false)
                   setIsAddOperacaoModalOpen(true)
                 }}
@@ -3026,7 +3110,7 @@ export default function SettingsPage() {
 
       {/* Modal para Selecionar Operações */}
       <Dialog open={isAddOperacaoModalOpen} onOpenChange={setIsAddOperacaoModalOpen}>
-        <DialogContent className="sm:max-w-[600px] border-none rounded-3xl shadow-2xl overflow-y-auto max-h-[90vh]">
+        <DialogContent className="sm:max-w-[800px] border-none rounded-3xl shadow-2xl overflow-y-auto max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase">
               OPERAÇÕES PERMITIDAS E REGRA/COEFICIENTE
@@ -3109,92 +3193,106 @@ export default function SettingsPage() {
                   variant="outline" 
                   size="sm"
                   onClick={() => {
-                    if (!tempPrazo || !tempCoeficiente || !tempPercentualProducao) {
-                      toast.error("Preencha todos os campos da regra antes de adicionar");
-                      return;
-                    }
                     setTempRegras([...tempRegras, { 
-                      prazo: tempPrazo, 
-                      coeficiente: tempCoeficiente, 
-                      percentual_producao: tempPercentualProducao 
+                      prazo: "", 
+                      coeficiente: "", 
+                      percentual_producao: "", 
+                      percentual_comissao: "",
+                      ativo: false
                     }]);
-                    setTempPrazo("");
-                    setTempCoeficiente("");
-                    setTempPercentualProducao("");
                   }}
                   className="h-7 px-3 text-[9px] font-bold bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100 rounded-lg uppercase tracking-widest gap-2"
                 >
-                  <Zap className="w-3 h-3" />
+                  <Plus className="w-3 h-3" />
                   Adicionar Regra
                 </Button>
               </div>
 
-              {/* Lista de Regras Adicionadas */}
-              {tempRegras.length > 0 && (
-                <div className="space-y-2 mb-4">
-                  {tempRegras.map((regra, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm group">
-                      <div className="flex items-center gap-4">
-                        <div className="flex flex-col">
-                          <span className="text-[8px] font-bold text-slate-400 uppercase">Prazo</span>
-                          <span className="text-[11px] font-bold text-slate-700">{regra.prazo}x</span>
+              {/* Lista Dinâmica de Campos das Regras */}
+              <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
+                {tempRegras.length === 0 ? (
+                  <div className="text-center py-6 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                    <span className="text-[11px] font-medium text-slate-400">Nenhuma regra adicionada. Clique em Adicionar Regra para começar.</span>
+                  </div>
+                ) : (
+                  tempRegras.map((regra, index) => (
+                    <div key={index} className="relative p-4 bg-slate-50/50 rounded-2xl border border-slate-100 space-y-3 group transition-all hover:bg-slate-50">
+                      <div className="flex items-center justify-between pb-1 border-b border-slate-100/60">
+                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Regra #{index + 1}</span>
+                        {tempRegras.length > 1 && (
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => setTempRegras(tempRegras.filter((_, i) => i !== index))}
+                            className="h-6 w-6 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                      
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-0.5">Prazo</Label>
+                          <Input 
+                            type="number"
+                            value={regra.prazo}
+                            onChange={(e) => {
+                              const newRegras = [...tempRegras]
+                              newRegras[index] = { ...newRegras[index], prazo: e.target.value }
+                              setTempRegras(newRegras)
+                            }}
+                            placeholder="Ex: 84"
+                            className="h-8 bg-white border-slate-100 rounded-lg font-bold text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 uppercase"
+                          />
                         </div>
-                        <div className="w-[1px] h-6 bg-slate-100" />
-                        <div className="flex flex-col">
-                          <span className="text-[8px] font-bold text-slate-400 uppercase">Coeficiente</span>
-                          <span className="text-[11px] font-bold text-slate-700">{regra.coeficiente}</span>
+                        <div className="space-y-1">
+                          <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-0.5">Coeficiente</Label>
+                          <Input 
+                            type="text"
+                            value={regra.coeficiente}
+                            onChange={(e) => {
+                              const newRegras = [...tempRegras]
+                              newRegras[index] = { ...newRegras[index], coeficiente: e.target.value }
+                              setTempRegras(newRegras)
+                            }}
+                            placeholder="Ex: 0,0225"
+                            className="h-8 bg-white border-slate-100 rounded-lg font-bold text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 uppercase"
+                          />
                         </div>
-                        <div className="w-[1px] h-6 bg-slate-100" />
-                        <div className="flex flex-col">
-                          <span className="text-[8px] font-bold text-slate-400 uppercase">Produção</span>
-                          <span className="text-[11px] font-bold text-sky-600">{regra.percentual_producao}%</span>
+                        <div className="space-y-1">
+                          <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-0.5">Produção (%)</Label>
+                          <Input 
+                            type="text"
+                            value={regra.percentual_producao}
+                            onChange={(e) => {
+                              const newRegras = [...tempRegras]
+                              newRegras[index] = { ...newRegras[index], percentual_producao: e.target.value }
+                              setTempRegras(newRegras)
+                            }}
+                            placeholder="Ex: 15,00"
+                            className="h-8 bg-white border-slate-100 rounded-lg font-bold text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 uppercase"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-0.5">Comissão (%)</Label>
+                          <Input 
+                            type="text"
+                            value={regra.percentual_comissao}
+                            onChange={(e) => {
+                              const newRegras = [...tempRegras]
+                              newRegras[index] = { ...newRegras[index], percentual_comissao: e.target.value }
+                              setTempRegras(newRegras)
+                            }}
+                            placeholder="Ex: 10,00"
+                            className="h-8 bg-white border-slate-100 rounded-lg font-bold text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 uppercase"
+                          />
                         </div>
                       </div>
-                      <Button 
-                        type="button" 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => setTempRegras(tempRegras.filter((_, i) => i !== index))}
-                        className="h-8 w-8 text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-all opacity-0 group-hover:opacity-100"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
-                <div className="space-y-2">
-                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Prazo</Label>
-                  <Input 
-                    type="number"
-                    value={tempPrazo}
-                    onChange={(e) => setTempPrazo(e.target.value)}
-                    placeholder="Ex: 84"
-                    className="h-10 bg-white border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 appearance-none uppercase"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Coeficiente</Label>
-                  <Input 
-                    type="text"
-                    value={tempCoeficiente}
-                    onChange={(e) => setTempCoeficiente(e.target.value)}
-                    placeholder="Ex: 0,0225"
-                    className="h-10 bg-white border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 appearance-none uppercase"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Percentual Produção</Label>
-                  <Input 
-                    type="text"
-                    value={tempPercentualProducao}
-                    onChange={(e) => setTempPercentualProducao(e.target.value)}
-                    placeholder="Ex: 15,00"
-                    className="h-10 bg-white border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 appearance-none uppercase"
-                  />
-                </div>
+                  ))
+                )}
               </div>
             </div>
             

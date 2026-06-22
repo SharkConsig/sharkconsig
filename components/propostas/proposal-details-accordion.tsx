@@ -101,6 +101,8 @@ interface Regra {
   prazo: number | string;
   coeficiente: number | string;
   percentual_producao: number | string;
+  percentual_comissao?: number | string;
+  ativo?: boolean | null;
 }
 
 interface ProdutoConfig {
@@ -109,10 +111,12 @@ interface ProdutoConfig {
   prazo: number | null;
   coeficiente: number | null;
   percentual_producao: number | null;
+  percentual_comissao?: number | null;
   convenio_id: string | null;
   banco_id: string | null;
   operacoes: string[] | null;
   regras: Regra[] | null;
+  ativo?: boolean | null;
   convenios: { nome: string } | null;
 }
 
@@ -416,13 +420,15 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     if (dbProdutosConfigs.length > 0 && formData.coeficiente_prazo) {
       const allOptions = (dbProdutosConfigs as ProdutoConfig[]).flatMap(config => {
         if (config.regras && config.regras.length > 0) {
-          return config.regras.map((regra) => ({
-            nome_tabela: config.nome_tabela,
-            prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : (regra.prazo as number),
-            coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : (regra.coeficiente as number),
-            percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : (regra.percentual_producao as number),
-            convenioNome: config.convenios?.nome
-          }));
+          return config.regras
+            .filter((r: Regra) => r.ativo !== false)
+            .map((regra) => ({
+              nome_tabela: config.nome_tabela,
+              prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : (regra.prazo as number),
+              coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : (regra.coeficiente as number),
+              percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : (regra.percentual_producao as number),
+              convenioNome: config.convenios?.nome
+            }));
         }
         return [{
           nome_tabela: config.nome_tabela,
@@ -477,11 +483,12 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
             banco_id,
             operacoes,
             regras,
+            ativo,
             convenios (nome)
           `)
-          .eq('ativo', true)
         if (error) throw error
-        setDbProdutosConfigs(data || [])
+        const filtered = (data || []).filter((p: { ativo?: boolean | null }) => p.ativo !== false)
+        setDbProdutosConfigs(filtered)
       } catch (err) {
         console.error("Erro ao buscar tabelas de regras:", err)
       }
@@ -494,13 +501,15 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       // Expand todas as configs para encontrar a correta
       const allOptions = (dbProdutosConfigs as ProdutoConfig[]).flatMap(config => {
         if (config.regras && config.regras.length > 0) {
-          return config.regras.map((regra: Regra) => ({
-            nome_tabela: config.nome_tabela,
-            convenioNome: config.convenios?.nome,
-            prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
-            coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
-            percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
-          }));
+          return config.regras
+            .filter((r: Regra) => r.ativo !== false)
+            .map((regra: Regra) => ({
+              nome_tabela: config.nome_tabela,
+              convenioNome: config.convenios?.nome,
+              prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+              coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+              percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
+            }));
         }
         return [{
           nome_tabela: config.nome_tabela,
@@ -1499,14 +1508,17 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                             if (!matchBanco || !matchConvenio || !matchOperacao) return [];
 
                             if (config.regras && config.regras.length > 0) {
-                              return config.regras.map((regra: Regra, idx: number) => ({
-                                id: `${config.id}-rule-${idx}`,
-                                nome_tabela: config.nome_tabela,
-                                convenioNome: config.convenios?.nome,
-                                prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
-                                coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
-                                percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
-                              }));
+                              return config.regras
+                                .filter((r: Regra) => r.ativo !== false)
+                                .map((regra: Regra, idx: number) => ({
+                                  id: `${config.id}-rule-${idx}`,
+                                  nome_tabela: config.nome_tabela,
+                                  convenioNome: config.convenios?.nome,
+                                  prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+                                  coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+                                  percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
+                                  percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao) : undefined,
+                                }));
                             }
                             return [{
                               id: config.id,
@@ -1515,6 +1527,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                               prazo: config.prazo || 0,
                               coeficiente: config.coeficiente || 0,
                               percentual_producao: config.percentual_producao || 0,
+                              percentual_comissao: config.percentual_comissao || undefined,
                             }];
                           }).filter(opt => {
                             const searchStr = `${opt.nome_tabela || ''} ${opt.prazo || ''} ${opt.coeficiente || ''} ${opt.convenioNome || ''}`.toLowerCase()

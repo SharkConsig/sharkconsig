@@ -200,6 +200,12 @@ export default function TicketsPage() {
   const [isClientModalOpen, setIsClientModalOpen] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState("")
 
+  const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>([])
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)
+  const [bulkStatusList, setBulkStatusList] = useState<{ id: string; nome: string; cor: string }[]>([])
+  const [selectedBulkStatusId, setSelectedBulkStatusId] = useState<string>("")
+  const [isUpdatingBulk, setIsUpdatingBulk] = useState(false)
+
   const [selectedMatricula, setSelectedMatricula] = useState<string | undefined>()
 
   const handleViewClient = useCallback((cpf: string, matricula?: string) => {
@@ -330,6 +336,23 @@ export default function TicketsPage() {
   useEffect(() => {
     setExpandedTicketId(null)
   }, [selectedStatus, selectedSecondaryStatus])
+
+  useEffect(() => {
+    const fetchStatusList = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("status_chamados")
+          .select("id, nome, cor")
+          .order("nome", { ascending: true })
+        if (!error && data) {
+          setBulkStatusList(data)
+        }
+      } catch (err) {
+        console.error("Erro ao buscar lista de status para ação em massa:", err)
+      }
+    }
+    fetchStatusList()
+  }, [])
 
   // Extração de valores únicos para os filtros
   const uniqueCorretores = useMemo(() => Array.from(new Set(tickets.map(t => t.user_nome).filter(Boolean))).sort() as string[], [tickets])
@@ -510,6 +533,80 @@ export default function TicketsPage() {
 
   const toggleTicketExpansion = (ticketId: string) => {
     setExpandedTicketId(expandedTicketId === ticketId ? null : ticketId)
+  }
+
+  const handleBulkStatusChange = async () => {
+    if (!selectedBulkStatusId || selectedTicketIds.length === 0 || !perfil || !user) return
+    setIsUpdatingBulk(true)
+    const selectedStatusObj = bulkStatusList.find(s => s.id === selectedBulkStatusId)
+    if (!selectedStatusObj) {
+      toast.error("Status inválido selecionado.")
+      setIsUpdatingBulk(false)
+      return
+    }
+
+    try {
+      // 1. Atualizar chamados no Supabase
+      const { error } = await supabase
+        .from("chamados")
+        .update({
+          status_id: selectedBulkStatusId,
+          status: selectedStatusObj.nome,
+          updated_at: new Date().toISOString()
+        })
+        .in("id", selectedTicketIds)
+
+      if (error) throw error
+
+      // 2. Registrar mudanca de status em mensagens_chamado para auditoria
+      const messagesToInsert = selectedTicketIds.map(id => {
+        const ticket = tickets.find(t => t.id.toString() === id)
+        const fromStatus = ticket ? (ticket.status_chamados?.nome || ticket.status || "Desconhecido") : "Desconhecido"
+        
+        let chamadoIdValue: string | number = id
+        const parsedId = Number(id)
+        if (!isNaN(parsedId)) {
+          chamadoIdValue = parsedId
+        }
+
+        return {
+          chamado_id: chamadoIdValue,
+          user_id: user.id,
+          user_nome: perfil.nome,
+          user_role: perfil.role,
+          user_avatar: perfil.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil.nome)}&background=random`,
+          content: `Status alterado em massa para ${selectedStatusObj.nome}`,
+          action: 'alterou o status',
+          status_change: {
+            from: fromStatus,
+            to: selectedStatusObj.nome,
+            fromColor: "slate",
+            toColor: selectedStatusObj.cor
+          },
+          attachments: []
+        }
+      })
+
+      if (messagesToInsert.length > 0) {
+        const { error: msgErr } = await supabase
+          .from("mensagens_chamado")
+          .insert(messagesToInsert)
+        if (msgErr) {
+          console.error("Erro ao inserir historico do status em massa:", msgErr)
+        }
+      }
+
+      toast.success(`Alterado o status de ${selectedTicketIds.length} chamados para ${selectedStatusObj.nome}!`)
+      setSelectedTicketIds([])
+      setIsBulkModalOpen(false)
+      setSelectedBulkStatusId("")
+      await fetchTickets(true)
+    } catch (err) {
+      console.error("Erro ao atualizar status em massa:", err)
+      toast.error("Ocorreu um erro ao atualizar os chamados.")
+    } finally {
+      setIsUpdatingBulk(false)
+    }
   }
 
   const exportToExcel = async () => {
@@ -910,10 +1007,60 @@ export default function TicketsPage() {
         {/* Tickets Table Card */}
         <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
           <CardContent className="p-0">
+            {/* Barra de Ações em Massa */}
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={selectedTicketIds.length === 0}
+                  onClick={() => setIsBulkModalOpen(true)}
+                  className={cn(
+                    "h-10 px-6 bg-white border-primary/20 text-primary hover:bg-primary/5 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-sm cursor-pointer border-2 min-w-[200px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  )}
+                >
+                  ALTERAR STATUS
+                  {selectedTicketIds.length > 0 && (
+                    <Badge variant="secondary" className="h-[20px] min-w-[20px] px-1.5 text-[10px] bg-primary/10 text-primary border-none font-bold rounded-full flex items-center justify-center">
+                      {selectedTicketIds.length}
+                    </Badge>
+                  )}
+                </Button>
+                {selectedTicketIds.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedTicketIds([])}
+                    className="text-xs text-rose-500 hover:text-rose-600 font-bold hover:bg-rose-50 cursor-pointer h-10 px-4 rounded-xl transition-all"
+                  >
+                    Limpar Seleção
+                  </Button>
+                )}
+              </div>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest font-mono">
+                {selectedTicketIds.length} selecionado(s) de {filteredTickets.length} chamados
+              </span>
+            </div>
+
             <div className="overflow-x-auto min-h-[400px]">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/50">
+                    <th className="px-4 py-4 w-[40px] text-center">
+                      <input
+                        type="checkbox"
+                        checked={paginatedTickets.length > 0 && paginatedTickets.every(t => selectedTicketIds.includes(t.id.toString()))}
+                        onChange={(e) => {
+                          const idsOnPage = paginatedTickets.map(t => t.id.toString())
+                          if (e.target.checked) {
+                            setSelectedTicketIds(prev => Array.from(new Set([...prev, ...idsOnPage])))
+                          } else {
+                            setSelectedTicketIds(prev => prev.filter(id => !idsOnPage.includes(id)))
+                          }
+                        }}
+                        className="w-[18px] h-[18px] rounded border-slate-300 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer transition-all"
+                      />
+                    </th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[80px]">Número</th>
                     {(isOperational || isAdmin || isSupervisor || isDeveloper) && (
                       <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[120px]">Corretor</th>
@@ -932,7 +1079,7 @@ export default function TicketsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoading && tickets.length === 0 ? (
                     <tr>
-                      <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10} className="px-4 py-12 text-center">
+                      <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <Loader2 className="w-6 h-6 text-primary animate-spin" />
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando chamados...</span>
@@ -951,6 +1098,22 @@ export default function TicketsPage() {
                           )}
                           onClick={() => toggleTicketExpansion(ticket.id.toString())}
                         >
+                          <td className="px-4 py-4 w-[40px] text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedTicketIds.includes(ticket.id.toString())}
+                              onChange={() => {
+                                setSelectedTicketIds(prev => {
+                                  if (prev.includes(ticket.id.toString())) {
+                                    return prev.filter(id => id !== ticket.id.toString())
+                                  } else {
+                                    return [...prev, ticket.id.toString()]
+                                  }
+                                })
+                              }}
+                              className="w-[18px] h-[18px] rounded border-slate-300 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer transition-all"
+                            />
+                          </td>
                           <td className="px-4 py-4 text-[12px] font-bold text-slate-400">#{ticket.id}</td>
                           {(isOperational || isAdmin || isSupervisor || isDeveloper) && (
                             <td className="px-4 py-4">
@@ -1072,7 +1235,7 @@ export default function TicketsPage() {
                         </tr>
                         {expandedTicketId === ticket.id.toString() && (
                           <tr className={cn(index % 2 === 0 ? "bg-slate-100" : "bg-white")}>
-                            <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10} className="p-0 border-b border-slate-200">
+                            <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
                                 <TicketAtendimento 
                                   ticket={{
@@ -1120,7 +1283,7 @@ export default function TicketsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
+                      <td colSpan={isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
                         Nenhum chamado encontrado.
                       </td>
                     </tr>
@@ -1255,6 +1418,87 @@ export default function TicketsPage() {
           cpf={selectedClientCpf}
           initialMatricula={selectedMatricula}
         />
+
+        {/* Bulk Update Status Modal */}
+        {isBulkModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="flex flex-col">
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                    Alterar Status em Massa
+                  </h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                    {selectedTicketIds.length} chamados selecionados
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsBulkModalOpen(false)
+                    setSelectedBulkStatusId("")
+                  }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-200 transition-colors text-slate-400 hover:text-slate-600 font-bold"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                    Selecione o Novo Status
+                  </label>
+                  <select
+                    value={selectedBulkStatusId}
+                    onChange={(e) => setSelectedBulkStatusId(e.target.value)}
+                    className="w-full h-11 px-3 text-xs font-bold border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 text-slate-700 cursor-pointer"
+                  >
+                    <option value="" disabled>Selecione um status...</option>
+                    {bulkStatusList.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsBulkModalOpen(false)
+                    setSelectedBulkStatusId("")
+                  }}
+                  className="h-10 px-5 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-100 rounded-xl transition-all cursor-pointer border-2"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!selectedBulkStatusId || isUpdatingBulk}
+                  onClick={handleBulkStatusChange}
+                  className="h-10 px-6 text-[10px] font-bold uppercase tracking-widest bg-primary hover:bg-primary-dark text-white rounded-xl transition-all cursor-pointer flex items-center gap-2"
+                >
+                  {isUpdatingBulk ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Gravando...
+                    </>
+                  ) : (
+                    <>
+                      Confirmar Alteração
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )

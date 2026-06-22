@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,9 @@ import {
   Search, 
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Check,
   Eye,
   Loader2,
   UserPlus,
@@ -21,6 +24,12 @@ import {
   Eraser,
   FileSpreadsheet
 } from "lucide-react"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { ProposalDetailsAccordion } from "@/components/propostas/proposal-details-accordion"
 import { StatusPropostaModal } from "@/components/propostas/status-proposta-modal"
@@ -129,6 +138,67 @@ interface Proposal {
   created_at: string
 }
 
+function MultiSelect({ 
+  label, 
+  options, 
+  selected, 
+  onToggle 
+}: { 
+  label: string, 
+  options: string[], 
+  selected: string[], 
+  onToggle: (val: string) => void 
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">{label}</label>
+      <Popover>
+        <PopoverTrigger 
+          className={cn(
+            "w-full h-[38px] flex items-center justify-between bg-white border border-slate-200 text-[11px] font-normal text-slate-600 rounded-lg hover:bg-slate-50 px-3 cursor-pointer outline-none transition-all focus-within:border-primary/50"
+          )}
+        >
+          <div className="flex items-center gap-2 truncate pr-4">
+            {selected.length === 0 ? (
+              <span className="text-slate-400">Todos</span>
+            ) : (
+              <span className="font-bold text-primary flex items-center gap-1.5">
+                <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-primary/10 text-primary border-none font-black font-sans uppercase">
+                  {selected.length}
+                </Badge>
+                <span className="truncate">Selecionado(s)</span>
+              </span>
+            )}
+          </div>
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-1 shadow-2xl border-slate-200" align="start">
+          <div className="max-h-60 overflow-y-auto space-y-0.5 p-1 scrollbar-thin scrollbar-thumb-slate-200">
+            {options.map(option => (
+              <div 
+                key={option} 
+                onClick={() => onToggle(option)}
+                className={cn(
+                  "flex items-center gap-2 p-2 rounded-md cursor-pointer transition-all group",
+                  selected.includes(option) ? "bg-primary/5 text-primary" : "text-slate-600 hover:bg-slate-50"
+                )}
+              >
+                <div className={cn(
+                  "w-4 h-4 rounded border flex items-center justify-center transition-all",
+                  selected.includes(option) ? "bg-primary border-primary" : "bg-white border-slate-300 group-hover:border-primary/50"
+                )}>
+                  {selected.includes(option) && <Check className="w-2.5 h-2.5 text-white stroke-[4px]" />}
+                </div>
+                <span className="text-[11px] font-medium truncate">{option}</span>
+              </div>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
+
 export default function ProposalsPage() {
   const { perfil, isCorretor, isAdmin, isDeveloper, isOperational, isSupervisor, isEstagio } = useAuth()
   const router = useRouter()
@@ -153,6 +223,27 @@ export default function ProposalsPage() {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
   const [selectedProposalForStatus, setSelectedProposalForStatus] = useState<Proposal | null>(null)
   const [selectedProposalForTransfer, setSelectedProposalForTransfer] = useState<Proposal | null>(null)
+
+  // Estados para filtros avançados
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterCorretores, setFilterCorretores] = useState<string[]>([])
+  const [filterEquipes, setFilterEquipes] = useState<string[]>([])
+  const [filterEstagiarios, setFilterEstagiarios] = useState<string[]>([])
+  const [filterBancos, setFilterBancos] = useState<string[]>([])
+  const [filterConvenios, setFilterConvenios] = useState<string[]>([])
+  const [filterOperacoes, setFilterOperacoes] = useState<string[]>([])
+  const [filterStatusList, setFilterStatusList] = useState<string[]>([])
+  const [filterValorMin, setFilterValorMin] = useState("")
+  const [filterValorMax, setFilterValorMax] = useState("")
+
+  // Listas de valores únicos para os filtros avançados baseados nas propostas atuais
+  const uniqueCorretores = useMemo(() => Array.from(new Set(proposals.map(p => p.nome_corretor || p.corretor).filter(Boolean))).sort() as string[], [proposals])
+  const uniqueEquipes = useMemo(() => Array.from(new Set(proposals.map(p => p.equipe).filter(Boolean))).sort() as string[], [proposals])
+  const uniqueEstagiarios = useMemo(() => Array.from(new Set(proposals.map(p => p.estagiario_colaborador_nome).filter(Boolean))).sort() as string[], [proposals])
+  const uniqueBancos = useMemo(() => Array.from(new Set(proposals.map(p => p.banco).filter(Boolean))).sort() as string[], [proposals])
+  const uniqueConvenios = useMemo(() => Array.from(new Set(proposals.map(p => p.convenio).filter(Boolean))).sort() as string[], [proposals])
+  const uniqueOperacoes = useMemo(() => Array.from(new Set(proposals.map(p => p.tipo_operacao).filter(Boolean))).sort() as string[], [proposals])
+  const uniqueStatusList = useMemo(() => Array.from(new Set(proposals.map(p => p.status).filter(Boolean))).sort() as string[], [proposals])
 
   const handleStatusUpdate = async (idLead: string, newStatus: string, ade?: string, obsCorretor?: string, obsOperacional?: string, customDate?: string) => {
     if (!perfil) return
@@ -511,8 +602,25 @@ export default function ProposalsPage() {
       
       return true;
     })();
+
+    const matchesCorretor = filterCorretores.length === 0 || filterCorretores.includes(proposal.nome_corretor || proposal.corretor || "")
+    const matchesEquipe = filterEquipes.length === 0 || filterEquipes.includes(proposal.equipe || "")
+    const matchesEstagiario = filterEstagiarios.length === 0 || filterEstagiarios.includes(proposal.estagiario_colaborador_nome || "")
+    const matchesBanco = filterBancos.length === 0 || filterBancos.includes(proposal.banco || "")
+    const matchesConvenio = filterConvenios.length === 0 || filterConvenios.includes(proposal.convenio || "")
+    const matchesOperacao = filterOperacoes.length === 0 || filterOperacoes.includes(proposal.tipo_operacao || "")
+    const matchesStatusList = filterStatusList.length === 0 || filterStatusList.includes(proposal.status || "")
+
+    const matchesValor = (() => {
+      if (!filterValorMin && !filterValorMax) return true;
+      const val = proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0;
+      if (filterValorMin && val < Number(filterValorMin)) return false;
+      if (filterValorMax && val > Number(filterValorMax)) return false;
+      return true;
+    })();
     
-    return matchesSearch && matchesStatus && matchesSecondary && matchesDate
+    return matchesSearch && matchesStatus && matchesSecondary && matchesDate &&
+      matchesCorretor && matchesEquipe && matchesEstagiario && matchesBanco && matchesConvenio && matchesOperacao && matchesStatusList && matchesValor
   }).sort((a, b) => {
     const timeA = new Date(a.updated_at || a.created_at).getTime()
     const timeB = new Date(b.updated_at || b.created_at).getTime()
@@ -534,6 +642,15 @@ export default function ProposalsPage() {
     setSearchTerm("")
     setStartDate("")
     setEndDate("")
+    setFilterCorretores([])
+    setFilterEquipes([])
+    setFilterEstagiarios([])
+    setFilterBancos([])
+    setFilterConvenios([])
+    setFilterOperacoes([])
+    setFilterStatusList([])
+    setFilterValorMin("")
+    setFilterValorMax("")
     setCurrentPage(1)
   }
 
@@ -639,7 +756,7 @@ export default function ProposalsPage() {
       )}>
         {/* Filters Card */}
         <Card className="card-shadow border border-slate-200">
-          <CardContent className="p-4 sm:p-6">
+          <CardContent className="p-4 sm:p-6 space-y-4">
             <div className="flex flex-col lg:flex-row lg:items-center gap-4">
               <div className="flex-1 min-w-0">
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Buscar Proposta</label>
@@ -681,8 +798,21 @@ export default function ProposalsPage() {
                 <div className="flex items-center gap-2">
                   <Button 
                     variant="outline"
+                    onClick={() => {
+                      setShowFilters(!showFilters)
+                    }}
+                    className={cn(
+                      "h-[38px] px-4 border-slate-200 text-[11px] font-bold uppercase tracking-widest hover:bg-slate-50 transition-all rounded-lg gap-2 cursor-pointer",
+                      showFilters ? "bg-slate-100 border-primary text-primary" : "text-slate-500"
+                    )}
+                  >
+                    {showFilters ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    FILTROS
+                  </Button>
+                  <Button 
+                    variant="outline"
                     onClick={handleClearFilters}
-                    className="border-slate-200 text-slate-500 h-[38px] text-[11px] font-bold rounded-lg transition-all px-4 gap-2 hover:bg-slate-100 hover:text-slate-700"
+                    className="border-slate-200 text-slate-500 h-[38px] text-[11px] font-bold rounded-lg transition-all px-4 gap-2 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
                   >
                     <Eraser className="w-3.5 h-3.5" />
                     LIMPAR
@@ -690,11 +820,148 @@ export default function ProposalsPage() {
                   <Button 
                     onClick={fetchProposals}
                     disabled={isLoading}
-                    className="bg-[#171717] hover:bg-[#171717]/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-black/20 transition-all"
+                    className="bg-[#171717] hover:bg-[#171717]/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-black/20 transition-all cursor-pointer"
                   >
                     {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "BUSCAR"}
                   </Button>
                 </div>
+              </div>
+            </div>
+
+            {/* Advanced Filters Section */}
+            <div className={cn(
+              "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 overflow-hidden transition-all duration-300",
+              showFilters ? "max-h-[1000px] opacity-100 pt-4 border-t border-slate-100" : "max-h-0 opacity-0 pointer-events-none"
+            )}>
+              <MultiSelect 
+                label="Corretor"
+                options={uniqueCorretores}
+                selected={filterCorretores}
+                onToggle={(val) => {
+                  setFilterCorretores(prev => 
+                    prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                  )
+                  setCurrentPage(1)
+                }}
+              />
+
+              <MultiSelect 
+                label="Supervisor (Equipe)"
+                options={uniqueEquipes}
+                selected={filterEquipes}
+                onToggle={(val) => {
+                  setFilterEquipes(prev => 
+                    prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                  )
+                  setCurrentPage(1)
+                }}
+              />
+
+              <MultiSelect 
+                label="Estagiário"
+                options={uniqueEstagiarios}
+                selected={filterEstagiarios}
+                onToggle={(val) => {
+                  setFilterEstagiarios(prev => 
+                    prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                  )
+                  setCurrentPage(1)
+                }}
+              />
+
+              <MultiSelect 
+                label="Banco"
+                options={uniqueBancos}
+                selected={filterBancos}
+                onToggle={(val) => {
+                  setFilterBancos(prev => 
+                    prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                  )
+                  setCurrentPage(1)
+                }}
+              />
+
+              <MultiSelect 
+                label="Convênio"
+                options={uniqueConvenios}
+                selected={filterConvenios}
+                onToggle={(val) => {
+                  setFilterConvenios(prev => 
+                    prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                  )
+                  setCurrentPage(1)
+                }}
+              />
+
+              <MultiSelect 
+                label="Tipo Operação"
+                options={uniqueOperacoes}
+                selected={filterOperacoes}
+                onToggle={(val) => {
+                  setFilterOperacoes(prev => 
+                    prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                  )
+                  setCurrentPage(1)
+                }}
+              />
+
+              <MultiSelect 
+                label="Status Proposta"
+                options={uniqueStatusList}
+                selected={filterStatusList}
+                onToggle={(val) => {
+                  setFilterStatusList(prev => 
+                    prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                  )
+                  setCurrentPage(1)
+                }}
+              />
+
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor (Mín - Máx)</label>
+                <div className="flex items-center gap-2">
+                  <Input 
+                    placeholder="Min" 
+                    type="number"
+                    className="h-[38px] bg-slate-50/50 border-slate-100 text-[11px]"
+                    value={filterValorMin}
+                    onChange={(e) => {
+                      setFilterValorMin(e.target.value)
+                      setCurrentPage(1)
+                    }}
+                  />
+                  <Input 
+                    placeholder="Max" 
+                    type="number"
+                    className="h-[38px] bg-slate-50/50 border-slate-100 text-[11px]"
+                    value={filterValorMax}
+                    onChange={(e) => {
+                      setFilterValorMax(e.target.value)
+                      setCurrentPage(1)
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-end pb-0.5">
+                <Button 
+                  variant="ghost" 
+                  onClick={() => {
+                    setFilterCorretores([]); 
+                    setFilterEquipes([]); 
+                    setFilterEstagiarios([]);
+                    setFilterBancos([]); 
+                    setFilterConvenios([]); 
+                    setFilterOperacoes([]);
+                    setFilterStatusList([]);
+                    setFilterValorMin(""); 
+                    setFilterValorMax("");
+                    setCurrentPage(1);
+                  }}
+                  className="text-[9px] font-bold text-[#f43f5e] hover:text-[#e11d48] uppercase tracking-widest hover:bg-rose-50 h-[38px] w-full text-center transition-all cursor-pointer rounded-lg"
+                >
+                  Limpar Adicionais
+                </Button>
               </div>
             </div>
           </CardContent>

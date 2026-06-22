@@ -483,7 +483,7 @@ export default function CampanhaAtendimentoPage() {
         }
 
         // Parse claims stored in filters.active_claims
-        let activeClaims = { ...(filters.active_claims || {}) }
+        const activeClaims = { ...(filters.active_claims || {}) }
         const tenMinutesAgoMs = Date.now() - 10 * 60 * 1000
         let claimsChanged = false
 

@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
-import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle } from "lucide-react"
+import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle, Loader2 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -12,6 +12,7 @@ import { translateOrgao } from "@/lib/orgaos-mapping"
 import { getContractTypeInfo } from "@/lib/contratos-mapping"
 import { supabase } from "@/lib/supabase"
 import { withRetry } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
 
 interface LoanData {
   banco: string;
@@ -105,6 +106,17 @@ interface ClientData {
   [key: string]: unknown;
 }
 
+interface ClientTicket {
+  id: string | number;
+  status?: string;
+  status_id?: string | number | null;
+  status_chamados?: {
+    nome?: string;
+  } | null;
+  user_nome?: string;
+  cliente_cpf?: string;
+}
+
 interface ConvenioProfile {
   type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr';
   client: ClientData;
@@ -126,6 +138,104 @@ export default function SearchClientPage() {
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
+
+  const [clientTickets, setClientTickets] = useState<ClientTicket[]>([])
+  const [isLoadingClientTickets, setIsLoadingClientTickets] = useState(false)
+
+  useEffect(() => {
+    async function fetchClientTickets() {
+      if (!client?.cpf) {
+        setClientTickets([])
+        return
+      }
+      setIsLoadingClientTickets(true)
+      try {
+        const cleanCpf = client.cpf.replace(/\D/g, "")
+        const { data, error: fetchErr } = await supabase
+          .from('chamados')
+          .select(`
+            *,
+            status_chamados:status_id (nome)
+          `)
+          .eq('cliente_cpf', cleanCpf)
+          .order('created_at', { ascending: false })
+
+        if (fetchErr) {
+          console.error("Erro ao buscar chamados do cliente:", fetchErr)
+        } else {
+          setClientTickets(data || [])
+        }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setIsLoadingClientTickets(false)
+      }
+    }
+    fetchClientTickets()
+  }, [client?.cpf])
+
+  const renderClientTicketsHistory = () => {
+    if (isLoadingClientTickets) {
+      return (
+        <div className="mt-8 pt-8 border-t border-slate-100 flex items-center gap-2 justify-center py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+          <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
+          <span>Buscando histórico de atendimentos...</span>
+        </div>
+      );
+    }
+
+    if (clientTickets.length === 0) return null;
+
+    return (
+      <div className="mt-8 pt-8 border-t border-slate-100 space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-5 bg-rose-500 rounded-full"></div>
+          <h4 className="text-[12px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
+            Histórico de Atendimento{" "}
+            <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-rose-500/10 text-rose-600 border-none font-black font-sans uppercase">
+              {clientTickets.length} {clientTickets.length === 1 ? 'Chamado' : 'Chamados'}
+            </Badge>
+          </h4>
+        </div>
+        
+        <div className="flex flex-col gap-3">
+          {clientTickets.map((chamado) => {
+            const statusLabel = chamado.status_chamados?.nome || chamado.status || "ABERTO";
+            const statusUpper = statusLabel.toUpperCase();
+            
+            return (
+              <div 
+                key={chamado.id} 
+                className="p-4 rounded-xl border border-rose-100 bg-rose-50/10 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-[0_1px_3px_rgba(244,63,94,0.02)] hover:border-rose-200 hover:bg-rose-50/20 transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/50 flex items-center justify-center font-bold text-[10px] text-rose-500 font-mono">
+                    #{chamado.id}
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Corretor</span>
+                    <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block">{chamado.user_nome || "Não informado"}</span>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col md:items-end justify-center">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Status do Chamado</span>
+                  <span className={cn(
+                    "inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase",
+                    statusUpper === "ABERTO" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                    statusUpper === "FECHADO" || statusUpper === "CONCLUÍDO" || statusUpper === "CONCLUIDO" ? "bg-slate-100 text-slate-600 border-slate-200" :
+                    "bg-amber-50 text-amber-700 border-amber-100"
+                  )}>
+                    {statusUpper}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const fetchRegistrationsForType = async (
     type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr',
@@ -1173,6 +1283,8 @@ export default function SearchClientPage() {
                           );
                         })()}
 
+                        {renderClientTicketsHistory()}
+
                         {/* Footer Buttons */}
                         <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
                           <Button 
@@ -1435,6 +1547,8 @@ export default function SearchClientPage() {
                             </div>
                           </div>
 
+                          {renderClientTicketsHistory()}
+
                           {/* Footer Buttons for Governo SP */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
                             <Button 
@@ -1608,6 +1722,8 @@ export default function SearchClientPage() {
                             </div>
                           </div>
 
+                          {renderClientTicketsHistory()}
+
                           {/* Footer Buttons for Governo MA */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
                             <Button 
@@ -1780,6 +1896,8 @@ export default function SearchClientPage() {
                               </div>
                             </div>
                           </div>
+
+                          {renderClientTicketsHistory()}
 
                           {/* Footer Buttons for Governo PI */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -2007,6 +2125,8 @@ export default function SearchClientPage() {
                             </div>
                           </div>
 
+                          {renderClientTicketsHistory()}
+
                           {/* Footer Buttons for PMSP */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
                             <Button 
@@ -2157,6 +2277,8 @@ export default function SearchClientPage() {
                               </div>
                             </div>
                           </div>
+
+                          {renderClientTicketsHistory()}
 
                           {/* Footer Buttons for GOV RR */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">

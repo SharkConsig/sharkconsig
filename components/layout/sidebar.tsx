@@ -151,6 +151,23 @@ const allMenuItems = [
     ]
   },
   {
+    title: "FINANCEIRO",
+    items: [
+      { 
+        name: "CONTAS A PAGAR", 
+        href: "/financeiro/contas-a-pagar", 
+        icon: Landmark, 
+        roles: ["Administrador", "Desenvolvedor", "Operacional"] 
+      },
+      { 
+        name: "CONTAS A RECEBER", 
+        href: "/financeiro/contas-a-receber", 
+        icon: ClipboardList, 
+        roles: ["Administrador", "Desenvolvedor", "Operacional"] 
+      }
+    ]
+  },
+  {
     title: "",
     items: [
       { 

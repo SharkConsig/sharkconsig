@@ -149,10 +149,11 @@ function NewProposalForm() {
     prazo: number
     coeficiente: number
     percentual_producao: number
+    percentual_comissao?: number
     convenio_id: string
     banco_id: string
     operacoes: string[]
-    regras?: { prazo: string | number, coeficiente: string | number, percentual_producao: string | number }[]
+    regras?: { prazo: string | number, coeficiente: string | number, percentual_producao: string | number, percentual_comissao?: string | number, ativo?: boolean }[]
     ativo: boolean;
     created_at: string;
     convenios?: { nome: string };
@@ -163,19 +164,23 @@ function NewProposalForm() {
     if (dbProdutosConfigs.length > 0 && formData.coeficiente_prazo) {
       const allOptions = (dbProdutosConfigs as ProdutoConfig[]).flatMap(config => {
         if (config.regras && config.regras.length > 0) {
-          return config.regras.map((regra) => ({
-            nome_tabela: config.nome_tabela,
-            prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
-            coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
-            percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
-            convenioNome: config.convenios?.nome
-          }));
+          return config.regras
+            .filter((r: { ativo?: boolean }) => r.ativo !== false)
+            .map((regra) => ({
+              nome_tabela: config.nome_tabela,
+              prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+              coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+              percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
+              percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao) : undefined,
+              convenioNome: config.convenios?.nome
+            }));
         }
         return [{
           nome_tabela: config.nome_tabela,
           prazo: config.prazo || 0,
           coeficiente: config.coeficiente || 0,
           percentual_producao: config.percentual_producao || 0,
+          percentual_comissao: config.percentual_comissao || undefined,
           convenioNome: config.convenios?.nome
         }];
       });
@@ -356,13 +361,13 @@ function NewProposalForm() {
             banco_id,
             operacoes,
             regras,
+            ativo,
             convenios (nome)
           `)
-          .eq('ativo', true)
 
         if (error) throw error
 
-        const filtered = data || []
+        const filtered = (data || []).filter((p: { ativo?: boolean | null }) => p.ativo !== false)
         setDbProdutosConfigs(filtered)
       } catch (err) {
         console.error("Erro ao buscar tabelas de regras:", err)
@@ -1673,15 +1678,18 @@ function NewProposalForm() {
                         // Expand rules into individual options
                         const options = filteredConfigs.flatMap(config => {
                           if (config.regras && config.regras.length > 0) {
-                            return config.regras.map((regra, idx) => ({
-                              id: `${config.id}-rule-${idx}`,
-                              parentConfig: config,
-                              nome_tabela: config.nome_tabela,
-                              convenioNome: config.convenios?.nome,
-                              prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
-                              coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
-                              percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
-                            }));
+                            return config.regras
+                              .filter((r: { ativo?: boolean }) => r.ativo !== false)
+                              .map((regra, idx) => ({
+                                id: `${config.id}-rule-${idx}`,
+                                parentConfig: config,
+                                nome_tabela: config.nome_tabela,
+                                convenioNome: config.convenios?.nome,
+                                prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+                                coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+                                percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
+                                percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao) : undefined,
+                              }));
                           }
                           return [{
                             id: config.id,
@@ -1691,6 +1699,7 @@ function NewProposalForm() {
                             prazo: config.prazo,
                             coeficiente: config.coeficiente,
                             percentual_producao: config.percentual_producao,
+                            percentual_comissao: config.percentual_comissao,
                           }];
                         });
 
