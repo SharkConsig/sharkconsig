@@ -59,7 +59,7 @@ export default function ContasAPagarPage() {
   // Authorization Check
   useEffect(() => {
     if (perfil) {
-      const allowedRoles = ["Administrativo", "Desenvolvedor", "Administrador"]
+      const allowedRoles = ["Administrador", "Desenvolvedor"]
       const roleStr = perfil?.role || ""
       const isAllowed = allowedRoles.some(role => roleStr.toLowerCase() === role.toLowerCase()) || isAdmin
       

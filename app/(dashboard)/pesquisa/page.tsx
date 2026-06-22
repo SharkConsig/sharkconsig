@@ -106,17 +106,6 @@ interface ClientData {
   [key: string]: unknown;
 }
 
-interface ClientTicket {
-  id: string | number;
-  status?: string;
-  status_id?: string | number | null;
-  status_chamados?: {
-    nome?: string;
-  } | null;
-  user_nome?: string;
-  cliente_cpf?: string;
-}
-
 interface ConvenioProfile {
   type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr';
   client: ClientData;
@@ -139,7 +128,7 @@ export default function SearchClientPage() {
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
-  const [clientTickets, setClientTickets] = useState<ClientTicket[]>([])
+  const [clientTickets, setClientTickets] = useState<any[]>([])
   const [isLoadingClientTickets, setIsLoadingClientTickets] = useState(false)
 
   useEffect(() => {

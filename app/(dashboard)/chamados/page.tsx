@@ -181,12 +181,18 @@ export default function TicketsPage() {
   const { perfil, user, isOperational, isAdmin, isSupervisor, isDeveloper, isEstagio } = useAuth()
   const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const { isCollapsed } = useSidebar()
-  const canChangeStatus = !!(perfil?.role && [
-    "Operacional",
-    "Administrador",
-    "Admin",
-    "Desenvolvedor"
-  ].some(r => r.toLowerCase() === perfil.role.toLowerCase()));
+  const canChangeStatusBulk = !!(
+    (perfil?.role && [
+      "operacional",
+      "administrador",
+      "admin",
+      "desenvolvedor"
+    ].includes(perfil.role.toLowerCase())) ||
+    (user?.email && [
+      "souendrionovo@gmail.com",
+      "acertofacilpromotoradecredito@gmail.com"
+    ].includes(user.email))
+  )
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>("ABERTO")
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
@@ -569,7 +575,7 @@ export default function TicketsPage() {
         const ticket = tickets.find(t => t.id.toString() === id)
         const fromStatus = ticket ? (ticket.status_chamados?.nome || ticket.status || "Desconhecido") : "Desconhecido"
         
-        let chamadoIdValue: string | number = id
+        let chamadoIdValue: any = id
         const parsedId = Number(id)
         if (!isNaN(parsedId)) {
           chamadoIdValue = parsedId
@@ -1014,7 +1020,7 @@ export default function TicketsPage() {
         <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
           <CardContent className="p-0">
             {/* Barra de Ações em Massa */}
-            {canChangeStatus && (
+            {canChangeStatusBulk && (
               <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <Button
@@ -1054,7 +1060,7 @@ export default function TicketsPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/50">
-                    {canChangeStatus && (
+                    {canChangeStatusBulk && (
                       <th className="px-4 py-4 w-[40px] text-center">
                         <input
                           type="checkbox"
@@ -1089,7 +1095,7 @@ export default function TicketsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoading && tickets.length === 0 ? (
                     <tr>
-                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11) - (canChangeStatus ? 0 : 1)} className="px-4 py-12 text-center">
+                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0)} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <Loader2 className="w-6 h-6 text-primary animate-spin" />
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando chamados...</span>
@@ -1108,7 +1114,7 @@ export default function TicketsPage() {
                           )}
                           onClick={() => toggleTicketExpansion(ticket.id.toString())}
                         >
-                          {canChangeStatus && (
+                          {canChangeStatusBulk && (
                             <td className="px-4 py-4 w-[40px] text-center" onClick={(e) => e.stopPropagation()}>
                               <input
                                 type="checkbox"
@@ -1247,7 +1253,7 @@ export default function TicketsPage() {
                         </tr>
                         {expandedTicketId === ticket.id.toString() && (
                           <tr className={cn(index % 2 === 0 ? "bg-slate-100" : "bg-white")}>
-                            <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11) - (canChangeStatus ? 0 : 1)} className="p-0 border-b border-slate-200">
+                            <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0)} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
                                 <TicketAtendimento 
                                   ticket={{
@@ -1295,7 +1301,7 @@ export default function TicketsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11) - (canChangeStatus ? 0 : 1)} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
+                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0)} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
                         Nenhum chamado encontrado.
                       </td>
                     </tr>

@@ -108,7 +108,7 @@ export default function ContasAReceberPage() {
   // Redirect if unauthorized
   useEffect(() => {
     if (perfil) {
-      const allowedRoles = ["Administrativo", "Desenvolvedor", "Administrador"]
+      const allowedRoles = ["Administrador", "Desenvolvedor"]
       const roleStr = perfil?.role || ""
       const isAllowed = allowedRoles.some(role => roleStr.toLowerCase() === role.toLowerCase()) || isAdmin
       
@@ -180,158 +180,49 @@ export default function ContasAReceberPage() {
   const [statusObsOperacional, setObsOperacional] = useState("")
 
   const getCommissionPercentage = useCallback((proposal: Proposal) => {
-    if (dbProdutosConfigs.length === 0) {
-      return null
+    if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
+      return commissionRate
     }
 
     const allOptions = dbProdutosConfigs.flatMap(config => {
-      let rulesArray: any[] = [];
-      if (config.regras) {
-        if (Array.isArray(config.regras)) {
-          rulesArray = config.regras;
-        } else if (typeof config.regras === "string") {
-          try {
-            rulesArray = JSON.parse(config.regras);
-          } catch (e) {
-            console.error("Error parsing regras JSON in getCommissionPercentage:", e);
-          }
-        }
-      }
-
-      if (rulesArray && rulesArray.length > 0) {
-        return rulesArray
+      if (config.regras && config.regras.length > 0) {
+        return config.regras
           .filter((r: { ativo?: boolean }) => r.ativo !== false)
-          .map((regra: any) => {
-            let pComissao = null;
-            if (regra.percentual_comissao !== undefined && regra.percentual_comissao !== null && regra.percentual_comissao !== "") {
-              pComissao = typeof regra.percentual_comissao === "string" 
-                ? parseFloat(regra.percentual_comissao.replace(",", ".")) 
-                : regra.percentual_comissao;
-            } else if (config.percentual_comissao !== undefined && config.percentual_comissao !== null && config.percentual_comissao !== "") {
-              pComissao = typeof config.percentual_comissao === "string"
-                ? parseFloat(config.percentual_comissao.replace(",", "."))
-                : config.percentual_comissao;
-            }
-
-            return {
-              nome_tabela: config.nome_tabela,
-              prazo: typeof regra.prazo === "string" ? parseInt(regra.prazo) : regra.prazo,
-              coeficiente: typeof regra.coeficiente === "string" ? parseFloat(regra.coeficiente.replace(",", ".")) : regra.coeficiente,
-              percentual_producao: typeof regra.percentual_producao === "string" ? parseFloat(regra.percentual_producao.replace(",", ".")) : regra.percentual_producao,
-              percentual_comissao: pComissao,
-              convenioNome: config.convenios?.nome
-            };
-          });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((regra: any) => ({
+            nome_tabela: config.nome_tabela,
+            prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+            coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+            percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
+            percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao) : undefined,
+            convenioNome: config.convenios?.nome
+          }));
       }
-
       return [{
         nome_tabela: config.nome_tabela,
         prazo: config.prazo || 0,
         coeficiente: config.coeficiente || 0,
         percentual_producao: config.percentual_producao || 0,
-        percentual_comissao: config.percentual_comissao !== undefined ? (typeof config.percentual_comissao === "string" ? parseFloat(config.percentual_comissao.replace(",", ".")) : config.percentual_comissao) : null,
+        percentual_comissao: config.percentual_comissao || undefined,
         convenioNome: config.convenios?.nome
       }];
     });
 
-    let option = null;
-
-    if (proposal.coeficiente_prazo) {
-      // 1st Level: Exact Match on Normalized strings
-      const normalizedProp = proposal.coeficiente_prazo.trim().replace(/,/g, ".").toLowerCase();
+    const option = allOptions.find(opt => {
+      const labelText = opt.nome_tabela 
+        ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
+        : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente}`;
       
-      option = allOptions.find(opt => {
-        const labelText = opt.nome_tabela 
-          ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
-          : `${opt.convenioNome || "Tabela"} - ${opt.prazo}x ${opt.coeficiente}`;
-        
-        const normalizedLabel = labelText.trim().replace(/,/g, ".").toLowerCase();
-        return normalizedLabel === normalizedProp;
-      });
+      return labelText === proposal.coeficiente_prazo || 
+             (opt.nome_tabela && proposal.coeficiente_prazo.startsWith(opt.nome_tabela));
+    });
 
-      // 2nd Level: Match by name starting / prefix
-      if (!option) {
-        option = allOptions.find(opt => {
-          return opt.nome_tabela && normalizedProp.startsWith(opt.nome_tabela.trim().toLowerCase());
-        });
-      }
-
-      // 3rd Level: Robust Regex Deconstruction Match
-      if (!option) {
-        const pStr = proposal.coeficiente_prazo.trim();
-        let parsedName: string | null = null;
-        let parsedPrazo: number | null = null;
-        let parsedCoef: number | null = null;
-
-        // Try Case 1: "NOME (Prazox | Coef)"
-        const match1 = pStr.match(/^(.+?)\s*\(\s*(\d+)\s*x\s*\|\s*([\d.,]+)\s*\)$/i);
-        if (match1) {
-          parsedName = match1[1].trim();
-          parsedPrazo = parseInt(match1[2], 10);
-          parsedCoef = parseFloat(match1[3].replace(",", "."));
-        } else {
-          // Try Case 2: "CONVÊNIO - Prazo_x Coef"
-          const match2 = pStr.match(/^(.+?)\s*-\s*(\d+)\s*x\s*([\d.,]+)$/i);
-          if (match2) {
-            parsedName = match2[1].trim();
-            parsedPrazo = parseInt(match2[2], 10);
-            parsedCoef = parseFloat(match2[3].replace(",", "."));
-          }
-        }
-
-        if (parsedPrazo !== null && parsedCoef !== null) {
-          option = allOptions.find(opt => {
-            const nameMatches = opt.nome_tabela 
-              ? opt.nome_tabela.trim().toLowerCase() === parsedName?.toLowerCase()
-              : true;
-
-            const coefDiff = Math.abs(opt.coeficiente - parsedCoef!);
-            const coefMatches = coefDiff < 0.00001;
-            const prazoMatches = opt.prazo === parsedPrazo;
-
-            return nameMatches && coefMatches && prazoMatches;
-          });
-        }
-      }
+    if (option && option.percentual_comissao !== undefined) {
+      return option.percentual_comissao
     }
 
-    // 4th Level Fallback: Direct property match on proposal's own prazo and coeficiente fields
-    if (!option) {
-      const propPrazo = typeof proposal.prazo === "number" 
-        ? proposal.prazo 
-        : (proposal.prazo ? parseInt(proposal.prazo.toString(), 10) : null);
-        
-      const propCoef = typeof proposal.coeficiente === "number" 
-        ? proposal.coeficiente 
-        : (proposal.coeficiente ? parseFloat(proposal.coeficiente.toString().replace(",", ".")) : null);
-
-      if (propPrazo !== null && propCoef !== null) {
-        option = allOptions.find(opt => {
-          const coefDiff = Math.abs(opt.coeficiente - propCoef);
-          const coefMatches = coefDiff < 0.00001;
-          const prazoMatches = opt.prazo === propPrazo;
-          
-          let bancoMatches = true;
-          if (proposal.banco && opt.nome_tabela) {
-            const cleanPropBanco = proposal.banco.toLowerCase().replace(/\bbanco\b/g, "").replace(/[\s\-_]/g, "").trim();
-            const cleanOptTable = opt.nome_tabela.toLowerCase().replace(/\bbanco\b/g, "").replace(/[\s\-_]/g, "").trim();
-            bancoMatches = cleanOptTable.includes(cleanPropBanco) || cleanPropBanco.includes(cleanOptTable);
-          }
-          
-          return prazoMatches && coefMatches && bancoMatches;
-        });
-      }
-    }
-
-    if (option && option.percentual_comissao !== undefined && option.percentual_comissao !== null) {
-      const comPercent = typeof option.percentual_comissao === "string" 
-        ? parseFloat(option.percentual_comissao.replace(",", ".")) 
-        : option.percentual_comissao;
-      return isNaN(comPercent) ? null : comPercent;
-    }
-
-    return null
-  }, [dbProdutosConfigs])
+    return commissionRate
+  }, [dbProdutosConfigs, commissionRate])
 
   const fetchProposals = async () => {
     setIsLoading(true)
@@ -598,8 +489,8 @@ export default function ContasAReceberPage() {
       const comPercent = getCommissionPercentage(proposal)
       const min = minComissaoPercent !== "" ? parseFloat(minComissaoPercent) : null
       const max = maxComissaoPercent !== "" ? parseFloat(maxComissaoPercent) : null
-      if (min !== null && (comPercent === null || comPercent < min)) return false
-      if (max !== null && (comPercent === null || comPercent > max)) return false
+      if (min !== null && comPercent < min) return false
+      if (max !== null && comPercent > max) return false
       return true
     })()
 
@@ -607,12 +498,6 @@ export default function ContasAReceberPage() {
     const matchesComissaoValor = (() => {
       const val = proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0
       const comPercent = getCommissionPercentage(proposal)
-      if (comPercent === null) {
-        const min = minComissaoValor !== "" ? parseFloat(minComissaoValor) : null
-        const max = maxComissaoValor !== "" ? parseFloat(maxComissaoValor) : null
-        if (min !== null || max !== null) return false
-        return true
-      }
       const calculatedCommission = (val * comPercent) / 100
       const min = minComissaoValor !== "" ? parseFloat(minComissaoValor) : null
       const max = maxComissaoValor !== "" ? parseFloat(maxComissaoValor) : null
@@ -642,7 +527,6 @@ export default function ContasAReceberPage() {
   const estimatedComissions = filteredProposals.reduce((sum, p) => {
     const valOp = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
     const comPercent = getCommissionPercentage(p)
-    if (comPercent === null) return sum
     return sum + (valOp * comPercent) / 100
   }, 0)
 
@@ -688,7 +572,7 @@ export default function ContasAReceberPage() {
     filteredProposals.forEach((p) => {
       const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
       const comPercent = getCommissionPercentage(p)
-      const comVal = comPercent !== null ? (val * comPercent) / 100 : null
+      const comVal = (val * comPercent) / 100
       const dateStr = p.data_pago_cliente 
         ? format(new Date(p.data_pago_cliente), "dd/MM/yyyy HH:mm") 
         : p.updated_at 
@@ -706,9 +590,9 @@ export default function ContasAReceberPage() {
         convenio: p.convenio || "-",
         operacao: p.tipo_operacao || "-",
         valor: val,
-        comissao_pct: comPercent !== null ? comPercent / 100 : "",
+        comissao_pct: comPercent / 100,
         pago_em: dateStr,
-        comissao_val: comVal !== null ? comVal : "",
+        comissao_val: comVal,
       })
 
       // Number formatting
@@ -1094,7 +978,7 @@ export default function ContasAReceberPage() {
                   paginatedProposals.map((proposal, index) => {
                     const valOp = (proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
                     const comPercent = getCommissionPercentage(proposal)
-                    const calculatedCommission = comPercent !== null ? (valOp * comPercent) / 100 : null
+                    const calculatedCommission = (valOp * comPercent) / 100
                     
                     return (
                       <React.Fragment key={proposal.id_lead}>
@@ -1147,7 +1031,7 @@ export default function ContasAReceberPage() {
                             R$ {valOp.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                           </td>
                           <td className="px-5 py-4 text-[11px] font-bold text-slate-500 text-center whitespace-nowrap">
-                            {comPercent !== null ? `${comPercent.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : ""}
+                            {comPercent.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
                           </td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500 whitespace-nowrap">
                             {proposal.data_pago_cliente ? (
@@ -1159,7 +1043,7 @@ export default function ContasAReceberPage() {
                             )}
                           </td>
                           <td className="px-5 py-4 text-[11px] font-bold text-emerald-600 text-right whitespace-nowrap">
-                            {calculatedCommission !== null ? `R$ ${calculatedCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""}
+                            R$ {calculatedCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                           </td>
                           <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             <button

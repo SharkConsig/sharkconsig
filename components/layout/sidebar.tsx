@@ -157,13 +157,13 @@ const allMenuItems = [
         name: "CONTAS A PAGAR", 
         href: "/financeiro/contas-a-pagar", 
         icon: Landmark, 
-        roles: ["Administrador", "Desenvolvedor", "Operacional"] 
+        roles: ["Administrador", "Desenvolvedor"] 
       },
       { 
         name: "CONTAS A RECEBER", 
         href: "/financeiro/contas-a-receber", 
         icon: ClipboardList, 
-        roles: ["Administrador", "Desenvolvedor", "Operacional"] 
+        roles: ["Administrador", "Desenvolvedor"] 
       }
     ]
   },
@@ -208,14 +208,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
-        // Se for financeiro, somente visível para Administrativo, Desenvolvedor e Administrador
-        if (item.href?.startsWith("/financeiro")) {
-          const roleStr = perfil?.role || ""
-          return ["Administrativo", "Desenvolvedor", "Administrador"].some(
-            r => r.toLowerCase() === roleStr.toLowerCase()
-          )
-        }
-
         // Se for admin via email (superadmin), vê tudo
         if (isAdmin) return true
         

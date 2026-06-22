@@ -90,12 +90,6 @@ interface TicketAtendimentoProps {
 export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoProps) {
   const { perfil, user, isEstagio } = useAuth()
   const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
-  const canChangeStatus = !!(perfil?.role && [
-    "Operacional",
-    "Administrador",
-    "Admin",
-    "Desenvolvedor"
-  ].some(r => r.toLowerCase() === perfil.role.toLowerCase()));
   const [messages, setMessages] = useState<Message[]>([])
   const [initialDesc, setInitialDesc] = useState(ticket.descricao || ticket.description || ticket.content || "")
 
@@ -858,69 +852,67 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
             )}
             <div className="flex flex-wrap items-end gap-3">
               {/* Status Selector UI */}
-              {canChangeStatus && (
-                <div className="flex flex-col gap-1 relative" ref={statusDropdownRef}>
-                  <label className="text-[9px] font-bold text-slate-500/80 uppercase tracking-widest pl-1">ALTERAR STATUS</label>
-                  
-                  <div 
-                    onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
-                    className="h-[38px] px-3 rounded-lg border border-slate-200 bg-white flex items-center justify-between cursor-pointer min-w-[200px] hover:border-primary/30 transition-all shadow-sm"
-                  >
-                    <span className="text-[11px] font-bold text-slate-600 uppercase">
-                      {selectedStatus?.nome || "SELECIONE UM STATUS"}
-                    </span>
-                    <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform", isStatusDropdownOpen && "rotate-180")} />
-                  </div>
+              <div className="flex flex-col gap-1 relative" ref={statusDropdownRef}>
+                <label className="text-[9px] font-bold text-slate-500/80 uppercase tracking-widest pl-1">ALTERAR STATUS</label>
+                
+                <div 
+                  onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                  className="h-[38px] px-3 rounded-lg border border-slate-200 bg-white flex items-center justify-between cursor-pointer min-w-[200px] hover:border-primary/30 transition-all shadow-sm"
+                >
+                  <span className="text-[11px] font-bold text-slate-600 uppercase">
+                    {selectedStatus?.nome || "SELECIONE UM STATUS"}
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform", isStatusDropdownOpen && "rotate-180")} />
+                </div>
 
-                  {isStatusDropdownOpen && (
-                    <div className="absolute top-[18px] left-0 w-full bg-white border border-slate-100 rounded-xl shadow-2xl z-[100] animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden flex flex-col max-h-[300px]">
-                      {/* Search Input */}
-                      <div className="p-2 border-b border-slate-50 bg-slate-50/50 sticky top-0 z-10">
-                        <div className="relative">
-                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                          <input 
-                            autoFocus
-                            type="text"
-                            placeholder="Buscar status..."
-                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                            value={statusSearchTerm}
-                            onChange={(e) => setStatusSearchTerm(e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Options List */}
-                      <div className="overflow-y-auto custom-scrollbar p-1">
-                        {filteredStatuses.length > 0 ? (
-                          filteredStatuses.map((s) => (
-                            <div
-                              key={s.id}
-                              onClick={() => {
-                                setSelectedStatusId(s.id)
-                                setIsStatusDropdownOpen(false)
-                                setStatusSearchTerm("")
-                              }}
-                              className={cn(
-                                "px-3 py-2.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer flex items-center justify-between group",
-                                selectedStatusId === s.id 
-                                  ? "bg-primary text-white" 
-                                  : "text-slate-600 hover:bg-slate-50"
-                              )}
-                            >
-                              <span>{s.nome}</span>
-                              {selectedStatusId === s.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                            </div>
-                          ))
-                        ) : (
-                          <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic">
-                            Nenhum status encontrado
-                          </div>
-                        )}
+                {isStatusDropdownOpen && (
+                  <div className="absolute top-[18px] left-0 w-full bg-white border border-slate-100 rounded-xl shadow-2xl z-[100] animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden flex flex-col max-h-[300px]">
+                    {/* Search Input */}
+                    <div className="p-2 border-b border-slate-50 bg-slate-50/50 sticky top-0 z-10">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <input 
+                          autoFocus
+                          type="text"
+                          placeholder="Buscar status..."
+                          className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                          value={statusSearchTerm}
+                          onChange={(e) => setStatusSearchTerm(e.target.value)}
+                        />
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
+
+                    {/* Options List */}
+                    <div className="overflow-y-auto custom-scrollbar p-1">
+                      {filteredStatuses.length > 0 ? (
+                        filteredStatuses.map((s) => (
+                          <div
+                            key={s.id}
+                            onClick={() => {
+                              setSelectedStatusId(s.id)
+                              setIsStatusDropdownOpen(false)
+                              setStatusSearchTerm("")
+                            }}
+                            className={cn(
+                              "px-3 py-2.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer flex items-center justify-between group",
+                              selectedStatusId === s.id 
+                                ? "bg-primary text-white" 
+                                : "text-slate-600 hover:bg-slate-50"
+                            )}
+                          >
+                            <span>{s.nome}</span>
+                            {selectedStatusId === s.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic">
+                          Nenhum status encontrado
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <Button 
                 onClick={handleSendMessage}
