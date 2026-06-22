@@ -218,6 +218,47 @@ export default function SearchClientPage() {
                     {statusUpper}
                   </span>
                 </div>
+
+                <div className="flex flex-col md:items-end justify-center">
+                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Abertura</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-[12px] font-bold text-slate-700">
+                      {(() => {
+                        if (!chamado.created_at) return "--/--/----";
+                        try {
+                          const d = new Date(chamado.created_at);
+                          if (isNaN(d.getTime())) return "--/--/----";
+                          const day = String(d.getDate()).padStart(2, '0');
+                          const month = String(d.getMonth() + 1).padStart(2, '0');
+                          const year = d.getFullYear();
+                          return `${day}/${month}/${year}`;
+                        } catch (e) {
+                          return String(chamado.created_at).split('T')[0] || "Sem data";
+                        }
+                      })()}
+                    </div>
+                    <div className="text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200/60 rounded px-1.5 py-0.5 uppercase tracking-tight">
+                      {(() => {
+                        if (!chamado.created_at) return "0 dias passados";
+                        try {
+                          const createdDate = new Date(chamado.created_at);
+                          if (isNaN(createdDate.getTime())) return "";
+                          const today = new Date();
+                          const createdDateZero = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
+                          const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                          const diffTime = todayZero.getTime() - createdDateZero.getTime();
+                          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                          if (diffDays <= 0) {
+                            return "0 dias passados (Hoje)";
+                          }
+                          return `${diffDays} ${diffDays === 1 ? "dia passado" : "dias passados"}`;
+                        } catch (e) {
+                          return "";
+                        }
+                      })()}
+                    </div>
+                  </div>
+                </div>
               </div>
             );
           })}
