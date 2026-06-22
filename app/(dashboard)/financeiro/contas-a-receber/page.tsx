@@ -31,7 +31,8 @@ import {
   Lock,
   MoreVertical,
   Check,
-  Edit2
+  Edit2,
+  MessageSquare
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "react-hot-toast"
@@ -184,41 +185,156 @@ export default function ContasAReceberPage() {
       return commissionRate
     }
 
+    // Helper to safely parse strings/numbers as percentage
+    const parsePercent = (val: string | number | null | undefined) => {
+      if (val === undefined || val === null || val === "") return undefined;
+      const parsed = typeof val === "string" ? parseFloat(val.replace(",", ".")) : parseFloat(val);
+      return isNaN(parsed) ? undefined : parsed;
+    }
+
+    // Extract term from label (e.g., "SIAPE (96x | 0.02324)" -> 96, or "SIAPE - 96x 0.02324" -> 96)
+    const extractPrazoNum = (label: string | null | undefined): number | null => {
+      if (!label) return null;
+      const match = label.match(/(\d+)\s*x/i);
+      if (match) return parseInt(match[1], 10);
+      const genericMatch = label.match(/\((\d{1,3})\s*\|/);
+      if (genericMatch) return parseInt(genericMatch[1], 10);
+      return null;
+    }
+
+    // Extract coefficient from label (e.g., "SIAPE (96x | 0.02103)" -> 0.02103, or "96x 0.02103" -> 0.02103)
+    const extractCoeficienteNum = (label: string | null | undefined): number | null => {
+      if (!label) return null;
+      const match = label.match(/x\s*[| ]\s*([0-9]+[.,][0-9]+)/i);
+      if (match) return parseFloat(match[1].replace(',', '.'));
+      const genericMatch = label.match(/(0[.,][0-9]{2,})/);
+      if (genericMatch) return parseFloat(genericMatch[0].replace(',', '.'));
+      return null;
+    }
+
+    // Extract table name portion from coefficient text
+    let parsedTableName = "";
+    const cpStr = proposal.coeficiente_prazo.trim();
+    if (cpStr.includes('(')) {
+      parsedTableName = cpStr.split('(')[0].trim();
+    } else if (cpStr.includes('-')) {
+      parsedTableName = cpStr.split('-')[0].trim();
+    } else {
+      parsedTableName = cpStr;
+    }
+
+    const normalizeStr = (s: string | null | undefined) => {
+      if (!s) return "";
+      return s
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // remove accents
+        .replace(/[^a-z0-9]/g, "")      // remove non-alphanumeric
+        .trim();
+    }
+
+    const normParsedName = normalizeStr(parsedTableName);
+    const parsedPrazo = extractPrazoNum(proposal.coeficiente_prazo);
+    const parsedCoef = extractCoeficienteNum(proposal.coeficiente_prazo);
+
     const allOptions = dbProdutosConfigs.flatMap(config => {
+      const getConvenioName = () => {
+        if (!config.convenios) return undefined;
+        if (Array.isArray(config.convenios)) return config.convenios[0]?.nome;
+        return (config.convenios as unknown as { nome: string }).nome;
+      }
+      const convNome = getConvenioName();
+
       if (config.regras && config.regras.length > 0) {
         return config.regras
           .filter((r: { ativo?: boolean }) => r.ativo !== false)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .map((regra: any) => ({
             nome_tabela: config.nome_tabela,
-            prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+            prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo, 10) : regra.prazo,
             coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
-            percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
-            percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao) : undefined,
-            convenioNome: config.convenios?.nome
+            percentual_producao: parsePercent(regra.percentual_producao),
+            percentual_comissao: parsePercent(regra.percentual_comissao),
+            convenioNome: convNome
           }));
       }
       return [{
         nome_tabela: config.nome_tabela,
-        prazo: config.prazo || 0,
-        coeficiente: config.coeficiente || 0,
-        percentual_producao: config.percentual_producao || 0,
-        percentual_comissao: config.percentual_comissao || undefined,
-        convenioNome: config.convenios?.nome
+        prazo: typeof config.prazo === 'string' ? parseInt(config.prazo, 10) : (config.prazo || 0),
+        coeficiente: typeof config.coeficiente === 'string' ? parseFloat(config.coeficiente.replace(',', '.')) : (config.coeficiente || 0),
+        percentual_producao: parsePercent(config.percentual_producao),
+        percentual_comissao: parsePercent(config.percentual_comissao),
+        convenioNome: convNome
       }];
     });
 
-    const option = allOptions.find(opt => {
-      const labelText = opt.nome_tabela 
+    let bestMatch: typeof allOptions[0] | null = null;
+    let highestScore = -1;
+
+    for (const opt of allOptions) {
+      let score = 0;
+
+      // 1. Math matching (numerical metrics are precise and immune to string formatting)
+      const matchesPrazo = parsedPrazo !== null && opt.prazo === parsedPrazo;
+      const matchesCoef = parsedCoef !== null && opt.coeficiente !== null && Math.abs(opt.coeficiente - parsedCoef) < 0.0001;
+
+      if (matchesPrazo && matchesCoef) {
+        score += 150; // Huge reward for matching exact rule numbers (physical characteristics)
+      } else if (matchesPrazo) {
+        score += 15;
+      } else if (matchesCoef) {
+        score += 15;
+      }
+
+      // 2. Name matching
+      const optName = opt.nome_tabela || opt.convenioNome || "";
+      const normOptName = normalizeStr(optName);
+
+      if (normParsedName && normOptName) {
+        if (normOptName === normParsedName) {
+          score += 100; // Exact name match
+        } else if (normParsedName.startsWith(normOptName) || normOptName.startsWith(normParsedName)) {
+          score += 60; // Prefix or containment
+        } else {
+          // Check overlapping alphabetic words
+          const wordsParsed = normParsedName.split(/\s+/).filter(w => w.length > 2);
+          const wordsOpt = normOptName.split(/\s+/).filter(w => w.length > 2);
+          let matchCount = 0;
+          for (const wp of wordsParsed) {
+            if (wordsOpt.includes(wp)) matchCount++;
+          }
+          score += matchCount * 15;
+        }
+      }
+
+      if (score > highestScore) {
+        highestScore = score;
+        bestMatch = opt;
+      }
+    }
+
+    // If we have a decent match, return its commission rate
+    if (bestMatch && highestScore >= 15 && bestMatch.percentual_comissao !== undefined) {
+      return bestMatch.percentual_comissao;
+    }
+
+    // Fallback: try direct text matching of constructed labels as built in options list
+    const exactClean = allOptions.find(opt => {
+      const labelTextDot = opt.nome_tabela 
         ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
         : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente}`;
-      
-      return labelText === proposal.coeficiente_prazo || 
-             (opt.nome_tabela && proposal.coeficiente_prazo.startsWith(opt.nome_tabela));
+
+      const labelTextComma = opt.nome_tabela 
+        ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente.toString().replace('.', ',')})`
+        : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente.toString().replace('.', ',')}`;
+
+      const cleanLabel = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+      const cpClean = cleanLabel(proposal.coeficiente_prazo);
+      return cleanLabel(labelTextDot) === cpClean || cleanLabel(labelTextComma) === cpClean;
     });
 
-    if (option && option.percentual_comissao !== undefined) {
-      return option.percentual_comissao
+    if (exactClean && exactClean.percentual_comissao !== undefined) {
+      return exactClean.percentual_comissao;
     }
 
     return commissionRate
@@ -243,7 +359,10 @@ export default function ContasAReceberPage() {
 
       // Fetch product configs to match commission percentages
       try {
-        const { data: configsData, error: configsErr } = await supabase
+        let configsData = null
+        let configsErr = null
+        
+        const resQuery = await supabase
           .from('produtos_config')
           .select(`
             id,
@@ -257,6 +376,18 @@ export default function ContasAReceberPage() {
             ativo,
             convenios (nome)
           `)
+        configsData = resQuery.data
+        configsErr = resQuery.error
+
+        if (configsErr) {
+          console.warn("Retrying fetch with select('*') fallback because of relation error:", configsErr.message)
+          const fallbackRes = await supabase
+            .from('produtos_config')
+            .select('*')
+          configsData = fallbackRes.data
+          configsErr = fallbackRes.error
+        }
+
         if (!configsErr && configsData) {
           setDbProdutosConfigs(configsData)
         }
@@ -530,6 +661,20 @@ export default function ContasAReceberPage() {
     return sum + (valOp * comPercent) / 100
   }, 0)
 
+  const receivedComissions = filteredProposals.reduce((sum, p) => {
+    if (!receivedProposalIds[p.id_lead]) return sum
+    const valOp = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+    const comPercent = getCommissionPercentage(p)
+    return sum + (valOp * comPercent) / 100
+  }, 0)
+
+  const toReceiveComissions = filteredProposals.reduce((sum, p) => {
+    if (receivedProposalIds[p.id_lead]) return sum
+    const valOp = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+    const comPercent = getCommissionPercentage(p)
+    return sum + (valOp * comPercent) / 100
+  }, 0)
+
   // Exports results to excel
   const exportToExcel = async () => {
     if (filteredProposals.length === 0) {
@@ -629,7 +774,7 @@ export default function ContasAReceberPage() {
       )}>
         
         {/* Dashboard Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
           {/* Valor Total Recebível */}
           <Card id="card-total-operacoes" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
             <CardContent className="p-5">
@@ -649,15 +794,48 @@ export default function ContasAReceberPage() {
           {/* Comissão Estimada */}
           <Card id="card-comissoes-estimadas" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
             <CardContent className="p-5">
-              <div className="flex justify-between items-start mb-1 h-6 gap-2">
-                <p className="text-[9px] font-bold text-[#171717] uppercase leading-tight tracking-widest text-[#171717]/80">COMISSÃO</p>
-              </div>
+              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">COMISSÃO</p>
               <p className="text-[17px] font-black text-emerald-600 tracking-tight mb-3">
                 R$ {estimatedComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </p>
-              <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wide leading-none">
-                Média de {commissionRate}% por proposta
+              <div className="flex items-center gap-2">
+                <div className="bg-[#1e293b] px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                  {filteredProposals.length}
+                </div>
+                <span className="text-[9px] font-bold text-[#171717]/80 uppercase tracking-widest leading-none">Proposta(s)</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Comissão Recebida */}
+          <Card id="card-comissoes-recebidas" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
+            <CardContent className="p-5">
+              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">COMISSÃO RECEBIDA</p>
+              <p className="text-[17px] font-black text-emerald-700 tracking-tight mb-3">
+                R$ {receivedComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </p>
+              <div className="flex items-center gap-2">
+                <div className="bg-emerald-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                  {filteredProposals.filter(p => !!receivedProposalIds[p.id_lead]).length}
+                </div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Pago(s)</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Comissão A Receber */}
+          <Card id="card-comissoes-a-receber" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
+            <CardContent className="p-5">
+              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">COMISSÃO A RECEBER</p>
+              <p className="text-[17px] font-black text-sky-600 tracking-tight mb-3">
+                R$ {toReceiveComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="bg-sky-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                  {filteredProposals.filter(p => !receivedProposalIds[p.id_lead]).length}
+                </div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Pendente(s)</span>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -1063,127 +1241,38 @@ export default function ContasAReceberPage() {
 
                         {/* Expandable detailed row panel */}
                         {selectedProposalDetail?.id_lead === proposal.id_lead && (
-                          <tr className="bg-slate-100/50">
-                            <td colSpan={10} className="px-6 py-6 border-b border-indigo-100">
-                              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                                
-                                {/* Banking account details */}
-                                <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-indigo-100 shadow-sm space-y-3.5">
-                                  <h4 className="text-xs font-black text-indigo-700 tracking-wider uppercase flex items-center gap-1.5 border-b border-indigo-50 pb-2">
-                                    <Building2 className="w-4 h-4" /> Conta para Recebimento / PIX
+                          <tr className="bg-slate-50/20">
+                            <td colSpan={10} className="px-6 py-5 border-b border-slate-100">
+                              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
+                                <div className="space-y-2">
+                                  <h4 className="text-xs font-black text-slate-700 tracking-widest uppercase border-b border-slate-100 pb-2 flex items-center gap-2">
+                                    <MessageSquare className="w-4 h-4 text-slate-500" /> Observações e Comentários Financeiros
                                   </h4>
-                                  <div className="grid grid-cols-2 gap-3 text-xs">
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Banco Destinatário</span>
-                                      <p className="font-bold text-slate-700 mt-0.5 uppercase">
-                                        {proposal.banco_cliente || <span className="text-rose-400 italic font-black">Não cadastrado</span>}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Conta</span>
-                                      <p className="font-bold text-slate-700 mt-0.5 uppercase">
-                                        {proposal.tipo_conta || "-"}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Agência</span>
-                                      <p className="font-bold text-slate-700 mt-0.5">
-                                        {proposal.agencia || <span className="text-rose-400 italic font-black">Vazio</span>}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Conta com DV</span>
-                                      <p className="font-bold text-slate-700 mt-0.5">
-                                        {proposal.conta ? `${proposal.conta}${proposal.dv ? "-" + proposal.dv : ""}` : <span className="text-rose-400 italic font-black">Vazio</span>}
-                                      </p>
-                                    </div>
-                                    <div className="col-span-2 pt-1">
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chave PIX Informada</span>
-                                      <p className="font-bold text-indigo-600 bg-indigo-50/40 p-2 rounded-lg border border-indigo-50/50 break-all select-all mt-1">
-                                        {proposal.chave_pix || <span className="text-rose-400 italic font-medium">Nenhum PIX informado</span>}
-                                      </p>
-                                    </div>
-                                  </div>
+                                  <textarea
+                                    id={`textarea-obs-receber-${proposal.id_lead}`}
+                                    rows={4}
+                                    className="w-full text-xs p-3.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-semibold text-slate-700 placeholder:text-slate-400 bg-slate-50/20"
+                                    placeholder="Adicione observações financeiras internas sobre comissão, repasse ou pós-venda..."
+                                    value={tempNotes}
+                                    onChange={(e) => setTempNotes(e.target.value)}
+                                  />
                                 </div>
-
-                                {/* Proposal operational details */}
-                                <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm space-y-4">
-                                  <h4 className="text-xs font-black text-slate-700 tracking-wider uppercase flex items-center gap-1.5 border-b border-slate-100 pb-2">
-                                    <Lock className="w-4 h-4" /> Informações de Operação e Atribuição
-                                  </h4>
-                                  <div className="grid grid-cols-2 gap-3 text-xs">
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID Único do Lead</span>
-                                      <p className="font-bold text-slate-700 mt-0.5 font-mono text-[11px] bg-slate-50 px-2 py-0.5 rounded-md border text-center">
-                                        {proposal.id_lead}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Número do Contrato (ADE)</span>
-                                      <p className="font-bold text-slate-700 mt-0.5 text-[11px]">
-                                        {proposal.ade || <span className="text-orange-400 italic">-</span>}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Operação</span>
-                                      <p className="font-bold text-slate-700 mt-0.5 uppercase">
-                                        {proposal.tipo_operacao}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Prazo / Parcelas</span>
-                                      <p className="font-bold text-slate-700 mt-0.5">
-                                        {proposal.prazo || "-"} parcelas
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data Consulta</span>
-                                      <p className="font-bold text-slate-700 mt-0.5">
-                                        {proposal.data_consulta ? format(new Date(proposal.data_consulta), "dd/MM/yyyy HH:mm") : "-"}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data Digitação</span>
-                                      <p className="font-bold text-slate-700 mt-0.5">
-                                        {proposal.data_digitacao ? format(new Date(proposal.data_digitacao), "dd/MM/yyyy HH:mm") : "-"}
-                                      </p>
-                                    </div>
-                                  </div>
+                                <div className="flex justify-end pt-1">
+                                  <Button
+                                    id={`btn-save-obs-${proposal.id_lead}`}
+                                    size="sm"
+                                    disabled={isNotesSaving}
+                                    onClick={() => saveProposalNotes(proposal)}
+                                    className="h-9 px-6 text-[10px] font-black uppercase tracking-widest bg-[#171717] hover:bg-[#171717]/90 text-white rounded-xl gap-2 cursor-pointer transition-all active:scale-95 shadow-sm"
+                                  >
+                                    {isNotesSaving ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <PiggyBank className="w-4 h-4" />
+                                    )}
+                                    Salvar Comentário
+                                  </Button>
                                 </div>
-
-                                {/* Financial System Notes / Comments */}
-                                <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col justify-between">
-                                  <div className="space-y-3">
-                                    <h4 className="text-xs font-black text-slate-700 tracking-wider uppercase border-b border-slate-100 pb-2">
-                                      Observação / Comentários Financeiros
-                                    </h4>
-                                    <textarea
-                                      id={`textarea-obs-receber-${proposal.id_lead}`}
-                                      rows={3}
-                                      className="w-full text-xs p-2.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary font-medium text-slate-600 placeholder:text-slate-400"
-                                      placeholder="Adicione observações financeiras internas sobre comissão, repasse ou pós-venda..."
-                                      value={tempNotes}
-                                      onChange={(e) => setTempNotes(e.target.value)}
-                                    />
-                                  </div>
-                                  <div className="flex justify-end pt-3">
-                                    <Button
-                                      id={`btn-save-obs-${proposal.id_lead}`}
-                                      size="sm"
-                                      disabled={isNotesSaving}
-                                      onClick={() => saveProposalNotes(proposal)}
-                                      className="h-8 px-4 text-[10px] font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg gap-2 cursor-pointer transition-all active:scale-95"
-                                    >
-                                      {isNotesSaving ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        <PiggyBank className="w-3.5 h-3.5" />
-                                      )}
-                                      Salvar Comentário
-                                    </Button>
-                                  </div>
-                                </div>
-
                               </div>
                             </td>
                           </tr>

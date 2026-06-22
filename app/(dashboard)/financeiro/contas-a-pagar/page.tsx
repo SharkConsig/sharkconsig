@@ -340,7 +340,7 @@ export default function ContasAPagarPage() {
             <Button
               id="btn-add-expense-trigger"
               onClick={() => setIsAddModalOpen(true)}
-              className="h-10 px-5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black uppercase tracking-widest gap-1.5 cursor-pointer rounded-lg border-2 border-transparent"
+              className="h-10 px-5 bg-[#171717] hover:bg-[#171717]/90 text-white text-[11px] font-black uppercase tracking-widest gap-1.5 cursor-pointer rounded-lg border-2 border-transparent"
             >
               <Plus className="w-4 h-4" />
               Lançar despesa
@@ -474,7 +474,7 @@ export default function ContasAPagarPage() {
             </div>
 
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-slate-100">
-              <span className="text-[11px] font-black text-indigo-500 uppercase tracking-widest">
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest">
                 Ledger Corporativo Local persistido no navegador
               </span>
               <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -504,7 +504,7 @@ export default function ContasAPagarPage() {
         <Card id="card-pagar-list-wrapper" className="border border-slate-200 bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="p-5 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 bg-indigo-50 text-indigo-800 text-[10px] font-black rounded-full">
+              <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[10px] font-black rounded-full">
                 {filteredBills.length} Contas
               </span>
               <h2 className="text-xs font-black text-slate-700 tracking-widest uppercase">Razão Operacional de Despesas</h2>
@@ -543,7 +543,7 @@ export default function ContasAPagarPage() {
                       <td className="px-5 py-4 text-xs font-extrabold text-slate-800 uppercase">
                         {bill.fornecedor}
                       </td>
-                      <td className="px-4 py-4 text-xs font-bold text-indigo-600/90 uppercase">
+                      <td className="px-4 py-4 text-xs font-bold text-slate-600 uppercase">
                         {bill.categoria}
                       </td>
                       <td className="px-4 py-4 text-xs font-black text-slate-800 text-right whitespace-nowrap">
@@ -644,7 +644,7 @@ export default function ContasAPagarPage() {
           <Card className="w-full max-w-md bg-white rounded-2xl overflow-hidden shadow-2xl border border-slate-100">
             <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
               <div>
-                <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">ADMINISTRATIVO</span>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">ADMINISTRATIVO</span>
                 <h3 className="text-sm font-black uppercase tracking-wide">Lançar Nova Despesa</h3>
               </div>
               <button 
@@ -695,7 +695,7 @@ export default function ContasAPagarPage() {
                     required
                     value={dataVencimento}
                     onChange={(e) => setDataVencimento(e.target.value)}
-                    className="h-10 w-full text-xs border border-slate-200 rounded-lg px-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800"
+                    className="h-10 w-full text-xs border border-slate-200 rounded-lg px-3 focus:outline-none focus:ring-1 focus:ring-slate-400 font-bold text-slate-800"
                   />
                 </div>
               </div>
@@ -724,7 +724,7 @@ export default function ContasAPagarPage() {
                   placeholder="Instruções adicionais de pagamento, chave pix ou anexos/comentários..."
                   value={observacoes}
                   onChange={(e) => setObservacoes(e.target.value)}
-                  className="w-full text-xs font-medium text-slate-600 p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full text-xs font-medium text-slate-600 p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400"
                 />
               </div>
 
@@ -742,7 +742,7 @@ export default function ContasAPagarPage() {
                 <Button
                   id="modal-pagar-btn-save"
                   type="submit"
-                  className="h-10 text-[10px] font-black uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-5 cursor-pointer"
+                  className="h-10 text-[10px] font-black uppercase tracking-widest bg-[#171717] hover:bg-[#171717]/90 text-white rounded-lg px-5 cursor-pointer"
                 >
                   Lançar Despesa
                 </Button>
