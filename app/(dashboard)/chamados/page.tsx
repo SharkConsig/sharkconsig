@@ -20,7 +20,7 @@ import {
   Check,
   FileSpreadsheet
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, withRetry } from "@/lib/utils"
 import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
 import { ClientDetailsModal } from "@/components/clients/client-details-modal"
 import { supabase } from "@/lib/supabase"
@@ -268,11 +268,14 @@ export default function TicketsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
+  const isFirstLoadRef = React.useRef(true)
 
   const fetchTickets = useCallback(async (isSilent = false) => {
     if (!perfil || !user) return
 
-    if (!isSilent) setIsLoading(true)
+    const silent = (typeof isSilent === "boolean" ? isSilent : false) || !isFirstLoadRef.current
+    if (!silent) setIsLoading(true)
+    isFirstLoadRef.current = false
     try {
       let query = supabase
         .from('chamados')
@@ -281,12 +284,22 @@ export default function TicketsPage() {
           status_chamados:status_id (*)
         `)
 
-      // Aplicar filtros de data no servidor para melhor performance
+      // Aplicar filtros de data no servidor para melhor performance (conversão segura de fuso horário local para UTC)
       if (startDate && startDate.length === 10) {
-        query = query.gte('created_at', `${startDate}T00:00:00Z`)
+        const localStart = new Date(`${startDate}T00:00:00`)
+        if (!isNaN(localStart.getTime())) {
+          query = query.gte('created_at', localStart.toISOString())
+        } else {
+          query = query.gte('created_at', `${startDate}T00:00:00Z`)
+        }
       }
       if (endDate && endDate.length === 10) {
-        query = query.lte('created_at', `${endDate}T23:59:59Z`)
+        const localEnd = new Date(`${endDate}T23:59:59.999`)
+        if (!isNaN(localEnd.getTime())) {
+          query = query.lte('created_at', localEnd.toISOString())
+        } else {
+          query = query.lte('created_at', `${endDate}T23:59:59Z`)
+        }
       }
 
       // Aplicar filtros de permissão baseados na Role
@@ -318,13 +331,35 @@ export default function TicketsPage() {
         }
       }
 
-      const { data, error } = await query.order('updated_at', { ascending: false })
-
-      if (error) {
-        console.error("Erro no Supabase:", error)
-        throw error
+      // Superar o limite padrão de 1000 linhas do Supabase/PostgREST
+      let all: Ticket[] = []
+      let from = 0
+      const step = 1000
+      let finished = false
+      
+      const orderedQuery = query.order('updated_at', { ascending: false })
+      
+      while (!finished) {
+        const { data, error } = await withRetry(() => orderedQuery.range(from, from + step - 1))
+        
+        if (error) {
+          console.error("Erro no Supabase ao buscar intervalo:", error)
+          throw error
+        }
+        
+        if (!data || data.length === 0) {
+          finished = true
+        } else {
+          all = [...all, ...(data as Ticket[])]
+          if (data.length < step) {
+            finished = true
+          } else {
+            from += step
+          }
+        }
       }
-      setTickets((data as Ticket[]) || [])
+
+      setTickets(all)
     } catch (error: unknown) {
       console.error("Erro ao carregar chamados:", error)
       const message = error instanceof Error ? error.message : "Erro desconhecido"
@@ -334,16 +369,16 @@ export default function TicketsPage() {
         toast.error("Erro ao carregar a lista de chamados")
       }
     } finally {
-      if (!isSilent) setIsLoading(false)
+      setIsLoading(false)
     }
   }, [user?.id, perfil?.id, perfil?.role, startDate, endDate, user, perfil])
 
   useEffect(() => {
     if (user?.id && perfil?.id) {
-      // Primeira carga é normal, subsequentes podem ser silent
-      fetchTickets(tickets.length > 0)
+      // Carrega os chamados usando a nova lógica segura e paginada
+      fetchTickets()
     }
-  }, [fetchTickets, user?.id, perfil?.id, tickets.length])
+  }, [fetchTickets, user?.id, perfil?.id])
 
   useEffect(() => {
     setExpandedTicketId(null)
