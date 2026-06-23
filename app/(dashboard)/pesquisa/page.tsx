@@ -107,7 +107,7 @@ interface ClientData {
 }
 
 interface ConvenioProfile {
-  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr';
+  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem';
   client: ClientData;
   registrations: Registration[];
 }
@@ -122,13 +122,13 @@ export default function SearchClientPage() {
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
-  const [clientTickets, setClientTickets] = useState<any[]>([])
+  const [clientTickets, setClientTickets] = useState<Record<string, unknown>[]>([])
   const [isLoadingClientTickets, setIsLoadingClientTickets] = useState(false)
 
   useEffect(() => {
@@ -268,7 +268,7 @@ export default function SearchClientPage() {
   };
 
   const fetchRegistrationsForType = async (
-    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr',
+    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem',
     clientData: ClientData
   ): Promise<Registration[]> => {
     const ensureArray = (val: unknown): Record<string, unknown>[] => {
@@ -408,18 +408,86 @@ export default function SearchClientPage() {
           }))
         }
       }) as unknown as Registration[]
+    } else if (type === 'governo_rj') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('governo_rj_matriculas').select('*').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => {
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          situacao_funcional: null,
+          salario: 0,
+          orgao: r.orgao as string | null,
+          regime_juridico: null,
+          uf: 'RJ',
+          instituidores: []
+        }
+      }) as unknown as Registration[]
+    } else if (type === 'prefeitura_santo_andre') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('prefeitura_santo_andre_matriculas').select('*').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => {
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          situacao_funcional: null,
+          salario: 0,
+          orgao: r.orgao as string | null,
+          vinculo: r.vinculo as string | null,
+          regime_juridico: null,
+          uf: 'SP',
+          margem_bruta_cartao: r.margem_bruta_cartao || 0.00,
+          margem_liquida_cartao: r.margem_liquida_cartao || 0.00,
+          instituidores: []
+        }
+      }) as unknown as Registration[]
+    } else if (type === 'prefeitura_contagem') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('prefeitura_contagem_matriculas').select('*').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => {
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          situacao_funcional: r.situacao_funcional as string | null,
+          data_de_admissao: r.data_de_admissao as string | null,
+          salario: 0,
+          orgao: r.orgao as string | null,
+          regime_juridico: null,
+          uf: 'MG',
+          margem_emprestimo_bruta: r.margem_emprestimo_bruta || 0.00,
+          margem_emprestimo_liquida: r.margem_emprestimo_liquida || 0.00,
+          margem_cartao_bruta: r.margem_cartao_bruta || 0.00,
+          margem_cartao_liquida: r.margem_cartao_liquida || 0.00,
+          instituidores: []
+        }
+      }) as unknown as Registration[]
     }
     return []
   }
 
-  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null) => {
+  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | null) => {
     const tableMap = {
       siape: 'clientes',
       governo_sp: 'governo_sp_clientes',
       prefeitura_sp: 'prefeitura_sp_clientes',
       governo_pi: 'governo_pi_clientes',
       governo_ma: 'governo_ma_clientes',
-      governo_rr: 'governo_rr_clientes'
+      governo_rr: 'governo_rr_clientes',
+      governo_rj: 'governo_rj_clientes',
+      prefeitura_santo_andre: 'prefeitura_santo_andre_clientes',
+      prefeitura_contagem: 'prefeitura_contagem_clientes'
     }
 
     const foundProfiles: ConvenioProfile[] = []
@@ -439,9 +507,9 @@ export default function SearchClientPage() {
             telefone_2: (data.telefone_2 || data.telefone_recado) as string | null,
             telefone_3: data.telefone_3 as string | null,
           }
-          const regs = await fetchRegistrationsForType(type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr', clientObj)
+          const regs = await fetchRegistrationsForType(type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem', clientObj)
           return {
-            type: type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr',
+            type: type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem',
             client: clientObj,
             registrations: regs
           }
@@ -523,6 +591,9 @@ export default function SearchClientPage() {
         { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
         { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
         { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
+        { name: 'base_consulta_governo_rj', convenio: 'governo_rj' },
+        { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
+        { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
       ];
 
       const results = await Promise.all(
@@ -546,7 +617,7 @@ export default function SearchClientPage() {
 
       const quickData = results.find(r => r !== null) || null;
 
-      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null = null
+      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | null = null
       let resolvedCpf = cleanCPF
 
       if (quickData) {
@@ -558,6 +629,9 @@ export default function SearchClientPage() {
         else if (source === 'governo_pi') preferredType = 'governo_pi'
         else if (source === 'governo_ma') preferredType = 'governo_ma'
         else if (source === 'governo_rr') preferredType = 'governo_rr'
+        else if (source === 'governo_rj') preferredType = 'governo_rj'
+        else if (source === 'prefeitura_santo_andre') preferredType = 'prefeitura_santo_andre'
+        else if (source === 'prefeitura_contagem') preferredType = 'prefeitura_contagem'
       }
 
       await loadProfilesForCpf(resolvedCpf, preferredType)
@@ -633,6 +707,9 @@ export default function SearchClientPage() {
         { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
         { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
         { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
+        { name: 'base_consulta_governo_rj', convenio: 'governo_rj' },
+        { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
+        { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
       ];
 
       const results = await Promise.all(
@@ -656,7 +733,7 @@ export default function SearchClientPage() {
 
       const quickData = results.find(r => r !== null) || null;
 
-      const targetConvenio = quickData?.convenio as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | undefined
+      const targetConvenio = quickData?.convenio as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | undefined
       const finalCpf = quickData?.cpf || cleanCPF
       
       const isActuallyAPhone = digits.length >= 8 && digits.length <= 13
@@ -673,11 +750,14 @@ export default function SearchClientPage() {
         prefeitura_sp: 'prefeitura_sp_clientes',
         governo_pi: 'governo_pi_clientes',
         governo_ma: 'governo_ma_clientes',
-        governo_rr: 'governo_rr_clientes'
+        governo_rr: 'governo_rr_clientes',
+        governo_rj: 'governo_rj_clientes',
+        prefeitura_santo_andre: 'prefeitura_santo_andre_clientes',
+        prefeitura_contagem: 'prefeitura_contagem_clientes'
       }
 
       let foundCpf: string | null = null
-      let foundType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null = null
+      let foundType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | null = null
 
       for (const [type, table] of Object.entries(tableMap)) {
         const query = supabase.from(table).select('cpf')
@@ -692,7 +772,7 @@ export default function SearchClientPage() {
         const { data } = await withRetry(async () => await query.limit(1).maybeSingle())
         if (data?.cpf) {
           foundCpf = data.cpf as string
-          foundType = type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr'
+          foundType = type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem'
           break
         }
       }
@@ -837,7 +917,10 @@ export default function SearchClientPage() {
                       p.type === 'prefeitura_sp' ? 'PREFEITURA SP' :
                       p.type === 'governo_pi' ? 'GOVERNO PIAUÍ' :
                       p.type === 'governo_ma' ? 'GOVERNO MARANHÃO' :
-                      p.type === 'governo_rr' ? 'GOVERNO RORAIMA' : String(p.type).toUpperCase();
+                      p.type === 'governo_rr' ? 'GOVERNO RORAIMA' :
+                      p.type === 'governo_rj' ? 'GOVERNO RIO DE JANEIRO' :
+                      p.type === 'prefeitura_santo_andre' ? 'PREFEITURA SANTO ANDRÉ' :
+                      p.type === 'prefeitura_contagem' ? 'PREFEITURA CONTAGEM' : String(p.type).toUpperCase();
                     
                     return (
                       <button
@@ -2350,6 +2433,527 @@ export default function SearchClientPage() {
                                     tel3: unmaskPhone(client.telefone_3),
                                     origem: "pesquisa",
                                     convenio: "GOVERNO RORAIMA"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {clientType === 'governo_rj' && registrations.length > 0 && (() => {
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-rj-${reg.id}-${idx}`}
+                        type="button"
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
+                  {registrations[activeRegIndex] && (() => {
+                    const reg = registrations[activeRegIndex];
+                    
+                    return (
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                        <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-pink-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (GOVERNO RIO DE JANEIRO)</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[13px] font-bold text-slate-900">{reg.matricula}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.orgao || "NÃO INFORMADO"}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {renderClientTicketsHistory()}
+
+                          {/* Footer Buttons for GOV RJ */}
+                          <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button 
+                              onClick={() => {
+                                const rawCpf = client.cpf || "";
+                                const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: formattedCpf,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  margem: "R$ 0,00",
+                                  liquida5: "R$ 0,00",
+                                  beneficio5: "R$ 0,00",
+                                  convenio: "GOVERNO RIO DE JANEIRO",
+                                  matricula: reg.matricula || ""
+                                });
+                                router.push(`/chamados/novo?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Abrir Chamado
+                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "GOVERNO RIO DE JANEIRO"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {clientType === 'prefeitura_santo_andre' && registrations.length > 0 && (() => {
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-sa-${reg.id}-${idx}`}
+                        type="button"
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
+                  {registrations[activeRegIndex] && (() => {
+                    const reg = registrations[activeRegIndex];
+                    
+                    return (
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                        <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-violet-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (PREFEITURA DE SANTO ANDRÉ)</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[13px] font-bold text-slate-900">{reg.matricula}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.orgao || "NÃO INFORMADO"}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.vinculo || "NÃO INFORMADO"}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Margens Card */}
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-violet-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Margens de Cartão</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                              {/* Margem Bruta Cartão */}
+                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]">
+                                <div>
+                                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                    Margem Bruta Cartão
+                                  </p>
+                                  <p className="text-[17px] font-bold text-slate-900 tracking-tight">
+                                    {typeof reg.margem_bruta_cartao === 'number' 
+                                      ? reg.margem_bruta_cartao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                      : Number(reg.margem_bruta_cartao || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5 invisible">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                                  <span className="text-[8px] font-bold uppercase tracking-widest">STATUS</span>
+                                </div>
+                              </div>
+
+                              {/* Margem Líquida Cartão */}
+                              {(() => {
+                                const isPositive = (Number(reg.margem_liquida_cartao) || 0) > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                  )}>
+                                    <div>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-700/60" : "text-red-700/60"
+                                      )}>
+                                        Margem Líquida Cartão
+                                      </p>
+                                      <p className={cn(
+                                        "text-[17px] font-bold tracking-tight",
+                                        isPositive ? "text-emerald-700" : "text-red-700"
+                                      )}>
+                                        {typeof reg.margem_liquida_cartao === 'number' 
+                                          ? reg.margem_liquida_cartao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                          : Number(reg.margem_liquida_cartao || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-600" : "bg-red-600")}></div>
+                                      <span className={cn(
+                                        "text-[8px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-600" : "text-red-600"
+                                      )}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {renderClientTicketsHistory()}
+
+                          {/* Footer Buttons for PREF SA */}
+                          <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button 
+                              onClick={() => {
+                                const rawCpf = client.cpf || "";
+                                const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+                                const mBruta = typeof reg.margem_bruta_cartao === 'number' 
+                                  ? reg.margem_bruta_cartao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                  : Number(reg.margem_bruta_cartao || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                                const mLiquida = typeof reg.margem_liquida_cartao === 'number' 
+                                  ? reg.margem_liquida_cartao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                  : Number(reg.margem_liquida_cartao || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: formattedCpf,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  margem: mLiquida,
+                                  liquida5: "R$ 0,00",
+                                  beneficio5: "R$ 0,00",
+                                  convenio: "PREFEITURA SANTO ANDRÉ",
+                                  matricula: reg.matricula || ""
+                                });
+                                router.push(`/chamados/novo?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Abrir Chamado
+                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "PREFEITURA SANTO ANDRÉ"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {clientType === 'prefeitura_contagem' && registrations.length > 0 && (() => {
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-contagem-${reg.id}-${idx}`}
+                        type="button"
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
+                  {registrations[activeRegIndex] && (() => {
+                    const reg = registrations[activeRegIndex];
+                    
+                    return (
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                        <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-rose-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (PREFEITURA DE CONTAGEM)</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[13px] font-bold text-slate-900">{reg.matricula}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.orgao || "NÃO INFORMADO"}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data de Admissão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">
+                                  {reg.data_de_admissao ? formatDate(reg.data_de_admissao) : "NÃO INFORMADA"}
+                                </p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Situação do Funcionário</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.situacao_funcional || "NÃO INFORMADO"}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Margens Card */}
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-rose-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Margens de Empréstimo & Cartão</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                              {/* Margem Empréstimo Bruta */}
+                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]">
+                                <div>
+                                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                    Margem Empréstimo Bruta
+                                  </p>
+                                  <p className="text-[17px] font-bold text-slate-900 tracking-tight">
+                                    {typeof reg.margem_emprestimo_bruta === 'number' 
+                                      ? reg.margem_emprestimo_bruta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                      : Number(reg.margem_emprestimo_bruta || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5 invisible">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                                  <span className="text-[8px] font-bold uppercase tracking-widest">STATUS</span>
+                                </div>
+                              </div>
+
+                              {/* Margem Empréstimo Líquida */}
+                              {(() => {
+                                const isPositive = (Number(reg.margem_emprestimo_liquida) || 0) > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                  )}>
+                                    <div>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-700/60" : "text-red-700/60"
+                                      )}>
+                                        Margem Empréstimo Líquida
+                                      </p>
+                                      <p className={cn(
+                                        "text-[17px] font-bold tracking-tight",
+                                        isPositive ? "text-emerald-700" : "text-red-700"
+                                      )}>
+                                        {typeof reg.margem_emprestimo_liquida === 'number' 
+                                          ? reg.margem_emprestimo_liquida.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                          : Number(reg.margem_emprestimo_liquida || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-600" : "bg-red-600")}></div>
+                                      <span className={cn(
+                                        "text-[8px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-600" : "text-red-600"
+                                      )}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Margem Cartão Bruta */}
+                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]">
+                                <div>
+                                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                    Margem Cartão Bruta
+                                  </p>
+                                  <p className="text-[17px] font-bold text-slate-900 tracking-tight">
+                                    {typeof reg.margem_cartao_bruta === 'number' 
+                                      ? reg.margem_cartao_bruta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                      : Number(reg.margem_cartao_bruta || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5 invisible">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                                  <span className="text-[8px] font-bold uppercase tracking-widest">STATUS</span>
+                                </div>
+                              </div>
+
+                              {/* Margem Cartão Líquida */}
+                              {(() => {
+                                const isPositive = (Number(reg.margem_cartao_liquida) || 0) > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                  )}>
+                                    <div>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-700/60" : "text-red-700/60"
+                                      )}>
+                                        Margem Cartão Líquida
+                                      </p>
+                                      <p className={cn(
+                                        "text-[17px] font-bold tracking-tight",
+                                        isPositive ? "text-emerald-700" : "text-red-700"
+                                      )}>
+                                        {typeof reg.margem_cartao_liquida === 'number' 
+                                          ? reg.margem_cartao_liquida.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                          : Number(reg.margem_cartao_liquida || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-600" : "bg-red-600")}></div>
+                                      <span className={cn(
+                                        "text-[8px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-600" : "text-red-600"
+                                      )}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {renderClientTicketsHistory()}
+
+                          {/* Footer Buttons for PREF CONTAGEM */}
+                          <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button 
+                              onClick={() => {
+                                const rawCpf = client.cpf || "";
+                                const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+                                const mLiquida = typeof reg.margem_emprestimo_liquida === 'number' 
+                                  ? reg.margem_emprestimo_liquida.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                  : Number(reg.margem_emprestimo_liquida || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: formattedCpf,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  margem: mLiquida,
+                                  liquida5: "R$ 0,00",
+                                  beneficio5: "R$ 0,00",
+                                  convenio: "PREFEITURA CONTAGEM",
+                                  matricula: reg.matricula || ""
+                                });
+                                router.push(`/chamados/novo?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Abrir Chamado
+                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "PREFEITURA CONTAGEM"
                                   });
                                   router.push(`/propostas/nova?${params.toString()}`);
                                 }}

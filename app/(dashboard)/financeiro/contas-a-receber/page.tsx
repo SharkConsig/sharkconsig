@@ -129,8 +129,22 @@ export default function ContasAReceberPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("TODOS")
   const [selectedBankFilter, setSelectedBankFilter] = useState<string>("TODOS")
   const [selectedConvenioFilter, setSelectedConvenioFilter] = useState<string>("TODOS")
-  const [startDate, setStartDate] = useState("")
-  const [endDate, setEndDate] = useState("")
+  const [startDate, setStartDate] = useState(() => {
+    const now = new Date()
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+    const year = firstDay.getFullYear()
+    const month = String(firstDay.getMonth() + 1).padStart(2, "0")
+    const day = String(firstDay.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  })
+  const [endDate, setEndDate] = useState(() => {
+    const now = new Date()
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    const year = lastDay.getFullYear()
+    const month = String(lastDay.getMonth() + 1).padStart(2, "0")
+    const day = String(lastDay.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  })
   
   const [receivedFilter, setReceivedFilter] = useState<string>("TODOS")
   const [minValorOperacao, setMinValorOperacao] = useState("")
@@ -144,6 +158,7 @@ export default function ContasAReceberPage() {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null)
   
   const [receivedProposalIds, setReceivedProposalIds] = useState<Record<string, boolean>>({})
+  const [customCommissionPercents, setCustomCommissionPercents] = useState<Record<string, number>>({})
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -151,6 +166,14 @@ export default function ContasAReceberPage() {
       if (stored) {
         try {
           setReceivedProposalIds(JSON.parse(stored))
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      const storedPercents = window.localStorage.getItem("receber_custom_commission_percents")
+      if (storedPercents) {
+        try {
+          setCustomCommissionPercents(JSON.parse(storedPercents))
         } catch (e) {
           console.error(e)
         }
@@ -163,6 +186,21 @@ export default function ContasAReceberPage() {
       const updated = { ...prev, [idLead]: !prev[idLead] }
       if (typeof window !== "undefined") {
         window.localStorage.setItem("receber_pago_status_ids", JSON.stringify(updated))
+      }
+      return updated
+    })
+  }
+
+  const handleCommissionPercentChange = (idLead: string, value: number | undefined) => {
+    setCustomCommissionPercents(prev => {
+      const updated = { ...prev }
+      if (value === undefined || isNaN(value)) {
+        delete updated[idLead]
+      } else {
+        updated[idLead] = value
+      }
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("receber_custom_commission_percents", JSON.stringify(updated))
       }
       return updated
     })
@@ -617,7 +655,7 @@ export default function ContasAReceberPage() {
 
     // 3. COMISSÃO (%)
     const matchesComissaoPercent = (() => {
-      const comPercent = getCommissionPercentage(proposal)
+      const comPercent = customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead] : getCommissionPercentage(proposal)
       const min = minComissaoPercent !== "" ? parseFloat(minComissaoPercent) : null
       const max = maxComissaoPercent !== "" ? parseFloat(maxComissaoPercent) : null
       if (min !== null && comPercent < min) return false
@@ -628,7 +666,7 @@ export default function ContasAReceberPage() {
     // 4. COMISSÃO ($)
     const matchesComissaoValor = (() => {
       const val = proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0
-      const comPercent = getCommissionPercentage(proposal)
+      const comPercent = customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead] : getCommissionPercentage(proposal)
       const calculatedCommission = (val * comPercent) / 100
       const min = minComissaoValor !== "" ? parseFloat(minComissaoValor) : null
       const max = maxComissaoValor !== "" ? parseFloat(maxComissaoValor) : null
@@ -657,21 +695,21 @@ export default function ContasAReceberPage() {
   
   const estimatedComissions = filteredProposals.reduce((sum, p) => {
     const valOp = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
-    const comPercent = getCommissionPercentage(p)
+    const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
     return sum + (valOp * comPercent) / 100
   }, 0)
 
   const receivedComissions = filteredProposals.reduce((sum, p) => {
     if (!receivedProposalIds[p.id_lead]) return sum
     const valOp = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
-    const comPercent = getCommissionPercentage(p)
+    const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
     return sum + (valOp * comPercent) / 100
   }, 0)
 
   const toReceiveComissions = filteredProposals.reduce((sum, p) => {
     if (receivedProposalIds[p.id_lead]) return sum
     const valOp = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
-    const comPercent = getCommissionPercentage(p)
+    const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
     return sum + (valOp * comPercent) / 100
   }, 0)
 
@@ -716,7 +754,7 @@ export default function ContasAReceberPage() {
 
     filteredProposals.forEach((p) => {
       const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
-      const comPercent = getCommissionPercentage(p)
+      const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
       const comVal = (val * comPercent) / 100
       const dateStr = p.data_pago_cliente 
         ? format(new Date(p.data_pago_cliente), "dd/MM/yyyy HH:mm") 
@@ -1155,7 +1193,7 @@ export default function ContasAReceberPage() {
                 ) : (
                   paginatedProposals.map((proposal, index) => {
                     const valOp = (proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
-                    const comPercent = getCommissionPercentage(proposal)
+                    const comPercent = customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead] : getCommissionPercentage(proposal)
                     const calculatedCommission = (valOp * comPercent) / 100
                     
                     return (
@@ -1209,7 +1247,21 @@ export default function ContasAReceberPage() {
                             R$ {valOp.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                           </td>
                           <td className="px-5 py-4 text-[11px] font-bold text-slate-500 text-center whitespace-nowrap">
-                            {comPercent.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+                            <div className="inline-flex items-center justify-center gap-1 border border-slate-200 hover:border-slate-350 focus-within:border-slate-400 bg-white px-2 py-1 rounded-xl transition-all w-24 shadow-sm mx-auto" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                id={`input-commission-percent-${proposal.id_lead}`}
+                                type="text"
+                                inputMode="decimal"
+                                value={customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead].toString().replace(".", ",") : comPercent.toString().replace(".", ",")}
+                                onChange={(e) => {
+                                  const cleanedVal = e.target.value.replace(",", ".");
+                                  const val = e.target.value === "" ? undefined : parseFloat(cleanedVal);
+                                  handleCommissionPercentChange(proposal.id_lead, val);
+                                }}
+                                className="w-full text-center text-[11px] font-black text-[#171717] bg-transparent border-none focus:outline-none focus:ring-0 p-0"
+                              />
+                              <span className="text-[10px] text-slate-400 font-bold">%</span>
+                            </div>
                           </td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500 whitespace-nowrap">
                             {proposal.data_pago_cliente ? (

@@ -575,7 +575,7 @@ export default function TicketsPage() {
         const ticket = tickets.find(t => t.id.toString() === id)
         const fromStatus = ticket ? (ticket.status_chamados?.nome || ticket.status || "Desconhecido") : "Desconhecido"
         
-        let chamadoIdValue: any = id
+        let chamadoIdValue: string | number = id
         const parsedId = Number(id)
         if (!isNaN(parsedId)) {
           chamadoIdValue = parsedId

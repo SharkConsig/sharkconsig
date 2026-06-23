@@ -64,6 +64,15 @@ const getRequiredHeadersKeysForType = (type: string): string[][] => {
   if (type === "GOVERNO_RR") {
     return [["cpf"], ["matricula"], ["origem"], ["regimecontratacao", "regime"]];
   }
+  if (type === "GOVERNO_RJ") {
+    return [["cpf"], ["nome"], ["matricula"], ["orgao"]];
+  }
+  if (type === "PREFEITURA_SANTO_ANDRE") {
+    return [["cpf"], ["nome"], ["matricula"], ["orgao"]];
+  }
+  if (type === "PREFEITURA_CONTAGEM") {
+    return [["cpf"], ["nome"], ["matricula"], ["orgao"]];
+  }
   return [];
 };
 
@@ -93,6 +102,9 @@ export default function ImportBatchPage() {
   const [totalBaseGovPI, setTotalBaseGovPI] = useState(0);
   const [totalBaseGovMA, setTotalBaseGovMA] = useState(0);
   const [totalBaseGovRR, setTotalBaseGovRR] = useState(0);
+  const [totalBaseGovRJ, setTotalBaseGovRJ] = useState(0);
+  const [totalBasePrefSa, setTotalBasePrefSa] = useState(0);
+  const [totalBasePrefContagem, setTotalBasePrefContagem] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
   
   // Pagination State
@@ -159,7 +171,7 @@ export default function ImportBatchPage() {
       console.log("Estado da Sessão (fetchTotalBase):", `Logado como ${session.user.email}`);
       console.log("Token JWT (Tamanho):", session.access_token.length);
 
-      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes] = await Promise.all([
+      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes, govRJRes, prefSaRes, prefContagemRes] = await Promise.all([
         withRetry(async () => {
           return await supabase
             .from('clientes')
@@ -189,6 +201,21 @@ export default function ImportBatchPage() {
           return await supabase
             .from('governo_rr_clientes')
             .select('*', { count: 'exact', head: true });
+        }),
+        withRetry(async () => {
+          return await supabase
+            .from('governo_rj_clientes')
+            .select('*', { count: 'exact', head: true });
+        }),
+        withRetry(async () => {
+          return await supabase
+            .from('prefeitura_santo_andre_clientes')
+            .select('*', { count: 'exact', head: true });
+        }),
+        withRetry(async () => {
+          return await supabase
+            .from('prefeitura_contagem_clientes')
+            .select('*', { count: 'exact', head: true });
         })
       ]);
       
@@ -210,6 +237,15 @@ export default function ImportBatchPage() {
       if (govRRRes.error) {
         console.warn("Aviso Supabase (Total GOV RR):", govRRRes.error.message);
       }
+      if (govRJRes.error) {
+        console.warn("Aviso Supabase (Total GOV RJ):", govRJRes.error.message);
+      }
+      if (prefSaRes.error) {
+        console.warn("Aviso Supabase (Total PREF SA):", prefSaRes.error.message);
+      }
+      if (prefContagemRes.error) {
+        console.warn("Aviso Supabase (Total PREF CONTAGEM):", prefContagemRes.error.message);
+      }
 
       setTotalBaseSiape(siapeRes.count || 0);
       setTotalBaseGovSP(govSPRes.count || 0);
@@ -217,6 +253,9 @@ export default function ImportBatchPage() {
       setTotalBaseGovPI(govPIRes.count || 0);
       setTotalBaseGovMA(govMARes.count || 0);
       setTotalBaseGovRR(govRRRes.count || 0);
+      setTotalBaseGovRJ(govRJRes.count || 0);
+      setTotalBasePrefSa(prefSaRes.count || 0);
+      setTotalBasePrefContagem(prefContagemRes.count || 0);
     } catch (err: unknown) {
       const error = err as Error;
       console.warn("Aviso inesperado ao buscar total da base:", error?.message || error);
@@ -561,31 +600,31 @@ export default function ImportBatchPage() {
         };
         let hasUpdate = false;
 
-        const currentName = currentClientInMap?.nome ?? existingClient.nome;
+        const currentName = currentClientInMap?.nome ?? (existingClient as Record<string, unknown>)?.nome as string | undefined;
         if (newName && (!currentName || currentName === 'NAO INFORMADO')) {
           clientUpdate.nome = newName;
           hasUpdate = true;
         }
 
-        const currentBirth = currentClientInMap?.data_nascimento ?? existingClient.data_nascimento;
+        const currentBirth = currentClientInMap?.data_nascimento ?? (existingClient as Record<string, unknown>)?.data_nascimento as string | undefined;
         if (newBirthDate && !currentBirth) {
           clientUpdate.data_nascimento = newBirthDate;
           hasUpdate = true;
         }
 
-        const currentP1 = currentClientInMap?.telefone_1 ?? existingClient.telefone_1;
+        const currentP1 = currentClientInMap?.telefone_1 ?? (existingClient as Record<string, unknown>)?.telefone_1 as string | undefined;
         if (newP1 && !currentP1) {
           clientUpdate.telefone_1 = newP1;
           hasUpdate = true;
         }
 
-        const currentP2 = currentClientInMap?.telefone_2 ?? existingClient.telefone_2;
+        const currentP2 = currentClientInMap?.telefone_2 ?? (existingClient as Record<string, unknown>)?.telefone_2 as string | undefined;
         if (newP2 && !currentP2) {
           clientUpdate.telefone_2 = newP2;
           hasUpdate = true;
         }
 
-        const currentP3 = currentClientInMap?.telefone_3 ?? existingClient.telefone_3;
+        const currentP3 = currentClientInMap?.telefone_3 ?? (existingClient as Record<string, unknown>)?.telefone_3 as string | undefined;
         if (newP3 && !currentP3) {
           clientUpdate.telefone_3 = newP3;
           hasUpdate = true;
@@ -1668,6 +1707,354 @@ export default function ImportBatchPage() {
     }
   };
 
+  const processGovernoRjChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
+    // cpf, nome, data_de_nascimento, telefone, orgao, matricula
+    const normalizedRows = results.map(row => ({
+      cpf: normalizeCPF(row.cpf || ""),
+      nome: normalizeText(row.nome || ""),
+      data_nascimento: normalizeDate(row.data_de_nascimento || row.data_nascimento || ""),
+      matricula: normalizeText(row.matricula || ""),
+      orgao: normalizeText(row.orgao || ""),
+      telefone_1: normalizePhone(row.telefone || row.telefone_1 || ""),
+      telefone_2: normalizePhone(row.telefone_2 || ""),
+      telefone_3: normalizePhone(row.telefone_3 || "")
+    })).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('governo_rj_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
+
+    const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
+      const v = String(val).trim();
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
+    };
+
+    const clientMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
+      const existingInMap = clientMap.get(row.cpf);
+
+      // Regra do Nome: O nome do cliente só é sobrescrito se o valor no banco estiver como null ou "MOCK/NÃO INFORMADO"
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      // Anti-Null/Zero para os demais campos de clientes (se vier nulo/vazio, não sobrescreve dado do banco)
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const clientRows = Array.from(clientMap.values());
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      return await supabase.from('governo_rj_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes GOV RJ: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_rj_matriculas', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula}`, i]));
+
+    const identMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId || !row.matricula) return;
+
+      const key = `${clientId}_${row.matricula}`;
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
+      const currentInMap = identMap.get(key);
+
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || dbIdent?.orgao || null);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        matricula: row.matricula,
+        orgao,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const identRows = Array.from(identMap.values());
+    const { error: identErr } = await withRetry(async () => {
+      return await supabase.from('governo_rj_matriculas')
+        .upsert(identRows, { onConflict: 'cliente_id, matricula' });
+    });
+
+    if (identErr) throw new Error(`Erro ao salvar matrículas GOV RJ: ${identErr?.message}`);
+  };
+
+  const processPrefeituraSantoAndreChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
+    // cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,orgao,matricula,vinculo,margem_bruta_cartao,margem_liquida_cartao
+    const normalizedRows = results.map(row => ({
+      cpf: normalizeCPF(row.cpf || ""),
+      nome: normalizeText(row.nome || ""),
+      data_nascimento: normalizeDate(row.data_de_nascimento || row.data_nascimento || ""),
+      matricula: normalizeText(row.matricula || ""),
+      orgao: normalizeText(row.orgao || ""),
+      vinculo: normalizeText(row.vinculo || ""),
+      telefone_1: normalizePhone(row.telefone_1 || row.telefone || ""),
+      telefone_2: normalizePhone(row.telefone_2 || ""),
+      telefone_3: normalizePhone(row.telefone_3 || ""),
+      margem_bruta_cartao: normalizeMoney(row.margem_bruta_cartao || "0"),
+      margem_liquida_cartao: normalizeMoney(row.margem_liquida_cartao || "0")
+    })).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_santo_andre_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
+
+    const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
+      const v = String(val).trim();
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
+    };
+
+    const clientMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
+      const existingInMap = clientMap.get(row.cpf);
+
+      // Regra do Nome: O nome do cliente só é sobrescrito se o valor no banco estiver como null ou "MOCK/NÃO INFORMADO"
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      // Anti-Null/Zero para os demais campos de clientes (se vier nulo/vazio, não sobrescreve dado do banco)
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const clientRows = Array.from(clientMap.values());
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      return await supabase.from('prefeitura_santo_andre_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes PSA: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_santo_andre_matriculas', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula}`, i]));
+
+    const identMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId || !row.matricula) return;
+
+      const key = `${clientId}_${row.matricula}`;
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
+      const currentInMap = identMap.get(key);
+
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || dbIdent?.orgao || null);
+      const vinculo = !shouldPreserve(row.vinculo) ? row.vinculo : (currentInMap?.vinculo || dbIdent?.vinculo || null);
+      const margem_bruta_cartao = !shouldPreserve(row.margem_bruta_cartao) ? row.margem_bruta_cartao : (currentInMap?.margem_bruta_cartao || dbIdent?.margem_bruta_cartao || 0.00);
+      const margem_liquida_cartao = !shouldPreserve(row.margem_liquida_cartao) ? row.margem_liquida_cartao : (currentInMap?.margem_liquida_cartao || dbIdent?.margem_liquida_cartao || 0.00);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        matricula: row.matricula,
+        orgao,
+        vinculo,
+        margem_bruta_cartao,
+        margem_liquida_cartao,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const identRows = Array.from(identMap.values());
+    const { error: identErr } = await withRetry(async () => {
+      return await supabase.from('prefeitura_santo_andre_matriculas')
+        .upsert(identRows, { onConflict: 'cliente_id,matricula' });
+    });
+
+    if (identErr) throw new Error(`Erro ao salvar matrículas PSA: ${identErr?.message}`);
+  };
+
+  const processPrefeituraContagemChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
+    // cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,orgao,matricula,data_de_admissao,situacao_do_funcionario,margem_emprestimo_bruta,margem_emprestimo_liquida,margem_cartao_bruta,margem_cartao_liquida
+    const normalizedRows = results.map(row => ({
+      cpf: normalizeCPF(row.cpf || ""),
+      nome: normalizeText(row.nome || ""),
+      data_nascimento: normalizeDate(row.data_de_nascimento || row.data_nascimento || ""),
+      matricula: normalizeText(row.matricula || ""),
+      orgao: normalizeText(row.orgao || ""),
+      data_admissao: normalizeDate(row.data_de_admissao || row.data_admissao || ""),
+      situacao_funcionario: normalizeText(row.situacao_do_funcionario || row.situacao_funcionario || ""),
+      telefone_1: normalizePhone(row.telefone_1 || row.telefone || ""),
+      telefone_2: normalizePhone(row.telefone_2 || ""),
+      telefone_3: normalizePhone(row.telefone_3 || ""),
+      margem_emprestimo_bruta: normalizeMoney(row.margem_emprestimo_bruta || "0"),
+      margem_emprestimo_liquida: normalizeMoney(row.margem_emprestimo_liquida || "0"),
+      margem_cartao_bruta: normalizeMoney(row.margem_cartao_bruta || "0"),
+      margem_cartao_liquida: normalizeMoney(row.margem_cartao_liquida || "0")
+    })).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_contagem_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
+
+    const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
+      const v = String(val).trim();
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
+    };
+
+    const clientMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
+      const existingInMap = clientMap.get(row.cpf);
+
+      // Regra do Nome: O nome do cliente só é sobrescrito se o valor no banco estiver como null ou "MOCK/NÃO INFORMADO"
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      // Anti-Null/Zero para os demais campos de clientes (se vier nulo/vazio, não sobrescreve dado do banco)
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const clientRows = Array.from(clientMap.values());
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      return await supabase.from('prefeitura_contagem_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes PC: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_contagem_matriculas', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula}`, i]));
+
+    const identMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId || !row.matricula) return;
+
+      const key = `${clientId}_${row.matricula}`;
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
+      const currentInMap = identMap.get(key);
+
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || dbIdent?.orgao || null);
+      const data_admissao = !shouldPreserve(row.data_admissao) ? row.data_admissao : (currentInMap?.data_admissao || dbIdent?.data_admissao || null);
+      const situacao_funcionario = !shouldPreserve(row.situacao_funcionario) ? row.situacao_funcionario : (currentInMap?.situacao_funcionario || dbIdent?.situacao_funcionario || null);
+      const margem_emprestimo_bruta = !shouldPreserve(row.margem_emprestimo_bruta) ? row.margem_emprestimo_bruta : (currentInMap?.margem_emprestimo_bruta || dbIdent?.margem_emprestimo_bruta || 0.00);
+      const margem_emprestimo_liquida = !shouldPreserve(row.margem_emprestimo_liquida) ? row.margem_emprestimo_liquida : (currentInMap?.margem_emprestimo_liquida || dbIdent?.margem_emprestimo_liquida || 0.00);
+      const margem_cartao_bruta = !shouldPreserve(row.margem_cartao_bruta) ? row.margem_cartao_bruta : (currentInMap?.margem_cartao_bruta || dbIdent?.margem_cartao_bruta || 0.00);
+      const margem_cartao_liquida = !shouldPreserve(row.margem_cartao_liquida) ? row.margem_cartao_liquida : (currentInMap?.margem_cartao_liquida || dbIdent?.margem_cartao_liquida || 0.00);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        matricula: row.matricula,
+        orgao,
+        data_admissao,
+        situacao_funcionario,
+        margem_emprestimo_bruta,
+        margem_emprestimo_liquida,
+        margem_cartao_bruta,
+        margem_cartao_liquida,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const identRows = Array.from(identMap.values());
+    const { error: identErr } = await withRetry(async () => {
+      return await supabase.from('prefeitura_contagem_matriculas')
+        .upsert(identRows, { onConflict: 'cliente_id,matricula' });
+    });
+
+    if (identErr) throw new Error(`Erro ao salvar matrículas PC: ${identErr?.message}`);
+  };
+
   const handleStartImport = async () => {
     console.log("Botão 'Iniciar Importação' clicado");
     setImportError(null);
@@ -1811,6 +2198,12 @@ export default function ImportBatchPage() {
                 await processGovernoMaChunk(results.data, currentBatch.id);
               } else if (type === "GOVERNO_RR") {
                 await processGovernoRrChunk(results.data, currentBatch.id);
+              } else if (type === "GOVERNO_RJ") {
+                await processGovernoRjChunk(results.data, currentBatch.id);
+              } else if (type === "PREFEITURA_SANTO_ANDRE") {
+                await processPrefeituraSantoAndreChunk(results.data, currentBatch.id);
+              } else if (type === "PREFEITURA_CONTAGEM") {
+                await processPrefeituraContagemChunk(results.data, currentBatch.id);
               }
             });
             
@@ -1926,7 +2319,7 @@ export default function ImportBatchPage() {
     ));
   };
 
-  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr') => {
+  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem') => {
     let headers = "";
     let filename = "";
 
@@ -1951,6 +2344,15 @@ export default function ImportBatchPage() {
     } else if (type === 'governo_rr') {
       headers = "cpf,nome,data_de_nascimento,matricula,origem,regime_contratacao,margem_emprestimo,margem_cartao,telefone_1,telefone_2,telefone_3";
       filename = "modelo_governo_roraima.csv";
+    } else if (type === 'governo_rj') {
+      headers = "cpf,nome,data_de_nascimento,telefone,orgao,matricula";
+      filename = "modelo_governo_rio_de_janeiro.csv";
+    } else if (type === 'prefeitura_santo_andre') {
+      headers = "cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,orgao,matricula,vinculo,margem_bruta_cartao,margem_liquida_cartao";
+      filename = "modelo_prefeitura_santo_andre.csv";
+    } else if (type === 'prefeitura_contagem') {
+      headers = "cpf,nome,data_de_nascimento,telefone_1,telefone_2,orgao,matricula,data_de_admissao,situacao_do_funcionario,margem_emprestimo_bruta,margem_emprestimo_liquida,margem_cartao_bruta,margem_cartao_liquida";
+      filename = "modelo_prefeitura_contagem.csv";
     }
     
     const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
@@ -1990,6 +2392,9 @@ export default function ImportBatchPage() {
                     <option value="GOVERNO_PI">GOVERNO PIAUÍ</option>
                     <option value="GOVERNO_MA">GOVERNO MARANHÃO</option>
                     <option value="GOVERNO_RR">GOVERNO RORAIMA</option>
+                    <option value="GOVERNO_RJ">GOVERNO RIO DE JANEIRO</option>
+                    <option value="PREFEITURA_SANTO_ANDRE">PREFEITURA SANTO ANDRÉ</option>
+                    <option value="PREFEITURA_CONTAGEM">PREFEITURA CONTAGEM</option>
                   </select>
                   <Input 
                     value={description}
@@ -2132,6 +2537,36 @@ export default function ImportBatchPage() {
                         <p className="text-[10px] text-slate-400">Base Governo Roraima</p>
                       </div>
                     </button>
+                    <button 
+                      onClick={() => downloadCSV('governo_rj')}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
+                    >
+                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO RIO DE JANEIRO</p>
+                        <p className="text-[10px] text-slate-400">Base Governo Rio de Janeiro</p>
+                      </div>
+                    </button>
+                    <button 
+                      onClick={() => downloadCSV('prefeitura_santo_andre')}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
+                    >
+                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-slate-700">MODELO PREFEITURA SANTO ANDRÉ</p>
+                        <p className="text-[10px] text-slate-400">Base Prefeitura Santo André</p>
+                      </div>
+                    </button>
+                    <button 
+                      onClick={() => downloadCSV('prefeitura_contagem')}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
+                    >
+                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-slate-700">MODELO PREFEITURA CONTAGEM</p>
+                        <p className="text-[10px] text-slate-400">Base Prefeitura Contagem</p>
+                      </div>
+                    </button>
                   </div>
                 </div>
 
@@ -2187,7 +2622,7 @@ export default function ImportBatchPage() {
                     </button>
                   </div>
                   <p className="text-[14px] font-black text-slate-900 tracking-tighter">
-                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0)).toLocaleString('pt-BR')}
+                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0) + (totalBaseGovRJ || 0) + (totalBasePrefSa || 0) + (totalBasePrefContagem || 0)).toLocaleString('pt-BR')}
                   </p>
                 </div>
 
@@ -2259,6 +2694,39 @@ export default function ImportBatchPage() {
                         {totalBaseGovRR.toLocaleString('pt-BR')}
                       </p>
                     </div>
+
+                    {/* GOVERNO RJ */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-pink-500" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">GOV RIO JANEIRO</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-pink-600 transition-colors">
+                        {totalBaseGovRJ.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+
+                    {/* PREFEITURA SANTO ANDRÉ */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-violet-500" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">PREF SANTO ANDRÉ</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-violet-600 transition-colors">
+                        {totalBasePrefSa.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+
+                    {/* PREFEITURA CONTAGEM */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">PREF CONTAGEM</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-rose-600 transition-colors">
+                        {totalBasePrefContagem.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2308,9 +2776,13 @@ export default function ImportBatchPage() {
                             batch.tipo === "GOVERNO_SP" ? "bg-emerald-600" : 
                             batch.tipo === "PREFEITURA_SP" ? "bg-blue-600" : 
                             batch.tipo === "GOVERNO_PI" ? "bg-purple-600" : 
-                            batch.tipo === "GOVERNO_RR" ? "bg-cyan-600" : "bg-cyan-600"
+                            batch.tipo === "GOVERNO_MA" ? "bg-orange-600" : 
+                            batch.tipo === "GOVERNO_RR" ? "bg-cyan-600" : 
+                            batch.tipo === "GOVERNO_RJ" ? "bg-pink-600" : 
+                            batch.tipo === "PREFEITURA_SANTO_ANDRE" ? "bg-violet-600" : 
+                            batch.tipo === "PREFEITURA_CONTAGEM" ? "bg-rose-600" : "bg-cyan-600"
                           )}>
-                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo === "PREFEITURA_SP" ? "PREFEITURA SP" : batch.tipo === "GOVERNO_PI" ? "GOVERNO PI" : batch.tipo === "GOVERNO_MA" ? "GOVERNO MA" : batch.tipo === "GOVERNO_RR" ? "GOV RR" : batch.tipo}
+                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo === "PREFEITURA_SP" ? "PREFEITURA SP" : batch.tipo === "GOVERNO_PI" ? "GOVERNO PI" : batch.tipo === "GOVERNO_MA" ? "GOVERNO MA" : batch.tipo === "GOVERNO_RR" ? "GOV RR" : batch.tipo === "GOVERNO_RJ" ? "GOV RJ" : batch.tipo === "PREFEITURA_SANTO_ANDRE" ? "PREF STO ANDRÉ" : batch.tipo === "PREFEITURA_CONTAGEM" ? "PREF CONTAGEM" : batch.tipo}
                           </span>
                           <span className="text-[12px] font-semibold text-slate-600 uppercase">{batch.descricao}</span>
                         </div>
