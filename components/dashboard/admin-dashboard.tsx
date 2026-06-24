@@ -220,7 +220,7 @@ export function AdminDashboard({
           <button
             onClick={() => setActiveTab('propostas')}
             className={cn(
-              "px-6 py-2.5 rounded-xl text-[11px] font-extrabold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+              "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
               activeTab === 'propostas' 
                 ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
                 : "text-slate-400 hover:text-slate-600"
@@ -232,7 +232,7 @@ export function AdminDashboard({
           <button
             onClick={() => setActiveTab('chamados')}
             className={cn(
-              "px-6 py-2.5 rounded-xl text-[11px] font-extrabold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+              "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
               activeTab === 'chamados' 
                 ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
                 : "text-slate-400 hover:text-slate-600"
@@ -244,7 +244,7 @@ export function AdminDashboard({
           <button
             onClick={() => setActiveTab('financeiro')}
             className={cn(
-              "px-6 py-2.5 rounded-xl text-[11px] font-extrabold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+              "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
               activeTab === 'financeiro' 
                 ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
                 : "text-slate-400 hover:text-slate-600"

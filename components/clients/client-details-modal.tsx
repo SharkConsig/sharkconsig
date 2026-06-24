@@ -146,7 +146,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -461,6 +461,141 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
 
         if (idError) console.error("Erro ao buscar matrículas Governo Roraima:", idError)
         setRegistrations((idData as Registration[]) || [])
+        setIsLoading(false)
+        return
+      }
+
+      // 7. Try search in Governo RJ Clients
+      const { data: govRjData } = await withRetry<ClientData | null>(async () => 
+        await supabase.from('governo_rj_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+      )
+
+      if (govRjData) {
+        setClient(govRjData)
+        setClientType('governo_rj')
+
+        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
+          await supabase.from('governo_rj_matriculas').select('*').eq('cliente_id', (govRjData as ClientData).id)
+        )
+        if (regError) console.error("Erro ao buscar matrículas Governo RJ:", regError)
+        
+        const mappedRegs = (regData || []).map((r: Record<string, unknown>) => ({
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          situacao_funcional: null,
+          salario: 0,
+          orgao: r.orgao as string | null,
+          regime_juridico: null,
+          uf: 'RJ',
+          instituidores: []
+        }))
+
+        setRegistrations(mappedRegs as unknown as Registration[])
+        setIsLoading(false)
+        return
+      }
+
+      // 8. Try search in Prefeitura Santo André Clients
+      const { data: saData } = await withRetry<ClientData | null>(async () => 
+        await supabase.from('prefeitura_santo_andre_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+      )
+
+      if (saData) {
+        setClient(saData)
+        setClientType('prefeitura_santo_andre')
+
+        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
+          await supabase.from('prefeitura_santo_andre_matriculas').select('*').eq('cliente_id', (saData as ClientData).id)
+        )
+        if (regError) console.error("Erro ao buscar matrículas Santo André:", regError)
+
+        const mappedRegs = (regData || []).map((r: Record<string, unknown>) => ({
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          situacao_funcional: null,
+          salario: 0,
+          orgao: r.orgao as string | null,
+          vinculo: r.vinculo as string | null,
+          regime_juridico: null,
+          uf: 'SP',
+          margem_bruta_cartao: r.margem_bruta_cartao || 0.00,
+          margem_liquida_cartao: r.margem_liquida_cartao || 0.00,
+          instituidores: []
+        }))
+
+        setRegistrations(mappedRegs as unknown as Registration[])
+        setIsLoading(false)
+        return
+      }
+
+      // 9. Try search in Prefeitura Contagem Clients
+      const { data: contagemData } = await withRetry<ClientData | null>(async () => 
+        await supabase.from('prefeitura_contagem_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+      )
+
+      if (contagemData) {
+        setClient(contagemData)
+        setClientType('prefeitura_contagem')
+
+        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
+          await supabase.from('prefeitura_contagem_matriculas').select('*').eq('cliente_id', (contagemData as ClientData).id)
+        )
+        if (regError) console.error("Erro ao buscar matrículas Contagem:", regError)
+
+        const mappedRegs = (regData || []).map((r: Record<string, unknown>) => ({
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          situacao_funcional: r.situacao_funcional as string | null,
+          data_de_admissao: r.data_de_admissao as string | null,
+          salario: 0,
+          orgao: r.orgao as string | null,
+          regime_juridico: null,
+          uf: 'MG',
+          margem_emprestimo_bruta: r.margem_emprestimo_bruta || 0.00,
+          margem_emprestimo_liquida: r.margem_emprestimo_liquida || 0.00,
+          margem_cartao_bruta: r.margem_cartao_bruta || 0.00,
+          margem_cartao_liquida: r.margem_cartao_liquida || 0.00,
+          instituidores: []
+        }))
+
+        setRegistrations(mappedRegs as unknown as Registration[])
+        setIsLoading(false)
+        return
+      }
+
+      // 10. Try search in Governo MG Clients
+      const { data: mgData } = await withRetry<ClientData | null>(async () => 
+        await supabase.from('governo_mg_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+      )
+
+      if (mgData) {
+        setClient(mgData)
+        setClientType('governo_mg')
+
+        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
+          await supabase.from('governo_mg_matriculas').select('*').eq('cliente_id', (mgData as ClientData).id)
+        )
+        if (regError) console.error("Erro ao buscar matrículas Governo MG:", regError)
+
+        const mappedRegs = (regData || []).map((r: Record<string, unknown>) => ({
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          orgao: r.orgao as string | null,
+          uf: 'MG',
+          margem_emprestimo: r.margem_emprestimo || 0.00,
+          margem_beneficio: r.margem_beneficio || 0.00,
+          instituidores: []
+        }))
+
+        setRegistrations(mappedRegs as unknown as Registration[])
         setIsLoading(false)
         return
       }
@@ -1327,6 +1462,235 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                     {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao))}
                                   </p>
                                 </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : clientType === 'governo_rj' ? (
+                          <>
+                            {/* Governo Rio de Janeiro */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "---"}
+                                </p>
+                              </div>
+                            </div>
+                          </>
+                        ) : clientType === 'prefeitura_santo_andre' ? (
+                          <>
+                            {/* Prefeitura de Santo André */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "---"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.vinculo || "---"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-6 mt-6">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-3.5 bg-violet-600 rounded-full"></div>
+                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens de Cartão</h4>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="p-4 bg-[#F1F5F9] border border-slate-200 rounded-2xl">
+                                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Margem Bruta Cartão</p>
+                                  <p className="text-xl font-black text-slate-900">
+                                    {formatCurrency(Number(activeReg.margem_bruta_cartao))}
+                                  </p>
+                                </div>
+                                {(() => {
+                                  const isPositive = (Number(activeReg.margem_liquida_cartao) || 0) > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Líquida Cartão</p>
+                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                        {formatCurrency(Number(activeReg.margem_liquida_cartao))}
+                                      </p>
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </>
+                        ) : clientType === 'prefeitura_contagem' ? (
+                          <>
+                            {/* Prefeitura de Contagem */}
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "---"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Admissão</p>
+                                <p className="text-[12px] font-bold text-slate-900">
+                                  {activeReg.data_de_admissao ? new Date(activeReg.data_de_admissao as string).toLocaleDateString('pt-BR') : "---"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.situacao_funcional || "---"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-6 mt-6">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-3.5 bg-rose-600 rounded-full"></div>
+                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens de Empréstimo & Cartão</h4>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="p-4 bg-[#F1F5F9] border border-slate-200 rounded-2xl">
+                                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Margem Empréstimo Bruta</p>
+                                  <p className="text-xl font-black text-slate-900">
+                                    {formatCurrency(Number(activeReg.margem_emprestimo_bruta))}
+                                  </p>
+                                </div>
+                                {(() => {
+                                  const isPositive = (Number(activeReg.margem_emprestimo_liquida) || 0) > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Empréstimo Líquida</p>
+                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                        {formatCurrency(Number(activeReg.margem_emprestimo_liquida))}
+                                      </p>
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                <div className="p-4 bg-[#F1F5F9] border border-slate-200 rounded-2xl">
+                                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Margem Cartão Bruta</p>
+                                  <p className="text-xl font-black text-slate-900">
+                                    {formatCurrency(Number(activeReg.margem_cartao_bruta))}
+                                  </p>
+                                </div>
+                                {(() => {
+                                  const isPositive = (Number(activeReg.margem_cartao_liquida) || 0) > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Cartão Líquida</p>
+                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                        {formatCurrency(Number(activeReg.margem_cartao_liquida))}
+                                      </p>
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </>
+                        ) : clientType === 'governo_mg' ? (
+                          <>
+                            {/* Governo de Minas Gerais */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "---"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-6 mt-6">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-3.5 bg-amber-500 rounded-full"></div>
+                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens de Empréstimo & Benefício</h4>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {(() => {
+                                  const isPositive = (Number(activeReg.margem_emprestimo) || 0) > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Empréstimo</p>
+                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                        {formatCurrency(Number(activeReg.margem_emprestimo))}
+                                      </p>
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                {(() => {
+                                  const isPositive = (Number(activeReg.margem_beneficio) || 0) > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Benefício</p>
+                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                        {formatCurrency(Number(activeReg.margem_beneficio))}
+                                      </p>
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </>

@@ -613,6 +613,7 @@ export default function SearchClientPage() {
         { name: 'base_consulta_governo_rj', convenio: 'governo_rj' },
         { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
         { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
+        { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
       ];
 
       const results = await Promise.all(
