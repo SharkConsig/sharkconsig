@@ -318,6 +318,15 @@ export default function AdvertenciasPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
 
+  const [expandedCollaborators, setExpandedCollaborators] = useState<Record<string, boolean>>({})
+
+  const toggleExpand = (name: string) => {
+    setExpandedCollaborators(prev => ({
+      ...prev,
+      [name]: !prev[name]
+    }))
+  }
+
   // Load and hydrate database
   useEffect(() => {
     async function loadData() {
@@ -788,7 +797,7 @@ export default function AdvertenciasPage() {
 
             {/* Main Interactive Grid Table in Spreadsheet Style */}
             <div className="overflow-x-auto px-6 pb-6">
-              <table className="w-full text-left border-collapse table-fixed min-w-[1360px]">
+              <table className="w-full text-left border-collapse table-fixed min-w-[1100px]">
                 <thead>
                   <tr className="bg-[#171717] text-white">
                     <th className="w-[220px] px-5 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">
@@ -800,20 +809,11 @@ export default function AdvertenciasPage() {
                     <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Data Verbal
                     </th>
-                    <th className="w-[90px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
-                      Quantidade
-                    </th>
                     <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Escrita
                     </th>
                     <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Data Escrita
-                    </th>
-                    <th className="w-[90px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
-                      Quantidade
-                    </th>
-                    <th className="w-[80px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
-                      Total
                     </th>
                     <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Suspensão
@@ -826,7 +826,7 @@ export default function AdvertenciasPage() {
                 <tbody className="divide-y divide-slate-100">
                   {loadingTable ? (
                     <tr>
-                      <td colSpan={10} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={7} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-3">
                           <div className="w-8 h-8 border-4 border-[#171717] border-t-transparent rounded-full animate-spin" />
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Carregando dados das advertências...</p>
@@ -834,147 +834,214 @@ export default function AdvertenciasPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRecords.map((rec) => {
-                      return (
-                        <tr key={rec.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap">
-                          {/* Colaborador Column */}
-                          <td className="px-4 py-3.5">
-                            <input 
-                              type="text" 
-                              value={rec.collaboratorName || ""} 
-                              onChange={(e) => handleUpdateField(rec.id, "collaboratorName", e.target.value)}
-                              placeholder="Sem nome"
-                              className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1.5 text-xs font-black text-slate-700 uppercase outline-none transition-all"
-                            />
-                          </td>
+                    (() => {
+                      // Group records by collaborator name while preserving order of appearance
+                      const groups: { [key: string]: WarningRecord[] } = {}
+                      const collaboratorOrder: string[] = []
 
-                          {/* Verbal Warning Selection Cell */}
-                          <td className="px-4 py-3.5 text-center">
-                            <PillDropdown 
-                              value={rec.verbal} 
-                              onChange={(val) => handleSelectOption(rec.id, "verbal", val)} 
-                              options={verbalOptions} 
-                            />
-                          </td>
+                      filteredRecords.forEach((rec) => {
+                        const name = (rec.collaboratorName || "Sem nome").trim()
+                        if (!groups[name]) {
+                          groups[name] = []
+                          collaboratorOrder.push(name)
+                        }
+                        groups[name].push(rec)
+                      })
 
-                          {/* Verbal Date Cell */}
-                          <td className="px-4 py-3.5 text-center">
-                            <input
-                              type="date"
-                              value={toYMD(rec.verbalDate)}
-                              onChange={(e) => handleUpdateField(rec.id, "verbalDate", toDMY(e.target.value))}
-                              className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 outline-none transition-all text-center"
-                            />
-                          </td>
+                      return collaboratorOrder.map((groupName) => {
+                        const groupRecords = groups[groupName]
+                        const isExpanded = !!expandedCollaborators[groupName]
 
-                          {/* Verbal Quantity (Quantidade) Cell */}
-                          <td className="px-4 py-3.5 text-center">
-                            <input
-                              type="text"
-                              placeholder="0"
-                              value={rec.verbalQtd || ""}
-                              onChange={(e) => handleUpdateField(rec.id, "verbalQtd", e.target.value)}
-                              className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 outline-none transition-all text-center font-mono"
-                            />
-                          </td>
+                        // Group totals and summaries
+                        const groupVerbalCount = groupRecords.filter(r => r.verbal === "Sim").length
+                        const groupEscritaCount = groupRecords.filter(r => r.escrita === "Sim" || r.escrita === "2º").length
 
-                          {/* Escrita Warning Selection Cell */}
-                          <td className="px-4 py-3.5 text-center">
-                            <PillDropdown 
-                              value={rec.escrita} 
-                              onChange={(val) => handleSelectOption(rec.id, "escrita", val)} 
-                              options={escritaOptions} 
-                            />
-                          </td>
-
-                          {/* Escrita Date Cell */}
-                          <td className="px-4 py-3.5 text-center">
-                            <input
-                              type="date"
-                              value={toYMD(rec.escritaDate)}
-                              onChange={(e) => handleUpdateField(rec.id, "escritaDate", toDMY(e.target.value))}
-                              className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 outline-none transition-all text-center"
-                            />
-                          </td>
-
-                          {/* Escrita Quantity (Quantidade) Cell */}
-                          <td className="px-4 py-3.5 text-center">
-                            <input
-                              type="text"
-                              placeholder="0"
-                              value={rec.escritaQtd || ""}
-                              onChange={(e) => handleUpdateField(rec.id, "escritaQtd", e.target.value)}
-                              className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 outline-none transition-all text-center font-mono"
-                            />
-                          </td>
-
-                          {/* Total Warning Cell (Dynamically Calculated) */}
-                          <td className="px-4 py-3.5 text-center font-bold text-xs text-slate-700 font-mono">
-                            {calculateTotal(rec)}
-                          </td>
-
-                          {/* Suspensão Selection Cell */}
-                          <td className="px-4 py-3.5 text-center">
-                            <PillDropdown 
-                              value={rec.suspensao} 
-                              onChange={(val) => handleSelectOption(rec.id, "suspensao", val)} 
-                              options={suspensaoOptions} 
-                            />
-                          </td>
-
-                          {/* Ações Column with micro-confirm delete inside table */}
-                          <td className="px-4 py-3.5 text-center">
-                            <div className="flex items-center gap-2 justify-center">
-                              {deletingId === rec.id ? (
-                                <div className="flex items-center gap-1.5">
-                                  <Button
-                                    onClick={() => {
-                                      handleDeleteRecord(rec.id)
-                                      setDeletingId(null)
-                                    }}
-                                    size="sm"
-                                    className="h-6 px-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-[9px] font-black uppercase tracking-wider shadow-sm cursor-pointer inline-flex items-center gap-0.5 transition-colors"
-                                    title="Confirmar Exclusão"
-                                  >
-                                    <Check className="w-3 h-3" /> Excluir
-                                  </Button>
-                                  <Button
-                                    onClick={() => setDeletingId(null)}
-                                    size="sm"
-                                    className="h-6 px-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md text-[9px] font-bold uppercase tracking-wider cursor-pointer inline-flex items-center transition-colors"
-                                    title="Cancelar"
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                <>
-                                  <PdfAttachmentButton 
-                                    record={rec}
-                                    onUpload={(file) => handleUploadPdf(rec.id, file)}
-                                    isUploading={uploadingId === rec.id}
+                        return (
+                          <React.Fragment key={groupName}>
+                            {/* Parent Row (Clickable Accordion Trigger) */}
+                            <tr 
+                              onClick={() => toggleExpand(groupName)}
+                              className="bg-slate-50 hover:bg-slate-100/80 transition-all font-semibold align-middle whitespace-nowrap cursor-pointer border-b border-slate-200"
+                            >
+                              {/* Colaborador Column */}
+                              <td className="px-4 py-3.5">
+                                <div className="flex items-center gap-2 select-none pl-1">
+                                  <ChevronDown 
+                                    className={cn(
+                                      "w-4 h-4 transition-transform text-slate-500 shrink-0", 
+                                      isExpanded ? "transform rotate-0" : "transform -rotate-90"
+                                    )} 
                                   />
+                                  <span className="font-bold text-slate-800 uppercase text-[11px] truncate max-w-[190px]">
+                                    {groupName}
+                                  </span>
+                                  <span className="ml-1 px-1.5 py-0.5 bg-slate-200/70 text-slate-700 rounded-full text-[10px] font-black tracking-wide shrink-0">
+                                    {groupRecords.length}
+                                  </span>
+                                </div>
+                              </td>
 
-                                  <Button 
-                                    onClick={() => setDeletingId(rec.id)}
-                                    variant="ghost" 
-                                    size="icon" 
-                                    title="Remover Registro"
-                                    className="w-7 h-7 bg-amber-50 hover:bg-rose-100 text-amber-600 hover:text-red-600 rounded-lg shrink-0 transition-colors inline-flex items-center justify-center cursor-pointer"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
+                              {/* Verbal Summary */}
+                              <td className="px-4 py-3.5 text-center">
+                                {groupVerbalCount > 0 && (
+                                  <span className="inline-flex items-center gap-1 bg-[#ddf7e2] text-[#1b7337] px-2.5 py-1 rounded-full text-[10px] font-black uppercase">
+                                    {groupVerbalCount} Verbal
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Verbal Date Summary */}
+                              <td className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold">
+                              </td>
+
+                              {/* Escrita Summary */}
+                              <td className="px-4 py-3.5 text-center">
+                                {groupEscritaCount > 0 && (
+                                  <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-600 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border border-amber-100/30">
+                                    {groupEscritaCount} Escrita
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Escrita Date Summary */}
+                              <td className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold">
+                              </td>
+
+                              {/* Suspensão Summary */}
+                              <td className="px-4 py-3.5 text-center">
+                              </td>
+
+                              {/* Action Hint */}
+                              <td className="px-4 py-3.5 text-center">
+                                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider select-none">
+                                  {isExpanded ? "Recolher" : "Expandir"}
+                                </span>
+                              </td>
+                            </tr>
+
+                            {/* Expanded Child Rows */}
+                            {isExpanded && groupRecords.map((rec) => (
+                              <tr 
+                                key={rec.id} 
+                                className="bg-white hover:bg-slate-50/40 transition-all font-semibold align-middle whitespace-nowrap border-b border-slate-100"
+                              >
+                                {/* Colaborador Column */}
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2 pl-6">
+                                    <span className="text-slate-350 select-none font-bold text-xs">↳</span>
+                                    <input 
+                                      type="text" 
+                                      value={rec.collaboratorName || ""} 
+                                      onChange={(e) => handleUpdateField(rec.id, "collaboratorName", e.target.value)}
+                                      placeholder="Sem nome"
+                                      className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 uppercase outline-none transition-all"
+                                    />
+                                  </div>
+                                </td>
+
+                                {/* Verbal Selection Cell */}
+                                <td className="px-4 py-3 text-center">
+                                  <PillDropdown 
+                                    value={rec.verbal} 
+                                    onChange={(val) => handleSelectOption(rec.id, "verbal", val)} 
+                                    options={verbalOptions} 
+                                  />
+                                </td>
+
+                                {/* Verbal Date Cell */}
+                                <td className="px-4 py-3 text-center">
+                                  <input
+                                    type="date"
+                                    value={toYMD(rec.verbalDate)}
+                                    onChange={(e) => handleUpdateField(rec.id, "verbalDate", toDMY(e.target.value))}
+                                    className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none transition-all text-center"
+                                  />
+                                </td>
+
+                                {/* Escrita Selection Cell */}
+                                <td className="px-4 py-3 text-center">
+                                  <PillDropdown 
+                                    value={rec.escrita} 
+                                    onChange={(val) => handleSelectOption(rec.id, "escrita", val)} 
+                                    options={escritaOptions} 
+                                  />
+                                </td>
+
+                                {/* Escrita Date Cell */}
+                                <td className="px-4 py-3 text-center">
+                                  <input
+                                    type="date"
+                                    value={toYMD(rec.escritaDate)}
+                                    onChange={(e) => handleUpdateField(rec.id, "escritaDate", toDMY(e.target.value))}
+                                    className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none transition-all text-center"
+                                  />
+                                </td>
+
+                                {/* Suspensão Selection Cell */}
+                                <td className="px-4 py-3 text-center">
+                                  <PillDropdown 
+                                    value={rec.suspensao} 
+                                    onChange={(val) => handleSelectOption(rec.id, "suspensao", val)} 
+                                    options={suspensaoOptions} 
+                                  />
+                                </td>
+
+                                {/* Actions Column */}
+                                <td className="px-4 py-3 text-center">
+                                  <div className="flex items-center gap-2 justify-center">
+                                    {deletingId === rec.id ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <Button
+                                          onClick={() => {
+                                            handleDeleteRecord(rec.id)
+                                            setDeletingId(null)
+                                          }}
+                                          size="sm"
+                                          className="h-6 px-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-[9px] font-black uppercase tracking-wider shadow-sm cursor-pointer inline-flex items-center gap-0.5 transition-colors"
+                                          title="Confirmar Exclusão"
+                                        >
+                                          <Check className="w-3 h-3" /> Excluir
+                                        </Button>
+                                        <Button
+                                          onClick={() => setDeletingId(null)}
+                                          size="sm"
+                                          className="h-6 px-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md text-[9px] font-bold uppercase tracking-wider cursor-pointer inline-flex items-center transition-colors"
+                                          title="Cancelar"
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <PdfAttachmentButton 
+                                          record={rec}
+                                          onUpload={(file) => handleUploadPdf(rec.id, file)}
+                                          isUploading={uploadingId === rec.id}
+                                        />
+
+                                        <Button 
+                                          onClick={() => setDeletingId(rec.id)}
+                                          variant="ghost" 
+                                          size="icon" 
+                                          title="Remover Registro"
+                                          className="w-7 h-7 bg-amber-50 hover:bg-rose-100 text-amber-600 hover:text-red-600 rounded-lg shrink-0 transition-colors inline-flex items-center justify-center cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </Button>
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        )
+                      })
+                    })()
                   )}
                   {!loadingTable && filteredRecords.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={7} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <FileText className="w-10 h-10 text-slate-350 animate-bounce" />
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Lista de advertências vazia ou sem resultados</p>

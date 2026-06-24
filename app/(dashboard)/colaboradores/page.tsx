@@ -98,6 +98,8 @@ interface DBCollaborator {
   data_admissao?: string
   data_demissao?: string
   status?: string
+  instituicao_ensino?: string | null
+  email_instituicao?: string | null
 }
 
 function mapDBToCollaborator(db: DBCollaborator): Collaborator {
@@ -126,7 +128,9 @@ function mapDBToCollaborator(db: DBCollaborator): Collaborator {
     pixKey: db.chave_pix || "",
     joinDate: db.data_admissao || "",
     exitDate: db.data_demissao || "",
-    status: (db.status as "Ativo" | "Inativo") || "Ativo"
+    status: (db.status as "Ativo" | "Inativo") || "Ativo",
+    collegeName: db.instituicao_ensino || "",
+    collegeEmail: db.email_instituicao || ""
   }
 }
 
@@ -158,6 +162,8 @@ function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
   if (c.joinDate !== undefined) db.data_admissao = c.joinDate
   if (c.exitDate !== undefined) db.data_demissao = c.exitDate
   if (c.status !== undefined) db.status = c.status
+  if (c.collegeName !== undefined) db.instituicao_ensino = c.collegeName
+  if (c.collegeEmail !== undefined) db.email_instituicao = c.collegeEmail
   return db
 }
 
@@ -187,6 +193,8 @@ interface Collaborator {
   bankAgency?: string
   bankAccount?: string
   pixKey?: string
+  collegeName?: string
+  collegeEmail?: string
 }
 
 const roleOptions = [
@@ -296,6 +304,8 @@ export default function ColaboradoresPage() {
   const [newBankAgency, setNewBankAgency] = useState("")
   const [newBankAccount, setNewBankAccount] = useState("")
   const [newPixKey, setNewPixKey] = useState("")
+  const [newCollegeName, setNewCollegeName] = useState("")
+  const [newCollegeEmail, setNewCollegeEmail] = useState("")
 
   // Load from Supabase on mount
   useEffect(() => {
@@ -602,7 +612,9 @@ export default function ColaboradoresPage() {
       bankAccount: newBankAccount || "",
       pixKey: newPixKey || "",
       joinDate: newJoinDate || new Date().toLocaleDateString("pt-BR"),
-      status: "Ativo"
+      status: "Ativo",
+      collegeName: (newRole === "Estagiário" || newRole === "Estagiário Operacional") ? newCollegeName : "",
+      collegeEmail: (newRole === "Estagiário" || newRole === "Estagiário Operacional") ? newCollegeEmail : ""
     }
 
     const tempColab: Collaborator = {
@@ -697,6 +709,8 @@ export default function ColaboradoresPage() {
     setNewBankAccount("")
     setNewPixKey("")
     setNewJoinDate("")
+    setNewCollegeName("")
+    setNewCollegeEmail("")
     setFormDocs({})
   }
 
@@ -935,6 +949,30 @@ export default function ColaboradoresPage() {
                         />
                       </div>
                     </div>
+                    {(newRole === "Estagiário" || newRole === "Estagiário Operacional") && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-blue-50/25 border border-blue-100/50 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-bold text-[#002060] uppercase tracking-widest ml-1 block">Instituição de Ensino</label>
+                          <input 
+                            type="text" 
+                            value={newCollegeName} 
+                            onChange={(e) => setNewCollegeName(e.target.value)}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800 font-bold"
+                            placeholder="Nome da Faculdade / Escola..."
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-bold text-[#002060] uppercase tracking-widest ml-1 block">E-mail da Instituição</label>
+                          <input 
+                            type="email" 
+                            value={newCollegeEmail} 
+                            onChange={(e) => setNewCollegeEmail(e.target.value)}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800 font-bold"
+                            placeholder="email@instituicao.edu.br"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Grid 2: Dados Bancários */}
@@ -1123,11 +1161,11 @@ export default function ColaboradoresPage() {
                           : "bg-slate-50 border-slate-200 hover:bg-[#002060]/5 hover:border-[#002060]/20 text-slate-800"
                       )}
                     >
-                      <span className="text-xs font-black uppercase tracking-widest flex items-center gap-2.5">
+                      <span className="text-[11px] font-semibold uppercase tracking-widest flex items-center gap-2.5">
                         <Paperclip className={cn("w-4.5 h-4.5 transition-transform duration-200", isAdmissaoDocsExpanded ? "text-[#002060] rotate-45 scale-110" : "text-slate-500 group-hover:text-[#002060] group-hover:scale-110")} />
                         ANEXAR DOCUMENTOS COBRADOS NA ADMISSÃO
                       </span>
-                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-[#002060]">
+                      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-[#002060]">
                         <span className="animate-pulse bg-[#002060]/10 px-2.5 py-1 rounded-full border border-[#002060]/20">
                           {isAdmissaoDocsExpanded ? "Clique para Recolher ▲" : "Clique para Anexar / Expandir ▼"}
                         </span>
@@ -1224,6 +1262,8 @@ export default function ColaboradoresPage() {
                         setNewCampaignSuggestion("")
                         setNewIncentivesPreference("")
                         setNewJoinDate("")
+                        setNewCollegeName("")
+                        setNewCollegeEmail("")
                         setFormDocs({})
                       }}
                       className="text-slate-500 hover:bg-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest"
@@ -1262,40 +1302,42 @@ export default function ColaboradoresPage() {
               )}
 
             {/* List Table */}
-            <div className="overflow-x-auto min-h-[500px] px-6">
-              <table className="w-full text-left border-collapse table-fixed min-w-[3700px]">
+            <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 border border-slate-200/60 rounded-2xl relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+              <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4100px]">
                 <thead>
                   <tr className="bg-[#171717] text-white">
-                    <th className="w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
-                    <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
-                    <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
-                    <th className="w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
-                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Banco</th>
-                    <th className="w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Agência</th>
-                    <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Conta-Bancária</th>
-                    <th className="w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chave Pix</th>
-                    <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
-                    <th className="w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
-                    <th className="w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
-                    <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
-                    <th className="w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
-                    <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
-                    <th className="w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Nº Calçado</th>
-                    <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Filhos</th>
-                    <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Tamanho da Roupa</th>
-                    <th className="w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chocolate Preferido</th>
-                    <th className="w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Bebida Preferida</th>
-                    <th className="w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Comida Preferida</th>
-                    <th className="w-[250px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Sugestão de Campanhas</th>
-                    <th className="w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Preferência de Incentivos</th>
-                    <th className="w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
-                    <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Banco</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Agência</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Conta-Bancária</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chave Pix</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Nº Calçado</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Filhos</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Instituição de Ensino</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail da Instituição</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Tamanho da Roupa</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chocolate Preferido</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Bebida Preferida</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Comida Preferida</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[250px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Sugestão de Campanhas</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Preferência de Incentivos</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {loadingTable ? (
                     <tr>
-                      <td colSpan={24} className="text-center py-20 bg-slate-50/10">
+                      <td colSpan={26} className="text-center py-20 bg-slate-50/10">
                         <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                           <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de colaboradores...</p>
                         </div>
@@ -1303,7 +1345,7 @@ export default function ColaboradoresPage() {
                     </tr>
                   ) : filteredCollaborators.length === 0 ? (
                     <tr>
-                      <td colSpan={24} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={26} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador encontrado</p>
@@ -1469,6 +1511,26 @@ export default function ColaboradoresPage() {
                             onChange={(val) => updateCell(colab.id, "children", val)}
                             placeholder="Não / Qtd..."
                             fontClass="text-slate-600 text-[11px]"
+                          />
+                        </td>
+
+                        {/* INSTITUIÇÃO DE ENSINO */}
+                        <td className="px-4 py-3.5">
+                          <TextInputCell 
+                            value={colab.collegeName || ""} 
+                            onChange={(val) => updateCell(colab.id, "collegeName", val)}
+                            placeholder="Adicionar Faculdade..."
+                            fontClass="text-slate-600 text-[11px] font-medium"
+                          />
+                        </td>
+
+                        {/* E-MAIL DA INSTITUIÇÃO */}
+                        <td className="px-4 py-3.5">
+                          <TextInputCell 
+                            value={colab.collegeEmail || ""} 
+                            onChange={(val) => updateCell(colab.id, "collegeEmail", val)}
+                            placeholder="Adicionar E-mail..."
+                            fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
                           />
                         </td>
 
@@ -1653,22 +1715,22 @@ export default function ColaboradoresPage() {
               </div>
 
               {/* List Table */}
-              <div className="overflow-x-auto min-h-[500px] px-6 py-4">
-                <table className="w-full text-left border-collapse table-fixed min-w-[1900px]">
+              <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 relative border border-slate-200/60 rounded-2xl shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[1900px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
-                      <th className="w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none rounded-l-xl">Nome Completo</th>
-                      <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">Função</th>
-                      <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none">CPF</th>
-                      <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none">Data de Nasc.</th>
-                      <th className="w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
-                      <th className="w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
-                      <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
-                      <th className="w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
-                      <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
-                      <th className="w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">DATA DA DEMISSÃO</th>
-                      <th className="w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
-                      <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none rounded-l-xl">Nome Completo</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">Função</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none">CPF</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none">Data de Nasc.</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">DATA DA DEMISSÃO</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1692,14 +1754,14 @@ export default function ColaboradoresPage() {
                       </tr>
                     ) : (
                       filteredExCollaborators.map((colab) => (
-                        <tr key={colab.id} className="hover:bg-slate-50/40 transition-colors uppercase font-bold text-slate-700">
+                        <tr key={colab.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap">
                           {/* Nome Completo */}
                           <td className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.name} 
                               onChange={(val) => updateCell(colab.id, "name", val)}
                               placeholder=""
-                              fontClass="font-bold text-slate-800 text-[11px]"
+                              fontClass="font-bold text-slate-800 uppercase text-[11px]"
                             />
                           </td>
 
@@ -1718,7 +1780,7 @@ export default function ColaboradoresPage() {
                               value={colab.cpf} 
                               onChange={(val) => updateCell(colab.id, "cpf", val)}
                               placeholder=""
-                              fontClass="font-mono text-slate-650 text-[11px]"
+                              fontClass="font-mono text-slate-600 text-[11px]"
                             />
                           </td>
 
@@ -1728,7 +1790,7 @@ export default function ColaboradoresPage() {
                               value={colab.birthDate} 
                               onChange={(val) => updateCell(colab.id, "birthDate", val)}
                               placeholder=""
-                              fontClass="font-mono text-slate-650 text-[11px]"
+                              fontClass="font-mono text-slate-500 text-[11px]"
                             />
                           </td>
 
@@ -1738,7 +1800,7 @@ export default function ColaboradoresPage() {
                               value={colab.civilStatus} 
                               onChange={(val) => updateCell(colab.id, "civilStatus", val)}
                               placeholder=""
-                              fontClass="text-slate-650 text-[11px]"
+                              fontClass="text-slate-600 text-[11px]"
                             />
                           </td>
 
@@ -1748,7 +1810,7 @@ export default function ColaboradoresPage() {
                               value={colab.address} 
                               onChange={(val) => updateCell(colab.id, "address", val)}
                               placeholder=""
-                              fontClass="text-slate-650 text-[11px]"
+                              fontClass="text-slate-600 text-[11px] font-medium"
                             />
                           </td>
 
@@ -1758,7 +1820,7 @@ export default function ColaboradoresPage() {
                               value={colab.phone} 
                               onChange={(val) => updateCell(colab.id, "phone", val)}
                               placeholder=""
-                              fontClass="font-mono text-slate-650 text-[11px]"
+                              fontClass="font-mono text-slate-600 text-[11px]"
                             />
                           </td>
 
@@ -1768,7 +1830,7 @@ export default function ColaboradoresPage() {
                               value={colab.email} 
                               onChange={(val) => updateCell(colab.id, "email", val)}
                               placeholder=""
-                              fontClass="font-mono text-slate-650 text-[11.5px] lowercase"
+                              fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
                             />
                           </td>
 
@@ -1778,7 +1840,7 @@ export default function ColaboradoresPage() {
                               value={colab.emergencyPhone} 
                               onChange={(val) => updateCell(colab.id, "emergencyPhone", val)}
                               placeholder=""
-                              fontClass="font-mono text-slate-650 text-[11px]"
+                              fontClass="font-mono text-slate-600 text-[11px]"
                             />
                           </td>
 
@@ -1788,7 +1850,7 @@ export default function ColaboradoresPage() {
                               value={colab.exitDate || ""} 
                               onChange={(val) => updateCell(colab.id, "exitDate", val)}
                               placeholder=""
-                              fontClass="font-mono text-slate-650 text-[11px]"
+                              fontClass="font-mono text-slate-605 text-[11px]"
                             />
                           </td>
 

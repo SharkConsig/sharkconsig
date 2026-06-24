@@ -424,6 +424,20 @@ export default function EntrevistasPage() {
 
   const sortCandidates = (list: Interview[]) => {
     const today = getTodayDateStr()
+
+    // Get current local time in HH:MM:SS
+    const d = new Date()
+    const hours = String(d.getHours()).padStart(2, "0")
+    const minutes = String(d.getMinutes()).padStart(2, "0")
+    const seconds = String(d.getSeconds()).padStart(2, "0")
+    const currentTime = `${hours}:${minutes}:${seconds}`
+
+    const normTime = (t: string) => {
+      const cleaned = (t || "").trim()
+      if (cleaned.length === 5) return `${cleaned}:00`
+      return cleaned
+    }
+
     return [...list].sort((a, b) => {
       const dateA = a.date || ""
       const dateB = b.date || ""
@@ -448,12 +462,28 @@ export default function EntrevistasPage() {
             return dateA.localeCompare(dateB)
           }
         }
+
+        // If they are on the SAME day:
+        // Let's check if the time of the slot has passed.
+        // We only care about this if it's "today" (since for past/future days, both are either fully past or fully future)
+        if (dateA === today) {
+          const timeA = normTime(a.time || "")
+          const timeB = normTime(b.time || "")
+
+          const hasPassedA = timeA < currentTime
+          const hasPassedB = timeB < currentTime
+
+          if (hasPassedA !== hasPassedB) {
+            // The one that has NOT passed goes first (top of the day)
+            return hasPassedA ? 1 : -1
+          }
+        }
       } else if (hasDateA !== hasDateB) {
         return hasDateA ? -1 : 1
       }
 
-      const timeA = a.time || ""
-      const timeB = b.time || ""
+      const timeA = normTime(a.time || "")
+      const timeB = normTime(b.time || "")
       return timeA.localeCompare(timeB)
     })
   }
