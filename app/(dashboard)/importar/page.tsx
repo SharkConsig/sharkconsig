@@ -330,6 +330,21 @@ export default function ImportBatchPage() {
     return clean || null;
   };
 
+  const normalizeRowKeys = (row: Record<string, string | undefined>): Record<string, string | undefined> => {
+    const normalized: Record<string, string | undefined> = {};
+    for (const [key, value] of Object.entries(row)) {
+      if (key === null || key === undefined) continue;
+      const normKey = String(key)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, "")
+        .trim();
+      normalized[normKey] = value;
+    }
+    return normalized;
+  };
+
   const normalizeDate = (date: string) => {
     if (!date) return null;
     
@@ -1722,16 +1737,19 @@ export default function ImportBatchPage() {
 
   const processGovernoRjChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
     // cpf, nome, data_de_nascimento, telefone, orgao, matricula
-    const normalizedRows = results.map(row => ({
-      cpf: normalizeCPF(row.cpf || ""),
-      nome: normalizeText(row.nome || ""),
-      data_nascimento: normalizeDate(row.data_de_nascimento || row.data_nascimento || ""),
-      matricula: normalizeText(row.matricula || ""),
-      orgao: normalizeText(row.orgao || ""),
-      telefone_1: normalizePhone(row.telefone || row.telefone_1 || ""),
-      telefone_2: normalizePhone(row.telefone_2 || ""),
-      telefone_3: normalizePhone(row.telefone_3 || "")
-    })).filter(r => r.cpf && r.cpf.length > 0);
+    const normalizedRows = results.map(row => {
+      const normRow = normalizeRowKeys(row);
+      return {
+        cpf: normalizeCPF(normRow.cpf || normRow.cpf_numero || ""),
+        nome: normalizeText(normRow.nome || normRow.nome_completo || ""),
+        data_nascimento: normalizeDate(normRow.datadenascimento || normRow.data_de_nascimento || normRow.datanascimento || ""),
+        matricula: normalizeText(normRow.matricula || normRow.numero_matricula || ""),
+        orgao: normalizeText(normRow.orgao || normRow.orgao_nome || ""),
+        telefone_1: normalizePhone(normRow.telefone || normRow.telefone1 || normRow.telefone_1 || ""),
+        telefone_2: normalizePhone(normRow.telefone2 || normRow.telefone_2 || ""),
+        telefone_3: normalizePhone(normRow.telefone3 || normRow.telefone_3 || "")
+      };
+    }).filter(r => r.cpf && r.cpf.length > 0);
 
     if (normalizedRows.length === 0) return;
 
@@ -1829,19 +1847,22 @@ export default function ImportBatchPage() {
 
   const processPrefeituraSantoAndreChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
     // cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,orgao,matricula,vinculo,margem_bruta_cartao,margem_liquida_cartao
-    const normalizedRows = results.map(row => ({
-      cpf: normalizeCPF(row.cpf || ""),
-      nome: normalizeText(row.nome || ""),
-      data_nascimento: normalizeDate(row.data_de_nascimento || row.data_nascimento || ""),
-      matricula: normalizeText(row.matricula || ""),
-      orgao: normalizeText(row.orgao || ""),
-      vinculo: normalizeText(row.vinculo || ""),
-      telefone_1: normalizePhone(row.telefone_1 || row.telefone || ""),
-      telefone_2: normalizePhone(row.telefone_2 || ""),
-      telefone_3: normalizePhone(row.telefone_3 || ""),
-      margem_bruta_cartao: normalizeMoney(row.margem_bruta_cartao || "0"),
-      margem_liquida_cartao: normalizeMoney(row.margem_liquida_cartao || "0")
-    })).filter(r => r.cpf && r.cpf.length > 0);
+    const normalizedRows = results.map(row => {
+      const normRow = normalizeRowKeys(row);
+      return {
+        cpf: normalizeCPF(normRow.cpf || normRow.cpf_numero || ""),
+        nome: normalizeText(normRow.nome || normRow.nome_completo || ""),
+        data_nascimento: normalizeDate(normRow.datadenascimento || normRow.data_de_nascimento || normRow.datanascimento || ""),
+        matricula: normalizeText(normRow.matricula || normRow.numero_matricula || ""),
+        orgao: normalizeText(normRow.orgao || normRow.orgao_nome || ""),
+        vinculo: normalizeText(normRow.vinculo || ""),
+        telefone_1: normalizePhone(normRow.telefone || normRow.telefone1 || normRow.telefone_1 || ""),
+        telefone_2: normalizePhone(normRow.telefone2 || normRow.telefone_2 || ""),
+        telefone_3: normalizePhone(normRow.telefone3 || normRow.telefone_3 || ""),
+        margem_bruta_cartao: normalizeMoney(normRow.margem_bruta_cartao || normRow.margembrutacartao || "0"),
+        margem_liquida_cartao: normalizeMoney(normRow.margem_liquida_cartao || normRow.margemliquidacartao || "0")
+      };
+    }).filter(r => r.cpf && r.cpf.length > 0);
 
     if (normalizedRows.length === 0) return;
 
@@ -1945,22 +1966,25 @@ export default function ImportBatchPage() {
 
   const processPrefeituraContagemChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
     // cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,orgao,matricula,data_de_admissao,situacao_do_funcionario,margem_emprestimo_bruta,margem_emprestimo_liquida,margem_cartao_bruta,margem_cartao_liquida
-    const normalizedRows = results.map(row => ({
-      cpf: normalizeCPF(row.cpf || ""),
-      nome: normalizeText(row.nome || ""),
-      data_nascimento: normalizeDate(row.data_de_nascimento || row.data_nascimento || ""),
-      matricula: normalizeText(row.matricula || ""),
-      orgao: normalizeText(row.orgao || ""),
-      data_admissao: normalizeDate(row.data_de_admissao || row.data_admissao || ""),
-      situacao_funcionario: normalizeText(row.situacao_do_funcionario || row.situacao_funcionario || ""),
-      telefone_1: normalizePhone(row.telefone_1 || row.telefone || ""),
-      telefone_2: normalizePhone(row.telefone_2 || ""),
-      telefone_3: normalizePhone(row.telefone_3 || ""),
-      margem_emprestimo_bruta: normalizeMoney(row.margem_emprestimo_bruta || "0"),
-      margem_emprestimo_liquida: normalizeMoney(row.margem_emprestimo_liquida || "0"),
-      margem_cartao_bruta: normalizeMoney(row.margem_cartao_bruta || "0"),
-      margem_cartao_liquida: normalizeMoney(row.margem_cartao_liquida || "0")
-    })).filter(r => r.cpf && r.cpf.length > 0);
+    const normalizedRows = results.map(row => {
+      const normRow = normalizeRowKeys(row);
+      return {
+        cpf: normalizeCPF(normRow.cpf || normRow.cpf_numero || ""),
+        nome: normalizeText(normRow.nome || normRow.nome_completo || ""),
+        data_nascimento: normalizeDate(normRow.datadenascimento || normRow.data_de_nascimento || normRow.datanascimento || ""),
+        matricula: normalizeText(normRow.matricula || normRow.numero_matricula || ""),
+        orgao: normalizeText(normRow.orgao || normRow.orgao_nome || ""),
+        data_admissao: normalizeDate(normRow.datadeadmissao || normRow.data_de_admissao || normRow.dataadmissao || ""),
+        situacao_funcionario: normalizeText(normRow.situacaodofuncionario || normRow.situacao_do_funcionario || normRow.situacaofuncionario || ""),
+        telefone_1: normalizePhone(normRow.telefone || normRow.telefone1 || normRow.telefone_1 || ""),
+        telefone_2: normalizePhone(normRow.telefone2 || normRow.telefone_2 || ""),
+        telefone_3: normalizePhone(normRow.telefone3 || normRow.telefone_3 || ""),
+        margem_emprestimo_bruta: normalizeMoney(normRow.margem_emprestimo_bruta || normRow.margememprestimobruta || "0"),
+        margem_emprestimo_liquida: normalizeMoney(normRow.margem_emprestimo_liquida || normRow.margememprestimoliquida || "0"),
+        margem_cartao_bruta: normalizeMoney(normRow.margem_cartao_bruta || normRow.margemcartaobruta || "0"),
+        margem_cartao_liquida: normalizeMoney(normRow.margem_cartao_liquida || normRow.margemcartaoliquida || "0")
+      };
+    }).filter(r => r.cpf && r.cpf.length > 0);
 
     if (normalizedRows.length === 0) return;
 
@@ -2070,17 +2094,20 @@ export default function ImportBatchPage() {
 
   const processGovernoMgChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
     // cpf,nome,telefone,orgao,matricula,margem_emprestimo,margem_beneficio
-    const normalizedRows = results.map(row => ({
-      cpf: normalizeCPF(row.cpf || ""),
-      nome: normalizeText(row.nome || ""),
-      matricula: normalizeText(row.matricula || ""),
-      orgao: normalizeText(row.orgao || ""),
-      telefone_1: normalizePhone(row.telefone || row.telefone_1 || ""),
-      telefone_2: normalizePhone(row.telefone_2 || ""),
-      telefone_3: normalizePhone(row.telefone_3 || ""),
-      margem_emprestimo: normalizeMoney(row.margem_emprestimo || "0"),
-      margem_beneficio: normalizeMoney(row.margem_beneficio || "0")
-    })).filter(r => r.cpf && r.cpf.length > 0);
+    const normalizedRows = results.map(row => {
+      const normRow = normalizeRowKeys(row);
+      return {
+        cpf: normalizeCPF(normRow.cpf || normRow.cpf_numero || ""),
+        nome: normalizeText(normRow.nome || normRow.nome_completo || ""),
+        matricula: normalizeText(normRow.matricula || normRow.numero_matricula || ""),
+        orgao: normalizeText(normRow.orgao || normRow.orgao_nome || ""),
+        telefone_1: normalizePhone(normRow.telefone || normRow.telefone1 || normRow.telefone_1 || ""),
+        telefone_2: normalizePhone(normRow.telefone2 || normRow.telefone_2 || ""),
+        telefone_3: normalizePhone(normRow.telefone3 || normRow.telefone_3 || ""),
+        margem_emprestimo: normalizeMoney(normRow.margem_emprestimo || normRow.margememprestimo || "0"),
+        margem_beneficio: normalizeMoney(normRow.margem_beneficio || normRow.margembeneficio || "0")
+      };
+    }).filter(r => r.cpf && r.cpf.length > 0);
 
     if (normalizedRows.length === 0) return;
 

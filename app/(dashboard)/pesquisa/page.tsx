@@ -696,11 +696,13 @@ export default function SearchClientPage() {
       }
       
       const cleanCPF = digits.padStart(11, '0')
+      const formattedCPF = cleanCPF.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
       const phoneDigits = digits.length >= 8 ? (digits.length > 11 ? digits.slice(-11) : digits) : digits;
 
       // ESTRATÉGIA DE BUSCA OTIMIZADA (Split Tables)
       const searchTerms = [
         `cpf.eq.${cleanCPF}`,
+        `cpf.eq."${formattedCPF}"`,
         `telefone_1.eq.${digits}`,
         `telefone_2.eq.${digits}`,
         `telefone_3.eq.${digits}`
@@ -717,6 +719,39 @@ export default function SearchClientPage() {
         if (digits.length === 11) {
           const withZero = `0${digits}`
           searchTerms.push(`telefone_1.eq.${withZero}`, `telefone_2.eq.${withZero}`, `telefone_3.eq.${withZero}`)
+        }
+
+        // Adiciona telefones com variações de formatos comuns usando aspas duplas para o Supabase .or() aceitar caracteres especiais
+        if (digits.length === 11) {
+          const ddd = digits.slice(0, 2);
+          const prefix = digits.slice(2, 7);
+          const suffix = digits.slice(7);
+          searchTerms.push(
+            `telefone_1.eq."(${ddd}) ${prefix}-${suffix}"`,
+            `telefone_2.eq."(${ddd}) ${prefix}-${suffix}"`,
+            `telefone_3.eq."(${ddd}) ${prefix}-${suffix}"`,
+            `telefone_1.eq."(${ddd})${prefix}-${suffix}"`,
+            `telefone_2.eq."(${ddd})${prefix}-${suffix}"`,
+            `telefone_3.eq."(${ddd})${prefix}-${suffix}"`,
+            `telefone_1.eq."${ddd} ${prefix}-${suffix}"`,
+            `telefone_2.eq."${ddd} ${prefix}-${suffix}"`,
+            `telefone_3.eq."${ddd} ${prefix}-${suffix}"`
+          );
+        } else if (digits.length === 10) {
+          const ddd = digits.slice(0, 2);
+          const prefix = digits.slice(2, 6);
+          const suffix = digits.slice(6);
+          searchTerms.push(
+            `telefone_1.eq."(${ddd}) ${prefix}-${suffix}"`,
+            `telefone_2.eq."(${ddd}) ${prefix}-${suffix}"`,
+            `telefone_3.eq."(${ddd}) ${prefix}-${suffix}"`,
+            `telefone_1.eq."(${ddd})${prefix}-${suffix}"`,
+            `telefone_2.eq."(${ddd})${prefix}-${suffix}"`,
+            `telefone_3.eq."(${ddd})${prefix}-${suffix}"`,
+            `telefone_1.eq."${ddd} ${prefix}-${suffix}"`,
+            `telefone_2.eq."${ddd} ${prefix}-${suffix}"`,
+            `telefone_3.eq."${ddd} ${prefix}-${suffix}"`
+          );
         }
       }
 
