@@ -107,7 +107,7 @@ interface ClientData {
 }
 
 interface ConvenioProfile {
-  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem';
+  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg';
   client: ClientData;
   registrations: Registration[];
 }
@@ -122,7 +122,7 @@ export default function SearchClientPage() {
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
@@ -268,7 +268,7 @@ export default function SearchClientPage() {
   };
 
   const fetchRegistrationsForType = async (
-    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem',
+    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg',
     clientData: ClientData
   ): Promise<Registration[]> => {
     const ensureArray = (val: unknown): Record<string, unknown>[] => {
@@ -473,11 +473,29 @@ export default function SearchClientPage() {
           instituidores: []
         }
       }) as unknown as Registration[]
+    } else if (type === 'governo_mg') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('governo_mg_matriculas').select('*').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => {
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          orgao: r.orgao as string | null,
+          uf: 'MG',
+          margem_emprestimo: r.margem_emprestimo || 0.00,
+          margem_beneficio: r.margem_beneficio || 0.00,
+          instituidores: []
+        }
+      }) as unknown as Registration[]
     }
     return []
   }
 
-  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | null) => {
+  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | null) => {
     const tableMap = {
       siape: 'clientes',
       governo_sp: 'governo_sp_clientes',
@@ -487,7 +505,8 @@ export default function SearchClientPage() {
       governo_rr: 'governo_rr_clientes',
       governo_rj: 'governo_rj_clientes',
       prefeitura_santo_andre: 'prefeitura_santo_andre_clientes',
-      prefeitura_contagem: 'prefeitura_contagem_clientes'
+      prefeitura_contagem: 'prefeitura_contagem_clientes',
+      governo_mg: 'governo_mg_clientes'
     }
 
     const foundProfiles: ConvenioProfile[] = []
@@ -507,9 +526,9 @@ export default function SearchClientPage() {
             telefone_2: (data.telefone_2 || data.telefone_recado) as string | null,
             telefone_3: data.telefone_3 as string | null,
           }
-          const regs = await fetchRegistrationsForType(type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem', clientObj)
+          const regs = await fetchRegistrationsForType(type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg', clientObj)
           return {
-            type: type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem',
+            type: type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg',
             client: clientObj,
             registrations: regs
           }
@@ -617,7 +636,7 @@ export default function SearchClientPage() {
 
       const quickData = results.find(r => r !== null) || null;
 
-      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | null = null
+      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | null = null
       let resolvedCpf = cleanCPF
 
       if (quickData) {
@@ -632,6 +651,7 @@ export default function SearchClientPage() {
         else if (source === 'governo_rj') preferredType = 'governo_rj'
         else if (source === 'prefeitura_santo_andre') preferredType = 'prefeitura_santo_andre'
         else if (source === 'prefeitura_contagem') preferredType = 'prefeitura_contagem'
+        else if (source === 'governo_mg') preferredType = 'governo_mg'
       }
 
       await loadProfilesForCpf(resolvedCpf, preferredType)
@@ -710,6 +730,7 @@ export default function SearchClientPage() {
         { name: 'base_consulta_governo_rj', convenio: 'governo_rj' },
         { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
         { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
+        { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
       ];
 
       const results = await Promise.all(
@@ -733,7 +754,7 @@ export default function SearchClientPage() {
 
       const quickData = results.find(r => r !== null) || null;
 
-      const targetConvenio = quickData?.convenio as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | undefined
+      const targetConvenio = quickData?.convenio as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | undefined
       const finalCpf = quickData?.cpf || cleanCPF
       
       const isActuallyAPhone = digits.length >= 8 && digits.length <= 13
@@ -753,11 +774,12 @@ export default function SearchClientPage() {
         governo_rr: 'governo_rr_clientes',
         governo_rj: 'governo_rj_clientes',
         prefeitura_santo_andre: 'prefeitura_santo_andre_clientes',
-        prefeitura_contagem: 'prefeitura_contagem_clientes'
+        prefeitura_contagem: 'prefeitura_contagem_clientes',
+        governo_mg: 'governo_mg_clientes'
       }
 
       let foundCpf: string | null = null
-      let foundType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | null = null
+      let foundType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | null = null
 
       for (const [type, table] of Object.entries(tableMap)) {
         const query = supabase.from(table).select('cpf')
@@ -920,7 +942,8 @@ export default function SearchClientPage() {
                       p.type === 'governo_rr' ? 'GOVERNO RORAIMA' :
                       p.type === 'governo_rj' ? 'GOVERNO RIO DE JANEIRO' :
                       p.type === 'prefeitura_santo_andre' ? 'PREFEITURA SANTO ANDRÉ' :
-                      p.type === 'prefeitura_contagem' ? 'PREFEITURA CONTAGEM' : String(p.type).toUpperCase();
+                      p.type === 'prefeitura_contagem' ? 'PREFEITURA CONTAGEM' :
+                      p.type === 'governo_mg' ? 'GOVERNO MINAS GERAIS' : String(p.type).toUpperCase();
                     
                     return (
                       <button
@@ -2954,6 +2977,197 @@ export default function SearchClientPage() {
                                     tel3: unmaskPhone(client.telefone_3),
                                     origem: "pesquisa",
                                     convenio: "PREFEITURA CONTAGEM"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {clientType === 'governo_mg' && registrations.length > 0 && (() => {
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-mg-${reg.id}-${idx}`}
+                        type="button"
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
+                  {registrations[activeRegIndex] && (() => {
+                    const reg = registrations[activeRegIndex];
+                    
+                    return (
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                        <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-amber-500 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (GOVERNO DE MINAS GERAIS)</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[13px] font-bold text-slate-900">{reg.matricula}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.orgao || "NÃO INFORMADO"}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Margens Card */}
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-amber-500 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Margens de Empréstimo & Benefício</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                              {/* Margem Empréstimo */}
+                              {(() => {
+                                const isPositive = (Number(reg.margem_emprestimo) || 0) > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                  )}>
+                                    <div>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-700/60" : "text-red-700/60"
+                                      )}>
+                                        Margem Empréstimo
+                                      </p>
+                                      <p className={cn(
+                                        "text-[17px] font-bold tracking-tight",
+                                        isPositive ? "text-emerald-700" : "text-red-700"
+                                      )}>
+                                        {typeof reg.margem_emprestimo === 'number' 
+                                          ? reg.margem_emprestimo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                          : Number(reg.margem_emprestimo || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-600" : "bg-red-600")}></div>
+                                      <span className={cn(
+                                        "text-[8px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-600" : "text-red-600"
+                                      )}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Margem Benefício */}
+                              {(() => {
+                                const isPositive = (Number(reg.margem_beneficio) || 0) > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                  )}>
+                                    <div>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-700/60" : "text-red-700/60"
+                                      )}>
+                                        Margem Benefício
+                                      </p>
+                                      <p className={cn(
+                                        "text-[17px] font-bold tracking-tight",
+                                        isPositive ? "text-emerald-700" : "text-red-700"
+                                      )}>
+                                        {typeof reg.margem_beneficio === 'number' 
+                                          ? reg.margem_beneficio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                          : Number(reg.margem_beneficio || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-600" : "bg-red-600")}></div>
+                                      <span className={cn(
+                                        "text-[8px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-600" : "text-red-600"
+                                      )}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {renderClientTicketsHistory()}
+
+                          {/* Footer Buttons for GOV MG */}
+                          <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button 
+                              onClick={() => {
+                                const rawCpf = client.cpf || "";
+                                const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+                                const mLiquida = typeof reg.margem_emprestimo === 'number' 
+                                  ? reg.margem_emprestimo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
+                                  : Number(reg.margem_emprestimo || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: formattedCpf,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  margem: mLiquida,
+                                  liquida5: "R$ 0,00",
+                                  beneficio5: "R$ 0,00",
+                                  convenio: "GOVERNO MINAS GERAIS",
+                                  matricula: reg.matricula || ""
+                                });
+                                router.push(`/chamados/novo?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Abrir Chamado
+                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "GOVERNO MINAS GERAIS"
                                   });
                                   router.push(`/propostas/nova?${params.toString()}`);
                                 }}
