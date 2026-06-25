@@ -103,6 +103,250 @@ interface Proposal {
   created_at: string
 }
 
+const safeFloat = (val: unknown): number => {
+  if (val === undefined || val === null || val === "") return 0;
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  const str = String(val).trim();
+  if (str.includes(",") && !str.includes(".")) {
+    const parsed = parseFloat(str.replace(",", "."));
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  if (str.includes(",") && str.includes(".")) {
+    const parsed = parseFloat(str.replace(/\./g, "").replace(",", "."));
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  const parsed = parseFloat(str);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
+interface EditableAmountCellProps {
+  initialValue: number
+  onSave: (value: number) => void
+  id: string
+  textClassName?: string
+  confirmNeeded?: boolean
+  fieldName?: string
+}
+
+const EditableAmountCell = ({ initialValue, onSave, id, textClassName, confirmNeeded, fieldName }: EditableAmountCellProps) => {
+  const [isEditing, setIsEditing] = useState(false)
+  const [tempValue, setTempValue] = useState("")
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [pendingValue, setPendingValue] = useState<number | null>(null)
+
+  useEffect(() => {
+    setTempValue(initialValue.toFixed(2).replace(".", ","))
+  }, [initialValue])
+
+  const handleBlur = () => {
+    setIsEditing(false)
+    const parsed = parseFloat(tempValue.replace(/\./g, "").replace(",", "."))
+    if (!isNaN(parsed) && parsed !== initialValue) {
+      if (confirmNeeded) {
+        setPendingValue(parsed)
+        setShowConfirm(true)
+      } else {
+        onSave(parsed)
+      }
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.currentTarget.blur()
+    } else if (e.key === "Escape") {
+      setTempValue(initialValue.toFixed(2).replace(".", ","))
+      setIsEditing(false)
+    }
+  }
+
+  const handleConfirmSave = () => {
+    if (pendingValue !== null) {
+      onSave(pendingValue)
+    }
+    setShowConfirm(false)
+    setPendingValue(null)
+  }
+
+  const handleCancelSave = () => {
+    setTempValue(initialValue.toFixed(2).replace(".", ","))
+    setShowConfirm(false)
+    setPendingValue(null)
+  }
+
+  return (
+    <>
+      {isEditing ? (
+        <div 
+          className="inline-flex items-center justify-end gap-1 border border-slate-300 focus-within:border-primary/50 bg-white px-2 py-1 rounded-xl transition-all w-32 shadow-sm text-right"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="text-[10px] text-slate-400 font-bold">R$</span>
+          <input
+            id={id}
+            type="text"
+            inputMode="decimal"
+            value={tempValue}
+            onChange={(e) => setTempValue(e.target.value)}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            autoFocus
+            className="w-full text-right text-[11px] font-black text-[#171717] bg-transparent border-none focus:outline-none focus:ring-0 p-0"
+          />
+        </div>
+      ) : (
+        <div 
+          className="inline-flex items-center justify-end gap-1 px-2 py-1 rounded-xl hover:bg-slate-150 transition-all cursor-pointer text-right group/cell ml-auto"
+          onClick={(e) => {
+            e.stopPropagation()
+            setIsEditing(true)
+          }}
+        >
+          <span className={cn("text-[11px] font-bold group-hover/cell:text-primary transition-colors", textClassName || "text-slate-700")}>
+            R$ {initialValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          </span>
+          <Edit2 className="w-3 h-3 text-slate-400 opacity-0 group-hover/cell:opacity-100 transition-opacity ml-1" />
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirm && pendingValue !== null && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[999] p-4 animate-fade-in"
+          onClick={(e) => {
+            e.stopPropagation()
+            handleCancelSave()
+          }}
+        >
+          <div 
+            className="w-full max-w-md border border-slate-200 shadow-2xl bg-white rounded-2xl overflow-hidden text-left whitespace-normal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 bg-[#171717] text-white">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block">⚠️ OPERAÇÃO DE ALTO RISCO</span>
+              <h3 className="text-sm font-black uppercase tracking-tight mt-0.5">Confirmar Alteração de {fieldName || "Valor"}</h3>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                Você está prestes a alterar manualmente o campo <strong className="text-slate-900">{fieldName || "Valor"}</strong> deste contrato.
+              </p>
+
+              <div className="bg-slate-50 border border-slate-150 rounded-xl p-4 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-semibold text-slate-400">Valor Anterior:</span>
+                  <span className="font-extrabold text-slate-700">R$ {initialValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs border-t border-slate-200/60 pt-2">
+                  <span className="font-semibold text-slate-400">Novo Valor:</span>
+                  <span className="font-black text-amber-600 text-sm">R$ {pendingValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              <div className="text-[10px] font-bold text-slate-400 bg-amber-50 border border-amber-100 p-3 rounded-lg flex items-start gap-2">
+                <span className="text-amber-500 text-xs">ℹ️</span>
+                <p className="leading-normal">
+                  Ao confirmar, o sistema salvará a alteração no banco de dados.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={handleCancelSave}
+                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSave}
+                  className="px-4 py-2 text-xs font-black text-white bg-[#171717] hover:bg-[#262626] rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer"
+                >
+                  Confirmar Alteração
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+interface EditablePercentCellProps {
+  initialValue: number | undefined
+  onSave: (value: number | undefined) => void
+  id: string
+  textClassName?: string
+}
+
+const EditablePercentCell = ({ initialValue, onSave, id, textClassName }: EditablePercentCellProps) => {
+  const [isEditing, setIsEditing] = useState(false)
+  const [tempValue, setTempValue] = useState("")
+
+  useEffect(() => {
+    setTempValue(initialValue !== undefined && initialValue !== null ? initialValue.toString().replace(".", ",") : "")
+  }, [initialValue])
+
+  const handleBlur = () => {
+    setIsEditing(false)
+    const cleanedVal = tempValue.replace(/\./g, "").replace(",", ".")
+    const val = tempValue === "" ? undefined : parseFloat(cleanedVal)
+    if (val !== initialValue) {
+      onSave(val)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.currentTarget.blur()
+    } else if (e.key === "Escape") {
+      setTempValue(initialValue !== undefined && initialValue !== null ? initialValue.toString().replace(".", ",") : "")
+      setIsEditing(false)
+    }
+  }
+
+  if (isEditing) {
+    return (
+      <div 
+        className="inline-flex items-center justify-center gap-1 border border-slate-300 focus-within:border-primary/50 bg-white px-2 py-1 rounded-xl transition-all w-24 shadow-sm text-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          id={id}
+          type="text"
+          inputMode="decimal"
+          value={tempValue}
+          onChange={(e) => setTempValue(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          autoFocus
+          className="w-full text-center text-[11px] font-black text-[#171717] bg-transparent border-none focus:outline-none focus:ring-0 p-0"
+        />
+        <span className="text-[10px] text-slate-400 font-bold">%</span>
+      </div>
+    )
+  }
+
+  const displayValue = initialValue !== undefined && initialValue !== null ? `${initialValue.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} %` : "0,00 %"
+
+  return (
+    <div 
+      className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-xl hover:bg-slate-150 transition-all cursor-pointer text-center group/cell mx-auto"
+      onClick={(e) => {
+        e.stopPropagation()
+        setIsEditing(true)
+      }}
+    >
+      <span className={cn("text-[11px] font-bold group-hover/cell:text-primary transition-colors", textClassName || "text-slate-700")}>
+        {displayValue}
+      </span>
+      <Edit2 className="w-3 h-3 text-slate-400 opacity-0 group-hover/cell:opacity-100 transition-opacity ml-1" />
+    </div>
+  )
+}
+
 export default function ContasAReceberPage() {
   const { perfil, isAdmin, isDeveloper, isOperational, isSupervisor, isEstagio } = useAuth()
   const router = useRouter()
@@ -125,6 +369,8 @@ export default function ContasAReceberPage() {
   const [proposals, setProposals] = useState<Proposal[]>([])
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dbProdutosConfigs, setDbProdutosConfigs] = useState<any[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [bancosList, setBancosList] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [showFilters, setShowFilters] = useState(false)
@@ -239,6 +485,91 @@ export default function ContasAReceberPage() {
       console.error("Erro ao atualizar comissão no banco:", err)
     }
   }
+
+  const handleOperationValueChange = async (idLead: string, value: number | undefined) => {
+    try {
+      const proposal = proposals.find(p => p.id_lead === idLead)
+      if (proposal) {
+        const dbValue = value !== undefined && !isNaN(value) ? value : null
+        
+        const comPercent = customCommissionPercents[idLead] !== undefined 
+          ? customCommissionPercents[idLead] 
+          : getCommissionPercentage(proposal)
+        const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(comPercent) ? comPercent : 0
+        const dbValor = dbValue !== null ? (dbValue * comPercentVal) / 100 : null
+
+        const { error } = await supabase
+          .from("propostas")
+          .update({
+            valor_operacao: dbValue,
+            comissao_banco_valor: dbValor
+          })
+          .eq("id_lead", idLead)
+
+        if (error) {
+          console.error("Erro ao salvar valor_operacao no banco de dados:", error.message)
+          toast.error("Erro ao salvar alteração no banco de dados.")
+        } else {
+          setProposals(prev => prev.map(p => p.id_lead === idLead ? {
+            ...p,
+            valor_operacao: dbValue === null ? undefined : dbValue,
+            comissao_banco_valor: dbValor
+          } : p))
+          toast.success("Valor da operação atualizado com sucesso!")
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar valor_operacao:", err)
+    }
+  }
+
+  const handleCommissionValueChange = async (idLead: string, value: number | undefined) => {
+    try {
+      const proposal = proposals.find(p => p.id_lead === idLead)
+      if (proposal) {
+        const dbValor = value !== undefined && !isNaN(value) ? value : null
+        
+        const valOp = (proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
+        let dbPercent: number | null = null
+        if (dbValor !== null && valOp > 0) {
+          dbPercent = (dbValor / valOp) * 100
+          dbPercent = Math.round(dbPercent * 10000) / 10000
+        }
+
+        const { error } = await supabase
+          .from("propostas")
+          .update({
+            comissao_banco_valor: dbValor,
+            comissao_banco_porcentagem: dbPercent
+          })
+          .eq("id_lead", idLead)
+
+        if (error) {
+          console.error("Erro ao salvar comissao_banco_valor no banco de dados:", error.message)
+          toast.error("Erro ao salvar alteração no banco de dados.")
+        } else {
+          if (dbPercent !== null) {
+            setCustomCommissionPercents(prev => {
+              const updated = { ...prev, [idLead]: dbPercent! }
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem("receber_custom_commission_percents", JSON.stringify(updated))
+              }
+              return updated
+            })
+          }
+
+          setProposals(prev => prev.map(p => p.id_lead === idLead ? {
+            ...p,
+            comissao_banco_valor: dbValor,
+            comissao_banco_porcentagem: dbPercent
+          } : p))
+          toast.success("Valor da comissão atualizado com sucesso!")
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar comissao_banco_valor:", err)
+    }
+  }
   
   // Selected detail view
   const [selectedProposalDetail, setSelectedProposalDetail] = useState<Proposal | null>(null)
@@ -258,7 +589,7 @@ export default function ContasAReceberPage() {
     }
 
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
-      return commissionRate
+      return undefined;
     }
 
     // Helper to safely parse strings/numbers as percentage
@@ -312,6 +643,7 @@ export default function ContasAReceberPage() {
     const normParsedName = normalizeStr(parsedTableName);
     const parsedPrazo = extractPrazoNum(proposal.coeficiente_prazo);
     const parsedCoef = extractCoeficienteNum(proposal.coeficiente_prazo);
+    const normProposalBanco = normalizeStr(proposal.banco);
 
     const allOptions = dbProdutosConfigs.flatMap(config => {
       const getConvenioName = () => {
@@ -320,6 +652,11 @@ export default function ContasAReceberPage() {
         return (config.convenios as unknown as { nome: string }).nome;
       }
       const convNome = getConvenioName();
+
+      const foundBanco = config.banco_id && bancosList.length > 0 
+        ? bancosList.find(b => b.id === config.banco_id) 
+        : null;
+      const bancoNome = foundBanco?.nome;
 
       if (config.regras && config.regras.length > 0) {
         return config.regras
@@ -331,7 +668,9 @@ export default function ContasAReceberPage() {
             coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
             percentual_producao: parsePercent(regra.percentual_producao),
             percentual_comissao: parsePercent(regra.percentual_comissao),
-            convenioNome: convNome
+            convenioNome: convNome,
+            bancoNome: bancoNome,
+            banco_id: config.banco_id
           }));
       }
       return [{
@@ -340,7 +679,9 @@ export default function ContasAReceberPage() {
         coeficiente: typeof config.coeficiente === 'string' ? parseFloat(config.coeficiente.replace(',', '.')) : (config.coeficiente || 0),
         percentual_producao: parsePercent(config.percentual_producao),
         percentual_comissao: parsePercent(config.percentual_comissao),
-        convenioNome: convNome
+        convenioNome: convNome,
+        bancoNome: bancoNome,
+        banco_id: config.banco_id
       }];
     });
 
@@ -348,6 +689,18 @@ export default function ContasAReceberPage() {
     let highestScore = -1;
 
     for (const opt of allOptions) {
+      // STRICT REQUIREMENT: The table's bank MUST match the proposal's bank
+      const normOptBanco = normalizeStr(opt.bancoNome);
+      const matchesBanco = normProposalBanco && normOptBanco && (
+        normProposalBanco === normOptBanco ||
+        normProposalBanco.includes(normOptBanco) ||
+        normOptBanco.includes(normProposalBanco)
+      );
+
+      if (!matchesBanco) {
+        continue;
+      }
+
       let score = 0;
 
       // 1. Math matching (numerical metrics are precise and immune to string formatting)
@@ -396,6 +749,16 @@ export default function ContasAReceberPage() {
 
     // Fallback: try direct text matching of constructed labels as built in options list
     const exactClean = allOptions.find(opt => {
+      // STRICT REQUIREMENT: The table's bank MUST match the proposal's bank
+      const normOptBanco = normalizeStr(opt.bancoNome);
+      const matchesBanco = normProposalBanco && normOptBanco && (
+        normProposalBanco === normOptBanco ||
+        normProposalBanco.includes(normOptBanco) ||
+        normOptBanco.includes(normProposalBanco)
+      );
+
+      if (!matchesBanco) return false;
+
       const labelTextDot = opt.nome_tabela 
         ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
         : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente}`;
@@ -413,8 +776,8 @@ export default function ContasAReceberPage() {
       return exactClean.percentual_comissao;
     }
 
-    return commissionRate
-  }, [dbProdutosConfigs, commissionRate])
+    return undefined;
+  }, [dbProdutosConfigs, bancosList])
 
   const fetchProposals = async () => {
     setIsLoading(true)
@@ -448,6 +811,7 @@ export default function ContasAReceberPage() {
             percentual_producao,
             percentual_comissao,
             convenio_id,
+            banco_id,
             regras,
             ativo,
             convenios (nome)
@@ -466,6 +830,18 @@ export default function ContasAReceberPage() {
 
         if (!configsErr && configsData) {
           setDbProdutosConfigs(configsData)
+        }
+
+        // Fetch all banks to map bank_id to bank name
+        try {
+          const { data: bancosData, error: bancosErr } = await supabase
+            .from('bancos')
+            .select('id, nome')
+          if (!bancosErr && bancosData) {
+            setBancosList(bancosData)
+          }
+        } catch (errBancos) {
+          console.error("Erro ao buscar bancos para contas a receber:", errBancos)
         }
       } catch (errConfig) {
         console.error("Erro ao buscar tabelas de regras:", errConfig)
@@ -683,7 +1059,7 @@ export default function ContasAReceberPage() {
 
     // 2. VALOR OPERAÇÃO
     const matchesValorOperacao = (() => {
-      const val = proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0
+      const val = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
       const min = minValorOperacao !== "" ? parseFloat(minValorOperacao) : null
       const max = maxValorOperacao !== "" ? parseFloat(maxValorOperacao) : null
       if (min !== null && val < min) return false
@@ -694,18 +1070,20 @@ export default function ContasAReceberPage() {
     // 3. COMISSÃO (%)
     const matchesComissaoPercent = (() => {
       const comPercent = customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead] : getCommissionPercentage(proposal)
+      const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
       const min = minComissaoPercent !== "" ? parseFloat(minComissaoPercent) : null
       const max = maxComissaoPercent !== "" ? parseFloat(maxComissaoPercent) : null
-      if (min !== null && comPercent < min) return false
-      if (max !== null && comPercent > max) return false
+      if (min !== null && comPercentVal < min) return false
+      if (max !== null && comPercentVal > max) return false
       return true
     })()
 
     // 4. COMISSÃO ($)
     const matchesComissaoValor = (() => {
-      const val = proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0
+      const val = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
       const comPercent = customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead] : getCommissionPercentage(proposal)
-      const calculatedCommission = (val * comPercent) / 100
+      const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
+      const calculatedCommission = (val * comPercentVal) / 100
       const min = minComissaoValor !== "" ? parseFloat(minComissaoValor) : null
       const max = maxComissaoValor !== "" ? parseFloat(maxComissaoValor) : null
       if (min !== null && calculatedCommission < min) return false
@@ -727,28 +1105,31 @@ export default function ContasAReceberPage() {
 
   // Calcs for metrics cards
   const totalOperationSum = filteredProposals.reduce((sum, p) => {
-    const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+    const val = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     return sum + val
   }, 0)
   
   const estimatedComissions = filteredProposals.reduce((sum, p) => {
-    const valOp = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+    const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
-    return sum + (valOp * comPercent) / 100
+    const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
+    return sum + (valOp * comPercentVal) / 100
   }, 0)
 
   const receivedComissions = filteredProposals.reduce((sum, p) => {
     if (!receivedProposalIds[p.id_lead]) return sum
-    const valOp = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+    const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
-    return sum + (valOp * comPercent) / 100
+    const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
+    return sum + (valOp * comPercentVal) / 100
   }, 0)
 
   const toReceiveComissions = filteredProposals.reduce((sum, p) => {
     if (receivedProposalIds[p.id_lead]) return sum
-    const valOp = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+    const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
-    return sum + (valOp * comPercent) / 100
+    const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
+    return sum + (valOp * comPercentVal) / 100
   }, 0)
 
   // Exports results to excel
@@ -793,7 +1174,8 @@ export default function ContasAReceberPage() {
     filteredProposals.forEach((p) => {
       const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
       const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
-      const comVal = (val * comPercent) / 100
+      const comPercentVal = comPercent !== undefined && comPercent !== null ? comPercent : 0
+      const comVal = (val * comPercentVal) / 100
       const dateStr = p.data_pago_cliente 
         ? format(new Date(p.data_pago_cliente), "dd/MM/yyyy HH:mm") 
         : p.updated_at 
@@ -811,7 +1193,7 @@ export default function ContasAReceberPage() {
         convenio: p.convenio || "-",
         operacao: p.tipo_operacao || "-",
         valor: val,
-        comissao_pct: comPercent / 100,
+        comissao_pct: comPercentVal / 100,
         pago_em: dateStr,
         comissao_val: comVal,
       })
@@ -1230,9 +1612,10 @@ export default function ContasAReceberPage() {
                   </tr>
                 ) : (
                   paginatedProposals.map((proposal, index) => {
-                    const valOp = (proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
+                    const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
                     const comPercent = customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead] : getCommissionPercentage(proposal)
-                    const calculatedCommission = (valOp * comPercent) / 100
+                    const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
+                    const calculatedCommission = (valOp * comPercentVal) / 100
                     
                     return (
                       <React.Fragment key={proposal.id_lead}>
@@ -1281,25 +1664,21 @@ export default function ContasAReceberPage() {
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-500 uppercase">
                             {proposal.banco} / {proposal.convenio}
                           </td>
-                          <td className="px-5 py-4 text-[11px] font-bold text-slate-700 text-right whitespace-nowrap">
-                            R$ {valOp.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          <td className="px-5 py-4 text-right whitespace-nowrap">
+                            <EditableAmountCell 
+                              initialValue={valOp} 
+                              onSave={(val) => handleOperationValueChange(proposal.id_lead, val)}
+                              id={`input-operation-value-${proposal.id_lead}`}
+                              confirmNeeded={true}
+                              fieldName="Valor da Operação"
+                            />
                           </td>
-                          <td className="px-5 py-4 text-[11px] font-bold text-slate-500 text-center whitespace-nowrap">
-                            <div className="inline-flex items-center justify-center gap-1 border border-slate-200 hover:border-slate-350 focus-within:border-slate-400 bg-white px-2 py-1 rounded-xl transition-all w-24 shadow-sm mx-auto" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                id={`input-commission-percent-${proposal.id_lead}`}
-                                type="text"
-                                inputMode="decimal"
-                                value={customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead].toString().replace(".", ",") : comPercent.toString().replace(".", ",")}
-                                onChange={(e) => {
-                                  const cleanedVal = e.target.value.replace(",", ".");
-                                  const val = e.target.value === "" ? undefined : parseFloat(cleanedVal);
-                                  handleCommissionPercentChange(proposal.id_lead, val);
-                                }}
-                                className="w-full text-center text-[11px] font-black text-[#171717] bg-transparent border-none focus:outline-none focus:ring-0 p-0"
-                              />
-                              <span className="text-[10px] text-slate-400 font-bold">%</span>
-                            </div>
+                          <td className="px-5 py-4 text-center whitespace-nowrap">
+                            <EditablePercentCell 
+                              initialValue={customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead] : comPercent}
+                              onSave={(val) => handleCommissionPercentChange(proposal.id_lead, val)}
+                              id={`input-commission-percent-${proposal.id_lead}`}
+                            />
                           </td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500 whitespace-nowrap">
                             {proposal.data_pago_cliente ? (
@@ -1310,8 +1689,13 @@ export default function ContasAReceberPage() {
                               format(new Date(proposal.created_at), "dd/MM/yyyy")
                             )}
                           </td>
-                          <td className="px-5 py-4 text-[11px] font-bold text-emerald-600 text-right whitespace-nowrap">
-                            R$ {calculatedCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          <td className="px-5 py-4 text-right whitespace-nowrap">
+                            <EditableAmountCell 
+                              initialValue={calculatedCommission} 
+                              onSave={(val) => handleCommissionValueChange(proposal.id_lead, val)}
+                              id={`input-commission-value-${proposal.id_lead}`}
+                              textClassName="text-emerald-600"
+                            />
                           </td>
                           <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             <button
