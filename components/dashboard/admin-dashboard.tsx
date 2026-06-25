@@ -1822,14 +1822,10 @@ export function AdminDashboard({
           animate={{ opacity: 1, y: 0 }}
           className="space-y-6"
         >
-          {/* Header Row with Period Filter at the top-right */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-100/60">
-            <div>
-              <h2 className="text-xl font-black text-[#1C2643] tracking-tight mt-1 uppercase">SUSTENTABILIDADE E RECEITA</h2>
-            </div>
-
+          {/* Header Row with Period Filter at the top-right (Sticky) */}
+          <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all">
             {/* Filter controls */}
-            <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
               <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
                 {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
                   <button
@@ -1879,6 +1875,13 @@ export function AdminDashboard({
                   </button>
                 </motion.div>
               )}
+            </div>
+          </div>
+
+          {/* Section Title (Static/Non-Sticky) */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2">
+            <div>
+              <h2 className="text-xl font-black text-[#1C2643] tracking-tight mt-1 uppercase">SUSTENTABILIDADE E RECEITA</h2>
             </div>
           </div>
 

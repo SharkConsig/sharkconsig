@@ -164,6 +164,12 @@ const allMenuItems = [
         href: "/financeiro/contas-a-receber", 
         icon: ClipboardList, 
         roles: ["Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "CONFIGURAÇÕES FINANCEIRAS", 
+        href: "/financeiro/configuracoes", 
+        icon: Settings, 
+        roles: ["Administrador", "Desenvolvedor"] 
       }
     ]
   },

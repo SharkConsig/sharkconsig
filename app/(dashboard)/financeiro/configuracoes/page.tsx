@@ -187,7 +187,7 @@ const getStandardDefaultHours = (regimeRaw: string | undefined) => {
   return JSON.parse(JSON.stringify(DEFAULT_HOURS_CLT))
 }
 
-export default function SettingsPage() {
+export default function FinancialSettingsPage() {
   const { perfil, isAdmin } = useAuth()
   const [statuses, setStatuses] = useState<TicketStatus[]>([])
   const [convenios, setConvenios] = useState<GenericConfig[]>([])
@@ -1236,783 +1236,563 @@ export default function SettingsPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-[#f8fafc]">
-      <Header title="CONFIGURAÇÕES DO SISTEMA" />
+      <Header title="CONFIGURAÇÕES FINANCEIRAS" />
       
       <main className="flex-1 p-4 lg:p-8 space-y-8">
-        {/* CONTROLE DE HORÁRIOS DE ACESSO */}
+        {/* GERENCIAR METAS E PRÊMIOS */}
         <section className="space-y-6">
           <div 
             className="flex items-center justify-between cursor-pointer group select-none"
-            onClick={() => setIsHorariosExpanded(!isHorariosExpanded)}
+            onClick={() => setIsMetasPremiosExpanded(!isMetasPremiosExpanded)}
           >
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
                 <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                  CONTROLE DE HORÁRIOS DE ACESSO AO SISTEMA
-                  {isHorariosExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
+                  GERENCIAR METAS E PRÊMIOS
+                  {isMetasPremiosExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
                 </h2>
               </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Administrar faixas de horários permitidos por colaborador</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Configuração de objetivos anuais, mensais e campanhas de prêmios</p>
             </div>
-            
+
+            <div className="flex items-center gap-2">
+              <Button 
+                 onClick={(e) => {
+                  e.stopPropagation()
+                  setIsAnnualGoalModalOpen(true)
+                }}
+                className="bg-[#171717] hover:bg-[#171717]/90 text-white gap-2 shadow-lg h-9 rounded-lg relative z-10 px-4"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-[10.5px] font-bold uppercase tracking-widest">Nova Campanha Anual</span>
+              </Button>
+            </div>
           </div>
 
           <AnimatePresence>
-            {isHorariosExpanded && (
+            {isMetasPremiosExpanded && (
               <motion.div 
                 initial={{ height: 0, opacity: 0 }} 
                 animate={{ height: "auto", opacity: 1 }} 
                 exit={{ height: 0, opacity: 0 }} 
+                transition={{ duration: 0.3, ease: "easeInOut" }}
                 className="overflow-hidden space-y-4"
               >
-                <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white p-6">
-                  <div className="flex flex-col gap-4">
-                    {/* Search bar & info */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="relative flex-1 max-w-sm">
-                        <Input
-                          type="text"
-                          placeholder="Buscar colaborador..."
-                          value={searchHorariosQuery}
-                          onChange={(e) => setSearchHorariosQuery(e.target.value)}
-                          className="h-9 pl-9 pr-4 text-[12px] border-slate-200 rounded-lg placeholder-slate-400"
-                        />
-                        <div className="absolute left-3 top-2.5 text-slate-400">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
+                {/* Accordion by Year */}
+                {Array.from(new Set([
+                  ...metas.map(m => m.ano),
+                  ...faixasMetas.map(f => f.ano),
+                  new Date().getFullYear()
+                ])).filter(y => y > 0).sort((a, b) => b - a).map((year) => {
+                  const annualMeta = metas.find(m => m.tipo === 'empresa' && m.ano === year && m.mes === 0);
+                  const isMetasAtiva = annualMeta?.ativo !== false;
+
+                  return (
+                  <Card key={year} className={cn(
+                    "border overflow-hidden rounded-2xl bg-white shadow-sm overflow-visible transition-all",
+                    isMetasAtiva ? "border-slate-200" : "border-slate-100 opacity-75 grayscale"
+                  )}>
+                    <div 
+                      className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => setExpandedYearId(expandedYearId === year ? null : year)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center font-black text-[12px] font-mono",
+                          isMetasAtiva ? "bg-primary/10 text-primary" : "bg-slate-100 text-slate-400"
+                        )}>
+                          {year.toString().substring(2)}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest leading-none">PLANO DE METAS {year}</h3>
+                            {!isMetasAtiva && (
+                              <span className="bg-slate-100 text-slate-400 text-[8px] font-black px-1.5 py-0.5 rounded uppercase">Inativo</span>
+                            )}
+                          </div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Gestão de desempenho e bonificações</p>
                         </div>
                       </div>
-                      <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 leading-relaxed self-start md:self-auto">
-                        ℹ️ Horários padrão por regime (CLT/PJ: 08:00 - 19:00, Sáb: 09:00 - 15:00 • Estágio: Seg a Sex: 07:45 - 19:45, Sáb: Bloqueado).
-                      </div>
-                    </div>
+                      <div className="flex items-center gap-4">
+                        <div className="hidden md:flex items-center gap-4 border-r pr-4 border-slate-100">
+                           <div className="flex flex-col items-end">
+                            <span className="text-[8px] font-bold text-slate-300 uppercase">Meta Anual</span>
+                            <span className={cn(
+                              "text-[11px] font-mono font-black",
+                              isMetasAtiva ? "text-emerald-600" : "text-slate-400"
+                            )}>
+                              {formatCurrency(((annualMeta?.valor_mensal || 0) * 100).toString())}
+                            </span>
+                          </div>
+                        </div>
 
-                    {/* Table Grouped by Contract Regime */}
-                    <div className="border border-slate-100 rounded-xl overflow-hidden">
-                      <Table>
-                        <TableHeader className="bg-slate-50/50">
-                          <TableRow className="hover:bg-transparent border-slate-100">
-                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 pl-6 w-[200px]">Colaborador</TableHead>
-                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Segunda</TableHead>
-                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Terça</TableHead>
-                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Quarta</TableHead>
-                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Quinta</TableHead>
-                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Sexta</TableHead>
-                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-center">Sábado</TableHead>
-                            <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-3 text-right pr-6 w-[120px]">Ações</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        
-                        <TableBody>
-                          {systemUsers.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={8} className="h-32 text-center">
-                                <div className="flex flex-col items-center justify-center gap-2">
-                                  <Loader2 className="w-8 h-8 text-slate-300 animate-spin" />
-                                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Carregando colaboradores...</span>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            ["CLT", "PJ", "Estágio", "Outros"].map(regime => {
-                              const usersInRegime = systemUsers.filter(u => {
-                                // Somente colaboradores ativos
-                                const statusRaw = (u.status || "ATIVO").trim().toUpperCase();
-                                if (statusRaw !== "ATIVO") return false;
-
-                                const userRegRaw = (u.regime_contratacao || "").trim().toLowerCase();
-                                const isSearchMatch = u.nome.toLowerCase().includes(searchHorariosQuery.toLowerCase());
-                                if (!isSearchMatch) return false;
-
-                                if (regime === "CLT" && (userRegRaw === "clt" || userRegRaw === "")) return true;
-                                if (regime === "PJ" && userRegRaw === "pj") return true;
-                                if (regime === "Estágio" && (userRegRaw === "estágio" || userRegRaw === "estagio")) return true;
-                                if (regime === "Outros" && userRegRaw !== "clt" && userRegRaw !== "" && userRegRaw !== "pj" && userRegRaw !== "estágio" && userRegRaw !== "estagio") return true;
-                                return false;
-                              }).sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
-
-                              if (usersInRegime.length === 0) return null;
-
-                              return (
-                                <React.Fragment key={regime}>
-                                  <TableRow className="bg-slate-50/70 border-y border-slate-100/80 hover:bg-slate-50/70">
-                                    <TableCell colSpan={8} className="py-2.5 pl-6">
-                                      <span className="text-[10px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-primary" />
-                                        Grupo: {regime} ({usersInRegime.length})
-                                      </span>
-                                    </TableCell>
-                                  </TableRow>
-
-                                  {usersInRegime.map(u => {
-                                    const customConfigObj = accessHoursConfig[u.id] || getStandardDefaultHours(u.regime_contratacao)
-                                    const days = ["seg", "ter", "qua", "qui", "sex", "sab"] as const
-
-                                    return (
-                                      <TableRow key={u.id} className="hover:bg-slate-50/40 border-slate-100">
-                                        <TableCell className="py-3 pl-6">
-                                          <div className="flex flex-col">
-                                            <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wide truncate max-w-[180px]">{u.nome}</span>
-                                            <span className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">{u.funcao || 'Corretor'}</span>
-                                          </div>
-                                        </TableCell>
-
-                                        {days.map(day => {
-                                          const dayConfig = customConfigObj[day] || { enabled: false, start: "00:00", end: "00:00" }
-                                          
-                                          return (
-                                            <TableCell key={day} className="py-1 text-center">
-                                              <div className="flex flex-col items-center justify-center gap-1">
-                                                <div className="flex items-center gap-1">
-                                                  <input 
-                                                    type="checkbox" 
-                                                    id={`chk-${u.id}-${day}`}
-                                                    checked={dayConfig.enabled}
-                                                    onChange={(e) => {
-                                                      const updatedConfig = { ...customConfigObj }
-                                                      updatedConfig[day] = {
-                                                        ...dayConfig,
-                                                        enabled: e.target.checked,
-                                                        start: dayConfig.start && dayConfig.start !== "00:00" ? dayConfig.start : (day === "sab" ? "09:00" : "08:00"),
-                                                        end: dayConfig.end && dayConfig.end !== "00:00" ? dayConfig.end : (day === "sab" ? "15:00" : "19:00")
-                                                      }
-                                                      setAccessHoursConfig(prev => ({
-                                                        ...prev,
-                                                        [u.id]: updatedConfig
-                                                      }))
-                                                    }}
-                                                    className="w-3 h-3 rounded border-slate-300 text-primary focus:ring-primary/25 cursor-pointer accent-slate-800"
-                                                  />
-                                                  <label htmlFor={`chk-${u.id}-${day}`} className="text-[8.5px] font-bold uppercase tracking-wider cursor-pointer text-slate-500">
-                                                    {dayConfig.enabled ? "Ativo" : "Bloqueado"}
-                                                  </label>
-                                                </div>
-
-                                                {dayConfig.enabled ? (
-                                                  <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
-                                                    <select 
-                                                      value={dayConfig.start || "08:00"} 
-                                                      onChange={(e) => {
-                                                        const updatedConfig = { ...customConfigObj }
-                                                        updatedConfig[day] = { ...dayConfig, start: e.target.value }
-                                                        setAccessHoursConfig(prev => ({
-                                                          ...prev,
-                                                          [u.id]: updatedConfig
-                                                        }))
-                                                      }}
-                                                      className="bg-transparent border-none text-[10px] font-bold text-slate-700 p-0 focus:outline-none focus:ring-0 cursor-pointer max-w-[50px]"
-                                                    >
-                                                      {TIME_OPTIONS.map(opt => (
-                                                        <option key={opt} value={opt}>{opt}</option>
-                                                      ))}
-                                                    </select>
-                                                    <span className="text-slate-300 font-bold text-[9px]">-</span>
-                                                    <select 
-                                                      value={dayConfig.end || "19:00"} 
-                                                      onChange={(e) => {
-                                                        const updatedConfig = { ...customConfigObj }
-                                                        updatedConfig[day] = { ...dayConfig, end: e.target.value }
-                                                        setAccessHoursConfig(prev => ({
-                                                          ...prev,
-                                                          [u.id]: updatedConfig
-                                                        }))
-                                                      }}
-                                                      className="bg-transparent border-none text-[10px] font-bold text-slate-700 p-0 focus:outline-none focus:ring-0 cursor-pointer max-w-[50px]"
-                                                    >
-                                                      {TIME_OPTIONS.map(opt => (
-                                                        <option key={opt} value={opt}>{opt}</option>
-                                                      ))}
-                                                    </select>
-                                                  </div>
-                                                ) : (
-                                                  <div className="text-[8px] font-black text-rose-500/80 uppercase bg-rose-50 border border-rose-100 rounded px-1.5 py-0.5">
-                                                    Bloqueado
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </TableCell>
-                                          )
-                                        })}
-
-                                        <TableCell className="py-2 text-right pr-6">
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="text-[9px] font-black text-slate-400 hover:text-slate-700 uppercase tracking-widest h-8"
-                                            onClick={() => {
-                                              const updated = { ...accessHoursConfig }
-                                              delete updated[u.id]
-                                              setAccessHoursConfig(updated)
-                                              toast.info(`Horários de de ${u.nome} restaurados.`)
-                                            }}
-                                          >
-                                            Padrão
-                                          </Button>
-                                        </TableCell>
-                                      </TableRow>
-                                    )
-                                  })}
-                                </React.Fragment>
-                              )
-                            })
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-
-                    {/* Bottom Save bar */}
-                    <div className="flex justify-end pt-2 border-t border-slate-100">
-                      <Button
-                        onClick={handleSaveAccessHours}
-                        disabled={isSubmitting}
-                        className="bg-[#171717] hover:bg-[#171717]/90 text-white px-8 h-10 rounded-xl gap-2 shadow-lg shadow-slate-200"
-                      >
-                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                        <span className="text-[10.5px] font-bold uppercase tracking-widest">Salvar Horários</span>
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
-
-        <section className="space-y-6">
-          <div 
-            className="flex items-center justify-between cursor-pointer group select-none"
-            onClick={() => setIsStatusExpanded(!isStatusExpanded)}
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
-                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                  STATUS DE CHAMADOS
-                  {isStatusExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />
-                  )}
-                </h2>
-              </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Gerenciamento de fluxos e estados dos atendimentos</p>
-            </div>
-            
-            <Button 
-              onClick={(e) => {
-                e.stopPropagation()
-                handleOpenModal()
-              }} 
-              className="bg-[#171717] hover:bg-[#171717]/90 text-white gap-2 shadow-lg shadow-slate-200 h-9 w-[170px] rounded-lg relative z-10"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="text-[10.5px] font-bold uppercase tracking-widest">Novo Status</span>
-            </Button>
-          </div>
-
-          <AnimatePresence initial={false}>
-            {isStatusExpanded && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.3, ease: "easeInOut" }}
-                className="overflow-hidden space-y-6"
-              >
-                <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
-                  <CardContent className="p-0">
-                    <Table>
-                      <TableHeader className="bg-slate-50/50">
-                        <TableRow className="hover:bg-transparent border-slate-100">
-                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Status</TableHead>
-                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Cor de Identificação</TableHead>
-                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
-                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
-                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {isLoading ? (
-                          <TableRow>
-                            <TableCell colSpan={5} className="h-40 text-center">
-                              <div className="flex flex-col items-center justify-center gap-3">
-                                <Loader2 className="w-8 h-8 text-slate-300 animate-spin" />
-                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Carregando dados...</span>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ) : paginatedStatuses.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={5} className="h-40 text-center">
-                              <div className="flex flex-col items-center justify-center gap-2">
-                                <Tag className="w-8 h-8 text-slate-200" />
-                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum status cadastrado</span>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          paginatedStatuses.map((status) => (
-                            <TableRow key={status.id} className="hover:bg-slate-50/50 transition-colors border-slate-100 group">
-                              <TableCell className="py-4 pl-8">
-                                <span 
-                                  className="px-3 py-1 rounded-md text-[10px] font-normal uppercase tracking-tight shadow-sm border border-slate-100"
-                                  style={{ backgroundColor: status.cor, color: status.cor_texto || '#ffffff' }}
-                                >
-                                  {status.nome}
-                                </span>
-                              </TableCell>
-                              <TableCell className="py-4">
-                                <div className="flex items-center gap-3">
-                                  <div 
-                                    className="w-4 h-4 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200" 
-                                    style={{ backgroundColor: status.cor }}
-                                  />
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-                                    {translateColor(status.cor)}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
-                                {format(new Date(status.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                              </TableCell>
-                              <TableCell className="py-4 text-center">
-                                <button 
-                                  onClick={() => toggleAtivo('status_chamados', status.id, status.ativo !== false)}
-                                  className={cn(
-                                    "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
-                                    status.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
-                                  )}
-                                >
-                                  {status.ativo !== false ? "ATIVO" : "INATIVO"}
-                                </button>
-                              </TableCell>
-                              <TableCell className="py-4 text-right pr-8">
-                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-8 w-8 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg"
-                                    onClick={() => handleOpenModal(status)}
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                  </Button>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-8 w-8 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg"
-                                    onClick={() => handleDelete(status.id)}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between px-2 pt-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, statuses.length)} de {statuses.length} registros
-                    </p>
-                    
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage === 1}
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </Button>
-                      
-                      <div className="flex items-center gap-1">
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                        <div className="flex items-center gap-2 pr-2" onClick={(e) => e.stopPropagation()}>
                           <Button
-                            key={page}
-                            variant={currentPage === page ? "default" : "outline"}
+                            variant="ghost"
                             size="icon"
                             className={cn(
-                              "h-8 w-8 rounded-lg transition-all text-[10px] font-black tracking-widest",
-                              currentPage === page 
-                                ? "bg-primary text-white shadow-lg shadow-primary/20 border-primary" 
-                                : "border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20"
+                              "h-7 w-7 rounded-lg transition-colors",
+                              isMetasAtiva ? "text-emerald-500 hover:bg-emerald-50" : "text-slate-300 hover:bg-slate-100"
                             )}
-                            onClick={() => handlePageChange(page)}
+                            onClick={() => annualMeta && handleToggleMetaAtiva(annualMeta.id, isMetasAtiva)}
+                            title={isMetasAtiva ? "Desativar Plano" : "Ativar Plano"}
                           >
-                            {page}
+                            <Zap className={cn("w-3.5 h-3.5", isMetasAtiva && "fill-current")} />
                           </Button>
-                        ))}
-                      </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-lg text-slate-400 hover:text-primary hover:bg-primary/5"
+                            onClick={() => {
+                              if (annualMeta) {
+                                setAnnualGoalForm({
+                                  id: annualMeta.id,
+                                  ano: annualMeta.ano,
+                                  valor: (annualMeta.valor_mensal * 100).toString(),
+                                  ativo: annualMeta.ativo !== false
+                                })
+                                setIsAnnualGoalModalOpen(true)
+                              } else {
+                                setAnnualGoalForm({ id: "", ano: year, valor: "", ativo: true })
+                                setIsAnnualGoalModalOpen(true)
+                              }
+                            }}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleGenericDelete('meta_anual', year)
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
 
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages}
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </Button>
+                        {expandedYearId === year ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
 
-        {/* Seção Convênios */}
+                    <AnimatePresence>
+                      {expandedYearId === year && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-slate-100">
+                          <div className="p-6 bg-slate-50/30 space-y-8">
+                            
+                            {/* Resumo Estrutural */}
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                              <div className="flex items-center gap-4">
+                                <div className="bg-primary/10 p-3 rounded-2xl">
+                                  <BarChart3 className="w-6 h-6 text-primary" />
+                                </div>
+                                <div className="flex flex-col">
+                                  <h5 className="text-[12px] font-black text-slate-800 uppercase tracking-widest">RESUMO ESTRUTURAL DO ANO {year}</h5>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase">Gestão descentralizada por competência mensal</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-8">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase">Referência Mensal</span>
+                                  <span className="text-[14px] font-mono font-black text-slate-600">
+                                    {annualMeta ? formatCurrency(((annualMeta.valor_mensal / 12) * 100).toString()) : '0,00'}
+                                  </span>
+                                </div>
+                                <div className="w-[1px] h-10 bg-slate-100 hidden md:block" />
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase">Meta Total do Plano</span>
+                                  <span className="text-[14px] font-mono font-black text-emerald-600">
+                                    {annualMeta ? formatCurrency((annualMeta.valor_mensal * 100).toString()) : '0,00'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Target className="w-4 h-4 text-primary" />
+                                  <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-widest leading-none">Cronograma de Gestão Mensal</h4>
+                                </div>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase">Selecione um mês para gerenciar Supervisores, Corretores e Prêmios</p>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+                                {Array.from({ length: 12 }, (_, i) => i + 1).map(mes => {
+                                  const metasMes = metas.filter(m => m.ano === year && m.mes === mes);
+                                  const totalMes = metasMes.reduce((acc, curr) => acc + curr.valor_mensal, 0);
+                                  const metaAnualMensalizada = (annualMeta?.valor_mensal || 0) / 12;
+                                  const percAlocado = metaAnualMensalizada > 0 ? (totalMes / metaAnualMensalizada) * 100 : 0;
+                                  
+                                  const mDesc = monthsList.find(m => m.id === mes)?.name.toUpperCase();
+                                  const isCurrentMonth = new Date().getMonth() + 1 === mes && new Date().getFullYear() === year;
+                                  
+                                  return (
+                                    <div 
+                                      key={mes} 
+                                      onClick={() => {
+                                        setSelectedMonthForManage(mes)
+                                        setSelectedYearForManage(year)
+                                        setIsManageMonthModalOpen(true)
+                                      }}
+                                      className={cn(
+                                        "relative group/mes overflow-hidden bg-white rounded-2xl border shadow-sm p-4 hover:shadow-xl transition-all cursor-pointer",
+                                        isCurrentMonth ? "border-primary ring-1 ring-primary/10" : "border-slate-100"
+                                      )}
+                                    >
+                                      {/* Indicador de Status Alocado */}
+                                      <div className={cn(
+                                        "absolute top-0 right-0 w-12 h-12 -mr-6 -mt-6 rounded-full transition-transform group-hover/mes:scale-110",
+                                        percAlocado >= 100 ? "bg-emerald-500/10" : percAlocado > 0 ? "bg-primary/10" : "bg-slate-50"
+                                      )} />
+
+                                      <div className="flex flex-col gap-4 relative">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className={cn(
+                                              "text-[10px] font-black uppercase tracking-tight",
+                                              isCurrentMonth ? "text-primary" : "text-slate-800"
+                                            )}>{mDesc}</span>
+                                            {isCurrentMonth && (
+                                              <span className="w-1 h-1 bg-primary rounded-full animate-pulse" />
+                                            )}
+                                          </div>
+                                          {percAlocado > 0 && (
+                                            <span className={cn(
+                                              "text-[8px] font-black px-1.5 py-0.5 rounded-md",
+                                              percAlocado >= 100 ? "bg-emerald-100 text-emerald-600" : "bg-primary/10 text-primary"
+                                            )}>
+                                              {Math.round(percAlocado)}%
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="space-y-1">
+                                          <div className="text-[11px] font-mono font-black text-slate-700">
+                                            {totalMes > 0 ? formatCurrency((totalMes * 100).toString()) : '---'}
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            <TrendingUp className={cn("w-2.5 h-2.5", percAlocado > 0 ? "text-primary" : "text-slate-300")} />
+                                            <span className="text-[8px] font-bold text-slate-300 uppercase">Metas Alocadas</span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-3 pt-2 border-t border-slate-50">
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="text-[8px] font-bold text-slate-400 leading-none">SUP.</span>
+                                            <span className="text-[10px] font-black text-slate-700">{metas.filter(m => m.tipo === 'time' && m.ano === year && m.mes === mes).length}</span>
+                                          </div>
+                                          <div className="w-[1px] h-4 bg-slate-100" />
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="text-[8px] font-bold text-slate-400 leading-none">COR.</span>
+                                            <span className="text-[10px] font-black text-slate-700">{metas.filter(m => m.tipo === 'corretor' && m.ano === year && m.mes === mes).length}</span>
+                                          </div>
+                                          <div className="flex-1 flex justify-end">
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full group-hover/mes:bg-primary group-hover/mes:text-white transition-all">
+                                              <Plus className="w-3 h-3" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Card>
+                );
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </section>
+
+        {/* GERENCIAR PRODUTOS E COMISSÕES */}
         <section className="space-y-6">
           <div 
             className="flex items-center justify-between cursor-pointer group select-none"
-            onClick={() => setIsConvenioExpanded(!isConvenioExpanded)}
+            onClick={() => setIsProdutosExpanded(!isProdutosExpanded)}
           >
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
                 <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                  CONVÊNIOS
-                  {isConvenioExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
+                  GERENCIAR PRODUTOS E COMISSÕES
+                  {isProdutosExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
                 </h2>
               </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Gerenciamento de convênios para propostas</p>
-            </div>
-            
-            <Button 
-              onClick={(e) => {
-                e.stopPropagation()
-                handleOpenGenericModal('convenio')
-              }} 
-              className="bg-[#171717] hover:bg-[#171717]/90 text-white gap-2 shadow-lg h-9 w-[170px] rounded-lg relative z-10"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="text-[10.5px] font-bold uppercase tracking-widest">Novo Convênio</span>
-            </Button>
-          </div>
-
-          <AnimatePresence>
-            {isConvenioExpanded && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden space-y-6">
-                <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
-                  <Table>
-                    <TableHeader className="bg-slate-50/50">
-                      <TableRow className="border-slate-100">
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Convênio</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {convenios.length === 0 ? (
-                        <TableRow><TableCell colSpan={4} className="h-24 text-center text-slate-400 text-[11px] uppercase font-bold tracking-widest">Nenhum convênio cadastrado</TableCell></TableRow>
-                      ) : (
-                        convenios.map((item) => (
-                          <TableRow key={item.id} className="group border-slate-100">
-                            <TableCell className="py-4 pl-8 font-bold text-[12px] text-slate-700">{item.nome}</TableCell>
-                            <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
-                              {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                            </TableCell>
-                            <TableCell className="py-4 text-center">
-                                <button 
-                                  onClick={() => toggleAtivo('convenios', item.id, item.ativo !== false)}
-                                  className={cn(
-                                    "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
-                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
-                                  )}
-                                >
-                                  {item.ativo !== false ? "ATIVO" : "INATIVO"}
-                                </button>
-                              </TableCell>
-                            <TableCell className="py-4 text-right pr-8">
-                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary" onClick={() => handleOpenGenericModal('convenio', item)}><Pencil className="w-4 h-4" /></Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-500" onClick={() => handleGenericDelete('convenio', item.id)}><Trash2 className="w-4 h-4" /></Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </Card>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
-
-        {/* Seção Bancos */}
-        <section className="space-y-6">
-          <div 
-            className="flex items-center justify-between cursor-pointer group select-none"
-            onClick={() => setIsBancoExpanded(!isBancoExpanded)}
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
-                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                  BANCOS DE EMPRÉSTIMO
-                  {isBancoExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
-                </h2>
-              </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Gerenciamento de bancos para propostas</p>
-            </div>
-            
-            <Button 
-              onClick={(e) => {
-                e.stopPropagation()
-                handleOpenGenericModal('banco')
-              }} 
-              className="bg-[#171717] hover:bg-[#171717]/90 text-white gap-2 shadow-lg h-9 w-[170px] rounded-lg relative z-10"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="text-[10.5px] font-bold uppercase tracking-widest">Novo Banco</span>
-            </Button>
-          </div>
-
-          <AnimatePresence>
-            {isBancoExpanded && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden space-y-6">
-                <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
-                  <Table>
-                    <TableHeader className="bg-slate-50/50">
-                      <TableRow className="border-slate-100">
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Banco</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {bancos.length === 0 ? (
-                        <TableRow><TableCell colSpan={4} className="h-24 text-center text-slate-400 text-[11px] uppercase font-bold tracking-widest">Nenhum banco cadastrado</TableCell></TableRow>
-                      ) : (
-                        bancos.map((item) => (
-                          <TableRow key={item.id} className="group border-slate-100">
-                            <TableCell className="py-4 pl-8 font-bold text-[12px] text-slate-700">{item.nome}</TableCell>
-                            <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
-                              {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                            </TableCell>
-                            <TableCell className="py-4 text-center">
-                                <button 
-                                  onClick={() => toggleAtivo('bancos', item.id, item.ativo !== false)}
-                                  className={cn(
-                                    "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
-                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
-                                  )}
-                                >
-                                  {item.ativo !== false ? "ATIVO" : "INATIVO"}
-                                </button>
-                              </TableCell>
-                            <TableCell className="py-4 text-right pr-8">
-                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary" onClick={() => handleOpenGenericModal('banco', item)}><Pencil className="w-4 h-4" /></Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-500" onClick={() => handleGenericDelete('banco', item.id)}><Trash2 className="w-4 h-4" /></Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </Card>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
-
-        {/* Seção Tipos de Operação */}
-        <section className="space-y-6">
-          <div 
-            className="flex items-center justify-between cursor-pointer group select-none"
-            onClick={() => setIsOperacaoExpanded(!isOperacaoExpanded)}
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
-                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                  TIPOS DE OPERAÇÃO
-                  {isOperacaoExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
-                </h2>
-              </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Gerenciamento de tipos de operação para propostas</p>
-            </div>
-            
-            <Button 
-              onClick={(e) => {
-                e.stopPropagation()
-                handleOpenGenericModal('operacao')
-              }} 
-              className="bg-[#171717] hover:bg-[#171717]/90 text-white gap-2 shadow-lg h-9 w-[170px] rounded-lg relative z-10"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="text-[10.5px] font-bold uppercase tracking-widest">Novo Tipo</span>
-            </Button>
-          </div>
-
-          <AnimatePresence>
-            {isOperacaoExpanded && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden space-y-6">
-                <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
-                  <Table>
-                    <TableHeader className="bg-slate-50/50">
-                      <TableRow className="border-slate-100">
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Nome do Tipo</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Data Criação</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
-                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {tiposOperacao.length === 0 ? (
-                        <TableRow><TableCell colSpan={4} className="h-24 text-center text-slate-400 text-[11px] uppercase font-bold tracking-widest">Nenhum tipo cadastrado</TableCell></TableRow>
-                      ) : (
-                        tiposOperacao.map((item) => (
-                          <TableRow key={item.id} className="group border-slate-100">
-                            <TableCell className="py-4 pl-8 font-bold text-[12px] text-slate-700">{item.nome}</TableCell>
-                            <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
-                              {format(new Date(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                            </TableCell>
-                            <TableCell className="py-4 text-center">
-                                <button 
-                                  onClick={() => toggleAtivo('tipos_operacao', item.id, item.ativo !== false)}
-                                  className={cn(
-                                    "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all",
-                                    item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
-                                  )}
-                                >
-                                  {item.ativo !== false ? "ATIVO" : "INATIVO"}
-                                </button>
-                              </TableCell>
-                            <TableCell className="py-4 text-right pr-8">
-                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary" onClick={() => handleOpenGenericModal('operacao', item)}><Pencil className="w-4 h-4" /></Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-500" onClick={() => handleGenericDelete('operacao', item.id)}><Trash2 className="w-4 h-4" /></Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </Card>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
-
-        {/* GERENCIAR BANNERS DO DASHBOARD */}
-        <section className="space-y-6 pb-20">
-          <div 
-            className="flex items-center justify-between cursor-pointer group select-none"
-            onClick={() => setIsBannersExpanded(!isBannersExpanded)}
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
-                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                  GERENCIAR CARROSSEL DO DASHBOARD (PROPORÇÃO 16:9)
-                  {isBannersExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
-                </h2>
-              </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Upload de campanhas visuais para o carrossel infinito do dashboard</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Configuração de convênios e operações por banco</p>
             </div>
           </div>
 
           <AnimatePresence>
-            {isBannersExpanded && (
-              <motion.div 
-                initial={{ height: 0, opacity: 0 }} 
-                animate={{ height: "auto", opacity: 1 }} 
-                exit={{ height: 0, opacity: 0 }} 
-                className="overflow-hidden space-y-4"
-              >
-                <div className="flex flex-col gap-4">
-                  <div className="flex justify-end">
-                    <Button 
-                      onClick={() => {
-                        setBannerForm({ title: "", images: [] })
-                        setIsBannerModalOpen(true)
-                      }}
-                      className="h-9 px-6 text-[10px] font-bold uppercase tracking-widest gap-2 bg-[#171717] text-white rounded-xl"
+            {isProdutosExpanded && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden space-y-4">
+                {bancos.filter(b => b.ativo !== false).map((banco) => (
+                  <Card key={banco.id} className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm overflow-visible">
+                    <div 
+                      className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => setExpandedBankId(expandedBankId === banco.id ? null : banco.id)}
                     >
-                      <Plus className="w-4 h-4" />
-                      Novo Banner
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {banners.length > 0 ? (
-                      banners.map((banner) => (
-                        <Card key={banner.id} className="relative group overflow-hidden border-slate-100 rounded-2xl shadow-sm hover:shadow-xl transition-all h-[200px]">
-                           <div className="absolute inset-0 w-full h-full">
-                             <Image 
-                               src={banner.image_url} 
-                               alt={banner.title || "Banner"} 
-                               fill
-                               className="object-cover transition-transform duration-700 group-hover:scale-110"
-                               referrerPolicy="no-referrer"
-                             />
-                           </div>
-                           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 z-10">
-                              <p className="text-white font-extrabold text-[12px] uppercase tracking-wider truncate mb-3">{banner.title || "Sem título de controle"}</p>
-                              <div className="flex items-center gap-2">
-                                <Button 
-                                  size="sm" 
-                                  variant="ghost" 
-                                  className={cn("h-8 flex-1 text-[9px] font-black uppercase tracking-widest gap-2", banner.is_active ? "bg-emerald-500 text-white hover:bg-emerald-600" : "bg-white text-slate-800 hover:bg-white/90")}
-                                  onClick={() => handleToggleBanner(banner.id, banner.is_active)}
-                                >
-                                  {banner.is_active ? <Check className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
-                                  {banner.is_active ? "ATIVO" : "ATIVAR"}
-                                </Button>
-                                <Button 
-                                  size="sm" 
-                                  variant="ghost" 
-                                  className="h-8 bg-blue-600 hover:bg-blue-700 text-white text-[9px] font-black uppercase tracking-widest gap-1.5 px-3 rounded-lg"
-                                  onClick={() => handleOpenEditBanner(banner)}
-                                >
-                                  <Pencil className="w-3 h-3" />
-                                  EDITAR
-                                </Button>
-                                <Button 
-                                  size="icon" 
-                                  variant="ghost" 
-                                  className="h-8 w-8 bg-rose-500/80 hover:bg-rose-500 text-white rounded-lg flex-shrink-0"
-                                  onClick={() => handleGenericDelete('banner', banner.id, banner.title || 'Campanha')}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
-                              </div>
-                           </div>
-                           {!banner.is_active && (
-                             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center pointer-events-none z-0">
-                                <span className="bg-white/90 text-slate-800 text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg">Inativo</span>
-                             </div>
-                           )}
-                        </Card>
-                      ))
-                    ) : (
-                      <div className="col-span-full py-12 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-3xl bg-slate-50/50">
-                        <Tag className="w-10 h-10 text-slate-200 mb-4" />
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum banner cadastrado</p>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-[10px]">
+                          {banco.nome.substring(0, 2)}
+                        </div>
+                        <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">{banco.nome}</h3>
                       </div>
-                    )}
-                  </div>
-                </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                          {produtosConfig.filter(p => p.banco_id === banco.id).length} Convênios
+                        </span>
+                        {expandedBankId === banco.id ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
+                      </div>
+                    </div>
+
+                    <AnimatePresence>
+                      {expandedBankId === banco.id && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-slate-100">
+                          <div className="p-6 bg-slate-50/30 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">TABELAS DE REGRAS</h4>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="h-7 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200"
+                                onClick={() => {
+                                  setSelectedBancoForProd(banco)
+                                  setIsAddConvenioModalOpen(true)
+                                }}
+                              >
+                                <Plus className="w-3 h-3 text-primary" />
+                                Adicionar Convênio
+                              </Button>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4">
+                              {produtosConfig.filter(p => p.banco_id === banco.id).map((prod) => {
+                                const convenio = convenios.find(c => c.id === prod.convenio_id)
+                                if (!convenio) return null
+                                return (
+                                  <div 
+                                    key={prod.id} 
+                                    className="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group"
+                                  >
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                      <div className="space-y-3">
+                                        <div className="flex items-center gap-3">
+                                          <span className="font-bold text-[13px] text-slate-800 uppercase tracking-widest">{prod.nome_tabela || convenio.nome}</span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                              {format(new Date(prod.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                                            </span>
+                                            <span className={cn(
+                                              "px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest",
+                                              prod.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
+                                            )}>
+                                              {prod.ativo !== false ? "ATIVA" : "INATIVA"}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Convênio</span>
+                                          <div className="flex flex-wrap gap-1.5">
+                                            <span className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-tight border border-slate-100">
+                                              {convenio.nome}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Operações Permitidas</span>
+                                          <div className="flex flex-wrap gap-1.5">
+                                          {(prod.operacoes || []).map(opId => {
+                                            const op = tiposOperacao.find(o => o.id === opId)
+                                            return op ? (
+                                              <span key={opId} className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-tight border border-slate-100">
+                                                {op.nome}
+                                              </span>
+                                            ) : null
+                                          })}
+                                          </div>
+                                          {(prod.operacoes || []).length === 0 && (
+                                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest italic">Nenhuma operação selecionada</span>
+                                          )}
+                                        </div>
+
+                                          <div className="flex flex-col gap-1.5 min-w-[200px]">
+                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Tabela de Coeficientes</span>
+                                            {prod.regras && prod.regras.length > 0 ? (
+                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {prod.regras.map((regra, idx) => (
+                                                  <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prazo</span>
+                                                        <span className="text-[10px] font-bold text-slate-700">{regra.prazo}x</span>
+                                                      </div>
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Coef</span>
+                                                        <span className="text-[10px] font-bold text-slate-700">{regra.coeficiente}</span>
+                                                      </div>
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prod</span>
+                                                        <span className="text-[10px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
+                                                      </div>
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Comissão</span>
+                                                        <span className="text-[10px] font-bold text-sky-600">{regra.percentual_comissao ? `${regra.percentual_comissao}%` : '--'}</span>
+                                                      </div>
+                                                    </div>
+
+                                                    <div className="flex items-center">
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => toggleRegraAtiva(prod.id, prod.regras || [], idx)}
+                                                        className={cn(
+                                                          "h-5 px-1.5 rounded text-[8px] font-extrabold uppercase tracking-wide transition-all border",
+                                                          regra.ativo !== false 
+                                                            ? "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100" 
+                                                            : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"
+                                                        )}
+                                                      >
+                                                        {regra.ativo !== false ? "ATIVA" : "INATIVA"}
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <div className="flex gap-6">
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Prazo</span>
+                                                  <span className="text-[10px] font-extrabold text-slate-600">{prod.prazo ? `${prod.prazo}x` : '--'}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente</span>
+                                                  <span className="text-[10px] font-extrabold text-slate-600">{prod.coeficiente || '--'}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Produção</span>
+                                                  <span className="text-[10px] font-extrabold text-emerald-600">{prod.percentual_producao ? `${prod.percentual_producao}%` : '--'}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Comissão</span>
+                                                  <span className="text-[10px] font-extrabold text-sky-600">
+                                                    {(prod.regras && prod.regras[0]?.percentual_comissao) 
+                                                      ? `${prod.regras[0].percentual_comissao}%` 
+                                                      : (prod.percentual_comissao ? `${prod.percentual_comissao}%` : '--')}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                      </div>
+
+                                      <div className="flex items-center justify-end gap-2 border-t md:border-t-0 pt-4 md:pt-0 border-slate-100">
+                                        {/* Botão Ativar/Inativar */}
+                                        <button 
+                                          onClick={() => toggleProdutoAtivo(prod.id, prod.ativo !== false)}
+                                          className={cn(
+                                            "h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border",
+                                            prod.ativo !== false 
+                                              ? "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100" 
+                                              : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"
+                                          )}
+                                        >
+                                          {prod.ativo !== false ? "ATIVA" : "INATIVA"}
+                                        </button>
+
+                                        {/* Botão Editar */}
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm"
+                                          className="h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                          onClick={() => {
+                                            setSelectedProductConfig(prod)
+                                            setSelectedBancoForProd(banco)
+                                            setSelectedConvenioForProd(convenio)
+                                            setTempOperacoes(prod.operacoes || [])
+                                            setTempNomeTabela(prod.nome_tabela || "")
+                                            const initialRegras = []
+                                             if (prod.regras && prod.regras.length > 0) {
+                                               prod.regras.forEach(r => {
+                                                 initialRegras.push({
+                                                   prazo: r.prazo?.toString() || '',
+                                                   coeficiente: r.coeficiente?.toString().replace('.', ',') || '',
+                                                   percentual_producao: r.percentual_producao?.toString().replace('.', ',') || '',
+                                                   percentual_comissao: r.percentual_comissao?.toString().replace('.', ',') || '',
+                                                   ativo: r.ativo !== undefined ? r.ativo : true
+                                                 })
+                                               })
+                                             } else if (prod.prazo || prod.coeficiente || prod.percentual_producao || prod.percentual_comissao) {
+                                               initialRegras.push({
+                                                 prazo: prod.prazo?.toString() || '',
+                                                 coeficiente: prod.coeficiente?.toString().replace('.', ',') || '',
+                                                 percentual_producao: prod.percentual_producao?.toString().replace('.', ',') || '',
+                                                 percentual_comissao: prod.percentual_comissao?.toString().replace('.', ',') || '',
+                                                 ativo: true
+                                               })
+                                             } else {
+                                               initialRegras.push({
+                                                 prazo: '',
+                                                 coeficiente: '',
+                                                 percentual_producao: '',
+                                                 percentual_comissao: '',
+                                                 ativo: false
+                                               })
+                                             }
+                                             setTempRegras(initialRegras as ProdutoRegra[])
+                                            setIsAddOperacaoModalOpen(true)
+                                          }}
+                                        >
+                                          <Pencil className="w-3 h-3" />
+                                          Editar
+                                        </Button>
+
+                                        {/* Botão Excluir */}
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm"
+                                          className="h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-rose-100 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                                          onClick={() => handleRemoveProduto(prod.id)}
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                          Excluir
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                              {produtosConfig.filter(p => p.banco_id === banco.id).length === 0 && (
+                                <div className="col-span-full py-8 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-2">
+                                  <Tag className="w-6 h-6 text-slate-200" />
+                                  <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Nenhum convênio vinculado</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Card>
+                ))}
               </motion.div>
             )}
           </AnimatePresence>
         </section>
-
       </main>
 
       {/* Modal Gerenciar Mês (Central de Comandos) */}
