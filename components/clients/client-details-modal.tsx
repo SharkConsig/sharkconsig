@@ -460,7 +460,88 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
         )
 
         if (idError) console.error("Erro ao buscar matrículas Governo Roraima:", idError)
-        setRegistrations((idData as Registration[]) || [])
+
+        // Query base_consulta_governo_rr for fallback/robust details
+        const { data: baseRrData } = await withRetry<Record<string, unknown> | null>(async () =>
+          await supabase
+            .from('base_consulta_governo_rr')
+            .select('*')
+            .eq('cpf', paddedCpf)
+            .maybeSingle()
+        )
+
+        let mappedIdData = (idData || []).map((r: Record<string, unknown>) => {
+          const instituidores = ensureArray<Record<string, unknown>>(r.governo_rr_instituidores)
+          return {
+            ...r,
+            id: r.id as string,
+            numero_matricula: (r.matricula as string) || '---',
+            matricula: (r.matricula as string) || '---',
+            regime_contratacao: (r.regime_contratacao as string) || null,
+            uf: 'RR',
+            governo_rr_instituidores: instituidores,
+            instituidores: instituidores.map((l) => ({
+              id: (l.id as string) || "---",
+              nome: null,
+              itens_credito: []
+            }))
+          }
+        })
+
+        if (baseRrData) {
+          if (mappedIdData.length === 0) {
+            mappedIdData = [{
+              id: 'pseudo-rr',
+              numero_matricula: baseRrData.matricula || '---',
+              matricula: baseRrData.matricula || '---',
+              regime_contratacao: baseRrData.regime_contratacao || '---',
+              uf: 'RR',
+              governo_rr_instituidores: [{
+                origem: baseRrData.origem || '---',
+                margem_emprestimo: baseRrData.margem_emprestimo,
+                margem_cartao: baseRrData.margem_cartao,
+                margem_cartao_beneficio: baseRrData.margem_cartao_beneficio
+              }],
+              instituidores: [{
+                id: 'pseudo-inst-rr',
+                nome: null,
+                itens_credito: []
+              }]
+            }];
+          } else {
+            mappedIdData = mappedIdData.map(reg => {
+              const currentInsts = reg.governo_rr_instituidores;
+              const hasMargins = Array.isArray(currentInsts)
+                ? currentInsts.length > 0 && currentInsts[0].margem_emprestimo !== undefined
+                : currentInsts && currentInsts.margem_emprestimo !== undefined;
+
+              if (!hasMargins) {
+                return {
+                  ...reg,
+                  governo_rr_instituidores: [{
+                    origem: baseRrData.origem || (Array.isArray(currentInsts) ? currentInsts[0]?.origem : currentInsts?.origem) || '---',
+                    margem_emprestimo: baseRrData.margem_emprestimo,
+                    margem_cartao: baseRrData.margem_cartao,
+                    margem_cartao_beneficio: baseRrData.margem_cartao_beneficio
+                  }]
+                };
+              } else {
+                const resolvedInst = Array.isArray(currentInsts) ? currentInsts[0] : currentInsts;
+                return {
+                  ...reg,
+                  governo_rr_instituidores: [{
+                    origem: resolvedInst?.origem || baseRrData.origem || '---',
+                    margem_emprestimo: resolvedInst?.margem_emprestimo !== undefined ? resolvedInst.margem_emprestimo : baseRrData.margem_emprestimo,
+                    margem_cartao: resolvedInst?.margem_cartao !== undefined ? resolvedInst.margem_cartao : baseRrData.margem_cartao,
+                    margem_cartao_beneficio: resolvedInst?.margem_cartao_beneficio !== undefined ? resolvedInst.margem_cartao_beneficio : baseRrData.margem_cartao_beneficio
+                  }]
+                };
+              }
+            });
+          }
+        }
+
+        setRegistrations(mappedIdData as unknown as Registration[])
         setIsLoading(false)
         return
       }
@@ -677,7 +758,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
   }
 
   const formatCurrency = (value: number | null) => {
-    if (value === null || value === undefined) return "R$ 0,00"
+    if (value === null || value === undefined || isNaN(value)) return "R$ 0,00"
     return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   }
 
@@ -1439,28 +1520,59 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                 <div className="w-1 h-3.5 bg-cyan-600 rounded-full"></div>
                                 <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens de Crédito</h4>
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div className={cn(
-                                  "p-6 border rounded-2xl transition-all",
-                                  (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                  "p-4 border rounded-2xl transition-all",
+                                  (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "bg-cyan-50 border-cyan-200" : "bg-red-50 border-red-200"
                                 )}>
-                                  <p className={cn("text-[10px] font-black uppercase tracking-widest mb-2", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "text-emerald-700" : "text-red-700")}>
+                                  <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "text-cyan-700" : "text-red-700")}>
                                     Margem Empréstimo
                                   </p>
-                                  <p className={cn("text-2xl font-black", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "text-emerald-700" : "text-red-700")}>
-                                    {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo))}
+                                  <p className={cn("text-xl font-black", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "text-cyan-700" : "text-red-700")}>
+                                    {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0)}
                                   </p>
+                                  <div className="flex items-center gap-1.5 mt-2">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "bg-cyan-500" : "bg-red-500")}></div>
+                                    <p className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "text-cyan-600" : "text-red-600")}>
+                                      {(Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "Disponível" : "Indisponível"}
+                                    </p>
+                                  </div>
                                 </div>
+
                                 <div className={cn(
-                                  "p-6 border rounded-2xl transition-all",
-                                  (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "bg-cyan-50 border-cyan-200" : "bg-red-50 border-red-200"
+                                  "p-4 border rounded-2xl transition-all",
+                                  (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
                                 )}>
-                                  <p className={cn("text-[10px] font-black uppercase tracking-widest mb-2", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "text-cyan-700" : "text-red-700")}>
+                                  <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "text-emerald-700" : "text-red-700")}>
                                     Margem Cartão
                                   </p>
-                                  <p className={cn("text-2xl font-black", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "text-cyan-700" : "text-red-700")}>
-                                    {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao))}
+                                  <p className={cn("text-xl font-black", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "text-emerald-700" : "text-red-700")}>
+                                    {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0)}
                                   </p>
+                                  <div className="flex items-center gap-1.5 mt-2">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "bg-emerald-500" : "bg-red-500")}></div>
+                                    <p className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
+                                      {(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "Disponível" : "Indisponível"}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className={cn(
+                                  "p-4 border rounded-2xl transition-all",
+                                  (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "bg-purple-50 border-purple-200" : "bg-red-50 border-red-200"
+                                )}>
+                                  <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "text-purple-700" : "text-red-700")}>
+                                    Margem Cartão Benefício
+                                  </p>
+                                  <p className={cn("text-xl font-black", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "text-purple-700" : "text-red-700")}>
+                                    {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0)}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 mt-2">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "bg-purple-500" : "bg-red-500")}></div>
+                                    <p className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "text-purple-600" : "text-red-600")}>
+                                      {(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "Disponível" : "Indisponível"}
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
                             </div>

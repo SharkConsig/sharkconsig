@@ -81,6 +81,8 @@ interface Proposal {
   valor_cliente_operacional?: number
   margem_utilizada?: number
   coeficiente_prazo?: string
+  comissao_banco_porcentagem?: number | null
+  comissao_banco_valor?: number | null
   prazo?: number | string
   coeficiente?: number | string
   valor_producao_corretor?: number
@@ -164,6 +166,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     (proposal.prazo !== undefined && proposal.prazo !== null) ? Number(proposal.prazo) : null
   )
   const [selectedProdPercent, setSelectedProdPercent] = useState<number | null>(null)
+  const [selectedComissaoPercent, setSelectedComissaoPercent] = useState<number | null>(
+    (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null) 
+      ? Number(proposal.comissao_banco_porcentagem) 
+      : null
+  )
   const [isCoefDropdownOpen, setIsCoefDropdownOpen] = useState(false)
   const [coefSearchTerm, setCoefSearchTerm] = useState("")
   const coefDropdownRef = useRef<HTMLDivElement>(null)
@@ -427,6 +434,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : (regra.prazo as number),
               coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : (regra.coeficiente as number),
               percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : (regra.percentual_producao as number),
+              percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : (regra.percentual_comissao as number)) : undefined,
               convenioNome: config.convenios?.nome
             }));
         }
@@ -435,6 +443,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           prazo: typeof config.prazo === 'number' ? config.prazo : (config.prazo ? parseInt(config.prazo) : 0),
           coeficiente: typeof config.coeficiente === 'number' ? config.coeficiente : (config.coeficiente ? parseFloat(config.coeficiente.toString().replace(',', '.')) : 0),
           percentual_producao: typeof config.percentual_producao === 'number' ? config.percentual_producao : (config.percentual_producao ? parseFloat(config.percentual_producao.toString().replace(',', '.')) : 0),
+          percentual_comissao: typeof config.percentual_comissao === 'number' ? config.percentual_comissao : (config.percentual_comissao ? parseFloat(config.percentual_comissao.toString().replace(',', '.')) : undefined),
           convenioNome: config.convenios?.nome
         }];
       });
@@ -452,6 +461,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         setSelectedCoefValue(option.coeficiente);
         setSelectedPrazoValue(option.prazo);
         setSelectedProdPercent(option.percentual_producao);
+        if (option.percentual_comissao !== undefined) {
+          setSelectedComissaoPercent(option.percentual_comissao);
+        }
       }
     }
   }, [dbProdutosConfigs, formData.coeficiente_prazo]);
@@ -782,6 +794,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           valor_cliente: cleanMoney(formData.valor_cliente_operacional),
           margem_utilizada: cleanMoney(formData.margem_utilizada),
           coeficiente_prazo: formData.coeficiente_prazo,
+          comissao_banco_porcentagem: selectedComissaoPercent,
+          comissao_banco_valor: (selectedComissaoPercent !== null && cleanMoney(formData.valor_operacao_operacional) !== null) 
+            ? (cleanMoney(formData.valor_operacao_operacional)! * selectedComissaoPercent) / 100 
+            : null,
           observacoes: finalObservations,
         });
       }

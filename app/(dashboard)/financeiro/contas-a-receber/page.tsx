@@ -97,6 +97,8 @@ interface Proposal {
   data_consulta?: string
   data_digitacao?: string
   data_pago_cliente?: string
+  comissao_banco_porcentagem?: number | null
+  comissao_banco_valor?: number | null
   updated_at?: string
   created_at: string
 }
@@ -191,7 +193,8 @@ export default function ContasAReceberPage() {
     })
   }
 
-  const handleCommissionPercentChange = (idLead: string, value: number | undefined) => {
+  const handleCommissionPercentChange = async (idLead: string, value: number | undefined) => {
+    // 1. Local storage state sync
     setCustomCommissionPercents(prev => {
       const updated = { ...prev }
       if (value === undefined || isNaN(value)) {
@@ -204,6 +207,37 @@ export default function ContasAReceberPage() {
       }
       return updated
     })
+
+    // 2. Persist to Supabase Database
+    try {
+      const proposal = proposals.find(p => p.id_lead === idLead)
+      if (proposal) {
+        const valOp = (proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
+        const dbValue = value !== undefined && !isNaN(value) ? value : null
+        const dbValor = dbValue !== null ? (valOp * dbValue) / 100 : null
+
+        const { error } = await supabase
+          .from("propostas")
+          .update({
+            comissao_banco_porcentagem: dbValue,
+            comissao_banco_valor: dbValor
+          })
+          .eq("id_lead", idLead)
+
+        if (error) {
+          console.error("Erro ao salvar comissão no banco de dados:", error.message)
+        } else {
+          // Update local proposal items state to reflect saved commission fields
+          setProposals(prev => prev.map(p => p.id_lead === idLead ? {
+            ...p,
+            comissao_banco_porcentagem: dbValue,
+            comissao_banco_valor: dbValor
+          } : p))
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar comissão no banco:", err)
+    }
   }
   
   // Selected detail view
@@ -219,6 +253,10 @@ export default function ContasAReceberPage() {
   const [statusObsOperacional, setObsOperacional] = useState("")
 
   const getCommissionPercentage = useCallback((proposal: Proposal) => {
+    if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null) {
+      return Number(proposal.comissao_banco_porcentagem);
+    }
+
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
       return commissionRate
     }

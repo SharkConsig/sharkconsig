@@ -2406,23 +2406,23 @@ export default function SearchClientPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             {/* Margem Empréstimo */}
                             <div className={cn(
-                              "p-5 border rounded-2xl space-y-3",
-                              (lotacao.margem_emprestimo || 0) > 0 ? "bg-cyan-50 border-cyan-100" : "bg-red-50 border-red-100"
+                              "p-4 border rounded-2xl space-y-3 transition-all",
+                              (Number(lotacao.margem_emprestimo) || 0) > 0 ? "bg-cyan-50 border-cyan-100" : "bg-red-50 border-red-100"
                             )}>
-                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_emprestimo || 0) > 0 ? "text-cyan-600" : "text-red-600 truncate")}>
+                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (Number(lotacao.margem_emprestimo) || 0) > 0 ? "text-cyan-600" : "text-red-600 truncate")}>
                                 MARGEM EMPRÉSTIMO
                               </p>
                               <div className="flex flex-col">
-                                <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", (lotacao.margem_emprestimo || 0) > 0 ? "text-cyan-700" : "text-red-700 font-bold")}>
-                                  {formatCurrency(lotacao.margem_emprestimo)}
+                                <p className={cn("text-xl font-black tracking-tighter leading-none mb-1", (Number(lotacao.margem_emprestimo) || 0) > 0 ? "text-cyan-700" : "text-red-700 font-bold")}>
+                                  {formatCurrency(Number(lotacao.margem_emprestimo))}
                                 </p>
                                 <div className="flex items-center gap-2 mt-1">
-                                  <div className={cn("w-2 h-2 rounded-full", (lotacao.margem_emprestimo || 0) > 0 ? "bg-cyan-500" : "bg-red-500")}></div>
-                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_emprestimo || 0) > 0 ? "text-cyan-600" : "text-red-600")}>
-                                    {(lotacao.margem_emprestimo || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  <div className={cn("w-2 h-2 rounded-full", (Number(lotacao.margem_emprestimo) || 0) > 0 ? "bg-cyan-500" : "bg-red-500")}></div>
+                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (Number(lotacao.margem_emprestimo) || 0) > 0 ? "text-cyan-600" : "text-red-600")}>
+                                    {(Number(lotacao.margem_emprestimo) || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
                                   </span>
                                 </div>
                               </div>
@@ -2430,20 +2430,41 @@ export default function SearchClientPage() {
 
                             {/* Margem Cartão */}
                             <div className={cn(
-                              "p-5 border rounded-2xl space-y-3",
-                              (lotacao.margem_cartao || 0) > 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                              "p-4 border rounded-2xl space-y-3 transition-all",
+                              (Number(lotacao.margem_cartao) || 0) > 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
                             )}>
-                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_cartao || 0) > 0 ? "text-emerald-600" : "text-red-600 truncate")}>
+                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (Number(lotacao.margem_cartao) || 0) > 0 ? "text-emerald-600" : "text-red-600 truncate")}>
                                 MARGEM CARTÃO
                               </p>
                               <div className="flex flex-col">
-                                <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", (lotacao.margem_cartao || 0) > 0 ? "text-emerald-700" : "text-red-700 font-bold")}>
-                                  {formatCurrency(lotacao.margem_cartao)}
+                                <p className={cn("text-xl font-black tracking-tighter leading-none mb-1", (Number(lotacao.margem_cartao) || 0) > 0 ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                  {formatCurrency(Number(lotacao.margem_cartao))}
                                 </p>
                                 <div className="flex items-center gap-2 mt-1">
-                                  <div className={cn("w-2 h-2 rounded-full", (lotacao.margem_cartao || 0) > 0 ? "bg-emerald-500" : "bg-red-500")}></div>
-                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_cartao || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
-                                    {(lotacao.margem_cartao || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  <div className={cn("w-2 h-2 rounded-full", (Number(lotacao.margem_cartao) || 0) > 0 ? "bg-emerald-500" : "bg-red-500")}></div>
+                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (Number(lotacao.margem_cartao) || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
+                                    {(Number(lotacao.margem_cartao) || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Margem Cartão Benefício */}
+                            <div className={cn(
+                              "p-4 border rounded-2xl space-y-3 transition-all",
+                              (Number(lotacao.margem_cartao_beneficio) || 0) > 0 ? "bg-purple-50 border-purple-100" : "bg-red-50 border-red-100"
+                            )}>
+                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (Number(lotacao.margem_cartao_beneficio) || 0) > 0 ? "text-purple-600" : "text-red-600 truncate")}>
+                                MARGEM CARTÃO BENEFÍCIO
+                              </p>
+                              <div className="flex flex-col">
+                                <p className={cn("text-xl font-black tracking-tighter leading-none mb-1", (Number(lotacao.margem_cartao_beneficio) || 0) > 0 ? "text-purple-700" : "text-red-700 font-bold")}>
+                                  {formatCurrency(Number(lotacao.margem_cartao_beneficio))}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className={cn("w-2 h-2 rounded-full", (Number(lotacao.margem_cartao_beneficio) || 0) > 0 ? "bg-purple-500" : "bg-red-500")}></div>
+                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (Number(lotacao.margem_cartao_beneficio) || 0) > 0 ? "text-purple-600" : "text-red-600")}>
+                                    {(Number(lotacao.margem_cartao_beneficio) || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
                                   </span>
                                 </div>
                               </div>
@@ -2467,7 +2488,7 @@ export default function SearchClientPage() {
                                   tel3: unmaskPhone(client.telefone_3),
                                   margem: formatCurrency(lotacao.margem_emprestimo),
                                   liquida5: formatCurrency(lotacao.margem_cartao),
-                                  beneficio5: "R$ 0,00",
+                                  beneficio5: formatCurrency(lotacao.margem_cartao_beneficio),
                                   convenio: "GOVERNO RORAIMA",
                                   matricula: reg.matricula || ""
                                 });

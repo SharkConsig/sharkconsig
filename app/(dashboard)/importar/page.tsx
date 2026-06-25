@@ -1573,7 +1573,7 @@ export default function ImportBatchPage() {
   };
 
   const processGovernoRrChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
-    // cpfs, nome, data_de_nascimento, matricula, origem, regime_contratacao, margem_emprestimo, margem_cartao, telefone_1, telefone_2, telefone_3
+    // cpfs, nome, data_de_nascimento, matricula, origem, regime_contratacao, margem_emprestimo, margem_cartao, margem_cartao_beneficio, telefone_1, telefone_2, telefone_3
     const normalizedRows = results.map(row => ({
       cpf: normalizeCPF(row.cpf || ""),
       nome: normalizeText(row.nome || ""),
@@ -1583,6 +1583,7 @@ export default function ImportBatchPage() {
       regime_contratacao: normalizeText(row.regime_contratacao || ""),
       margem_emprestimo: normalizeMoney(row.margem_emprestimo),
       margem_cartao: normalizeMoney(row.margem_cartao),
+      margem_cartao_beneficio: normalizeMoney(row.margem_cartao_beneficio),
       telefone_1: normalizePhone(row.telefone_1 || row.tefefone_1 || ""),
       telefone_2: normalizePhone(row.telefone_2 || ""),
       telefone_3: normalizePhone(row.telefone_3 || "")
@@ -1705,12 +1706,14 @@ export default function ImportBatchPage() {
       // Margens devem ser atualizadas mesmo se vierem vazias (ou zeros) para refletir o estado real
       const margem_emprestimo = row.margem_emprestimo !== undefined ? row.margem_emprestimo : (currentInMap?.margem_emprestimo ?? existingLot?.margem_emprestimo ?? null);
       const margem_cartao = row.margem_cartao !== undefined ? row.margem_cartao : (currentInMap?.margem_cartao ?? existingLot?.margem_cartao ?? null);
+      const margem_cartao_beneficio = row.margem_cartao_beneficio !== undefined ? row.margem_cartao_beneficio : (currentInMap?.margem_cartao_beneficio ?? existingLot?.margem_cartao_beneficio ?? null);
 
       lotacoesToUpsertMap.set(identId, {
         matricula_id: identId,
         origem,
         margem_emprestimo,
         margem_cartao,
+        margem_cartao_beneficio,
         lote_id: loteId,
         updated_at: new Date().toISOString()
       });
@@ -2494,7 +2497,7 @@ export default function ImportBatchPage() {
       headers = "cpf,nome,matricula,vinculo,data_nascimento,telefone_1,telefone_2,telefone_3,orgao,margem_emprestimo_consignado,margem_cartao_consignado,margem_cartao_beneficio";
       filename = "modelo_governo_ma.csv";
     } else if (type === 'governo_rr') {
-      headers = "cpf,nome,data_de_nascimento,matricula,origem,regime_contratacao,margem_emprestimo,margem_cartao,telefone_1,telefone_2,telefone_3";
+      headers = "cpf,nome,data_de_nascimento,matricula,origem,regime_contratacao,margem_emprestimo,margem_cartao,margem_cartao_beneficio,telefone_1,telefone_2,telefone_3";
       filename = "modelo_governo_roraima.csv";
     } else if (type === 'governo_rj') {
       headers = "cpf,nome,data_de_nascimento,telefone,orgao,matricula";

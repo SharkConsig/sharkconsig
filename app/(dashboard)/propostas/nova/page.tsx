@@ -59,6 +59,7 @@ function NewProposalForm() {
   
   const [selectedCoefValue, setSelectedCoefValue] = useState<number | null>(null)
   const [selectedProdPercent, setSelectedProdPercent] = useState<number | null>(null)
+  const [selectedComissaoPercent, setSelectedComissaoPercent] = useState<number | null>(null)
 
   const [selection, setSelection] = useState({
     convenio: searchParams.get("convenio") || "",
@@ -872,6 +873,10 @@ function NewProposalForm() {
         valor_cliente: cleanMoney(formData.valor_cliente_operacional),
         margem_utilizada: cleanMoney(formData.margem_utilizada),
         coeficiente_prazo: formData.coeficiente_prazo,
+        comissao_banco_porcentagem: selectedComissaoPercent,
+        comissao_banco_valor: (selectedComissaoPercent !== null && cleanMoney(formData.valor_operacao_operacional) !== null) 
+          ? (cleanMoney(formData.valor_operacao_operacional)! * selectedComissaoPercent) / 100 
+          : null,
         observacoes: finalObservations,
         arquivo_rg_frente: fileUrls.frente || existingAttachments.frente,
         arquivo_rg_verso: fileUrls.verso || existingAttachments.verso,
@@ -1723,6 +1728,7 @@ function NewProposalForm() {
                                 handleFormChange("coeficiente_prazo", label)
                                 setSelectedCoefValue(option.coeficiente)
                                 setSelectedProdPercent(option.percentual_producao)
+                                setSelectedComissaoPercent(option.percentual_comissao !== undefined ? option.percentual_comissao : null)
                                 setFormData(prev => ({ ...prev, prazo: option.prazo.toString() }))
                                 
                                 // Auto-calculate Valor Operação (Margin / Coef)
