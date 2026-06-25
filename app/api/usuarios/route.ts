@@ -119,8 +119,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ user: authUser.user })
   } catch (error: unknown) {
     console.error('Erro ao criar usuário:', error)
-    const message = error instanceof Error ? error.message : 'Erro interno';
-    return NextResponse.json({ error: message }, { status: 500 })
+    let message = error instanceof Error ? error.message : 'Erro interno';
+    let status = 500;
+    if (message.includes("email address has already been registered") || message.includes("already exists")) {
+      message = "Este nome de usuário já está sendo utilizado por outro colaborador.";
+      status = 400;
+    } else if (message.includes("Password should be at least")) {
+      message = "A senha de acesso deve ter pelo menos 6 caracteres.";
+      status = 400;
+    }
+    return NextResponse.json({ error: message }, { status })
   }
 }
 
@@ -175,8 +183,16 @@ export async function PUT(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
     console.error('Erro ao atualizar usuário:', error)
-    const message = error instanceof Error ? error.message : 'Erro interno';
-    return NextResponse.json({ error: message }, { status: 500 })
+    let message = error instanceof Error ? error.message : 'Erro interno';
+    let status = 500;
+    if (message.includes("email address has already been registered") || message.includes("already exists")) {
+      message = "Este nome de usuário já está sendo utilizado por outro colaborador.";
+      status = 400;
+    } else if (message.includes("Password should be at least")) {
+      message = "A senha de acesso deve ter pelo menos 6 caracteres.";
+      status = 400;
+    }
+    return NextResponse.json({ error: message }, { status })
   }
 }
 

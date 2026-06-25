@@ -46,7 +46,13 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("Erro ao criar usuário no Supabase:", error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      let friendlyMessage = error.message;
+      if (error.message.includes("email address has already been registered") || error.message.includes("already exists")) {
+        friendlyMessage = "Este nome de usuário já está sendo utilizado por outro colaborador.";
+      } else if (error.message.includes("Password should be at least")) {
+        friendlyMessage = "A senha de acesso deve ter pelo menos 6 caracteres.";
+      }
+      return NextResponse.json({ error: friendlyMessage }, { status: 400 });
     }
 
     return NextResponse.json({ user: data.user }, { status: 201 });
