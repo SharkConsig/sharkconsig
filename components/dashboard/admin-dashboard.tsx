@@ -912,6 +912,96 @@ export function AdminDashboard({
     return data
   }, [financialProposals, customCommissionPercents, getCommissionPercentage])
 
+  // Strategic & Financial Diagnostic Calculations
+  const strategicDiagnostic = React.useMemo(() => {
+    // 1. Bank generating the most revenue
+    const sortedBancosByRev = [...rankingsData.bancos].sort((a, b) => b.rev - a.rev)
+    const topRevenueBanco = sortedBancosByRev[0] || null
+
+    // Calculate total production and revenue
+    const totalProd = rankingsData.bancos.reduce((acc, curr) => acc + curr.prod, 0)
+    const totalRev = rankingsData.bancos.reduce((acc, curr) => acc + curr.rev, 0)
+
+    const totalPrevProd = rankingsData.bancos.reduce((acc, curr) => acc + curr.prevProd, 0)
+    const totalPrevRev = rankingsData.bancos.reduce((acc, curr) => acc + curr.prevRev, 0)
+
+    // 2. High production, low revenue yield bank (produces a lot but low return yield)
+    // Filter banks with significant volume (>= 5% of total production) and find the one with the lowest yield (rev / prod)
+    const bancosWithVolume = rankingsData.bancos.filter(b => b.prod > 0 && b.prod >= totalProd * 0.05)
+    const sortedBancosByYield = [...bancosWithVolume].sort((a, b) => {
+      const yieldA = a.prod > 0 ? a.rev / a.prod : 0
+      const yieldB = b.prod > 0 ? b.rev / b.prod : 0
+      return yieldA - yieldB // Ascending - lower yield first
+    })
+    const lowYieldBanco = sortedBancosByYield[0] || null
+
+    // 3. Product with highest return yield (rev / prod)
+    const productsWithVolume = rankingsData.products.filter(p => p.prod > 0)
+    const sortedProductsByYield = [...productsWithVolume].sort((a, b) => {
+      const yieldA = a.prod > 0 ? a.rev / a.prod : 0
+      const yieldB = b.prod > 0 ? b.rev / b.prod : 0
+      return yieldB - yieldA // Descending - higher yield first
+    })
+    const bestReturnProduct = sortedProductsByYield[0] || null
+
+    // 4. Main sustaining agreement/convenio (highest revenue)
+    const sortedConveniosByRev = [...rankingsData.convenios].sort((a, b) => b.rev - a.rev)
+    const mainSustainingConvenio = sortedConveniosByRev[0] || null
+
+    // 5. Agreements growing or losing strength
+    const conveniosWithGrowth = rankingsData.convenios.filter(c => c.prod > 0 || c.prevProd > 0)
+    const growingConvenios = [...conveniosWithGrowth]
+      .filter(c => c.prodGrowth > 0)
+      .sort((a, b) => b.prodGrowth - a.prodGrowth)
+    const losingConvenios = [...conveniosWithGrowth]
+      .filter(c => c.prodGrowth < 0)
+      .sort((a, b) => a.prodGrowth - b.prodGrowth) // Most negative first
+
+    const topGrowingConvenio = growingConvenios[0] || null
+    const topLosingConvenio = losingConvenios[0] || null
+
+    // 6. Revenue vs Production Growth
+    const calcPct = (curr: number, prev: number) => {
+      if (prev === 0) return curr > 0 ? 100 : 0
+      return ((curr - prev) / prev) * 100
+    }
+    const overallProdGrowth = calcPct(totalProd, totalPrevProd)
+    const overallRevGrowth = calcPct(totalRev, totalPrevRev)
+    const isRevenueKeepingUp = overallRevGrowth >= overallProdGrowth
+
+    // 7. Concentration Risk (any single entity > 40% of total revenue)
+    let concentrationRisk = null
+    const topBancoShare = topRevenueBanco && totalRev > 0 ? (topRevenueBanco.rev / totalRev) * 100 : 0
+    const topProductShare = bestReturnProduct && totalRev > 0 ? (bestReturnProduct.rev / totalRev) * 100 : 0
+    const topConvenioShare = mainSustainingConvenio && totalRev > 0 ? (mainSustainingConvenio.rev / totalRev) * 100 : 0
+
+    if (topBancoShare > 40) {
+      concentrationRisk = { type: "Banco", name: topRevenueBanco!.name, share: topBancoShare }
+    } else if (topConvenioShare > 40) {
+      concentrationRisk = { type: "Convênio", name: mainSustainingConvenio!.name, share: topConvenioShare }
+    } else if (topProductShare > 40) {
+      concentrationRisk = { type: "Produto", name: bestReturnProduct!.name, share: topProductShare }
+    }
+
+    return {
+      topRevenueBanco,
+      lowYieldBanco,
+      bestReturnProduct,
+      mainSustainingConvenio,
+      topGrowingConvenio,
+      topLosingConvenio,
+      overallProdGrowth,
+      overallRevGrowth,
+      isRevenueKeepingUp,
+      concentrationRisk,
+      totalProd,
+      totalRev,
+      topBancoShare,
+      topProductShare,
+      topConvenioShare
+    }
+  }, [rankingsData])
+
   React.useEffect(() => {
     setTempStartDate(startDate)
     setTempEndDate(endDate)
@@ -2850,6 +2940,344 @@ export function AdminDashboard({
                       )
                     })
                   })()}
+                </div>
+              </div>
+
+            </div>
+          </motion.div>
+
+          {/* DIAGNÓSTICO FINANCEIRO E ESTRATÉGICO */}
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.8 }}
+            className="mt-8 pt-8 border-t border-slate-100 space-y-6"
+          >
+            <div>
+              <h3 className="text-lg font-black text-[#1C2643] tracking-tight mt-1 uppercase">DIAGNÓSTICO FINANCEIRO E ESTRATÉGICO</h3>
+              <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">
+                Análise de viabilidade, eficiência e dependência da operação comercial no período selecionado
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">
+              
+              {/* 1. BANCO LÍDER DE RECEITA */}
+              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                <div>
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                    <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                      Maior Receita
+                    </span>
+                    <Trophy className="w-4 h-4 text-amber-500" />
+                  </div>
+                  
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Qual banco gera mais receita?
+                  </h4>
+                  
+                  {strategicDiagnostic.topRevenueBanco ? (
+                    <div className="mt-3">
+                      <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
+                        {strategicDiagnostic.topRevenueBanco.name}
+                      </p>
+                      <p className="text-[11px] font-bold text-slate-400 mt-1">
+                        Gerou <span className="text-emerald-600 font-extrabold">{formatCurrency(strategicDiagnostic.topRevenueBanco.rev)}</span> em comissões
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 mt-3 font-bold">Sem dados no período</p>
+                  )}
+                </div>
+
+                {strategicDiagnostic.topRevenueBanco && (
+                  <div className="mt-4 pt-3 border-t border-slate-50">
+                    <div className="flex justify-between text-[10px] font-extrabold text-[#1C2643] uppercase mb-1">
+                      <span>Participação na Receita</span>
+                      <span>{strategicDiagnostic.topBancoShare.toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, strategicDiagnostic.topBancoShare)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. VOLUME VS EFICIÊNCIA */}
+              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                <div>
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                    <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                      Eficiência de Margem
+                    </span>
+                    <Percent className="w-4 h-4 text-orange-500" />
+                  </div>
+
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
+                    Produz bastante, mas entrega pouca receita?
+                  </h4>
+
+                  {strategicDiagnostic.lowYieldBanco ? (
+                    <div className="mt-3">
+                      <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
+                        {strategicDiagnostic.lowYieldBanco.name}
+                      </p>
+                      <p className="text-[11px] font-bold text-slate-400 mt-1">
+                        Comissionamento médio de <span className="text-orange-600 font-extrabold">
+                          {((strategicDiagnostic.lowYieldBanco.rev / strategicDiagnostic.lowYieldBanco.prod) * 100).toFixed(2)}%
+                        </span>
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 mt-3 font-bold">Sem dados para análise de margem</p>
+                  )}
+                </div>
+
+                {strategicDiagnostic.lowYieldBanco && (
+                  <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[10px] font-bold text-slate-500 leading-tight">
+                    <span>Vol. Produção:</span>
+                    <span className="text-[#1C2643] font-black">{formatCurrency(strategicDiagnostic.lowYieldBanco.prod)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. PRODUTO COM MELHOR RETORNO */}
+              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                <div>
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                      Melhor Yield
+                    </span>
+                    <Zap className="w-4 h-4 text-emerald-600" />
+                  </div>
+
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
+                    Qual produto tem melhor retorno?
+                  </h4>
+
+                  {strategicDiagnostic.bestReturnProduct ? (
+                    <div className="mt-3">
+                      <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
+                        {strategicDiagnostic.bestReturnProduct.name}
+                      </p>
+                      <p className="text-[11px] font-bold text-slate-400 mt-1">
+                        Taxa média de retorno de <span className="text-emerald-600 font-extrabold">
+                          {((strategicDiagnostic.bestReturnProduct.rev / strategicDiagnostic.bestReturnProduct.prod) * 100).toFixed(2)}%
+                        </span>
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 mt-3 font-bold">Sem dados no período</p>
+                  )}
+                </div>
+
+                {strategicDiagnostic.bestReturnProduct && (
+                  <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[10px] font-bold text-slate-500">
+                    <span>Receita Total:</span>
+                    <span className="text-emerald-600 font-black">{formatCurrency(strategicDiagnostic.bestReturnProduct.rev)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 4. ÂNCORA DA OPERAÇÃO */}
+              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                <div>
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                    <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                      Sustentação
+                    </span>
+                    <Briefcase className="w-4 h-4 text-indigo-600" />
+                  </div>
+
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
+                    Qual convênio sustenta a operação?
+                  </h4>
+
+                  {strategicDiagnostic.mainSustainingConvenio ? (
+                    <div className="mt-3">
+                      <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
+                        {strategicDiagnostic.mainSustainingConvenio.name}
+                      </p>
+                      <p className="text-[11px] font-bold text-slate-400 mt-1">
+                        Sustenta <span className="text-indigo-600 font-extrabold">{strategicDiagnostic.topConvenioShare.toFixed(1)}%</span> da receita da empresa
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 mt-3 font-bold">Sem convênio ativo no período</p>
+                  )}
+                </div>
+
+                {strategicDiagnostic.mainSustainingConvenio && (
+                  <div className="mt-4 pt-3 border-t border-slate-50">
+                    <div className="flex justify-between text-[10px] font-extrabold text-[#1C2643] uppercase mb-1">
+                      <span>Proporção Operacional</span>
+                      <span>{strategicDiagnostic.topConvenioShare.toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-indigo-600 h-full rounded-full"
+                        style={{ width: `${Math.min(100, strategicDiagnostic.topConvenioShare)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 5. TENDÊNCIA DOS CONVÊNIOS */}
+              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                <div>
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                    <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                      Comportamento
+                    </span>
+                    <TrendingUp className="w-4 h-4 text-blue-600" />
+                  </div>
+
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
+                    Quais convênios estão em destaque?
+                  </h4>
+
+                  <div className="mt-3 space-y-2.5">
+                    <div>
+                      <p className="text-[10px] font-extrabold text-slate-400 uppercase">↑ Destaque Positivo</p>
+                      {strategicDiagnostic.topGrowingConvenio ? (
+                        <p className="text-xs font-black text-emerald-600 uppercase truncate">
+                          {strategicDiagnostic.topGrowingConvenio.name} ({strategicDiagnostic.topGrowingConvenio.prodGrowth >= 0 ? '+' : ''}{strategicDiagnostic.topGrowingConvenio.prodGrowth.toFixed(1)}%)
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-400">Nenhum crescimento registrado</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-extrabold text-slate-400 uppercase">↓ Perda de Ritmo</p>
+                      {strategicDiagnostic.topLosingConvenio ? (
+                        <p className="text-xs font-black text-rose-500 uppercase truncate">
+                          {strategicDiagnostic.topLosingConvenio.name} ({strategicDiagnostic.topLosingConvenio.prodGrowth.toFixed(1)}%)
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-400">Nenhum recuo registrado</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-50 text-[9px] font-bold text-slate-400 uppercase">
+                  Comparado ao período anterior
+                </div>
+              </div>
+
+              {/* 6. FATURAMENTO VS PRODUÇÃO */}
+              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                <div>
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                    <span className="text-[10px] font-black text-[#1C2643] bg-slate-100 px-2 py-1 rounded-lg uppercase tracking-wider">
+                      Equilíbrio Financeiro
+                    </span>
+                    <BarChart3 className="w-4 h-4 text-[#1C2643]" />
+                  </div>
+
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
+                    O faturamento acompanha a produção?
+                  </h4>
+
+                  <div className="mt-3 space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-500 font-bold">Produção:</span>
+                      <span className={cn(
+                        "font-extrabold",
+                        strategicDiagnostic.overallProdGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
+                      )}>
+                        {strategicDiagnostic.overallProdGrowth >= 0 ? '↑' : '↓'} {Math.abs(strategicDiagnostic.overallProdGrowth).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-500 font-bold">Faturamento (Receita):</span>
+                      <span className={cn(
+                        "font-extrabold",
+                        strategicDiagnostic.overallRevGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
+                      )}>
+                        {strategicDiagnostic.overallRevGrowth >= 0 ? '↑' : '↓'} {Math.abs(strategicDiagnostic.overallRevGrowth).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-50">
+                  {strategicDiagnostic.isRevenueKeepingUp ? (
+                    <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-emerald-600 uppercase">
+                      <span>✓ Faturamento Saudável (Acima do Vol.)</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-amber-600 uppercase">
+                      <span>⚠️ Alerta: Queda de Margem Média</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 7. INDICE DE DEPENDÊNCIA (FULL WIDTH CARD) */}
+              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col md:col-span-2 lg:col-span-3 justify-between hover:shadow-md transition-all">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                  <div className="space-y-2 lg:max-w-[65%]">
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider",
+                        strategicDiagnostic.concentrationRisk 
+                          ? "bg-amber-50 text-amber-600 border border-amber-100" 
+                          : "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                      )}>
+                        {strategicDiagnostic.concentrationRisk ? "Atenção Operacional" : "Operação Saudável"}
+                      </span>
+                      <h4 className="text-sm font-black text-[#1C2643] uppercase tracking-tight">
+                        A empresa está dependendo demais de um canal ou parceiro?
+                      </h4>
+                    </div>
+
+                    <p className="text-xs font-bold text-slate-500 leading-relaxed">
+                      {strategicDiagnostic.concentrationRisk ? (
+                        <>
+                          Detectamos que o {strategicDiagnostic.concentrationRisk.type.toLowerCase()} <span className="text-amber-600 font-extrabold uppercase">{strategicDiagnostic.concentrationRisk.name}</span> representa <span className="text-[#1C2643] font-extrabold">{strategicDiagnostic.concentrationRisk.share.toFixed(1)}%</span> da receita da operação. Recomenda-se diversificar canais para atenuar o risco de dependência e perdas financeiras em oscilações deste canal.
+                        </>
+                      ) : (
+                        "Excelente! A receita da sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios. Nenhum canal individual representa mais de 40% do faturamento da empresa."
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="flex-1 bg-slate-50 rounded-2xl p-4 border border-slate-100/50 min-w-[280px]">
+                    <div className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider mb-2.5">
+                      Distribuição de Riscos (% da Receita Total)
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase mb-0.5">
+                          <span>Banco Principal ({strategicDiagnostic.topRevenueBanco?.name || 'N/A'})</span>
+                          <span>{strategicDiagnostic.topBancoShare.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-slate-200/50 h-1 rounded-full overflow-hidden">
+                          <div 
+                            className={cn("h-full rounded-full", strategicDiagnostic.topBancoShare > 40 ? "bg-amber-500" : "bg-indigo-600")}
+                            style={{ width: `${Math.min(100, strategicDiagnostic.topBancoShare)}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase mb-0.5">
+                          <span>Convênio Principal ({strategicDiagnostic.mainSustainingConvenio?.name || 'N/A'})</span>
+                          <span>{strategicDiagnostic.topConvenioShare.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-slate-200/50 h-1 rounded-full overflow-hidden">
+                          <div 
+                            className={cn("h-full rounded-full", strategicDiagnostic.topConvenioShare > 40 ? "bg-amber-500" : "bg-indigo-600")}
+                            style={{ width: `${Math.min(100, strategicDiagnostic.topConvenioShare)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
