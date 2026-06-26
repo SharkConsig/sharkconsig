@@ -169,6 +169,27 @@ export function AdminDashboard({
 
   const [tempStartDate, setTempStartDate] = React.useState(startDate)
   const [tempEndDate, setTempEndDate] = React.useState(endDate)
+  const [dashboardPeriod, setDashboardPeriod] = React.useState<'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado'>('mes')
+
+  React.useEffect(() => {
+    if (startDate) setTempStartDate(startDate)
+    if (endDate) setTempEndDate(endDate)
+  }, [startDate, endDate])
+
+  React.useEffect(() => {
+    if (!startDate && !endDate) {
+      const now = new Date()
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      const firstStr = format(firstDay, "yyyy-MM-dd")
+      const lastStr = format(lastDay, "yyyy-MM-dd")
+      setStartDate(firstStr)
+      setEndDate(lastStr)
+      setTempStartDate(firstStr)
+      setTempEndDate(lastStr)
+      setDashboardPeriod('mes')
+    }
+  }, [startDate, endDate, setStartDate, setEndDate])
   const [activeTab, setActiveTab] = React.useState<'propostas' | 'chamados' | 'financeiro'>('propostas')
   const [analysisTab, setAnalysisTab] = React.useState<'produtos' | 'convenios' | 'bancos' | 'comercial'>('produtos')
   const [rankingMetric, setRankingMetric] = React.useState<'producao' | 'receita' | 'crescimento'>('producao')
@@ -242,6 +263,62 @@ export function AdminDashboard({
       setFinancialStartDate(format(firstDay, "yyyy-MM-dd"))
       setFinancialEndDate(format(lastDay, "yyyy-MM-dd"))
     }
+  }
+
+  const handleDashboardPeriodChange = (period: 'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado') => {
+    setDashboardPeriod(period)
+    const now = new Date()
+    
+    if (period === 'dia') {
+      const todayStr = format(now, "yyyy-MM-dd")
+      setStartDate(todayStr)
+      setEndDate(todayStr)
+      setTempStartDate(todayStr)
+      setTempEndDate(todayStr)
+    } else if (period === 'semana') {
+      const dayOfWeek = now.getDay()
+      const diffToMonday = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)
+      const monday = new Date(now.setDate(diffToMonday))
+      const monStr = format(monday, "yyyy-MM-dd")
+      const todayStr = format(new Date(), "yyyy-MM-dd")
+      setStartDate(monStr)
+      setEndDate(todayStr)
+      setTempStartDate(monStr)
+      setTempEndDate(todayStr)
+    } else if (period === 'mes') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      const firstStr = format(firstDay, "yyyy-MM-dd")
+      const lastStr = format(lastDay, "yyyy-MM-dd")
+      setStartDate(firstStr)
+      setEndDate(lastStr)
+      setTempStartDate(firstStr)
+      setTempEndDate(lastStr)
+    } else if (period === 'trimestre') {
+      const quarterMonth = Math.floor(now.getMonth() / 3) * 3
+      const firstDay = new Date(now.getFullYear(), quarterMonth, 1)
+      const lastDay = new Date(now.getFullYear(), quarterMonth + 3, 0)
+      const firstStr = format(firstDay, "yyyy-MM-dd")
+      const lastStr = format(lastDay, "yyyy-MM-dd")
+      setStartDate(firstStr)
+      setEndDate(lastStr)
+      setTempStartDate(firstStr)
+      setTempEndDate(lastStr)
+    } else if (period === 'ano') {
+      const firstDay = new Date(now.getFullYear(), 0, 1)
+      const lastDay = new Date(now.getFullYear(), 11, 31)
+      const firstStr = format(firstDay, "yyyy-MM-dd")
+      const lastStr = format(lastDay, "yyyy-MM-dd")
+      setStartDate(firstStr)
+      setEndDate(lastStr)
+      setTempStartDate(firstStr)
+      setTempEndDate(lastStr)
+    }
+  }
+
+  const applyDashboardPersonalizedFilter = () => {
+    setStartDate(tempStartDate)
+    setEndDate(tempEndDate)
   }
 
   const fetchFinancialData = React.useCallback(async () => {
@@ -766,9 +843,10 @@ export function AdminDashboard({
   // Memoized historical statistics for YoY and MoM comparisons
   const comparisonStats = React.useMemo(() => {
     const now = new Date()
-    const currentYear = now.getFullYear()
+    const activeDate = financialStartDate ? new Date(financialStartDate + "T12:00:00") : now
+    const currentYear = activeDate.getFullYear()
     const previousYear = currentYear - 1
-    const currentMonthIdx = now.getMonth() // 0-11
+    const currentMonthIdx = activeDate.getMonth() // 0-11
     
     // Previous month logic
     let prevMonthIdx = currentMonthIdx - 1
@@ -863,54 +941,401 @@ export function AdminDashboard({
       monthRevDiff,
       monthRevPct
     }
-  }, [financialProposals, customCommissionPercents, getCommissionPercentage])
+  }, [financialProposals, customCommissionPercents, getCommissionPercentage, financialStartDate])
 
-  const monthlyComparisonData = React.useMemo(() => {
-    const now = new Date()
-    const currentYear = now.getFullYear()
-    const previousYear = currentYear - 1
+  const dynamicChartData = React.useMemo(() => {
+    const getProposalDate = (p: any) => {
+      const dStr = p.data_pago_cliente || p.updated_at || p.created_at
+      if (!dStr) return null
+      try {
+        const d = new Date(dStr)
+        return isNaN(d.getTime()) ? null : d
+      } catch {
+        return null
+      }
+    }
 
-    const months = [
-      "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"
-    ]
+    const start = financialStartDate ? new Date(financialStartDate + "T12:00:00") : new Date()
+    const end = financialEndDate ? new Date(financialEndDate + "T12:00:00") : new Date()
 
-    const data = months.map((monthName) => ({
-      name: monthName,
-      productionCurrent: 0,
-      productionPrevious: 0,
-      revenueCurrent: 0,
-      revenuePrevious: 0
-    }))
+    if (financialPeriod === 'dia') {
+      // Last 7 days leading to the selected date
+      const data = []
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(start)
+        d.setDate(d.getDate() - i)
+        const dateStr = format(d, "yyyy-MM-dd")
+        data.push({
+          name: format(d, "dd/MM"),
+          dateStr,
+          productionCurrent: 0,
+          revenueCurrent: 0,
+          isCurrent: i === 0,
+          isPrevious: i === 1,
+        })
+      }
 
-    financialProposals.forEach((p) => {
-      const compareDateStr = p.data_pago_cliente || p.updated_at || p.created_at
-      if (!compareDateStr) return
+      financialProposals.forEach((p) => {
+        const pDate = getProposalDate(p)
+        if (!pDate) return
+        const pDateStr = format(pDate, "yyyy-MM-dd")
+        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
+          ? customCommissionPercents[p.id_lead] 
+          : getCommissionPercentage(p)
+        const rev = (val * comPercent) / 100
 
-      const pDate = new Date(compareDateStr)
-      if (isNaN(pDate.getTime())) return
+        const item = data.find(d => d.dateStr === pDateStr)
+        if (item) {
+          item.productionCurrent += val
+          item.revenueCurrent += rev
+        }
+      })
+      return data
+    }
 
-      const year = pDate.getFullYear()
-      const monthIdx = pDate.getMonth()
+    if (financialPeriod === 'semana') {
+      // "semana deve mostrar as quatro semanas do mês, com destaque (com cor) na semana atual e anterior"
+      const data = [
+        { name: "Semana 1", productionCurrent: 0, revenueCurrent: 0, startDay: 1, endDay: 7, isCurrent: false, isPrevious: false },
+        { name: "Semana 2", productionCurrent: 0, revenueCurrent: 0, startDay: 8, endDay: 14, isCurrent: false, isPrevious: false },
+        { name: "Semana 3", productionCurrent: 0, revenueCurrent: 0, startDay: 15, endDay: 21, isCurrent: false, isPrevious: false },
+        { name: "Semana 4", productionCurrent: 0, revenueCurrent: 0, startDay: 22, endDay: 31, isCurrent: false, isPrevious: false }
+      ]
 
-      const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
-      const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-        ? customCommissionPercents[p.id_lead] 
-        : getCommissionPercentage(p)
-      const rev = (val * comPercent) / 100
+      const refDay = start.getDate()
+      let currentWeekIdx = 3
+      if (refDay <= 7) currentWeekIdx = 0
+      else if (refDay <= 14) currentWeekIdx = 1
+      else if (refDay <= 21) currentWeekIdx = 2
 
-      if (monthIdx >= 0 && monthIdx < 12) {
-        if (year === currentYear) {
-          data[monthIdx].productionCurrent += val
-          data[monthIdx].revenueCurrent += rev
-        } else if (year === previousYear) {
-          data[monthIdx].productionPrevious += val
-          data[monthIdx].revenuePrevious += rev
+      if (currentWeekIdx >= 0 && currentWeekIdx < 4) {
+        data[currentWeekIdx].isCurrent = true
+        if (currentWeekIdx - 1 >= 0) {
+          data[currentWeekIdx - 1].isPrevious = true
         }
       }
-    })
 
-    return data
-  }, [financialProposals, customCommissionPercents, getCommissionPercentage])
+      financialProposals.forEach((p) => {
+        const pDate = getProposalDate(p)
+        if (!pDate) return
+        const pYear = pDate.getFullYear()
+        const pMonth = pDate.getMonth()
+        
+        if (pYear !== start.getFullYear() || pMonth !== start.getMonth()) return
+
+        const day = pDate.getDate()
+        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
+          ? customCommissionPercents[p.id_lead] 
+          : getCommissionPercentage(p)
+        const rev = (val * comPercent) / 100
+
+        const item = data.find(w => day >= w.startDay && day <= w.endDay)
+        if (item) {
+          item.productionCurrent += val
+          item.revenueCurrent += rev
+        }
+      })
+      return data
+    }
+
+    if (financialPeriod === 'mes') {
+      // "mês deve mostrar todos os meses do ano, com destaque (cor cor) no mês atual e mês anterior"
+      const months = [
+        "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"
+      ]
+      const data = months.map((monthName, idx) => ({
+        name: monthName,
+        monthIdx: idx,
+        productionCurrent: 0,
+        revenueCurrent: 0,
+        isCurrent: false,
+        isPrevious: false
+      }))
+
+      const currentMonthIdx = start.getMonth()
+      const prevMonthIdx = (currentMonthIdx - 1 + 12) % 12
+
+      data[currentMonthIdx].isCurrent = true
+      data[prevMonthIdx].isPrevious = true
+
+      financialProposals.forEach((p) => {
+        const pDate = getProposalDate(p)
+        if (!pDate) return
+        if (pDate.getFullYear() !== start.getFullYear()) return
+        const pMonth = pDate.getMonth()
+        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
+          ? customCommissionPercents[p.id_lead] 
+          : getCommissionPercentage(p)
+        const rev = (val * comPercent) / 100
+
+        if (pMonth >= 0 && pMonth < 12) {
+          data[pMonth].productionCurrent += val
+          data[pMonth].revenueCurrent += rev
+        }
+      })
+      return data
+    }
+
+    if (financialPeriod === 'trimestre') {
+      // "trimestre deve mostrar mostrar o ano dividido por trimestre com destaque (com cor) no trimestre atual e no trimestre anterior"
+      const data = [
+        { name: "1º Trim", quarterIdx: 0, productionCurrent: 0, revenueCurrent: 0, isCurrent: false, isPrevious: false },
+        { name: "2º Trim", quarterIdx: 1, productionCurrent: 0, revenueCurrent: 0, isCurrent: false, isPrevious: false },
+        { name: "3º Trim", quarterIdx: 2, productionCurrent: 0, revenueCurrent: 0, isCurrent: false, isPrevious: false },
+        { name: "4º Trim", quarterIdx: 3, productionCurrent: 0, revenueCurrent: 0, isCurrent: false, isPrevious: false }
+      ]
+
+      const currentQuarterIdx = Math.floor(start.getMonth() / 3)
+      const prevQuarterIdx = (currentQuarterIdx - 1 + 4) % 4
+
+      data[currentQuarterIdx].isCurrent = true
+      data[prevQuarterIdx].isPrevious = true
+
+      financialProposals.forEach((p) => {
+        const pDate = getProposalDate(p)
+        if (!pDate) return
+        if (pDate.getFullYear() !== start.getFullYear()) return
+        const pMonth = pDate.getMonth()
+        const pQuarter = Math.floor(pMonth / 3)
+        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
+          ? customCommissionPercents[p.id_lead] 
+          : getCommissionPercentage(p)
+        const rev = (val * comPercent) / 100
+
+        if (pQuarter >= 0 && pQuarter < 4) {
+          data[pQuarter].productionCurrent += val
+          data[pQuarter].revenueCurrent += rev
+        }
+      })
+      return data
+    }
+
+    if (financialPeriod === 'ano') {
+      // "ano deve mostrar os anos com destaque (com cor) no ano atual e no ano anterior"
+      const currentYear = start.getFullYear()
+      const data = []
+      for (let i = 4; i >= 0; i--) {
+        const yr = currentYear - i
+        data.push({
+          name: yr.toString(),
+          year: yr,
+          productionCurrent: 0,
+          revenueCurrent: 0,
+          isCurrent: i === 0,
+          isPrevious: i === 1
+        })
+      }
+
+      financialProposals.forEach((p) => {
+        const pDate = getProposalDate(p)
+        if (!pDate) return
+        const pYear = pDate.getFullYear()
+        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
+          ? customCommissionPercents[p.id_lead] 
+          : getCommissionPercentage(p)
+        const rev = (val * comPercent) / 100
+
+        const item = data.find(d => d.year === pYear)
+        if (item) {
+          item.productionCurrent += val
+          item.revenueCurrent += rev
+        }
+      })
+      return data
+    }
+
+    // Default or personalizado
+    const diffTime = Math.abs(end.getTime() - start.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1
+
+    if (diffDays <= 8) {
+      const data = []
+      for (let i = 0; i < diffDays; i++) {
+        const d = new Date(start)
+        d.setDate(d.getDate() + i)
+        const dateStr = format(d, "yyyy-MM-dd")
+        data.push({
+          name: format(d, "dd/MM"),
+          dateStr,
+          productionCurrent: 0,
+          revenueCurrent: 0,
+          isCurrent: i === diffDays - 1,
+          isPrevious: i === diffDays - 2
+        })
+      }
+      financialProposals.forEach((p) => {
+        const pDate = getProposalDate(p)
+        if (!pDate) return
+        const pDateStr = format(pDate, "yyyy-MM-dd")
+        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
+          ? customCommissionPercents[p.id_lead] 
+          : getCommissionPercentage(p)
+        const rev = (val * comPercent) / 100
+
+        const item = data.find(d => d.dateStr === pDateStr)
+        if (item) {
+          item.productionCurrent += val
+          item.revenueCurrent += rev
+        }
+      })
+      return data
+    } else if (diffDays <= 45) {
+      const chunks = 4
+      const data = Array.from({ length: chunks }).map((_, i) => ({
+        name: `Semana ${i + 1}`,
+        startDay: Math.floor((diffDays / chunks) * i),
+        endDay: Math.floor((diffDays / chunks) * (i + 1)),
+        productionCurrent: 0,
+        revenueCurrent: 0,
+        isCurrent: i === chunks - 1,
+        isPrevious: i === chunks - 2
+      }))
+
+      financialProposals.forEach((p) => {
+        const pDate = getProposalDate(p)
+        if (!pDate) return
+        const dayOffset = Math.floor((pDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+        if (dayOffset >= 0 && dayOffset < diffDays) {
+          const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+          const comPercent = customCommissionPercents[p.id_lead] !== undefined 
+            ? customCommissionPercents[p.id_lead] 
+            : getCommissionPercentage(p)
+          const rev = (val * comPercent) / 100
+
+          const item = data.find(w => dayOffset >= w.startDay && dayOffset <= w.endDay)
+          if (item) {
+            item.productionCurrent += val
+            item.revenueCurrent += rev
+          }
+        }
+      })
+      return data
+    } else {
+      const months = [
+        "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"
+      ]
+      const data = months.map((monthName, idx) => ({
+        name: monthName,
+        monthIdx: idx,
+        productionCurrent: 0,
+        revenueCurrent: 0,
+        isCurrent: idx === start.getMonth(),
+        isPrevious: idx === (start.getMonth() - 1 + 12) % 12
+      }))
+
+      financialProposals.forEach((p) => {
+        const pDate = getProposalDate(p)
+        if (!pDate) return
+        if (pDate.getFullYear() !== start.getFullYear()) return
+        const pMonth = pDate.getMonth()
+        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
+          ? customCommissionPercents[p.id_lead] 
+          : getCommissionPercentage(p)
+        const rev = (val * comPercent) / 100
+
+        if (pMonth >= 0 && pMonth < 12) {
+          data[pMonth].productionCurrent += val
+          data[pMonth].revenueCurrent += rev
+        }
+      })
+      return data
+    }
+  }, [financialProposals, customCommissionPercents, getCommissionPercentage, financialStartDate, financialEndDate, financialPeriod])
+
+  // New Memoized Comparative Statistics matching any chosen financial period
+  const dynamicComparisonStats = React.useMemo(() => {
+    const calcPct = (curr: number, prev: number) => {
+      if (prev === 0) return curr > 0 ? 100 : 0
+      return ((curr - prev) / prev) * 100
+    }
+
+    const prodCurrent = totalProduction
+    const prodPrevious = previousPeriodProposals.reduce((sum, p) => {
+      const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+      return sum + val
+    }, 0)
+
+    const revCurrent = totalRevenue
+    const revPrevious = previousPeriodProposals.reduce((sum, p) => {
+      const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+      const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
+      return sum + (val * comPercent) / 100
+    }, 0)
+
+    const prodPct = calcPct(prodCurrent, prodPrevious)
+    const revPct = calcPct(revCurrent, revPrevious)
+
+    // Period-based Title and Badge labels
+    let title = "Comparativo Mensal"
+    let badge = "Este Mês vs Anterior"
+
+    const getMonthLabel = (dateStr: string | null) => {
+      if (!dateStr) return "";
+      try {
+        const d = new Date(dateStr + "T12:00:00");
+        return ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][d.getMonth()];
+      } catch {
+        return "";
+      }
+    }
+
+    if (financialPeriod === "dia") {
+      title = "Comparativo Diário"
+      const currentLabel = financialStartDate ? format(new Date(financialStartDate + "T12:00:00"), "dd/MM") : "Hoje"
+      const prevLabel = prevPeriodDates.prevStart ? format(new Date(prevPeriodDates.prevStart + "T12:00:00"), "dd/MM") : "Ontem"
+      badge = `${currentLabel} vs ${prevLabel}`
+    } else if (financialPeriod === "semana") {
+      title = "Comparativo Semanal"
+      badge = "Esta Sem. vs Anterior"
+    } else if (financialPeriod === "mes") {
+      title = "Comparativo Mensal"
+      const currentLabel = getMonthLabel(financialStartDate)
+      const prevLabel = getMonthLabel(prevPeriodDates.prevStart)
+      if (currentLabel && prevLabel) {
+        badge = `${currentLabel} vs ${prevLabel}`
+      } else {
+        badge = "Este Mês vs Anterior"
+      }
+    } else if (financialPeriod === "trimestre") {
+      title = "Comparativo Trimestral"
+      badge = "Este Trim. vs Anterior"
+    } else if (financialPeriod === "ano") {
+      title = "Comparativo Anual"
+      const currentLabel = financialStartDate ? new Date(financialStartDate + "T12:00:00").getFullYear().toString() : "Este Ano"
+      const prevLabel = prevPeriodDates.prevStart ? new Date(prevPeriodDates.prevStart + "T12:00:00").getFullYear().toString() : "Ano Anterior"
+      badge = `${currentLabel} vs ${prevLabel}`
+    } else if (financialPeriod === "personalizado") {
+      title = "Comparativo Personalizado"
+      badge = "Período Ativo vs Anterior"
+    }
+
+    return {
+      title,
+      badge,
+      prodCurrent,
+      prodPrevious,
+      prodPct,
+      revCurrent,
+      revPrevious,
+      revPct
+    }
+  }, [
+    financialPeriod,
+    totalProduction,
+    totalRevenue,
+    previousPeriodProposals,
+    customCommissionPercents,
+    getCommissionPercentage,
+    financialStartDate,
+    prevPeriodDates
+  ])
 
   // Strategic & Financial Diagnostic Calculations
   const strategicDiagnostic = React.useMemo(() => {
@@ -1103,8 +1528,64 @@ export function AdminDashboard({
           key="propostas"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="grid grid-cols-1 lg:grid-cols-12 gap-6"
+          className="space-y-6 w-full"
         >
+          {/* Sticky Period Selector with same styling as finance tab */}
+          <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all">
+            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+                {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
+                  <button
+                    key={period}
+                    onClick={() => handleDashboardPeriodChange(period)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                      dashboardPeriod === period
+                        ? "bg-white text-[#1C2643] shadow-sm font-extrabold"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    {period === 'mes' ? 'Mês' : period === 'trimestre' ? 'Trimestre' : period}
+                  </button>
+                ))}
+              </div>
+
+              {dashboardPeriod === 'personalizado' && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mt-1 self-end"
+                >
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+                    <input 
+                      type="date" 
+                      value={tempStartDate}
+                      onChange={(e) => setTempStartDate(e.target.value)}
+                      className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+                    <input 
+                      type="date" 
+                      value={tempEndDate}
+                      onChange={(e) => setTempEndDate(e.target.value)}
+                      className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                    />
+                  </div>
+                  <button
+                    onClick={applyDashboardPersonalizedFilter}
+                    className="px-2.5 py-1 bg-[#1C2643] text-white text-[9px] font-black rounded-md hover:bg-[#1C2643]/90 transition-all active:scale-95"
+                  >
+                    FILTRAR
+                  </button>
+                </motion.div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Existing Proposal Content */}
           {/* 2. Meta mensal da empresa (velocimetro) */}
           {/* Subproject containing Photo and Meta cards */}
@@ -1177,122 +1658,117 @@ export function AdminDashboard({
             </DashboardCard>
           </motion.div>
 
-          {/* 3. Meta de Hoje e 4. Meta Mensal do Time */}
-          <div className="lg:col-span-4 lg:row-span-2 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-1">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05 }}>
-              <DashboardCard className="shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3.5 !p-[18px] sm:!p-5 !rounded-[24px] bg-white border border-slate-200">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
-                    <Calendar className="w-4 h-4 text-amber-500 fill-amber-500" />
+          {/* 3. Meta Anual e Contratos Digitados */}
+          <div className="lg:col-span-4 lg:row-span-2 flex flex-col gap-6 h-full">
+            {/* Meta Anual da Empresa */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              transition={{ delay: 0.05 }}
+              className="flex-1 min-h-[220px]"
+            >
+              <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col justify-between bg-[#1C2643] text-white border-[#1C2643] !p-[18px] sm:!p-5 !rounded-[24px]">
+                <div>
+                  <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-4">
+                     <Target className="w-6 h-6 text-emerald-400" />
                   </div>
-                  <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-widest">Filtrar por Período</p>
+                  <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest leading-tight">Meta Anual da Empresa</p>
+                  <div className="flex flex-col mt-2">
+                    <p className="text-xl lg:text-2xl font-black text-emerald-400 tracking-tighter leading-none">{formatCurrency(annualGoal)}</p>
+                    <p className="text-[10px] font-bold text-white/30 uppercase mt-1">Total acumulado: {formatCurrency(annualProduced)}</p>
+                  </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Início</span>
-                    <input 
-                      type="date" 
-                      value={tempStartDate}
-                      onChange={(e) => setTempStartDate(e.target.value)}
-                      className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                <div className="mt-6">
+                  <div className="flex justify-between items-end mb-2">
+                    <div className="flex flex-col">
+                      <p className="text-xl lg:text-2xl font-black tracking-tighter leading-none text-white">{annualProgressPercent}%</p>
+                      <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mt-1">Atingido</p>
+                    </div>
+                    <div className="text-right pb-1">
+                      <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Faltam para bater:</p>
+                      <p className="text-[11px] font-black text-white/90 uppercase tracking-tight">{formatCurrency(annualRemainingValue)}</p>
+                    </div>
+                  </div>
+                  <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden border border-white/5">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${annualProgressPercent}%` }}
+                      transition={{ duration: 1, delay: 0.3 }}
+                      className="h-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)]" 
                     />
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Fim</span>
-                    <input 
-                      type="date" 
-                      value={tempEndDate}
-                      onChange={(e) => setTempEndDate(e.target.value)}
-                      className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-1.5 mt-1">
-                  <button 
-                    onClick={() => {
-                      setStartDate(tempStartDate);
-                      setEndDate(tempEndDate);
-                    }}
-                    disabled={!tempStartDate && !tempEndDate}
-                    className="px-2.5 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center h-8"
-                  >
-                    FILTRAR
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const todayStr = format(new Date(), "yyyy-MM-dd");
-                      setTempStartDate(todayStr);
-                      setTempEndDate(todayStr);
-                      setStartDate(todayStr);
-                      setEndDate(todayStr);
-                    }}
-                    className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
-                  >
-                    HOJE
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const now = new Date();
-                      const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
-                      const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
-                      setTempStartDate(firstDay);
-                      setTempEndDate(lastDay);
-                      setStartDate(firstDay);
-                      setEndDate(lastDay);
-                    }}
-                    className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
-                  >
-                    MÊS
-                  </button>
                 </div>
               </DashboardCard>
             </motion.div>
 
+            {/* Contratos Digitados */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.1 }}
+              className="flex-1 min-h-[260px] flex flex-col"
+            >
+              <div className="bg-[#1C2643] rounded-[24px] p-[18px] sm:p-5 border border-[#1C2643] shadow-lg shadow-[#1C2643]/10 flex flex-col justify-between text-white h-full flex-1">
+                <div className="flex-1 flex flex-col justify-between">
+                  <div className="flex items-center gap-2 mb-3">
+                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0">
+                        <Zap className="w-5 h-5 text-amber-400" />
+                     </div>
+                     <div>
+                        <p className="text-[11.5px] font-black text-white tracking-tight leading-none uppercase">CONTRATOS DIGITADOS</p>
+                        <p className="text-[8.5px] font-bold text-white/40 uppercase tracking-widest mt-1">Produção Bruta</p>
+                     </div>
+                  </div>
 
+                  <div className="space-y-4 mt-4 flex-1 flex flex-col justify-around">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                      <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
+                      <div className="flex items-baseline gap-1.5">
+                        <p className="text-[16px] font-black text-amber-400 tracking-tight">
+                          {formatCurrency(createdTodayValue)}
+                        </p>
+                        <span className="text-[9px] font-bold text-white/60 uppercase">({createdTodayCount} contr.)</span>
+                      </div>
+                    </div>
 
-          {/* Meta Anual da Empresa */}
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
-            <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col justify-between bg-[#1C2643] text-white border-[#1C2643]">
-              <div>
-                <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-4">
-                   <Target className="w-6 h-6 text-emerald-400" />
+                    <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                      <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
+                      <div className="flex items-baseline gap-1.5">
+                        <p className="text-[15px] font-black text-white tracking-tight">
+                          {formatCurrency(createdWeekValue)}
+                        </p>
+                        <span className="text-[9px] font-bold text-white/60 uppercase">({createdWeekCount} contr.)</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
+                      <div className="flex items-baseline gap-1.5">
+                        <p className="text-[15px] font-black text-white tracking-tight">
+                          {formatCurrency(createdMonthValue)}
+                        </p>
+                        <span className="text-[9px] font-bold text-white/60 uppercase">({createdMonthCount} contr.)</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest leading-tight">Meta Anual da Empresa</p>
-                <div className="flex flex-col mt-2">
-                  <p className="text-xl lg:text-2xl font-black text-emerald-400 tracking-tighter leading-none">{formatCurrency(annualGoal)}</p>
-                  <p className="text-[10px] font-bold text-white/30 uppercase mt-1">Total acumulado: {formatCurrency(annualProduced)}</p>
+
+                <div className="mt-6 pt-3 border-t border-white/5">
+                   <div className="flex items-center gap-1.5">
+                     <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                     <p className="text-[8.5px] font-bold text-white/50 uppercase tracking-widest leading-none">
+                       Atualizado em Tempo Real
+                     </p>
+                   </div>
                 </div>
               </div>
-              
-              <div className="mt-8">
-                <div className="flex justify-between items-end mb-2">
-                  <div className="flex flex-col">
-                    <p className="text-xl lg:text-2xl font-black tracking-tighter leading-none text-white">{annualProgressPercent}%</p>
-                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mt-1">Atingido</p>
-                  </div>
-                  <div className="text-right pb-1">
-                    <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Faltam para bater:</p>
-                    <p className="text-[11px] font-black text-white/90 uppercase tracking-tight">{formatCurrency(annualRemainingValue)}</p>
-                  </div>
-                </div>
-                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden border border-white/5">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${annualProgressPercent}%` }}
-                    transition={{ duration: 1, delay: 0.3 }}
-                    className="h-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)]" 
-                  />
-                </div>
-              </div>
-            </DashboardCard>
-          </motion.div>
-        </div>
+            </motion.div>
+          </div>
 
-        {/* 5. Total de contratos em andamento e Pendente de atuação */}
+        {/* 5. Total de contratos em andamento */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="lg:col-span-12">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
              {/* Meta de Hoje */}
              <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm flex flex-col justify-between h-full relative overflow-hidden">
                 <div className="w-full font-sans">
@@ -1351,62 +1827,6 @@ export function AdminDashboard({
                        Você tem <span className="text-[#1C2643] font-black">{formatCurrency(pendingActionsValue)}</span> pendentes de atuação
                     </p>
                   </div>
-                </div>
-             </div>
-
-             {/* Contratos Digitados (Replacing redundant Pendente de Atuação) */}
-             <div className="bg-[#1C2643] rounded-[22px] p-4.5 border border-[#1C2643] shadow-lg shadow-[#1C2643]/10 flex flex-col justify-between text-white">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0">
-                        <Zap className="w-5 h-5 text-amber-400" />
-                     </div>
-                     <div>
-                        <p className="text-[11.5px] font-black text-white tracking-tight leading-none uppercase">CONTRATOS DIGITADOS</p>
-                        <p className="text-[8.5px] font-bold text-white/40 uppercase tracking-widest mt-1">Produção Bruta</p>
-                     </div>
-                  </div>
-
-                  <div className="space-y-2 mt-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
-                      <div className="flex items-baseline gap-1.5">
-                        <p className="text-[15px] font-black text-amber-400 tracking-tight">
-                          {formatCurrency(createdTodayValue)}
-                        </p>
-                        <span className="text-[8.5px] font-bold text-white/60 uppercase">({createdTodayCount} contr.)</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
-                      <div className="flex items-baseline gap-1.5">
-                        <p className="text-[14px] font-black text-white tracking-tight">
-                          {formatCurrency(createdWeekValue)}
-                        </p>
-                        <span className="text-[8.5px] font-bold text-white/60 uppercase">({createdWeekCount} contr.)</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
-                      <div className="flex items-baseline gap-1.5">
-                        <p className="text-[14px] font-black text-white tracking-tight">
-                          {formatCurrency(createdMonthValue)}
-                        </p>
-                        <span className="text-[8.5px] font-bold text-white/60 uppercase">({createdMonthCount} contr.)</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-white/5">
-                   <div className="flex items-center gap-1.5">
-                     <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                     <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-none">
-                       Atualizado em Tempo Real
-                     </p>
-                   </div>
                 </div>
              </div>
           </div>
@@ -1732,6 +2152,7 @@ export function AdminDashboard({
             </DashboardCard>
           </motion.div>
         )}
+          </div>
       </motion.div>
       )}
 
@@ -1742,6 +2163,60 @@ export function AdminDashboard({
           animate={{ opacity: 1, y: 0 }}
           className="space-y-6"
         >
+          {/* Sticky Period Selector with same styling as finance tab */}
+          <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all">
+            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+                {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
+                  <button
+                    key={period}
+                    onClick={() => handleDashboardPeriodChange(period)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                      dashboardPeriod === period
+                        ? "bg-white text-[#1C2643] shadow-sm font-extrabold"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    {period === 'mes' ? 'Mês' : period === 'trimestre' ? 'Trimestre' : period}
+                  </button>
+                ))}
+              </div>
+
+              {dashboardPeriod === 'personalizado' && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mt-1 self-end"
+                >
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+                    <input 
+                      type="date" 
+                      value={tempStartDate}
+                      onChange={(e) => setTempStartDate(e.target.value)}
+                      className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+                    <input 
+                      type="date" 
+                      value={tempEndDate}
+                      onChange={(e) => setTempEndDate(e.target.value)}
+                      className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                    />
+                  </div>
+                  <button
+                    onClick={applyDashboardPersonalizedFilter}
+                    className="px-2.5 py-1 bg-[#1C2643] text-white text-[9px] font-black rounded-md hover:bg-[#1C2643]/90 transition-all active:scale-95"
+                  >
+                    FILTRAR
+                  </button>
+                </motion.div>
+              )}
+            </div>
+          </div>
           {/* Ticket Stats Dashboard */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
             <DashboardCard className="p-6 bg-[#FE9A00]/5 border-[#FE9A00]/20 shadow-sm">
@@ -2226,10 +2701,10 @@ export function AdminDashboard({
                     <div>
                       <div className="flex items-center justify-between mb-4">
                         <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                          Comparativo Mensal
+                          {dynamicComparisonStats.title}
                         </span>
-                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
-                          {["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][comparisonStats.currentMonthIdx]} vs {["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][comparisonStats.prevMonthIdx]}
+                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md uppercase">
+                          {dynamicComparisonStats.badge}
                         </span>
                       </div>
 
@@ -2238,21 +2713,21 @@ export function AdminDashboard({
                         <div>
                           <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Produção</p>
                           <div className="flex items-baseline justify-between mt-1">
-                            <p className="text-lg font-black text-[#1C2643]">{formatCurrency(comparisonStats.prodCurrentMonth)}</p>
+                            <p className="text-lg font-black text-[#1C2643]">{formatCurrency(dynamicComparisonStats.prodCurrent)}</p>
                             <div className={cn(
                               "flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black",
-                              comparisonStats.monthProdPct > 0 
+                              dynamicComparisonStats.prodPct > 0 
                                 ? "bg-emerald-50 text-emerald-600" 
-                                : comparisonStats.monthProdPct < 0 
+                                : dynamicComparisonStats.prodPct < 0 
                                   ? "bg-rose-50 text-rose-600" 
                                   : "bg-slate-100 text-slate-500"
                             )}>
-                              {comparisonStats.monthProdPct > 0 ? <ArrowUpRight className="w-3 h-3" /> : comparisonStats.monthProdPct < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
-                              {Math.abs(comparisonStats.monthProdPct).toFixed(1)}%
+                              {dynamicComparisonStats.prodPct > 0 ? <ArrowUpRight className="w-3 h-3" /> : dynamicComparisonStats.prodPct < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
+                              {Math.abs(dynamicComparisonStats.prodPct).toFixed(1)}%
                             </div>
                           </div>
                           <p className="text-[9px] font-medium text-slate-400 mt-0.5">
-                            Anterior: {formatCurrency(comparisonStats.prodPreviousMonth)}
+                            Anterior: {formatCurrency(dynamicComparisonStats.prodPrevious)}
                           </p>
                         </div>
 
@@ -2260,21 +2735,21 @@ export function AdminDashboard({
                         <div className="pt-3 border-t border-slate-50">
                           <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Receita</p>
                           <div className="flex items-baseline justify-between mt-1">
-                            <p className="text-lg font-black text-emerald-600">{formatCurrency(comparisonStats.revCurrentMonth)}</p>
+                            <p className="text-lg font-black text-emerald-600">{formatCurrency(dynamicComparisonStats.revCurrent)}</p>
                             <div className={cn(
                               "flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black",
-                              comparisonStats.monthRevPct > 0 
+                              dynamicComparisonStats.revPct > 0 
                                 ? "bg-emerald-50 text-emerald-600" 
-                                : comparisonStats.monthRevPct < 0 
+                                : dynamicComparisonStats.revPct < 0 
                                   ? "bg-rose-50 text-rose-600" 
                                   : "bg-slate-100 text-slate-500"
                             )}>
-                              {comparisonStats.monthRevPct > 0 ? <ArrowUpRight className="w-3 h-3" /> : comparisonStats.monthRevPct < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
-                              {Math.abs(comparisonStats.monthRevPct).toFixed(1)}%
+                              {dynamicComparisonStats.revPct > 0 ? <ArrowUpRight className="w-3 h-3" /> : dynamicComparisonStats.revPct < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
+                              {Math.abs(dynamicComparisonStats.revPct).toFixed(1)}%
                             </div>
                           </div>
                           <p className="text-[9px] font-medium text-slate-400 mt-0.5">
-                            Anterior: {formatCurrency(comparisonStats.revPreviousMonth)}
+                            Anterior: {formatCurrency(dynamicComparisonStats.revPrevious)}
                           </p>
                         </div>
                       </div>
@@ -2282,7 +2757,7 @@ export function AdminDashboard({
 
                     <div className="mt-4 pt-4 border-t border-slate-100">
                       <p className="text-[9px] font-medium text-slate-400 leading-normal">
-                        Métricas de desempenho calculadas comparando o mês corrente contra o mês imediatamente anterior para monitorar evolução imediata.
+                        Métricas de desempenho calculadas comparando o período selecionado contra o período equivalente anterior para monitorar evolução.
                       </p>
                     </div>
                   </div>
@@ -2295,10 +2770,21 @@ export function AdminDashboard({
                   <div className="flex items-center justify-between mb-6">
                     <div>
                       <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                        Distribuição Mensal E Tendência Histórica
+                        {financialPeriod === 'dia' ? "Distribuição Diária (Últimos 7 dias)" :
+                         financialPeriod === 'semana' ? "Distribuição Semanal" :
+                         financialPeriod === 'mes' ? "Progresso Semanal do Mês" :
+                         financialPeriod === 'trimestre' ? "Distribuição Trimestral" :
+                         financialPeriod === 'ano' ? "Distribuição Mensal E Tendência Histórica" :
+                         "Distribuição do Período Selecionado"}
                       </span>
                       <h4 className="text-xs font-bold text-slate-400 mt-0.5">
-                        {compareChartMetric === 'producao' ? 'Produção Total' : 'Receita Gerada'} por mês
+                        {compareChartMetric === 'producao' ? 'Produção Total' : 'Receita Gerada'} {
+                          financialPeriod === 'dia' ? 'nos últimos dias' :
+                          financialPeriod === 'semana' ? 'por dia da semana' :
+                          financialPeriod === 'mes' ? 'por semana do mês' :
+                          financialPeriod === 'trimestre' ? 'por mês do trimestre' :
+                          financialPeriod === 'ano' ? 'por mês' : 'no período'
+                        }
                       </h4>
                     </div>
                   </div>
@@ -2306,7 +2792,7 @@ export function AdminDashboard({
                   <div className="w-full h-[290px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart
-                        data={monthlyComparisonData}
+                        data={dynamicChartData}
                         margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -2337,24 +2823,21 @@ export function AdminDashboard({
                           }}
                         />
                         <Bar 
-                          name={compareChartMetric === 'producao' ? "Produção Mensal" : "Receita Mensal"} 
+                          name={compareChartMetric === 'producao' ? "Produção" : "Receita"} 
                           dataKey={compareChartMetric === 'producao' ? "productionCurrent" : "revenueCurrent"} 
                           radius={[4, 4, 0, 0]} 
                         >
-                          {monthlyComparisonData.map((entry, index) => {
+                          {dynamicChartData.map((entry: any, index: number) => {
+                            const isCurrent = !!entry.isCurrent
+                            const isPrevious = !!entry.isPrevious
+
                             let barColor = "#cbd5e1"
                             if (compareChartMetric === 'producao') {
-                              if (index === comparisonStats.currentMonthIdx) {
-                                barColor = "#1c2643"
-                              } else if (index === comparisonStats.prevMonthIdx) {
-                                barColor = "#6366f1"
-                              }
+                              if (isCurrent) barColor = "#1c2643"
+                              else if (isPrevious) barColor = "#6366f1"
                             } else {
-                              if (index === comparisonStats.currentMonthIdx) {
-                                barColor = "#10b981"
-                              } else if (index === comparisonStats.prevMonthIdx) {
-                                barColor = "#34d399"
-                              }
+                              if (isCurrent) barColor = "#10b981"
+                              else if (isPrevious) barColor = "#34d399"
                             }
                             return <Cell key={`cell-${index}`} fill={barColor} />
                           })}
@@ -2374,7 +2857,7 @@ export function AdminDashboard({
                 </div>
 
                 <p className="text-[10px] font-bold text-slate-400 mt-4 leading-relaxed">
-                  * Os dados mostram a distribuição mensal de propostas efetivadas no ano atual. As barras do mês atual e anterior são destacadas em cores diferentes. Use os botões acima para alternar o foco da análise entre volume de <span className={cn("font-extrabold", compareChartMetric === 'producao' ? "text-[#1C2643]" : "text-emerald-600")}>{compareChartMetric === 'producao' ? 'Produção' : 'Receita'}</span>.
+                  * Os dados mostram a distribuição do período selecionado de propostas efetivadas. As barras do momento atual e anterior são destacadas em cores diferentes. Use os botões acima para alternar o foco da análise entre volume de <span className={cn("font-extrabold", compareChartMetric === 'producao' ? "text-[#1C2643]" : "text-emerald-600")}>{compareChartMetric === 'producao' ? 'Produção' : 'Receita'}</span>.
                 </p>
               </div>
             </div>
