@@ -529,16 +529,34 @@ export function HRDashboard({
                 let estagioCount = 0;
                 let pjCount = 0;
 
+                const cltTimes: Record<string, number> = {};
+                const estagioTimes: Record<string, number> = {};
+                const pjTimes: Record<string, number> = {};
+
+                const formatHourMin = (timeStr: string) => {
+                  if (!timeStr) return "14:00";
+                  const parts = timeStr.split(":");
+                  if (parts.length >= 2) {
+                    return `${parts[0]}:${parts[1]}`;
+                  }
+                  return timeStr;
+                };
+
                 todayList.forEach(i => {
                   const areaLower = (i.area || "").toLowerCase().trim();
+                  const timeKey = formatHourMin(i.time || "");
                   if (areaLower === "estágio" || areaLower === "estagio") {
                     estagioCount++;
+                    estagioTimes[timeKey] = (estagioTimes[timeKey] || 0) + 1;
                   } else if (areaLower === "não estudas" || areaLower === "nao estudas" || areaLower === "pj") {
                     pjCount++;
+                    pjTimes[timeKey] = (pjTimes[timeKey] || 0) + 1;
                   } else if (areaLower === "comercial" || areaLower === "operacional" || areaLower === "não estudam" || areaLower === "nao estudam") {
                     cltCount++;
+                    cltTimes[timeKey] = (cltTimes[timeKey] || 0) + 1;
                   } else {
                     cltCount++;
+                    cltTimes[timeKey] = (cltTimes[timeKey] || 0) + 1;
                   }
                 });
 
@@ -555,6 +573,17 @@ export function HRDashboard({
                       <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
                         {cltCount === 1 ? "vaga" : "vagas"}
                       </span>
+                      {Object.keys(cltTimes).length > 0 && (
+                        <div className="mt-2 pt-1.5 border-t border-slate-200/60 w-full flex flex-wrap justify-center gap-1">
+                          {Object.entries(cltTimes)
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([time, count]) => (
+                              <span key={time} className="text-[11px] font-extrabold px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-100/80">
+                                {time} ({count})
+                              </span>
+                            ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* ESTÁGIO block */}
@@ -568,6 +597,17 @@ export function HRDashboard({
                       <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
                         {estagioCount === 1 ? "vaga" : "vagas"}
                       </span>
+                      {Object.keys(estagioTimes).length > 0 && (
+                        <div className="mt-2 pt-1.5 border-t border-slate-200/60 w-full flex flex-wrap justify-center gap-1">
+                          {Object.entries(estagioTimes)
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([time, count]) => (
+                              <span key={time} className="text-[11px] font-extrabold px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-100/80">
+                                {time} ({count})
+                              </span>
+                            ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* PJ block */}
@@ -581,6 +621,17 @@ export function HRDashboard({
                       <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
                         {pjCount === 1 ? "vaga" : "vagas"}
                       </span>
+                      {Object.keys(pjTimes).length > 0 && (
+                        <div className="mt-2 pt-1.5 border-t border-slate-200/60 w-full flex flex-wrap justify-center gap-1">
+                          {Object.entries(pjTimes)
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([time, count]) => (
+                              <span key={time} className="text-[11px] font-extrabold px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-100/80">
+                                {time} ({count})
+                              </span>
+                            ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

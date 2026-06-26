@@ -61,6 +61,14 @@ export default function EntrevistasPage() {
   const [loadingTable, setLoadingTable] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1)
+  
+  // Reset page when filters or tab change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [activeTab, search, faseFilter, plataformaFilter, areaFilter, dateFilter])
+  
   // Quick Add Form States
   const [quickName, setQuickName] = useState("")
   const [quickPhone, setQuickPhone] = useState("")
@@ -538,6 +546,30 @@ export default function EntrevistasPage() {
     })
   )
 
+  // Pagination Variables
+  const ITEMS_PER_PAGE = 15
+  const totalItems = filteredInterviews.length
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE)
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+  const endIndex = startIndex + ITEMS_PER_PAGE
+  const paginatedInterviews = filteredInterviews.slice(startIndex, endIndex)
+  
+  const getPageNumbers = () => {
+    const pages: number[] = []
+    const maxButtons = 5
+    let start = Math.max(1, currentPage - 2)
+    const end = Math.min(totalPages, start + maxButtons - 1)
+    
+    if (end - start + 1 < maxButtons) {
+      start = Math.max(1, end - maxButtons + 1)
+    }
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i)
+    }
+    return pages
+  }
+
   // Calculations for quick metrics
   const tabInterviews = interviews.filter(i => isCandidateInTab(i, activeTab))
   const totalCandidatos = tabInterviews.length
@@ -589,16 +621,34 @@ export default function EntrevistasPage() {
                   let estagioCount = 0;
                   let pjCount = 0;
 
+                  const cltTimes: Record<string, number> = {};
+                  const estagioTimes: Record<string, number> = {};
+                  const pjTimes: Record<string, number> = {};
+
+                  const formatHourMin = (timeStr: string) => {
+                    if (!timeStr) return "14:00";
+                    const parts = timeStr.split(":");
+                    if (parts.length >= 2) {
+                      return `${parts[0]}:${parts[1]}`;
+                    }
+                    return timeStr;
+                  };
+
                   todayList.forEach(i => {
                     const areaLower = (i.area || "").toLowerCase().trim();
+                    const timeKey = formatHourMin(i.time || "");
                     if (areaLower === "estágio" || areaLower === "estagio") {
                       estagioCount++;
+                      estagioTimes[timeKey] = (estagioTimes[timeKey] || 0) + 1;
                     } else if (areaLower === "não estudas" || areaLower === "nao estudas" || areaLower === "pj") {
                       pjCount++;
+                      pjTimes[timeKey] = (pjTimes[timeKey] || 0) + 1;
                     } else if (areaLower === "comercial" || areaLower === "operacional" || areaLower === "não estudam" || areaLower === "nao estudam") {
                       cltCount++;
+                      cltTimes[timeKey] = (cltTimes[timeKey] || 0) + 1;
                     } else {
                       cltCount++;
+                      cltTimes[timeKey] = (cltTimes[timeKey] || 0) + 1;
                     }
                   });
 
@@ -615,6 +665,17 @@ export default function EntrevistasPage() {
                         <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
                           {cltCount === 1 ? "vaga" : "vagas"}
                         </span>
+                        {Object.keys(cltTimes).length > 0 && (
+                          <div className="mt-2 pt-1.5 border-t border-slate-200/60 w-full flex flex-wrap justify-center gap-1">
+                            {Object.entries(cltTimes)
+                              .sort(([a], [b]) => a.localeCompare(b))
+                              .map(([time, count]) => (
+                                <span key={time} className="text-[11px] font-extrabold px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-100/80">
+                                  {time} ({count})
+                                </span>
+                              ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* ESTÁGIO block */}
@@ -628,6 +689,17 @@ export default function EntrevistasPage() {
                         <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
                           {estagioCount === 1 ? "vaga" : "vagas"}
                         </span>
+                        {Object.keys(estagioTimes).length > 0 && (
+                          <div className="mt-2 pt-1.5 border-t border-slate-200/60 w-full flex flex-wrap justify-center gap-1">
+                            {Object.entries(estagioTimes)
+                              .sort(([a], [b]) => a.localeCompare(b))
+                              .map(([time, count]) => (
+                                <span key={time} className="text-[11px] font-extrabold px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-100/80">
+                                  {time} ({count})
+                                </span>
+                              ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* PJ block */}
@@ -641,6 +713,17 @@ export default function EntrevistasPage() {
                         <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
                           {pjCount === 1 ? "vaga" : "vagas"}
                         </span>
+                        {Object.keys(pjTimes).length > 0 && (
+                          <div className="mt-2 pt-1.5 border-t border-slate-200/60 w-full flex flex-wrap justify-center gap-1">
+                            {Object.entries(pjTimes)
+                              .sort(([a], [b]) => a.localeCompare(b))
+                              .map(([time, count]) => (
+                                <span key={time} className="text-[11px] font-extrabold px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-100/80">
+                                  {time} ({count})
+                                </span>
+                              ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -922,7 +1005,7 @@ export default function EntrevistasPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredInterviews.map((item) => (
+                    paginatedInterviews.map((item) => (
                       <tr key={item.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap">
                         {/* CANDIDATO CELL */}
                         <td className="px-4 py-3.5">
@@ -1042,10 +1125,70 @@ export default function EntrevistasPage() {
               </table>
             </div>
 
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex flex-wrap items-center justify-center gap-1.5 py-4 border-t border-slate-100 bg-white">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="h-8 px-2 text-[10px] font-black uppercase tracking-wider rounded-lg border-slate-200 text-slate-600 disabled:opacity-50 cursor-pointer"
+                >
+                  Primeira
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 px-2 text-[10px] font-black uppercase tracking-wider rounded-lg border-slate-200 text-slate-600 disabled:opacity-50 cursor-pointer"
+                >
+                  Anterior
+                </Button>
+                
+                {getPageNumbers().map(pageNum => (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={cn(
+                      "h-8 w-8 text-xs font-black rounded-lg transition-all cursor-pointer",
+                      currentPage === pageNum
+                        ? "bg-[#171717] hover:bg-[#171717]/90 text-white"
+                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
+                  >
+                    {pageNum}
+                  </Button>
+                ))}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 px-2 text-[10px] font-black uppercase tracking-wider rounded-lg border-slate-200 text-slate-600 disabled:opacity-50 cursor-pointer"
+                >
+                  Próxima
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="h-8 px-2 text-[10px] font-black uppercase tracking-wider rounded-lg border-slate-200 text-slate-600 disabled:opacity-50 cursor-pointer"
+                >
+                  Última
+                </Button>
+              </div>
+            )}
+
             {/* SPREADSHEET FOOTER */}
             <div className="bg-transparent text-slate-400 px-8 py-4 text-[10px] font-bold uppercase tracking-wider flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 select-none">
               <div>
-                <span>Exibindo <strong>{filteredInterviews.length}</strong> de <strong>{interviews.length}</strong> registros cadastrados</span>
+                <span>Exibindo <strong>{totalItems > 0 ? startIndex + 1 : 0}-{Math.min(endIndex, totalItems)}</strong> de <strong>{totalItems}</strong> registros filtrados (Total: <strong>{interviews.length}</strong>)</span>
               </div>
               <Button 
                 onClick={handleExportCSV}
