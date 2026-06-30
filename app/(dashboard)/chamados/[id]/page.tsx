@@ -21,11 +21,15 @@ import {
   Type as FontIcon,
   ArrowRight,
   FileText,
-  FileEdit
+  FileEdit,
+  LifeBuoy,
+  X
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
 import { useAuth } from "@/context/auth-context"
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 
 const messages = [
   {
@@ -135,6 +139,41 @@ export default function TicketDetailsPage({ params }: { params: Promise<{ id: st
     }
   }, [reply, id])
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [isApoioModalOpen, setIsApoioModalOpen] = useState(false)
+  const [apoioMessage, setApoioMessage] = useState("")
+  const [isSendingApoio, setIsSendingApoio] = useState(false)
+
+  const handleSendApoio = async () => {
+    if (!apoioMessage.trim()) return
+    setIsSendingApoio(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("Usuário não autenticado")
+
+      const { error } = await supabase
+        .from('mensagens_chamado')
+        .insert({
+          chamado_id: parseInt(id, 10),
+          user_id: user.id,
+          user_nome: perfil?.nome || user.email || 'Corretor',
+          user_role: perfil?.role || 'CORRETOR',
+          user_avatar: perfil?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil?.nome || 'User')}&background=random`,
+          content: apoioMessage,
+          action: 'pediu_apoio'
+        })
+
+      if (error) throw error
+      toast.success("Solicitação de apoio enviada com sucesso!")
+      setApoioMessage("")
+      setIsApoioModalOpen(false)
+    } catch (err) {
+      console.error("Erro ao enviar pedido de apoio:", err)
+      toast.error("Erro ao enviar pedido de apoio.")
+    } finally {
+      setIsSendingApoio(false)
+    }
+  }
 
   const ticket = tickets.find(t => t.id === id) || tickets[0]
 
@@ -270,19 +309,76 @@ export default function TicketDetailsPage({ params }: { params: Promise<{ id: st
                 </div>
                 
                 {!isUserEstagio && (
-                  <Button 
-                    onClick={handleDigitarProposta}
-                    className="bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 px-8 h-[34px] text-[10.5px] font-bold rounded-lg transition-all w-full sm:w-auto flex items-center gap-2"
-                  >
-                    <FileEdit className="w-4 h-4 mr-2" />
-                    DIGITAR PROPOSTA
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <Button 
+                      onClick={handleDigitarProposta}
+                      className="bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 px-8 h-[34px] text-[10.5px] font-bold rounded-lg transition-all w-full sm:w-auto flex items-center gap-2"
+                    >
+                      <FileEdit className="w-4 h-4 mr-2" />
+                      DIGITAR PROPOSTA
+                    </Button>
+
+                    <Button 
+                      onClick={() => setIsApoioModalOpen(true)}
+                      className="h-[34px] px-6 text-[10.5px] font-bold text-white uppercase tracking-wider bg-rose-600 hover:bg-rose-700 shadow-md transition-all flex items-center gap-2 w-full sm:w-auto"
+                    >
+                      <LifeBuoy className="w-4 h-4" />
+                      PEDIR APOIO NA VENDA
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
           </CardContent>
         </Card>
       </main>
+
+      {/* Modal de Pedido de Apoio na Venda */}
+      {isApoioModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200 border border-slate-100">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div className="flex items-center gap-2">
+                <LifeBuoy className="w-5 h-5 text-rose-600 animate-pulse" />
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Pedir Apoio na Venda</h3>
+              </div>
+              <button 
+                onClick={() => setIsApoioModalOpen(false)} 
+                className="p-1 rounded-full hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wide leading-normal">
+                Explique brevemente ao supervisor qual é o impasse ou a ajuda de que você precisa para destravar esta venda:
+              </p>
+              <textarea
+                value={apoioMessage}
+                onChange={(e) => setApoioMessage(e.target.value)}
+                placeholder="Ex: Cliente quer taxa menor ou Negociação travada no prazo"
+                className="w-full h-28 p-3 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all bg-slate-50/50 resize-none text-slate-700"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsApoioModalOpen(false)}
+                className="h-[34px] px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 rounded-lg"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSendApoio}
+                disabled={!apoioMessage.trim() || isSendingApoio}
+                className="h-[34px] px-5 text-[10px] font-bold uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md transition-all flex items-center gap-1.5"
+              >
+                {isSendingApoio ? 'Enviando...' : 'Enviar Solicitação'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

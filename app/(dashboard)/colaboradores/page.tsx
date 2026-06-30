@@ -102,13 +102,59 @@ interface DBCollaborator {
   email_instituicao?: string | null
 }
 
+function formatDateToBR(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  const cleanStr = dateStr.trim();
+  
+  // Se for yyyy-mm-dd ou yyyy/mm/dd
+  const matchIso = cleanStr.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
+  if (matchIso) {
+    const [, year, month, day] = matchIso;
+    return `${day}/${month}/${year}`;
+  }
+  
+  // Se for d-m-yyyy ou dd-mm-yyyy ou d/m/yyyy ou dd/mm/yyyy
+  const matchBr = cleanStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (matchBr) {
+    const [, day, month, year] = matchBr;
+    const d = day.padStart(2, "0");
+    const m = month.padStart(2, "0");
+    return `${d}/${m}/${year}`;
+  }
+  
+  return cleanStr;
+}
+
+function formatDateToDB(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  const cleanStr = dateStr.trim();
+  
+  // Se for d/m/yyyy ou dd/mm/yyyy ou d-m-yyyy ou dd-mm-yyyy
+  const matchBr = cleanStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (matchBr) {
+    const [, day, month, year] = matchBr;
+    const d = day.padStart(2, "0");
+    const m = month.padStart(2, "0");
+    return `${year}-${m}-${d}`;
+  }
+  
+  // Se já for yyyy-mm-dd ou yyyy/mm/dd
+  const matchIso = cleanStr.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
+  if (matchIso) {
+    const [, year, month, day] = matchIso;
+    return `${year}-${month}-${day}`;
+  }
+  
+  return cleanStr;
+}
+
 function mapDBToCollaborator(db: DBCollaborator): Collaborator {
   return {
     id: db.id || "",
     name: db.nome || "",
     role: db.funcao || "",
     cpf: db.cpf || "",
-    birthDate: db.data_nascimento || "",
+    birthDate: formatDateToBR(db.data_nascimento),
     civilStatus: db.estado_civil || "",
     address: db.endereco || "",
     phone: db.telefone || "",
@@ -126,8 +172,8 @@ function mapDBToCollaborator(db: DBCollaborator): Collaborator {
     bankAgency: db.agencia || "",
     bankAccount: db.conta || "",
     pixKey: db.chave_pix || "",
-    joinDate: db.data_admissao || "",
-    exitDate: db.data_demissao || "",
+    joinDate: formatDateToBR(db.data_admissao),
+    exitDate: formatDateToBR(db.data_demissao),
     status: (db.status as "Ativo" | "Inativo") || "Ativo",
     collegeName: db.instituicao_ensino || "",
     collegeEmail: db.email_instituicao || ""
@@ -141,7 +187,7 @@ function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
   if (c.cpf !== undefined) {
     db.cpf = c.cpf && c.cpf.trim() !== "" ? c.cpf.trim() : null
   }
-  if (c.birthDate !== undefined) db.data_nascimento = c.birthDate
+  if (c.birthDate !== undefined) db.data_nascimento = formatDateToDB(c.birthDate)
   if (c.civilStatus !== undefined) db.estado_civil = c.civilStatus
   if (c.address !== undefined) db.endereco = c.address
   if (c.phone !== undefined) db.telefone = c.phone
@@ -159,8 +205,8 @@ function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
   if (c.bankAgency !== undefined) db.agencia = c.bankAgency
   if (c.bankAccount !== undefined) db.conta = c.bankAccount
   if (c.pixKey !== undefined) db.chave_pix = c.pixKey
-  if (c.joinDate !== undefined) db.data_admissao = c.joinDate
-  if (c.exitDate !== undefined) db.data_demissao = c.exitDate
+  if (c.joinDate !== undefined) db.data_admissao = formatDateToDB(c.joinDate)
+  if (c.exitDate !== undefined) db.data_demissao = formatDateToDB(c.exitDate)
   if (c.status !== undefined) db.status = c.status
   if (c.collegeName !== undefined) db.instituicao_ensino = c.collegeName
   if (c.collegeEmail !== undefined) db.email_instituicao = c.collegeEmail
@@ -1716,7 +1762,7 @@ export default function ColaboradoresPage() {
 
               {/* List Table */}
               <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 relative border border-slate-200/60 rounded-2xl shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[1900px]">
+                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2060px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
                       <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none rounded-l-xl">Nome Completo</th>
@@ -1728,6 +1774,7 @@ export default function ColaboradoresPage() {
                       <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">DATA DE ADMISSÃO</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">DATA DA DEMISSÃO</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
@@ -1736,7 +1783,7 @@ export default function ColaboradoresPage() {
                   <tbody className="divide-y divide-slate-100">
                     {loadingTable ? (
                       <tr>
-                        <td colSpan={12} className="text-center py-20 bg-slate-50/10">
+                        <td colSpan={13} className="text-center py-20 bg-slate-50/10">
                           <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                             <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de ex-colaboradores...</p>
                           </div>
@@ -1744,7 +1791,7 @@ export default function ColaboradoresPage() {
                       </tr>
                     ) : filteredExCollaborators.length === 0 ? (
                       <tr>
-                        <td colSpan={12} className="text-center py-20 bg-slate-50/10 border-none">
+                        <td colSpan={13} className="text-center py-20 bg-slate-50/10 border-none">
                           <div className="flex flex-col items-center justify-center space-y-2">
                             <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Nenhum ex-colaborador encontrado</p>
@@ -1839,6 +1886,16 @@ export default function ColaboradoresPage() {
                             <TextInputCell 
                               value={colab.emergencyPhone} 
                               onChange={(val) => updateCell(colab.id, "emergencyPhone", val)}
+                              placeholder=""
+                              fontClass="font-mono text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* DATA DE ADMISSÃO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.joinDate || ""} 
+                              onChange={(val) => updateCell(colab.id, "joinDate", val)}
                               placeholder=""
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />

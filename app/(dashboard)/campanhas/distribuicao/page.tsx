@@ -62,51 +62,98 @@ interface BrokerUser {
   funcao?: string;
 }
 
-async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[]> {
+async function fetchClientDetailsFromTable(
+  targetTable: string, 
+  cpfs: string[]
+): Promise<{ cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[]> {
   if (cpfs.length === 0) return [];
-
-  const TABLE_COLUMNS_MAP: Record<string, string> = {
-    'base_consulta_siape': 'cpf, nome, telefone_1, telefone_2, telefone_3',
-    'base_consulta_governo_sp': 'cpf, nome, telefone_1, telefone_2, telefone_3',
-    'base_consulta_prefeitura_sp': 'cpf, nome, telefone_1, telefone_2, telefone_3',
-    'base_consulta_governo_pi': 'cpf, nome, telefone_1, telefone_2, telefone_3',
-    'base_consulta_governo_ma': 'cpf, nome, telefone_1',
-    'base_consulta_governo_rr': 'cpf, nome, telefone_1, telefone_2, telefone_3'
-  };
 
   const results: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
   const foundCpfs = new Set<string>();
 
-  const queries = Object.entries(TABLE_COLUMNS_MAP).map(async ([table, selectCols]) => {
-    try {
-      const { data, error } = await supabase
-        .from(table)
-        .select(selectCols)
-        .in('cpf', cpfs);
-      if (error) {
-        console.error(`Erro ao consultar ${table} para detalhes:`, error);
-        return [];
-      }
-      return data || [];
-    } catch (err) {
-      console.error(`Falha ao carregar detalhes de ${table}:`, err);
-      return [];
-    }
-  });
+  // Process CPFs in small, safe batches (e.g. 100 CPFs at a time) to prevent URL length limits in GET requests
+  const batchSize = 100;
+  for (let i = 0; i < cpfs.length; i += batchSize) {
+    const chunk = cpfs.slice(i, i + batchSize);
+    
+    // Expand CPFs to include all common formats for database matches
+    const expandedCpfs = Array.from(new Set(chunk.flatMap(cpf => {
+      const clean = cpf.replace(/\D/g, "");
+      if (!clean) return [cpf];
+      const padded = clean.padStart(11, '0');
+      const unpadded = clean.replace(/^0+/, '');
+      const formatted = `${padded.substring(0, 3)}.${padded.substring(3, 6)}.${padded.substring(6, 9)}-${padded.substring(9, 11)}`;
+      return [cpf, clean, padded, unpadded, formatted];
+    })));
 
+    try {
+      const selectCols = targetTable === 'base_consulta_governo_ma' 
+        ? 'cpf, nome, telefone_1' 
+        : 'cpf, nome, telefone_1, telefone_2, telefone_3';
+
+      const { data, error } = await supabase
+        .from(targetTable)
+        .select(selectCols)
+        .in('cpf', expandedCpfs);
+
+      if (error) {
+        console.error(`Erro ao consultar ${targetTable} para lote:`, error);
+        continue;
+      }
+
+      if (data) {
+        for (const item of data) {
+          const normCpf = item.cpf.replace(/\D/g, "").padStart(11, '0');
+          if (!foundCpfs.has(normCpf)) {
+            foundCpfs.add(normCpf);
+            const phoneObj = item as { telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null };
+            results.push({
+              cpf: item.cpf,
+              nome: item.nome,
+              telefone_1: phoneObj.telefone_1,
+              telefone_2: phoneObj.telefone_2 || null,
+              telefone_3: phoneObj.telefone_3 || null
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`Exceção ao consultar ${targetTable} para lote:`, err);
+    }
+  }
+
+  return results;
+}
+
+async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[]> {
+  if (cpfs.length === 0) return [];
+
+  const TABLES = [
+    'base_consulta_siape',
+    'base_consulta_governo_sp',
+    'base_consulta_prefeitura_sp',
+    'base_consulta_governo_pi',
+    'base_consulta_governo_ma',
+    'base_consulta_governo_rr',
+    'base_consulta_governo_rj',
+    'base_consulta_prefeitura_santo_andre',
+    'base_consulta_prefeitura_contagem',
+    'base_consulta_governo_mg'
+  ];
+
+  const results: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
+  const foundCpfs = new Set<string>();
+
+  // Query each table in parallel (with safe internal batching)
+  const queries = TABLES.map(table => fetchClientDetailsFromTable(table, cpfs));
   const batches = await Promise.all(queries);
+
   for (const batch of batches) {
     for (const item of batch) {
-      if (!foundCpfs.has(item.cpf)) {
-        foundCpfs.add(item.cpf);
-        const phoneObj = item as { telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null };
-        results.push({
-          cpf: item.cpf,
-          nome: item.nome,
-          telefone_1: phoneObj.telefone_1,
-          telefone_2: phoneObj.telefone_2 || null,
-          telefone_3: phoneObj.telefone_3 || null
-        });
+      const normCpf = item.cpf.replace(/\D/g, "").padStart(11, '0');
+      if (!foundCpfs.has(normCpf)) {
+        foundCpfs.add(normCpf);
+        results.push(item);
       }
     }
   }
@@ -220,6 +267,10 @@ export default function DistribuicaoCampanhaPage() {
         'governo_pi': 'base_consulta_governo_pi',
         'governo_ma': 'base_consulta_governo_ma',
         'governo_rr': 'base_consulta_governo_rr',
+        'governo_rj': 'base_consulta_governo_rj',
+        'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
+        'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
+        'governo_mg': 'base_consulta_governo_mg',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -235,24 +286,36 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_governo_ma';
       } else if (cNameUpper.includes('RORAIMA') || cNameUpper.includes('RR')) {
         targetTable = 'base_consulta_governo_rr';
+      } else if (cNameUpper.includes('GOVERNO RJ') || cNameUpper.includes('RJ')) {
+        targetTable = 'base_consulta_governo_rj';
+      } else if (cNameUpper.includes('SANTO ANDRE') || cNameUpper.includes('SANTO ANDRÉ')) {
+        targetTable = 'base_consulta_prefeitura_santo_andre';
+      } else if (cNameUpper.includes('CONTAGEM')) {
+        targetTable = 'base_consulta_prefeitura_contagem';
+      } else if (cNameUpper.includes('GOVERNO MG') || cNameUpper.includes('MG')) {
+        targetTable = 'base_consulta_governo_mg';
       }
 
-      const clientsBatchList: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
-      const batchSize = 500;
-      for (let i = 0; i < uniqueCpfs.length; i += batchSize) {
-        const batchCpfs = uniqueCpfs.slice(i, i + batchSize);
-        let clientDetailsOfBatch;
-        if (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect') {
-          clientDetailsOfBatch = await fetchClientDetailsFromAllTables(batchCpfs);
-        } else {
-          const { data: details, error: clientErr } = await supabase
-            .from(targetTable)
-            .select('cpf, nome, telefone_1, telefone_2, telefone_3')
-            .in('cpf', batchCpfs);
-          if (clientErr) throw clientErr;
-          clientDetailsOfBatch = details || [];
+      let clientsBatchList: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
+      
+      if (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect') {
+        clientsBatchList = await fetchClientDetailsFromAllTables(uniqueCpfs);
+      } else {
+        clientsBatchList = await fetchClientDetailsFromTable(targetTable, uniqueCpfs);
+
+        // Fallback/Self-healing: if any of our requested CPFs weren't found in the primary targetTable, search them across all tables!
+        const foundNormCpfs = new Set(clientsBatchList.map(d => d.cpf.replace(/\D/g, "").padStart(11, '0')));
+        const missingCpfs = uniqueCpfs.filter(cpf => !foundNormCpfs.has(cpf.replace(/\D/g, "").padStart(11, '0')));
+        if (missingCpfs.length > 0) {
+          try {
+            const fallbackDetails = await fetchClientDetailsFromAllTables(missingCpfs);
+            if (fallbackDetails && fallbackDetails.length > 0) {
+              clientsBatchList.push(...fallbackDetails);
+            }
+          } catch (fallbackErr) {
+            console.error("Erro na busca de contingência de CPFs:", fallbackErr);
+          }
         }
-        clientsBatchList.push(...clientDetailsOfBatch);
       }
 
       const workbook = new ExcelJS.Workbook();
@@ -269,7 +332,8 @@ export default function DistribuicaoCampanhaPage() {
       ];
 
       uniqueCpfs.forEach(cpf => {
-        const detail = clientsBatchList.find(c => c.cpf === cpf);
+        const normCpf = cpf.replace(/\D/g, "").padStart(11, '0');
+        const detail = clientsBatchList.find(c => c.cpf.replace(/\D/g, "").padStart(11, '0') === normCpf);
         const attInfo = cpfToAtendimentoMap.get(cpf);
         const brokerUser = allUsers.find(u => u.id === attInfo?.brokerId);
 
@@ -407,6 +471,10 @@ export default function DistribuicaoCampanhaPage() {
         'governo_pi': 'base_consulta_governo_pi',
         'governo_ma': 'base_consulta_governo_ma',
         'governo_rr': 'base_consulta_governo_rr',
+        'governo_rj': 'base_consulta_governo_rj',
+        'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
+        'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
+        'governo_mg': 'base_consulta_governo_mg',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -422,22 +490,40 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_governo_ma';
       } else if (cNameUpper.includes('RORAIMA') || cNameUpper.includes('RR')) {
         targetTable = 'base_consulta_governo_rr';
+      } else if (cNameUpper.includes('GOVERNO RJ') || cNameUpper.includes('RJ')) {
+        targetTable = 'base_consulta_governo_rj';
+      } else if (cNameUpper.includes('SANTO ANDRE') || cNameUpper.includes('SANTO ANDRÉ')) {
+        targetTable = 'base_consulta_prefeitura_santo_andre';
+      } else if (cNameUpper.includes('CONTAGEM')) {
+        targetTable = 'base_consulta_prefeitura_contagem';
+      } else if (cNameUpper.includes('GOVERNO MG') || cNameUpper.includes('MG')) {
+        targetTable = 'base_consulta_governo_mg';
       }
 
-      let clientDetails;
+      let clientDetails: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
       if (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect') {
         clientDetails = await fetchClientDetailsFromAllTables(cpfs);
       } else {
-        const { data: details, error: clientErr } = await supabase
-          .from(targetTable)
-          .select('cpf, nome, telefone_1, telefone_2, telefone_3')
-          .in('cpf', cpfs);
-        if (clientErr) throw clientErr;
-        clientDetails = details || [];
+        clientDetails = await fetchClientDetailsFromTable(targetTable, cpfs);
+
+        // Fallback/Self-healing: find missing CPFs across all other tables
+        const foundNormCpfs = new Set(clientDetails.map(d => d.cpf.replace(/\D/g, "").padStart(11, '0')));
+        const missingCpfs = cpfs.filter(cpf => !foundNormCpfs.has(cpf.replace(/\D/g, "").padStart(11, '0')));
+        if (missingCpfs.length > 0) {
+          try {
+            const fallbackDetails = await fetchClientDetailsFromAllTables(missingCpfs);
+            if (fallbackDetails && fallbackDetails.length > 0) {
+              clientDetails.push(...fallbackDetails);
+            }
+          } catch (fallbackErr) {
+            console.error("Erro na busca de contingência de CPFs:", fallbackErr);
+          }
+        }
       }
 
       const mappedDetails = cpfs.map(cpf => {
-        const found = clientDetails?.find(c => c.cpf === cpf);
+        const normCpf = cpf.replace(/\D/g, "").padStart(11, '0');
+        const found = clientDetails?.find(c => c.cpf.replace(/\D/g, "").padStart(11, '0') === normCpf);
         return {
           cpf,
           nome: found?.nome || 'CLIENTE NÃO ENCONTRADO NO BANCO',

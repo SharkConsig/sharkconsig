@@ -20,7 +20,8 @@ import {
   Search,
   Plus,
   Edit2,
-  Paperclip
+  Paperclip,
+  LifeBuoy
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
@@ -179,6 +180,41 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   const [editContent, setEditContent] = useState("")
   const [isUpdating, setIsUpdating] = useState(false)
   const [attachingToMessageId, setAttachingToMessageId] = useState<string | null>(null)
+  
+  // Apoio na Venda States
+  const [isApoioModalOpen, setIsApoioModalOpen] = useState(false)
+  const [apoioMessage, setApoioMessage] = useState("")
+  const [isSendingApoio, setIsSendingApoio] = useState(false)
+
+  const handleSendApoio = async () => {
+    if (!apoioMessage.trim() || !user || !perfil) return
+    setIsSendingApoio(true)
+    try {
+      const { error } = await supabase
+        .from('mensagens_chamado')
+        .insert({
+          chamado_id: parseInt(ticket.id, 10),
+          user_id: user.id,
+          user_nome: perfil.nome,
+          user_role: perfil.role,
+          user_avatar: perfil.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil.nome)}&background=random`,
+          content: apoioMessage,
+          action: 'pediu_apoio'
+        })
+
+      if (error) throw error
+      toast.success("Solicitação de apoio enviada com sucesso!")
+      setApoioMessage("")
+      setIsApoioModalOpen(false)
+      fetchMessages(true)
+    } catch (err) {
+      console.error("Erro ao enviar pedido de apoio:", err)
+      toast.error("Erro ao enviar pedido de apoio.")
+    } finally {
+      setIsSendingApoio(false)
+    }
+  }
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messageFileInputRef = useRef<HTMLInputElement>(null)
   const replyTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -636,7 +672,13 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                   <div className="flex flex-col">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[13px] font-bold text-slate-900">{msg.user_nome}</span>
-                      <span className="text-[11px] italic text-slate-400">{msg.action}</span>
+                      <span className="text-[11px] italic text-slate-400">
+                        {msg.action === 'pediu_apoio' 
+                          ? 'solicitou apoio na venda 🆘' 
+                          : msg.action === 'resolveu_apoio' 
+                          ? 'concluiu o apoio na venda ✅' 
+                          : msg.action}
+                      </span>
                     </div>
                     <p className="text-[11px] text-slate-400">
                       {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: ptBR })}
@@ -672,7 +714,14 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 </div>
                 
                 {msg.content && (
-                  <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100 group hover:border-primary/20 transition-colors">
+                  <div className={cn(
+                    "rounded-xl p-4 border transition-colors",
+                    msg.action === 'pediu_apoio' 
+                      ? "bg-rose-50/40 border-rose-100/75 group hover:border-rose-200" 
+                      : msg.action === 'resolveu_apoio'
+                      ? "bg-emerald-50/40 border-emerald-100/75 group hover:border-emerald-200"
+                      : "bg-slate-50/50 border-slate-100 group hover:border-primary/20"
+                  )}>
                     {editingMessageId === msg.id ? (
                       <div className="space-y-3">
                         <div className="border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 transition-all shadow-sm">
@@ -940,31 +989,88 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 Anexar Arquivos
               </Button>
               {!isUserEstagio && (
-                <Link href={`/propostas/nova?${new URLSearchParams({
-                  nome: ticket.client || "",
-                  cpf: ticket.cpf || "",
-                  nascimento: "31/01/1984",
-                  idLead: ticket.matricula || ticket.id,
-                  idChamado: ticket.id || "",
-                  matricula: ticket.matricula || "",
-                  origem: ticket.origin?.toLowerCase() || "",
-                  tel1: ticket.phone || "",
-                  tel2: ticket.phone_2 || "",
-                  tel3: ticket.phone_3 || "",
-                }).toString()}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link href={`/propostas/nova?${new URLSearchParams({
+                    nome: ticket.client || "",
+                    cpf: ticket.cpf || "",
+                    nascimento: "31/01/1984",
+                    idLead: ticket.matricula || ticket.id,
+                    idChamado: ticket.id || "",
+                    matricula: ticket.matricula || "",
+                    origem: ticket.origin?.toLowerCase() || "",
+                    tel1: ticket.phone || "",
+                    tel2: ticket.phone_2 || "",
+                    tel3: ticket.phone_3 || "",
+                  }).toString()}`}>
+                    <Button 
+                      className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      DIGITAR PROPOSTA
+                    </Button>
+                  </Link>
+
                   <Button 
-                    className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2"
+                    onClick={() => setIsApoioModalOpen(true)}
+                    className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-rose-600 hover:bg-rose-700 shadow-md transition-all flex items-center gap-2"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    DIGITAR PROPOSTA
+                    <LifeBuoy className="w-3.5 h-3.5" />
+                    PEDIR APOIO NA VENDA
                   </Button>
-                </Link>
+                </div>
               )}
             </div>
             <p className="text-[9px] text-slate-400 max-w-sm leading-relaxed">Pressione <kbd className="bg-slate-100 px-1 rounded font-bold">Ctrl + Enter</kbd> para enviar rapidamente. Tamanho máximo 20mb (jpg, png, pdf, docx, xlsx).</p>
           </div>
         </div>
       </div>
+
+      {/* Modal de Pedido de Apoio na Venda */}
+      {isApoioModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200 border border-slate-100">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div className="flex items-center gap-2">
+                <LifeBuoy className="w-5 h-5 text-rose-600 animate-pulse" />
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Pedir Apoio na Venda</h3>
+              </div>
+              <button 
+                onClick={() => setIsApoioModalOpen(false)} 
+                className="p-1 rounded-full hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wide leading-normal">
+                Explique brevemente ao supervisor qual é o impasse ou a ajuda de que você precisa para destravar esta venda:
+              </p>
+              <textarea
+                value={apoioMessage}
+                onChange={(e) => setApoioMessage(e.target.value)}
+                placeholder="Ex: Cliente quer taxa menor ou Negociação travada no prazo"
+                className="w-full h-28 p-3 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all bg-slate-50/50 resize-none text-slate-700"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsApoioModalOpen(false)}
+                className="h-[34px] px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 rounded-lg"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSendApoio}
+                disabled={!apoioMessage.trim() || isSendingApoio}
+                className="h-[34px] px-5 text-[10px] font-bold uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md transition-all flex items-center gap-1.5"
+              >
+                {isSendingApoio ? 'Enviando...' : 'Enviar Solicitação'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
