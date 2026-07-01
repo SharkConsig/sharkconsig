@@ -1,200 +1,94 @@
 "use client"
 
-import { useState, useRef, use, useEffect } from "react"
+import { useState, use, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Header } from "@/components/layout/header"
-import { 
-  Bold, 
-  Italic, 
-  Underline, 
-  Quote, 
-  AlignLeft, 
-  AlignCenter, 
-  AlignRight, 
-  List, 
-  ListOrdered, 
-  Type, 
-  Link2, 
-  Image as ImageIcon, 
-  Type as FontIcon,
-  ArrowRight,
-  FileText,
-  FileEdit,
-  LifeBuoy,
-  X
-} from "lucide-react"
-import { cn } from "@/lib/utils"
-import Image from "next/image"
+import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
 import { useAuth } from "@/context/auth-context"
 import { supabase } from "@/lib/supabase"
-import { toast } from "sonner"
-
-const messages = [
-  {
-    id: 1,
-    user: "Talia Alves",
-    avatar: "https://picsum.photos/seed/talia/100/100",
-    action: "solicitou",
-    time: "3 horas atrás",
-    content: "{Solicitação da Talia para o Operacional...}",
-    attachments: [
-      { name: "HOLERITE_850271_01-2026_3107-1.pdf", url: "#" },
-      { name: "CC-KELLY-ELAINE-DE-GOES-SILVA-Nov-2025-a-Jan-2026.jpg", url: "#" }
-    ]
-  },
-  {
-    id: 2,
-    user: "Maria Rosangêla",
-    avatar: "https://picsum.photos/seed/maria/100/100",
-    action: "respondeu",
-    time: "2 horas atrás",
-    content: "{Resposta da Maria Rosangêla (Operacional) à solicitação da Talia (Corretora)...}"
-  },
-  {
-    id: 3,
-    user: "Maria Rosangêla",
-    avatar: "https://picsum.photos/seed/maria/100/100",
-    action: "alterou o status",
-    time: "2 horas atrás",
-    statusChange: { from: "ABERTO", to: "AGUARDANDO CORRETOR", fromColor: "bg-emerald-500", toColor: "bg-orange-500" }
-  },
-  {
-    id: 4,
-    user: "Talia Alves",
-    avatar: "https://picsum.photos/seed/talia/100/100",
-    action: "respondeu",
-    time: "1 horas atrás",
-    content: "{Talia respondeu o Operacional...}"
-  },
-  {
-    id: 5,
-    user: "Talia Alves",
-    avatar: "https://picsum.photos/seed/talia/100/100",
-    action: "alterou o status",
-    time: "2 horas atrás",
-    statusChange: { from: "AGUARDANDO CORRETOR", to: "AGUARDANDO SUPORTE", fromColor: "bg-orange-500", toColor: "bg-amber-400" }
-  },
-  {
-    id: 6,
-    user: "Maria Rosangêla",
-    avatar: "https://picsum.photos/seed/maria/100/100",
-    action: "respondeu",
-    time: "2 horas atrás",
-    content: "{Resposta da Maria Rosangêla (Operacional) à solicitação da Talia (Corretora)...}"
-  }
-]
-
-const tickets = [
-  { id: "34558", status: "ABERTOS", statusColor: "bg-amber-500", origin: "DISCADOR", client: "VIVIANE FRANCISCA R SANTOS", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34557", status: "ABERTOS", statusColor: "bg-amber-500", origin: "DISCADOR", client: "DOUGLAINA RIBEIRO SANTIAGO", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34556", status: "AGUARDANDO OPERACIONAL", statusColor: "bg-orange-500", origin: "DISCADOR", client: "ANA PAULA FORNER", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34555", status: "AGUARDANDO OPERACIONAL", statusColor: "bg-orange-500", origin: "DISCADOR", client: "LUIZ ALBERTO MARINHO FARIAS", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34554", status: "PROPOSTA CADASTRADA", statusColor: "bg-blue-500", origin: "DISCADOR", client: "CASTER CESAR DA SILVA", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34553", status: "EM NEGOCIAÇÃO / PROPOSTA ENVIADA", statusColor: "bg-cyan-500", origin: "DISCADOR", client: "CHERLITON DE CASTRO GUEDES", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-  { id: "34552", status: "NÃO APROVADOS", statusColor: "bg-rose-500", origin: "DISCADOR", client: "FERNANDO LUIZ PALHANO XAVIER", cpf: "277.428.418-00", phone: "11989500230", margin: "314,66", agreement: "GOV SP", team: "ROBSON DE ALMEIDA FERNANDEZ RAMOS", openedAt: "06-02-2026", updatedAt: "06-02-2026 13:14:34" },
-]
+import { Loader2, AlertCircle } from "lucide-react"
 
 export default function TicketDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
-  const { perfil, isEstagio } = useAuth()
-  const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
-  const [reply, setReply] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(`ticket_detail_draft_${id}`) || ""
-    }
-    return ""
-  })
+  const { perfil } = useAuth()
+  const [ticket, setTicket] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // Persist window scroll
   useEffect(() => {
-    const handleWindowScroll = () => {
-      if (typeof window !== "undefined") {
-        localStorage.setItem(`ticket_detail_window_scroll_${id}`, window.scrollY.toString())
+    async function loadTicket() {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const parsedId = parseInt(id, 10)
+        if (isNaN(parsedId)) {
+          throw new Error("ID de chamado inválido")
+        }
+
+        const { data, error: fetchError } = await supabase
+          .from('chamados')
+          .select(`
+            *,
+            status_chamados:status_id (*)
+          `)
+          .eq('id', parsedId)
+          .single()
+
+        if (fetchError) {
+          throw fetchError
+        }
+
+        if (!data) {
+          throw new Error("Chamado não encontrado")
+        }
+
+        setTicket(data)
+      } catch (err: any) {
+        console.error("Erro ao carregar chamado:", err)
+        setError(err.message || "Não foi possível carregar as informações do chamado.")
+      } finally {
+        setLoading(false)
       }
     }
-    window.addEventListener('scroll', handleWindowScroll)
 
-    // Restore scroll after a small delay
-    const savedScroll = localStorage.getItem(`ticket_detail_window_scroll_${id}`)
-    if (savedScroll) {
-      setTimeout(() => {
-        window.scrollTo(0, parseInt(savedScroll, 10))
-      }, 100)
-    }
-
-    return () => window.removeEventListener('scroll', handleWindowScroll)
+    loadTicket()
   }, [id])
 
-  // Persist draft
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      if (reply) {
-        localStorage.setItem(`ticket_detail_draft_${id}`, reply)
-      } else {
-        localStorage.removeItem(`ticket_detail_draft_${id}`)
-      }
-    }
-  }, [reply, id])
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const [isApoioModalOpen, setIsApoioModalOpen] = useState(false)
-  const [apoioMessage, setApoioMessage] = useState("")
-  const [isSendingApoio, setIsSendingApoio] = useState(false)
-
-  const handleSendApoio = async () => {
-    if (!apoioMessage.trim()) return
-    setIsSendingApoio(true)
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error("Usuário não autenticado")
-
-      const { error } = await supabase
-        .from('mensagens_chamado')
-        .insert({
-          chamado_id: parseInt(id, 10),
-          user_id: user.id,
-          user_nome: perfil?.nome || user.email || 'Corretor',
-          user_role: perfil?.role || 'CORRETOR',
-          user_avatar: perfil?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil?.nome || 'User')}&background=random`,
-          content: apoioMessage,
-          action: 'pediu_apoio'
-        })
-
-      if (error) throw error
-      toast.success("Solicitação de apoio enviada com sucesso!")
-      setApoioMessage("")
-      setIsApoioModalOpen(false)
-    } catch (err) {
-      console.error("Erro ao enviar pedido de apoio:", err)
-      toast.error("Erro ao enviar pedido de apoio.")
-    } finally {
-      setIsSendingApoio(false)
-    }
+  if (loading) {
+    return (
+      <div className="flex-1 flex flex-col">
+        <Header title={`CHAMADO #${id}`} />
+        <main className="flex-1 p-6 bg-slate-50/50 flex flex-col items-center justify-center gap-2">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Carregando chamado...</span>
+        </main>
+      </div>
+    )
   }
 
-  const ticket = tickets.find(t => t.id === id) || tickets[0]
-
-  const handleDigitarProposta = () => {
-    const ticketObj = ticket as unknown as Record<string, string | undefined>;
-    const params = new URLSearchParams({
-      nome: ticketObj.client || "",
-      cpf: ticketObj.cpf || "",
-      nascimento: "31/01/1984", // Mock birth date
-      idLead: ticketObj.id || "",
-      idChamado: ticketObj.id || "",
-      tel1: ticketObj.phone || ticketObj.cliente_telefone || "",
-      tel2: ticketObj.cliente_telefone_2 || "",
-      tel3: ticketObj.cliente_telefone_3 || "",
-      origem: (ticketObj.origin || "").toLowerCase()
-    });
-    router.push(`/propostas/nova?${params.toString()}`);
-  }
-
-  const handleFileClick = () => {
-    fileInputRef.current?.click()
+  if (error || !ticket) {
+    return (
+      <div className="flex-1 flex flex-col">
+        <Header title={`CHAMADO #${id}`} />
+        <main className="flex-1 p-6 bg-slate-50/50 flex flex-col items-center justify-center gap-3">
+          <div className="p-3 bg-rose-50 text-rose-500 rounded-full">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div className="text-center">
+            <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">Erro ao carregar</h4>
+            <p className="text-[11px] text-slate-400 font-bold uppercase mt-1">{error || "Chamado não encontrado"}</p>
+          </div>
+          <button 
+            onClick={() => router.push('/chamados')}
+            className="mt-2 h-9 px-6 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition-all cursor-pointer"
+          >
+            Voltar para chamados
+          </button>
+        </main>
+      </div>
+    )
   }
 
   return (
@@ -202,191 +96,38 @@ export default function TicketDetailsPage({ params }: { params: Promise<{ id: st
       <Header title={`CHAMADO #${id}`} />
       
       <main className="flex-1 p-6 bg-slate-50/50">
-        <Card className="card-shadow border border-slate-200 overflow-hidden max-w-5xl mx-auto w-full">
-          <CardContent className="p-4 sm:p-8 space-y-8">
-            {/* Timeline */}
-            <div className="space-y-8">
-              {messages.map((msg) => (
-                <div key={msg.id} className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
-                    <Image src={msg.avatar || undefined} alt={msg.user} fill className="object-cover" />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[13px] font-bold text-slate-900">{msg.user}</span>
-                      <span className="text-[11px] italic text-slate-400">{msg.action}</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">{msg.time}</p>
-                    
-                    {msg.content && (
-                      <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100">
-                        <p className="text-sm text-slate-600 italic break-words">{msg.content}</p>
-                      </div>
-                    )}
-
-                    {msg.attachments && (
-                      <div className="space-y-1 pt-2">
-                        <p className="text-[9px] font-bold text-slate-700 uppercase tracking-wider mb-2">Anexos</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {msg.attachments.map((file) => (
-                            <a 
-                              key={file.name} 
-                              href={file.url} 
-                              className="text-[11px] text-primary hover:underline flex items-center gap-2 font-medium truncate"
-                            >
-                              <FileText className="w-3 h-3 flex-shrink-0" />
-                              <span className="truncate">{file.name}</span>
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {msg.statusChange && (
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
-                        <span className={cn("px-4 py-1.5 rounded text-[10px] font-bold text-white uppercase min-w-[120px] text-center shadow-sm", msg.statusChange.fromColor)}>
-                          {msg.statusChange.from}
-                        </span>
-                        <ArrowRight className="w-4 h-4 text-slate-300 hidden sm:block" />
-                        <span className={cn("px-4 py-1.5 rounded text-[10px] font-bold text-white uppercase min-w-[120px] text-center shadow-sm", msg.statusChange.toColor)}>
-                          {msg.statusChange.to}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Reply Box */}
-            <div className="pt-8 border-t border-slate-100 space-y-4">
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className="bg-slate-50 border-bottom border-slate-200 p-2 flex flex-wrap gap-1">
-                  <ToolbarButton icon={<Bold className="w-3.5 h-3.5" />} />
-                  <ToolbarButton icon={<Italic className="w-3.5 h-3.5" />} />
-                  <ToolbarButton icon={<Underline className="w-3.5 h-3.5" />} />
-                  <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
-                  <ToolbarButton icon={<Quote className="w-3.5 h-3.5" />} />
-                  <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
-                  <ToolbarButton icon={<AlignLeft className="w-3.5 h-3.5" />} />
-                  <ToolbarButton icon={<AlignCenter className="w-3.5 h-3.5" />} />
-                  <ToolbarButton icon={<AlignRight className="w-3.5 h-3.5" />} />
-                  <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
-                  <ToolbarButton icon={<List className="w-3.5 h-3.5" />} />
-                  <ToolbarButton icon={<ListOrdered className="w-3.5 h-3.5" />} />
-                  <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
-                  <ToolbarButton icon={<FontIcon className="w-3.5 h-3.5" />} />
-                  <ToolbarButton icon={<Link2 className="w-3.5 h-3.5" />} />
-                  <ToolbarButton icon={<ImageIcon className="w-3.5 h-3.5" />} />
-                  <ToolbarButton icon={<Type className="w-3.5 h-3.5" />} />
-                </div>
-                <textarea 
-                  className="w-full min-h-[150px] p-4 text-[12px] focus:outline-none resize-none"
-                  placeholder="Digite sua resposta aqui..."
-                  value={reply}
-                  onChange={(e) => setReply(e.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
-                <div className="space-y-2 w-full sm:w-auto">
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    multiple
-                  />
-                  <h3 
-                    onClick={handleFileClick}
-                    className="text-[10px] font-bold text-primary uppercase tracking-wider cursor-pointer hover:underline"
-                  >
-                    Anexar Arquivos
-                  </h3>
-                  <p className="text-[10px] text-slate-400 max-w-md">Você pode enviar arquivos com tamanho máximo de 20 mb dos tipos jpg, jpeg, png, gif, pdf, doc, docx, ppt, pptx, pps, ppsx, odt, xls, xlsx.</p>
-                  <Button className="bg-primary hover:bg-primary/90 text-white px-8 h-[34px] text-[10.5px] font-bold rounded-lg shadow-lg shadow-primary/20 mt-2 w-full sm:w-auto">
-                    Enviar
-                  </Button>
-                </div>
-                
-                {!isUserEstagio && (
-                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    <Button 
-                      onClick={handleDigitarProposta}
-                      className="bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 px-8 h-[34px] text-[10.5px] font-bold rounded-lg transition-all w-full sm:w-auto flex items-center gap-2"
-                    >
-                      <FileEdit className="w-4 h-4 mr-2" />
-                      DIGITAR PROPOSTA
-                    </Button>
-
-                    <Button 
-                      onClick={() => setIsApoioModalOpen(true)}
-                      className="h-[34px] px-6 text-[10.5px] font-bold text-white uppercase tracking-wider bg-rose-600 hover:bg-rose-700 shadow-md transition-all flex items-center gap-2 w-full sm:w-auto"
-                    >
-                      <LifeBuoy className="w-4 h-4" />
-                      PEDIR APOIO NA VENDA
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </main>
-
-      {/* Modal de Pedido de Apoio na Venda */}
-      {isApoioModalOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200 border border-slate-100">
-            <div className="flex justify-between items-center border-b pb-3">
-              <div className="flex items-center gap-2">
-                <LifeBuoy className="w-5 h-5 text-rose-600 animate-pulse" />
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Pedir Apoio na Venda</h3>
-              </div>
-              <button 
-                onClick={() => setIsApoioModalOpen(false)} 
-                className="p-1 rounded-full hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wide leading-normal">
-                Explique brevemente ao supervisor qual é o impasse ou a ajuda de que você precisa para destravar esta venda:
-              </p>
-              <textarea
-                value={apoioMessage}
-                onChange={(e) => setApoioMessage(e.target.value)}
-                placeholder="Ex: Cliente quer taxa menor ou Negociação travada no prazo"
-                className="w-full h-28 p-3 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all bg-slate-50/50 resize-none text-slate-700"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsApoioModalOpen(false)}
-                className="h-[34px] px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 rounded-lg"
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleSendApoio}
-                disabled={!apoioMessage.trim() || isSendingApoio}
-                className="h-[34px] px-5 text-[10px] font-bold uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md transition-all flex items-center gap-1.5"
-              >
-                {isSendingApoio ? 'Enviando...' : 'Enviar Solicitação'}
-              </Button>
-            </div>
-          </div>
+        <div className="max-w-7xl mx-auto w-full">
+          <TicketAtendimento 
+            ticket={{
+              id: ticket.id.toString(),
+              client: ticket.cliente_nome,
+              cpf: ticket.cliente_cpf,
+              origin: ticket.origem,
+              status_id: ticket.status_id,
+              status_nome: ticket.status_chamados?.nome || ticket.status,
+              descricao: ticket.descricao,
+              description: ticket.descricao,
+              content: ticket.content,
+              createdAt: ticket.created_at,
+              user_nome: ticket.user_nome,
+              user_id: ticket.user_id,
+              user_avatar: ticket.user_avatar,
+              matricula: ticket.matricula,
+              phone: ticket.cliente_telefone,
+              phone_2: ticket.cliente_telefone_2,
+              phone_3: ticket.cliente_telefone_3,
+              arquivo_rg_frente: ticket.arquivo_rg_frente,
+              arquivo_rg_verso: ticket.arquivo_rg_verso,
+              arquivo_contracheque: ticket.arquivo_contracheque,
+              arquivo_extrato: ticket.arquivo_extrato,
+              arquivo_outros: ticket.arquivo_outros
+            }} 
+            onMessageSent={() => {
+              // Recarregar se necessário
+            }}
+          />
         </div>
-      )}
+      </main>
     </div>
-  )
-}
-
-function ToolbarButton({ icon }: { icon: React.ReactNode }) {
-  return (
-    <button className="p-1.5 hover:bg-white hover:shadow-sm rounded transition-all text-slate-500 hover:text-primary">
-      {icon}
-    </button>
   )
 }

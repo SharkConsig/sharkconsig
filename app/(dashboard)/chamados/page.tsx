@@ -267,6 +267,8 @@ export default function TicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
+  const [activeApoioTicketIds, setActiveApoioTicketIds] = useState<Set<number>>(new Set())
+  const [ticketApoioStates, setTicketApoioStates] = useState<Record<number, 'pediu' | 'respondido' | 'finalizado' | 'none'>>({})
   const itemsPerPage = 10
   const isFirstLoadRef = React.useRef(true)
 
@@ -357,6 +359,51 @@ export default function TicketsPage() {
             from += step
           }
         }
+      }
+
+      // Buscar apoios ativos e respostas dos supervisores
+      try {
+        const ticketIds = all.map(t => parseInt(t.id)).filter(id => !isNaN(id))
+        if (ticketIds.length > 0) {
+          const { data: apoioMsgs, error: apoioError } = await supabase
+            .from('mensagens_chamado')
+            .select('chamado_id, action, user_role, created_at')
+            .in('chamado_id', ticketIds)
+            .order('created_at', { ascending: true })
+
+          if (!apoioError && apoioMsgs) {
+            const activeSet = new Set<number>()
+            const statesMap: Record<number, 'pediu' | 'respondido' | 'finalizado' | 'none'> = {}
+            
+            // Initialize
+            for (const id of ticketIds) {
+              statesMap[id] = 'none'
+            }
+
+            for (const msg of apoioMsgs) {
+              const tId = msg.chamado_id
+              const role = (msg.user_role || '').toLowerCase()
+              const isBroker = ['corretor', 'estágio', 'estagio', 'processo seletivo', 'propostas'].includes(role) || !role
+
+              if (msg.action === 'pediu_apoio') {
+                activeSet.add(tId)
+                statesMap[tId] = 'pediu'
+              } else if (msg.action === 'resolveu_apoio') {
+                activeSet.delete(tId)
+                statesMap[tId] = 'finalizado'
+              } else if (statesMap[tId] === 'pediu' && !isBroker) {
+                statesMap[tId] = 'respondido'
+              }
+            }
+            setActiveApoioTicketIds(activeSet)
+            setTicketApoioStates(statesMap)
+          }
+        } else {
+          setActiveApoioTicketIds(new Set())
+          setTicketApoioStates({})
+        }
+      } catch (err) {
+        console.error("Erro ao carregar status de apoio dos chamados:", err)
       }
 
       setTickets(all)
@@ -1179,12 +1226,40 @@ export default function TicketsPage() {
                             </td>
                           )}
                           <td className="px-4 py-4">
-                            <span 
-                              className={getStatusStyle(ticket).className}
-                              style={getStatusStyle(ticket).style}
-                            >
-                              {ticket.status_chamados?.nome || ticket.status}
-                            </span>
+                            <div className="flex flex-col gap-1 items-start">
+                              <span 
+                                className={getStatusStyle(ticket).className}
+                                style={getStatusStyle(ticket).style}
+                              >
+                                {ticket.status_chamados?.nome || ticket.status}
+                              </span>
+                              {ticketApoioStates[ticket.id] && ticketApoioStates[ticket.id] !== 'none' && (
+                                <>
+                                  {ticketApoioStates[ticket.id] === 'pediu' && (
+                                    <span 
+                                      className="text-[9px] font-medium whitespace-nowrap"
+                                      style={{ color: '#EC003F' }}
+                                    >
+                                      {((perfil?.role?.toLowerCase() === 'corretor') || isUserEstagio) ? "Solicitei apoio 🆘" : "Apoio solicitado 🆘"}
+                                    </span>
+                                  )}
+                                  {ticketApoioStates[ticket.id] === 'respondido' && (
+                                    <span 
+                                      className="text-[9px] font-medium text-emerald-600 whitespace-nowrap"
+                                    >
+                                      Supervisor respondeu ✅
+                                    </span>
+                                  )}
+                                  {ticketApoioStates[ticket.id] === 'finalizado' && (
+                                    <span 
+                                      className="text-[9px] font-medium text-emerald-600 whitespace-nowrap"
+                                    >
+                                      Apoio finalizado ✅
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-4 text-[12px] font-bold text-slate-500">{ticket.origem}</td>
                           <td className="px-4 py-4">

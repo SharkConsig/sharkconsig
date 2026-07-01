@@ -17,6 +17,7 @@ export default function DashboardLayout({
   const router = useRouter()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(true)
+  const [isHovered, setIsHovered] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -85,7 +86,9 @@ export default function DashboardLayout({
       <SidebarContext.Provider value={{ 
         toggleSidebar: () => setIsSidebarOpen(!isSidebarOpen),
         isCollapsed,
-        toggleCollapse: () => setIsCollapsed(!isCollapsed)
+        toggleCollapse: () => setIsCollapsed(!isCollapsed),
+        isHovered,
+        setIsHovered
       }}>
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
         <main className="flex-1 flex flex-col min-w-0">

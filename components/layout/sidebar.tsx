@@ -193,9 +193,10 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
-  const { isCollapsed, toggleCollapse } = useSidebar()
+  const { isCollapsed, toggleCollapse, isHovered: contextHovered, setIsHovered: contextSetHovered } = useSidebar()
   const { perfil, isAdmin, isRecursosHumanos } = useAuth()
-  const [isHovered, setIsHovered] = useState(false)
+  const isHovered = contextHovered ?? false
+  const setIsHovered = contextSetHovered ?? (() => {})
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
 
   const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")

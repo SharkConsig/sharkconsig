@@ -121,6 +121,11 @@ CREATE TABLE IF NOT EXISTS colaboradores (
     sugestao_campanhas TEXT,
     preferencia_incentivos TEXT,
     data_admissao VARCHAR(50),
+    data_demissao VARCHAR(50),
+    banco VARCHAR(100),
+    agencia VARCHAR(50),
+    conta_bancaria VARCHAR(100),
+    chave_pix TEXT,
     status VARCHAR(50) DEFAULT 'Ativo',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

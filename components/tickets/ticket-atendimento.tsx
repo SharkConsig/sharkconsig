@@ -21,7 +21,8 @@ import {
   Plus,
   Edit2,
   Paperclip,
-  LifeBuoy
+  LifeBuoy,
+  Check
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
@@ -92,6 +93,23 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   const { perfil, user, isEstagio } = useAuth()
   const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const [messages, setMessages] = useState<Message[]>([])
+
+  const isSupervisorOrAbove = useMemo(() => {
+    const role = perfil?.role?.toLowerCase()
+    return role === 'supervisor' || role === 'diretoria' || role === 'admin' || role === 'supervisor/coordenador'
+  }, [perfil?.role])
+
+  const hasActiveApoio = useMemo(() => {
+    let active = false
+    for (const m of messages) {
+      if (m.action === 'pediu_apoio') {
+        active = true
+      } else if (m.action === 'resolveu_apoio') {
+        active = false
+      }
+    }
+    return active
+  }, [messages])
   const [initialDesc, setInitialDesc] = useState(ticket.descricao || ticket.description || ticket.content || "")
 
   // Update initialDesc if ticket prop changes
@@ -207,11 +225,42 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
       setApoioMessage("")
       setIsApoioModalOpen(false)
       fetchMessages(true)
+      onMessageSent?.()
     } catch (err) {
       console.error("Erro ao enviar pedido de apoio:", err)
       toast.error("Erro ao enviar pedido de apoio.")
     } finally {
       setIsSendingApoio(false)
+    }
+  }
+
+  const [isResolvingApoio, setIsResolvingApoio] = useState(false)
+
+  const handleResolveApoio = async () => {
+    if (!user || !perfil) return
+    setIsResolvingApoio(true)
+    try {
+      const { error } = await supabase
+        .from('mensagens_chamado')
+        .insert({
+          chamado_id: parseInt(ticket.id, 10),
+          user_id: user.id,
+          user_nome: perfil.nome,
+          user_role: perfil.role,
+          user_avatar: perfil.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil.nome)}&background=random`,
+          content: "Apoio finalizado",
+          action: 'resolveu_apoio'
+        })
+
+      if (error) throw error
+      toast.success("Apoio finalizado com sucesso!")
+      fetchMessages(true)
+      onMessageSent?.()
+    } catch (err) {
+      console.error("Erro ao finalizar apoio:", err)
+      toast.error("Erro ao finalizar apoio.")
+    } finally {
+      setIsResolvingApoio(false)
     }
   }
 
@@ -450,6 +499,8 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
         })
 
       if (error) throw error
+
+      await fetchMessages(true)
 
       setReply("")
       localStorage.removeItem(`ticket_draft_${ticket.id}`)
@@ -874,8 +925,8 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
           )}
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
-          <div className="space-y-4 w-full sm:w-auto text-left">
+        <div className="w-full">
+          <div className="space-y-4 w-full text-left">
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -899,14 +950,14 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 ))}
               </div>
             )}
-            <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-wrap items-center gap-2 w-full">
               {/* Status Selector UI */}
               <div className="flex flex-col gap-1 relative" ref={statusDropdownRef}>
                 <label className="text-[9px] font-bold text-slate-500/80 uppercase tracking-widest pl-1">ALTERAR STATUS</label>
                 
                 <div 
                   onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
-                  className="h-[38px] px-3 rounded-lg border border-slate-200 bg-white flex items-center justify-between cursor-pointer min-w-[200px] hover:border-primary/30 transition-all shadow-sm"
+                  className="h-[38px] px-3 rounded-lg border border-slate-200 bg-white flex items-center justify-between cursor-pointer min-w-[180px] hover:border-primary/30 transition-all shadow-sm"
                 >
                   <span className="text-[11px] font-bold text-slate-600 uppercase">
                     {selectedStatus?.nome || "SELECIONE UM STATUS"}
@@ -989,38 +1040,47 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 Anexar Arquivos
               </Button>
               {!isUserEstagio && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link href={`/propostas/nova?${new URLSearchParams({
-                    nome: ticket.client || "",
-                    cpf: ticket.cpf || "",
-                    nascimento: "31/01/1984",
-                    idLead: ticket.matricula || ticket.id,
-                    idChamado: ticket.id || "",
-                    matricula: ticket.matricula || "",
-                    origem: ticket.origin?.toLowerCase() || "",
-                    tel1: ticket.phone || "",
-                    tel2: ticket.phone_2 || "",
-                    tel3: ticket.phone_3 || "",
-                  }).toString()}`}>
-                    <Button 
-                      className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      DIGITAR PROPOSTA
-                    </Button>
+                <>
+                  <Link 
+                    href={`/propostas/nova?${new URLSearchParams({
+                      nome: ticket.client || "",
+                      cpf: ticket.cpf || "",
+                      nascimento: "31/01/1984",
+                      idLead: ticket.matricula || ticket.id,
+                      idChamado: ticket.id || "",
+                      matricula: ticket.matricula || "",
+                      origem: ticket.origin?.toLowerCase() || "",
+                      tel1: ticket.phone || "",
+                      tel2: ticket.phone_2 || "",
+                      tel3: ticket.phone_3 || "",
+                    }).toString()}`}
+                    className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2 rounded-lg"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    DIGITAR PROPOSTA
                   </Link>
 
-                  <Button 
-                    onClick={() => setIsApoioModalOpen(true)}
-                    className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-rose-600 hover:bg-rose-700 shadow-md transition-all flex items-center gap-2"
-                  >
-                    <LifeBuoy className="w-3.5 h-3.5" />
-                    PEDIR APOIO NA VENDA
-                  </Button>
-                </div>
+                  {isSupervisorOrAbove && hasActiveApoio ? (
+                    <Button 
+                      onClick={handleResolveApoio}
+                      disabled={isResolvingApoio}
+                      className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-rose-600 hover:bg-rose-700 shadow-md transition-all flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      {isResolvingApoio ? 'FINALIZANDO...' : 'FINALIZAR APOIO'}
+                    </Button>
+                  ) : (
+                    <Button 
+                      onClick={() => setIsApoioModalOpen(true)}
+                      className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-rose-600 hover:bg-rose-700 shadow-md transition-all flex items-center gap-2"
+                    >
+                      <LifeBuoy className="w-3.5 h-3.5" />
+                      PEDIR APOIO NA VENDA
+                    </Button>
+                  )}
+                </>
               )}
             </div>
-            <p className="text-[9px] text-slate-400 max-w-sm leading-relaxed">Pressione <kbd className="bg-slate-100 px-1 rounded font-bold">Ctrl + Enter</kbd> para enviar rapidamente. Tamanho máximo 20mb (jpg, png, pdf, docx, xlsx).</p>
           </div>
         </div>
       </div>
