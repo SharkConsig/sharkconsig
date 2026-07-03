@@ -124,49 +124,17 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
   const desc = ticket.descricao || ticket.description || ticket.content || "";
   const meta = parseDescriptionMetadata(desc);
   
-  const convenio = (ticket.convenio || "").toUpperCase();
-  const isSantoAndre = convenio === "PREFEITURA SANTO ANDRÉ" || convenio === "PREFEITURA SANTO ANDRE" || convenio.includes("SANTO ANDRE") || convenio.includes("SANTO ANDRÉ");
-  const isGovSpPrefSp = convenio === "GOVERNO SP" || convenio === "PREFEITURA SP";
-  const isGovMa = convenio === "GOVERNO MARANHÃO";
-  const isGovPi = convenio === "GOVERNO PIAUÍ";
-
-  const getLocalLabel = (field: 'margem' | 'liquida5' | 'beneficio5') => {
-    if (isSantoAndre) {
-      if (field === 'margem') return "";
-      if (field === 'liquida5') return "Margem Líquida Cartão";
-      return "";
-    }
-    if (isGovSpPrefSp) {
-      if (field === 'margem') return "Líq. Consignações";
-      if (field === 'liquida5') return "Líq. Cartão Crédito";
-      return "Líq. Cartão Benefício";
-    }
-    if (isGovMa) {
-      if (field === 'margem') return "Margem Emp. Consignado";
-      if (field === 'liquida5') return "Margem Cartão Consignado";
-      return "Margem Cartão Benefício";
-    }
-    if (isGovPi) {
-      if (field === 'margem') return "Margem Disp. Empréstimo";
-      if (field === 'liquida5') return "Margem Cartão Consignado";
-      return "Margem Cartão Benefício";
-    }
-    if (field === 'margem') return "Margem 35%";
-    if (field === 'liquida5') return "Líquida 5%";
-    return "Benefício 5%";
-  };
-
   // 1. If we have a selected type in metadata
   const selectedType = meta?.selected_operation_type;
   if (selectedType) {
     if (selectedType === 'margem') {
-      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: getLocalLabel('margem'), color: "text-amber-600" };
+      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: "Margem 35%", color: "text-amber-600" };
     }
     if (selectedType === 'liquida5') {
-      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: getLocalLabel('liquida5'), color: "text-emerald-600" };
+      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: "Líquida 5%", color: "text-emerald-600" };
     }
     if (selectedType === 'beneficio5') {
-      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: getLocalLabel('beneficio5'), color: "text-blue-600" };
+      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: "Benefício 5%", color: "text-blue-600" };
     }
   }
 
@@ -178,9 +146,9 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
 
   // 3. Fallback to original description text selection
   let textSelectedType: 'margem' | 'liquida5' | 'beneficio5' | null = null;
-  if (desc.includes("MARGEM 35%") || desc.includes("MARGEM BRUTA CARTÃO")) {
+  if (desc.includes("MARGEM 35%")) {
     textSelectedType = 'margem';
-  } else if (desc.includes("LÍQUIDA 5%") || desc.includes("MARGEM LÍQUIDA CARTÃO")) {
+  } else if (desc.includes("LÍQUIDA 5%")) {
     textSelectedType = 'liquida5';
   } else if (desc.includes("BENEFÍCIO 5%") || desc.includes("CARTÃO BENEFÍCIO") || desc.includes("CARTÃO CONSIGINADO") || desc.includes("CARTAO CONSIGINADO") || desc.includes("CARTÃO")) {
     textSelectedType = 'beneficio5';
@@ -188,32 +156,32 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
 
   if (textSelectedType) {
     if (textSelectedType === 'margem') {
-      if (meta && meta.valor_operacao_margem) return { valor: meta.valor_operacao_margem, label: getLocalLabel('margem'), color: "text-amber-600" };
+      if (meta && meta.valor_operacao_margem) return { valor: meta.valor_operacao_margem, label: "Margem 35%", color: "text-amber-600" };
       const mVal = ticket.margem || 0;
       const opVal = mVal / 0.028;
       return { 
         valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        label: getLocalLabel('margem'), 
+        label: "Margem 35%", 
         color: "text-amber-600" 
       };
     }
     if (textSelectedType === 'liquida5') {
-      if (meta && meta.valor_operacao_liquida5) return { valor: meta.valor_operacao_liquida5, label: getLocalLabel('liquida5'), color: "text-emerald-600" };
+      if (meta && meta.valor_operacao_liquida5) return { valor: meta.valor_operacao_liquida5, label: "Líquida 5%", color: "text-emerald-600" };
       const mVal = ticket.margem_liquida_5 || 0;
       const opVal = mVal / 0.053;
       return { 
         valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        label: getLocalLabel('liquida5'), 
+        label: "Líquida 5%", 
         color: "text-emerald-600" 
       };
     }
     if (textSelectedType === 'beneficio5') {
-      if (meta && meta.valor_operacao_beneficio5) return { valor: meta.valor_operacao_beneficio5, label: getLocalLabel('beneficio5'), color: "text-blue-600" };
+      if (meta && meta.valor_operacao_beneficio5) return { valor: meta.valor_operacao_beneficio5, label: "Benefício 5%", color: "text-blue-600" };
       const mVal = ticket.margem_beneficio_5 || 0;
       const opVal = mVal / 0.053;
       return { 
         valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        label: getLocalLabel('beneficio5'), 
+        label: "Benefício 5%", 
         color: "text-blue-600" 
       };
     }
@@ -222,13 +190,13 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
   // 4. Check meta fields without selection
   if (meta) {
     if (meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") {
-      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: getLocalLabel('margem'), color: "text-amber-600" };
+      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: "Margem 35%", color: "text-amber-600" };
     }
     if (meta.liquida5 && meta.liquida5 !== "" && meta.liquida5 !== "R$ 0,00") {
-      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: getLocalLabel('liquida5'), color: "text-emerald-600" };
+      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: "Líquida 5%", color: "text-emerald-600" };
     }
     if (meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") {
-      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: getLocalLabel('beneficio5'), color: "text-blue-600" };
+      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: "Benefício 5%", color: "text-blue-600" };
     }
   }
 
@@ -237,7 +205,7 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
     const opVal = ticket.margem / 0.028;
     return { 
       valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-      label: getLocalLabel('margem'), 
+      label: "Margem 35%", 
       color: "text-amber-600" 
     };
   }
@@ -245,7 +213,7 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
     const opVal = ticket.margem_liquida_5 / 0.053;
     return { 
       valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-      label: getLocalLabel('liquida5'), 
+      label: "Líquida 5%", 
       color: "text-emerald-600" 
     };
   }
@@ -253,7 +221,7 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
     const opVal = ticket.margem_beneficio_5 / 0.053;
     return { 
       valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-      label: getLocalLabel('beneficio5'), 
+      label: "Benefício 5%", 
       color: "text-blue-600" 
     };
   }

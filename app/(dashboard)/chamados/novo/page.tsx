@@ -254,12 +254,6 @@ function NewTicketForm() {
       if (field === 'beneficio5') return "LÍQUIDA CARTÃO BENEFÍCIO";
     }
 
-    if (conv === "PREFEITURA SANTO ANDRÉ" || conv === "PREFEITURA SANTO ANDRE" || conv?.includes("SANTO ANDRE") || conv?.includes("SANTO ANDRÉ")) {
-      if (field === 'margem') return "";
-      if (field === 'liquida5') return "MARGEM LÍQUIDA CARTÃO";
-      if (field === 'beneficio5') return "";
-    }
-
     if (conv === "GOVERNO RORAIMA" || conv === "GOV RORAIMA") {
       if (field === 'margem') return "MARGEM EMPRÉSTIMO";
       if (field === 'liquida5') return "MARGEM CARTÃO";

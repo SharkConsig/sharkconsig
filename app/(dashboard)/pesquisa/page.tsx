@@ -2839,8 +2839,8 @@ export default function SearchClientPage() {
                                   tel1: unmaskPhone(client.telefone_1),
                                   tel2: unmaskPhone(client.telefone_2),
                                   tel3: unmaskPhone(client.telefone_3),
-                                  margem: "",
-                                  liquida5: mLiquida,
+                                  margem: mLiquida,
+                                  liquida5: "R$ 0,00",
                                   beneficio5: "R$ 0,00",
                                   convenio: "PREFEITURA SANTO ANDRÉ",
                                   matricula: reg.matricula || ""
