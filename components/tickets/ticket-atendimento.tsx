@@ -424,6 +424,12 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
       if (field === 'beneficio5') return "LÍQUIDA CARTÃO BENEFÍCIO";
     }
 
+    if (conv === "PREFEITURA SANTO ANDRÉ" || conv === "PREFEITURA SANTO ANDRE" || conv?.includes("SANTO ANDRE") || conv?.includes("SANTO ANDRÉ")) {
+      if (field === 'margem') return "";
+      if (field === 'liquida5') return "MARGEM LÍQUIDA CARTÃO";
+      if (field === 'beneficio5') return "";
+    }
+
     if (field === 'margem') return "MARGEM 35%";
     if (field === 'liquida5') return "LÍQUIDA 5%";
     if (field === 'beneficio5') return "BENEFÍCIO 5%";

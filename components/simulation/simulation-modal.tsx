@@ -17,7 +17,9 @@ import {
   Loader2,
   FileText,
   Phone,
-  Building
+  Building,
+  Mail,
+  Zap
 } from "lucide-react";
 import { getContractTypeInfo } from "@/lib/contratos-mapping";
 import { toPng, toJpeg } from "html-to-image";
@@ -417,6 +419,228 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
     const prazo = parseInt(c.novoPrazo) || parseInt(c.prazoAtual) || 0;
     return acc + ((pAtual - pNova) * prazo);
   }, 0);
+
+  // Helper to render the complete proposal template flyer with exact matching structure and values
+  const renderProposalTemplateContent = (isZoom: boolean) => {
+    const totalParcelaAtual = contratos.reduce((acc, c) => acc + (parseFloat(c.parcelaAtual) || 0), 0);
+    const totalNovaParcela = contratos.reduce((acc, c) => acc + (parseFloat(c.novaParcela) || 0), 0);
+    const economiaMensal = Math.max(0, totalParcelaAtual - totalNovaParcela);
+    const sumOfMargins = (parseFloat(margemPrincipalVal) || 0) + 
+                         (parseFloat(margemCartaoConsignadoVal) || 0) + 
+                         (parseFloat(margemCartaoBeneficioVal) || 0);
+    const valorTotalPosEstrategia = totalNovaParcela + sumOfMargins;
+
+    const uniqueDestBanks = Array.from(new Set(contratos.map(c => c.bancoDestino).filter(Boolean)));
+    const showBancosLine = showBancoDestino && uniqueDestBanks.length > 0;
+    const destBanksText = uniqueDestBanks.length > 0 
+      ? `Através do ${uniqueDestBanks.join(" e ")}`
+      : "";
+
+    const hasMargemPrincipal = margemPrincipalVal !== "" && parseFloat(margemPrincipalVal) > 0;
+    const hasMargemCC = margemCartaoConsignadoVal !== "" && parseFloat(margemCartaoConsignadoVal) > 0;
+    const hasMargemCB = margemCartaoBeneficioVal !== "" && parseFloat(margemCartaoBeneficioVal) > 0;
+
+    const corretorEmail = (() => {
+      if (!nomeConsultor) return "corretor@acertofacil.com.br";
+      const cleanName = nomeConsultor
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, "");
+      return `${cleanName}@acertofacil.com.br`;
+    })();
+
+    return (
+      <div className="w-full h-full flex flex-col justify-between text-left relative bg-white p-10 font-sans text-slate-900 shrink-0">
+        <div className="space-y-6">
+          {/* Header section with brand/logo and vertical line divider */}
+          <div className="flex items-center justify-center gap-4 py-3 border-b border-slate-100">
+            <div className="h-10 w-44 relative flex items-center justify-center">
+              <img 
+                src="/logo.png" 
+                alt="Logo ACERTO" 
+                className="h-10 object-contain w-full" 
+                crossOrigin="anonymous" 
+              />
+            </div>
+            <span className="text-slate-300 text-3xl font-light">|</span>
+            <div className="flex flex-col text-left">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">Formalização de</span>
+              <span className="text-[26px] font-black text-[#162546] tracking-tight leading-tight uppercase">Proposta</span>
+            </div>
+          </div>
+
+          {/* Banner container with client information on left and broker on right */}
+          <div className="bg-[#162546] rounded-2xl p-5 text-white flex justify-between items-center shadow-sm">
+            {/* Left side: Client profile */}
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-full bg-[#F5B800]/20 flex items-center justify-center text-[#F5B800] shrink-0 border border-[#F5B800]/30 shadow-inner">
+                <User className="w-5.5 h-5.5 fill-[#F5B800]/10" />
+              </div>
+              <div className="flex flex-col text-left">
+                <p className="text-[13px] font-black uppercase tracking-wide text-white">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
+                <p className="text-xs text-slate-300 font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
+              </div>
+            </div>
+
+            {/* Right side: Corretor info */}
+            <div className="flex flex-col text-right items-end gap-1.5 border-l border-slate-700/50 pl-5">
+              <p className="text-xs font-black uppercase text-[#F5B800] tracking-wider">{nomeConsultor || "NOME DO CORRETOR"}</p>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
+                <Mail className="w-3.5 h-3.5 text-[#F5B800] shrink-0" />
+                <span>{corretorEmail}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
+                <Phone className="w-3.5 h-3.5 text-[#F5B800] shrink-0" />
+                <span>{telefoneConsultor || "(48) 99656-5896"}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Cards for Financial Highlights: Total Liberado vs Total Reduzido */}
+          <div className="grid grid-cols-2 gap-6 pt-1">
+            {/* Left card: Total Valor Liberado */}
+            <div className="border border-slate-200 rounded-2xl py-3 px-5 bg-white flex flex-col justify-between shadow-sm min-h-[74px]">
+              <div className="text-left space-y-0.5">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Valor Liberado</p>
+                <div className="flex items-center gap-2 py-0.5 justify-start">
+                  <div className="w-7 h-7 rounded-full bg-[#F5B800]/15 flex items-center justify-center text-[#F5B800] text-sm font-black border border-[#F5B800]/30 shadow-sm shrink-0">
+                    $
+                  </div>
+                  <p className="text-[26px] font-black text-[#00D97E] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
+                </div>
+              </div>
+              
+              <div className="space-y-0.5 text-left pt-1.5 border-t border-slate-100 mt-1.5">
+                {hasMargemPrincipal && (
+                  <p className="text-[10px] text-slate-400 font-normal">Margem*: <span className="text-slate-400 font-normal">{formatBRL(margemPrincipalVal)}</span></p>
+                )}
+                {hasMargemCC && (
+                  <p className="text-[10px] text-slate-400 font-normal">Margem CC*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
+                )}
+                {hasMargemCB && (
+                  <p className="text-[10px] text-slate-400 font-normal">Margem CB*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
+                )}
+                {showBancosLine && (
+                  <p className="text-[9px] text-slate-400 italic font-normal mt-0.5">
+                    {destBanksText}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Right card: Valor Total Reduzido ao Mês */}
+            <div className="bg-[#F5B800] rounded-2xl py-3 px-5 flex flex-col justify-between text-[#162546] shadow-sm min-h-[74px]">
+              <div className="text-left space-y-0.5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#162546]/80">Valor Total Reduzido ao Mês</p>
+                <div className="flex items-center gap-2 py-0.5 justify-start">
+                  <TrendingDown className="w-7 h-7 text-[#162546] shrink-0" />
+                  <p className="text-[26px] font-black tracking-tight text-[#162546]">{formatBRL(economiaMensal || 244.19)}</p>
+                </div>
+              </div>
+              <p className="text-[10px] font-normal text-[#162546]/60 text-left pt-1.5 border-t border-[#162546]/10 mt-1.5">
+                Economia após a finalização da estratégia financeira.
+              </p>
+            </div>
+          </div>
+
+          {/* Table Section: Current Installments list */}
+          <div className="space-y-0 pt-2">
+            <div className="bg-[#162546] text-white text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
+              PARCELAS ATUAIS
+            </div>
+            <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm">
+              <table className="w-full text-left border-collapse table-fixed">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-50/50">
+                    <th className="p-2.5 pl-5 text-left w-[40%]">BANCO ATUAL</th>
+                    <th className="p-2.5 text-left w-[30%]">PARCELA ATUAL</th>
+                    <th className="p-2.5 text-left w-[15%]">PRAZO</th>
+                    {showTaxa && (
+                      <th className="p-2.5 text-left w-[15%]">TAXA ATUAL</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-[11px]">
+                  {contratos.map((c, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/30">
+                      <td className="p-2.5 pl-5 font-bold text-slate-800 uppercase truncate">{c.bancoAtual || "NÃO INFORMADO"}</td>
+                      <td className="p-2.5 font-semibold text-slate-700">{formatBRL(c.parcelaAtual)}</td>
+                      <td className="p-2.5 font-bold text-[#162546]">{c.prazoAtual ? `${c.prazoAtual}X` : "-"}</td>
+                      {showTaxa && (
+                        <td className="p-2.5 font-semibold text-slate-600">{c.taxaAtual ? `${parseFloat(c.taxaAtual).toFixed(2)}%` : "-"}</td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="bg-[#162546] text-white py-2 px-5 text-center font-bold text-xs uppercase tracking-wider">
+                Parcela total: {formatBRL(totalParcelaAtual)}
+              </div>
+            </div>
+          </div>
+
+          {/* Table Section: Future Strategy Installments list */}
+          <div className="space-y-0 pt-1">
+            <div className="bg-[#F5B800] text-[#162546] text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
+              PARCELAS APÓS PORTABILIDADE
+            </div>
+            <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm">
+              <table className="w-full text-left border-collapse table-fixed">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-50/50">
+                    <th className="p-2.5 pl-5 text-left w-[40%]">BANCO</th>
+                    <th className="p-2.5 text-left w-[30%]">PARCELA</th>
+                    <th className="p-2.5 text-left w-[15%]">PRAZO</th>
+                    {showNovaTaxa && (
+                      <th className="p-2.5 text-left w-[15%]">TAXA</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-[11px]">
+                  {contratos.map((c, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/30">
+                      <td className="p-2.5 pl-5 font-bold text-slate-800 uppercase truncate">
+                        {showBancoDestino && c.bancoDestino ? c.bancoDestino : "REDUÇÃO GARANTIDA"}
+                      </td>
+                      <td className="p-2.5 font-bold text-slate-800">{formatBRL(c.novaParcela)}</td>
+                      <td className="p-2.5 font-bold text-[#162546]">{c.novoPrazo || c.prazoAtual ? `${c.novoPrazo || c.prazoAtual}X` : "-"}</td>
+                      {showNovaTaxa && (
+                        <td className="p-2.5 font-semibold text-slate-600">{c.novaTaxa ? `${parseFloat(c.novaTaxa).toFixed(2)}%` : "-"}</td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="bg-[#F5B800] text-[#162546] py-2 px-5 text-center font-bold text-xs uppercase tracking-wider">
+                Parcela total: {formatBRL(totalNovaParcela)}
+              </div>
+              <div className="bg-[#162546] text-white py-3.5 px-5 text-left font-bold flex flex-col gap-0.5 justify-center">
+                <span className="text-slate-300 font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
+                <span className="text-base font-black text-white leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Disclaimer & Verification */}
+        <div className="border-t border-slate-100 pt-4 flex justify-between items-start gap-6 mt-4">
+          <div className="flex-1 text-[7px] text-slate-400 font-bold leading-relaxed space-y-0.5 text-left uppercase tracking-tight">
+            <p>* Cálculos de redução de parcela pela portabilidade sofrem alterações diárias, a depender do saldo devedor.</p>
+            <p>* Estratégia de redução leva em consideração a taxa de juros confirmada pelo cliente.</p>
+            <p>* A taxa de juros final do contrato e a redução real do valor da parcela poderão sobre oscilações a critério das instituições bancárias.</p>
+            <p>* As taxas de juros ofertadas pelas instituições bancárias levam em consideração as demais linhas de crédito disponívels ao cliente.</p>
+            <p>* Essa proposta é válida por 48 horas após o envio deste documento.</p>
+            <p>* CB é Cartão Benefício e CC é Cartão Consignado.</p>
+            <p>* Está ciente o beneficiário que a tomada de outro crédito fora dessa proposta ou ficar devedor em algum banco, afeta diretamente a possibilidade de entrega da oferta, taxas e prazo.</p>
+          </div>
+          <div className="shrink-0 flex items-center justify-center border border-slate-200 px-3 py-1.5 rounded bg-slate-50 font-black text-[9px] text-slate-700 tracking-wider">
+            acertofacilpromotora.com.br
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <AnimatePresence>
@@ -1023,7 +1247,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                           <div 
                             ref={previewRef}
                             id="proposal-export-template"
-                            className="bg-white text-slate-900 p-10 font-sans shadow-xl w-[794px] h-[1123px] flex flex-col justify-between relative overflow-hidden shrink-0 text-left"
+                            className="bg-white text-slate-900 font-sans shadow-xl w-[794px] h-[1123px] flex flex-col justify-between relative overflow-hidden shrink-0 text-left"
                             style={{
                               width: '794px',
                               height: '1123px',
@@ -1031,231 +1255,12 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               minHeight: '1123px'
                             }}
                           >
-                      {/* Decorative Background Accents */}
-                      <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-blue-100/40 to-transparent rounded-full blur-2xl pointer-events-none"></div>
-                      <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-emerald-50/30 to-transparent rounded-full blur-3xl pointer-events-none"></div>
-
-                      <div className="space-y-8">
-                        {/* Flyer Header */}
-                        <div className="flex items-center justify-between border-b pb-6 border-slate-100">
-                          <div className="relative w-36 h-12">
-                            <img 
-                              src="/logo.png" 
-                              alt="Logo ACERTO" 
-                              className="object-contain w-full h-full"
-                              crossOrigin="anonymous"
-                            />
+                            {renderProposalTemplateContent(false)}
                           </div>
-                          <div className="text-right">
-                            <p className="text-[9px] font-bold text-blue-600 uppercase tracking-widest">Otimização de Crédito</p>
-                            <p className="text-[10px] font-black text-slate-900 uppercase mt-0.5">SharkConsig Platform</p>
-                          </div>
-                        </div>
-
-                        {/* Title Block */}
-                        <div className="text-center space-y-2 py-2">
-                          <h2 className="text-[22px] font-black text-slate-900 tracking-tight leading-tight uppercase">
-                            Proposta Comercial de Redução de Parcela
-                          </h2>
-                          <div className="w-16 h-1.5 bg-blue-600 mx-auto rounded-full"></div>
-                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest pt-1">
-                            Simulação elaborada em {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
-
-                        {/* Card: Client details */}
-                        <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/50 space-y-3">
-                          <div className="flex items-center gap-2 border-b border-slate-200/50 pb-2">
-                            <User className="w-4 h-4 text-blue-600" />
-                            <span className="text-[10px] font-black text-slate-800 uppercase tracking-wider">Identificação do Cliente</span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Nome Comercial</p>
-                              <p className="text-[12px] font-bold text-slate-800 uppercase truncate">{nomeCliente}</p>
-                            </div>
-                            <div>
-                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">CPF Beneficiário</p>
-                              <p className="text-[12px] font-mono font-bold text-slate-800">{cpfCliente}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Main Financial Comparison */}
-                        {contratos.length === 1 ? (
-                          <div className="grid grid-cols-2 gap-5">
-                            {/* Left Card: Current situation */}
-                            <div className="border border-red-100 rounded-2xl p-5 bg-red-50/30 flex flex-col justify-between space-y-4">
-                              <div>
-                                <span className="text-[9px] font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
-                                  Situação Atual
-                                </span>
-                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-3">Instituição de Origem</p>
-                                <p className="text-[13px] font-black text-slate-700 uppercase truncate">{contratos[0].bancoAtual || "NÃO INFORMADO"}</p>
-                              </div>
-
-                              <div className="space-y-2.5 pt-2 border-t border-slate-100">
-                                <div>
-                                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Parcela Mensal Atual</p>
-                                  <p className="text-[18px] font-black text-slate-800 tracking-tight">{formatBRL(contratos[0].parcelaAtual)}</p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Prazo Restante</p>
-                                    <p className="text-[12px] font-bold text-slate-800">{contratos[0].prazoAtual ? `${contratos[0].prazoAtual} meses` : "-"}</p>
-                                  </div>
-                                  {showTaxa && contratos[0].taxaAtual && (
-                                    <div>
-                                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Taxa Atual %</p>
-                                      <p className="text-[12px] font-bold text-slate-800">{parseFloat(contratos[0].taxaAtual).toFixed(2)}%</p>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Right Card: Optimized with Acerto */}
-                            <div className="border border-emerald-100 rounded-2xl p-5 bg-emerald-50/30 flex flex-col justify-between space-y-4">
-                              <div>
-                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
-                                  Otimização Acerto
-                                </span>
-                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-3">Instituição de Destino</p>
-                                <p className="text-[13px] font-black text-emerald-800 uppercase truncate">
-                                  {showBancoDestino && contratos[0].bancoDestino ? contratos[0].bancoDestino : "REDUÇÃO GARANTIDA"}
-                                </p>
-                              </div>
-
-                              <div className="space-y-2.5 pt-2 border-t border-slate-100">
-                                <div>
-                                  <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">Nova Parcela Mensal</p>
-                                  <p className="text-[18px] font-black text-emerald-700 tracking-tight">{formatBRL(contratos[0].novaParcela)}</p>
-                                </div>
-                                <div className={`grid grid-cols-${showNovaTaxa && contratos[0].novaTaxa ? '3' : '2'} gap-2`}>
-                                  <div>
-                                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Novo Prazo</p>
-                                    <p className="text-[12px] font-bold text-slate-800">{(contratos[0].novoPrazo || contratos[0].prazoAtual) ? `${contratos[0].novoPrazo || contratos[0].prazoAtual} meses` : "-"}</p>
-                                  </div>
-                                  {showNovaTaxa && contratos[0].novaTaxa && (
-                                    <div>
-                                      <p className="text-[8px] font-bold text-emerald-700 uppercase tracking-wider">Nova Taxa %</p>
-                                      <p className="text-[12px] font-bold text-emerald-700">{parseFloat(contratos[0].novaTaxa).toFixed(2)}%</p>
-                                    </div>
-                                  )}
-                                  <div>
-                                    <p className="text-[8px] font-bold text-emerald-700 uppercase tracking-wider">Redução Aplicada</p>
-                                    <p className="text-[12px] font-black text-emerald-600">{parseFloat(porcentagemReducao).toFixed(2)}%</p>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          /* Multi-Contract Comparative Table */
-                          <div className="border border-slate-100 rounded-2xl overflow-hidden bg-slate-50/30">
-                            <table className="w-full text-left border-collapse">
-                              <thead>
-                                <tr className="bg-[#162546] text-white text-[9px] font-bold uppercase tracking-wider">
-                                  <th className="p-3">Banco Origem</th>
-                                  <th className="p-3 text-right">Parcela Atual</th>
-                                  <th className="p-3">Banco Destino</th>
-                                  <th className="p-3 text-right">Nova Parcela</th>
-                                  {showNovaTaxa && <th className="p-3 text-center">Nova Taxa</th>}
-                                  <th className="p-3 text-center">Prazo (Meses)</th>
-                                  <th className="p-3 text-right">Economia Mensal</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100 text-[11px]">
-                                {contratos.map((c, idx) => {
-                                  const pAtual = parseFloat(c.parcelaAtual) || 0;
-                                  const pNova = parseFloat(c.novaParcela) || 0;
-                                  const econ = Math.max(0, pAtual - pNova);
-                                  return (
-                                    <tr key={idx} className="hover:bg-slate-50">
-                                      <td className="p-3 font-bold text-slate-800 uppercase truncate max-w-[120px]">{c.bancoAtual || "NÃO INFORMADO"}</td>
-                                      <td className="p-3 text-right font-bold text-red-600">{formatBRL(pAtual)}</td>
-                                      <td className="p-3 font-bold text-emerald-800 uppercase truncate max-w-[120px]">{showBancoDestino && c.bancoDestino ? c.bancoDestino : "REDUÇÃO GARANTIDA"}</td>
-                                      <td className="p-3 text-right font-black text-emerald-600">{formatBRL(pNova)}</td>
-                                      {showNovaTaxa && (
-                                        <td className="p-3 text-center font-bold text-emerald-700">
-                                          {c.novaTaxa ? `${parseFloat(c.novaTaxa).toFixed(2)}%` : "-"}
-                                        </td>
-                                      )}
-                                      <td className="p-3 text-center font-bold text-slate-700">{c.novoPrazo || c.prazoAtual || "-"}</td>
-                                      <td className="p-3 text-right font-black text-emerald-600">{formatBRL(econ)}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-
-                        {/* Section: Valor Liberado / Troco (Only if configured) */}
-                        {valorLiberado && parseFloat(valorLiberado) > 0 && (
-                          <div className="border-2 border-dashed border-emerald-300 rounded-2xl p-5 bg-emerald-50/10 text-center space-y-1">
-                            <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-widest">
-                              Recursos Disponibilizados na Operação
-                            </p>
-                            <h3 className="text-[20px] font-black text-emerald-700 tracking-tight">
-                              ESTIMATIVA DE TROCO LIBERADO: {formatBRL(valorLiberado)}
-                            </h3>
-                            <p className="text-[10px] text-slate-500">
-                              Valor creditado diretamente em sua conta bancária sem alterar o limite máximo de margem.
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Section: Guaranteed Economy metrics */}
-                        <div className="bg-slate-900 text-white rounded-2xl p-6 flex items-center justify-between">
-                          <div className="space-y-1">
-                            <p className="text-[9px] font-bold text-blue-400 uppercase tracking-widest">Resumo de Ganhos Financeiros</p>
-                            <h4 className="text-[14px] font-bold tracking-tight">Balanço Consolidado da Otimização</h4>
-                          </div>
-                          <div className="flex gap-8 border-l border-slate-800 pl-8">
-                            <div className="space-y-0.5">
-                              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Economia Mensal</p>
-                              <p className="text-[14px] font-bold text-emerald-400">{formatBRL(economiaMensal)}</p>
-                            </div>
-                            <div className="space-y-0.5">
-                              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Economia Total Garantida</p>
-                              <p className="text-[14px] font-bold text-emerald-400">{formatBRL(totalContratoEconomia)}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                      </div>
-
-                      {/* Footer Info & Sign */}
-                      <div className="space-y-5 pt-6 border-t border-slate-100">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Consultor Autorizado</p>
-                            <p className="text-[11px] font-bold text-slate-800 uppercase">{nomeConsultor || "ACERTO CONSULTORIA"}</p>
-                            {telefoneConsultor && (
-                              <p className="text-[10px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
-                                <Phone className="w-3 h-3 text-emerald-500 fill-emerald-500/10" /> {telefoneConsultor}
-                              </p>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Validade da Proposta</p>
-                            <p className="text-[11px] font-bold text-slate-800">Válida por 3 dias úteis</p>
-                            <p className="text-[8px] text-slate-500 mt-0.5">Condições sujeitas à averbação pelo órgão</p>
-                          </div>
-                        </div>
-
-                        {/* Bottom Disclaimer */}
-                        <div className="text-[8px] text-slate-400 text-center leading-normal border-t pt-3 border-slate-100 uppercase font-medium">
-                          Esta simulação é um demonstrativo informativo baseado nas regras de consignação atuais e não constitui contrato de crédito automático. As condições reais de fechamento dependem de validação de dados cadastrais, margem disponível e políticas internas das instituições financeiras parceiras.
                         </div>
                       </div>
-
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
 
                   {/* Right Column: Actions and Guides */}
                   <div className="flex-1 max-w-[360px] space-y-6">
@@ -1339,7 +1344,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             <div className="w-full flex justify-center items-start">
               {/* Copy of the Proposal Template Flyer shown at 100% size with scrolling */}
               <div 
-                className="bg-white text-slate-900 p-10 font-sans w-[794px] h-[1123px] flex flex-col justify-between relative overflow-hidden shrink-0 shadow-lg text-left"
+                className="bg-white text-slate-900 font-sans w-[794px] h-[1123px] flex flex-col justify-between relative overflow-hidden shrink-0 shadow-lg text-left"
                 style={{
                   width: '794px',
                   height: '1123px',
@@ -1347,226 +1352,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   minHeight: '1123px'
                 }}
               >
-                {/* Decorative Background Accents */}
-                <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-blue-100/40 to-transparent rounded-full blur-2xl pointer-events-none"></div>
-                <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-emerald-50/30 to-transparent rounded-full blur-3xl pointer-events-none"></div>
-
-                <div className="space-y-8">
-                  {/* Flyer Header */}
-                  <div className="flex items-center justify-between border-b pb-6 border-slate-100">
-                    <div className="relative w-36 h-12">
-                      <img 
-                        src="/logo.png" 
-                        alt="Logo ACERTO" 
-                        className="object-contain w-full h-full"
-                        crossOrigin="anonymous"
-                      />
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[9px] font-bold text-blue-600 uppercase tracking-widest">Otimização de Crédito</p>
-                      <p className="text-[10px] font-black text-slate-900 uppercase mt-0.5">SharkConsig Platform</p>
-                    </div>
-                  </div>
-
-                  {/* Title Block */}
-                  <div className="text-center space-y-2 py-2">
-                    <h2 className="text-[22px] font-black text-slate-900 tracking-tight leading-tight uppercase">
-                      Proposta Comercial de Redução de Parcela
-                    </h2>
-                    <div className="w-16 h-1.5 bg-blue-600 mx-auto rounded-full"></div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest pt-1">
-                      Simulação elaborada em {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-
-                  {/* Card: Client details */}
-                  <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/50 space-y-3">
-                    <div className="flex items-center gap-2 border-b border-slate-200/50 pb-2">
-                      <User className="w-4 h-4 text-blue-600" />
-                      <span className="text-[10px] font-black text-slate-800 uppercase tracking-wider">Identificação do Cliente</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Nome Comercial</p>
-                        <p className="text-[12px] font-bold text-slate-800 uppercase truncate">{nomeCliente}</p>
-                      </div>
-                      <div>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">CPF Beneficiário</p>
-                        <p className="text-[12px] font-mono font-bold text-slate-800">{cpfCliente}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Main Financial Comparison */}
-                  {contratos.length === 1 ? (
-                    <div className="grid grid-cols-2 gap-5">
-                      {/* Left Card: Current situation */}
-                      <div className="border border-red-100 rounded-2xl p-5 bg-red-50/30 flex flex-col justify-between space-y-4">
-                        <div>
-                          <span className="text-[9px] font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
-                            Situação Atual
-                          </span>
-                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-3">Instituição de Origem</p>
-                          <p className="text-[13px] font-black text-slate-700 uppercase truncate">{contratos[0].bancoAtual || "NÃO INFORMADO"}</p>
-                        </div>
-
-                        <div className="space-y-2.5 pt-2 border-t border-slate-100">
-                          <div>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Parcela Mensal Atual</p>
-                            <p className="text-[18px] font-black text-slate-800 tracking-tight">{formatBRL(contratos[0].parcelaAtual)}</p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Prazo Restante</p>
-                              <p className="text-[12px] font-bold text-slate-800">{contratos[0].prazoAtual ? `${contratos[0].prazoAtual} meses` : "-"}</p>
-                            </div>
-                            {showTaxa && contratos[0].taxaAtual && (
-                              <div>
-                                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Taxa Atual %</p>
-                                <p className="text-[12px] font-bold text-slate-800">{parseFloat(contratos[0].taxaAtual).toFixed(2)}%</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right Card: Optimized with Acerto */}
-                      <div className="border border-emerald-100 rounded-2xl p-5 bg-emerald-50/30 flex flex-col justify-between space-y-4">
-                        <div>
-                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
-                            Otimização Acerto
-                          </span>
-                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-3">Instituição de Destino</p>
-                          <p className="text-[13px] font-black text-emerald-800 uppercase truncate">
-                            {showBancoDestino && contratos[0].bancoDestino ? contratos[0].bancoDestino : "REDUÇÃO GARANTIDA"}
-                          </p>
-                        </div>
-
-                        <div className="space-y-2.5 pt-2 border-t border-slate-100">
-                          <div>
-                            <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">Nova Parcela Mensal</p>
-                            <p className="text-[18px] font-black text-emerald-700 tracking-tight">{formatBRL(contratos[0].novaParcela)}</p>
-                          </div>
-                          <div className={`grid grid-cols-${showNovaTaxa && contratos[0].novaTaxa ? '3' : '2'} gap-2`}>
-                            <div>
-                              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Novo Prazo</p>
-                              <p className="text-[12px] font-bold text-slate-800">{(contratos[0].novoPrazo || contratos[0].prazoAtual) ? `${contratos[0].novoPrazo || contratos[0].prazoAtual} meses` : "-"}</p>
-                            </div>
-                            {showNovaTaxa && contratos[0].novaTaxa && (
-                              <div>
-                                <p className="text-[8px] font-bold text-emerald-700 uppercase tracking-wider">Nova Taxa %</p>
-                                <p className="text-[12px] font-bold text-emerald-700">{parseFloat(contratos[0].novaTaxa).toFixed(2)}%</p>
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-[8px] font-bold text-emerald-700 uppercase tracking-wider">Redução Aplicada</p>
-                              <p className="text-[12px] font-black text-emerald-600">{parseFloat(porcentagemReducao).toFixed(2)}%</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Multi-Contract Comparative Table */
-                    <div className="border border-slate-100 rounded-2xl overflow-hidden bg-slate-50/30">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-[#162546] text-white text-[9px] font-bold uppercase tracking-wider">
-                            <th className="p-3">Banco Origem</th>
-                            <th className="p-3 text-right">Parcela Atual</th>
-                            <th className="p-3">Banco Destino</th>
-                            <th className="p-3 text-right">Nova Parcela</th>
-                            {showNovaTaxa && <th className="p-3 text-center">Nova Taxa</th>}
-                            <th className="p-3 text-center">Prazo (Meses)</th>
-                            <th className="p-3 text-right">Economia Mensal</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 text-[11px]">
-                          {contratos.map((c, idx) => {
-                            const pAtual = parseFloat(c.parcelaAtual) || 0;
-                            const pNova = parseFloat(c.novaParcela) || 0;
-                            const econ = Math.max(0, pAtual - pNova);
-                            return (
-                              <tr key={idx} className="hover:bg-slate-50">
-                                <td className="p-3 font-bold text-slate-800 uppercase truncate max-w-[120px]">{c.bancoAtual || "NÃO INFORMADO"}</td>
-                                <td className="p-3 text-right font-bold text-red-600">{formatBRL(pAtual)}</td>
-                                <td className="p-3 font-bold text-emerald-800 uppercase truncate max-w-[120px]">{showBancoDestino && c.bancoDestino ? c.bancoDestino : "REDUÇÃO GARANTIDA"}</td>
-                                <td className="p-3 text-right font-black text-emerald-600">{formatBRL(pNova)}</td>
-                                {showNovaTaxa && (
-                                  <td className="p-3 text-center font-bold text-emerald-700">
-                                    {c.novaTaxa ? `${parseFloat(c.novaTaxa).toFixed(2)}%` : "-"}
-                                  </td>
-                                )}
-                                <td className="p-3 text-center font-bold text-slate-700">{c.novoPrazo || c.prazoAtual || "-"}</td>
-                                <td className="p-3 text-right font-black text-emerald-600">{formatBRL(econ)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {/* Section: Valor Liberado / Troco (Only if configured) */}
-                  {valorLiberado && parseFloat(valorLiberado) > 0 && (
-                    <div className="border-2 border-dashed border-emerald-300 rounded-2xl p-5 bg-emerald-50/10 text-center space-y-1">
-                      <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-widest">
-                        Recursos Disponibilizados na Operação
-                      </p>
-                      <h3 className="text-[20px] font-black text-emerald-700 tracking-tight">
-                        ESTIMATIVA DE TROCO LIBERADO: {formatBRL(valorLiberado)}
-                      </h3>
-                      <p className="text-[10px] text-slate-500">
-                        Valor creditado diretamente em sua conta bancária sem alterar o limite máximo de margem.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Section: Guaranteed Economy metrics */}
-                  <div className="bg-slate-900 text-white rounded-2xl p-6 flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-blue-400 uppercase tracking-widest">Resumo de Ganhos Financeiros</p>
-                      <h4 className="text-[14px] font-bold tracking-tight">Balanço Consolidado da Otimização</h4>
-                    </div>
-                    <div className="flex gap-8 border-l border-slate-800 pl-8">
-                      <div className="space-y-0.5">
-                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Economia Mensal</p>
-                        <p className="text-[14px] font-bold text-emerald-400">{formatBRL(economiaMensal)}</p>
-                      </div>
-                      <div className="space-y-0.5">
-                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Economia Total Garantida</p>
-                        <p className="text-[14px] font-bold text-emerald-400">{formatBRL(totalContratoEconomia)}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* Footer Info & Sign */}
-                <div className="space-y-5 pt-6 border-t border-slate-100">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Consultor Autorizado</p>
-                      <p className="text-[11px] font-bold text-slate-800 uppercase">{nomeConsultor || "ACERTO CONSULTORIA"}</p>
-                      {telefoneConsultor && (
-                        <p className="text-[10px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
-                          <Phone className="w-3 h-3 text-emerald-500 fill-emerald-500/10" /> {telefoneConsultor}
-                        </p>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Validade da Proposta</p>
-                      <p className="text-[11px] font-bold text-slate-800">Válida por 3 dias úteis</p>
-                      <p className="text-[8px] text-slate-500 mt-0.5">Condições sujeitas à averbação pelo órgão</p>
-                    </div>
-                  </div>
-
-                  {/* Bottom Disclaimer */}
-                  <div className="text-[8px] text-slate-400 text-center leading-normal border-t pt-3 border-slate-100 uppercase font-medium">
-                    Esta simulação é um demonstrativo informativo baseado nas regras de consignação atuais e não constitui contrato de crédito automático. As condições reais de fechamento dependem de validação de dados cadastrais, margem disponível e políticas internas das instituições financeiras parceiras.
-                  </div>
-                </div>
-
+                {renderProposalTemplateContent(true)}
               </div>
             </div>
           </div>

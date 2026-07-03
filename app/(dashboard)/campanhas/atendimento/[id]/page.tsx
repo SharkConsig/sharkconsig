@@ -731,21 +731,26 @@ export default function CampanhaAtendimentoPage() {
           // Wrapped generic data
           const isGovPi = table === 'base_consulta_governo_pi';
           const isGovRr = table === 'base_consulta_governo_rr';
+          const isSantoAndre = table === 'base_consulta_prefeitura_santo_andre';
           setRegistrations([{
             id: data.id || data.cpf,
-            numero_matricula: isGovPi 
-              ? (data.matricula || '---') 
-              : (data.identificacao || data.numero_matricula || '---'),
-            situacao_funcional: isGovPi ? data.vinculo : data.situacao_funcional,
+            numero_matricula: isSantoAndre
+              ? (data.matricula || '---')
+              : (isGovPi 
+                ? (data.matricula || '---') 
+                : (data.identificacao || data.numero_matricula || '---')),
+            situacao_funcional: isSantoAndre ? data.vinculo : (isGovPi ? data.vinculo : data.situacao_funcional),
             salario: data.salario || 0,
             orgao: data.orgao,
             regime_juridico: data.regime_juridico,
-            uf: isGovPi ? 'PI' : (isGovRr ? 'RR' : data.uf),
-            matricula: isGovPi ? (data.matricula || '---') : undefined,
-            vinculo: isGovPi ? (data.vinculo || '---') : undefined,
+            uf: isSantoAndre ? 'SP' : (isGovPi ? 'PI' : (isGovRr ? 'RR' : data.uf)),
+            matricula: (isSantoAndre || isGovPi) ? (data.matricula || '---') : undefined,
+            vinculo: isSantoAndre ? (data.vinculo || '---') : (isGovPi ? (data.vinculo || '---') : undefined),
             margem_disponivel_emprestimo: isGovPi ? data.margem_disponivel_emprestimo : (isGovRr ? data.margem_emprestimo : undefined),
             margem_cartao_consignado: isGovPi ? data.margem_cartao_consignado : (isGovRr ? data.margem_cartao : undefined),
             margem_cartao_beneficio: isGovPi ? data.margem_cartao_beneficio : undefined,
+            margem_bruta_cartao: isSantoAndre ? data.margem_bruta_cartao : undefined,
+            margem_liquida_cartao: isSantoAndre ? data.margem_liquida_cartao : undefined,
             instituidores: [{
                id: 'main',
                nome: data.orgao || (isGovRr ? 'GOVERNO RR' : ''),
@@ -1310,7 +1315,73 @@ export default function CampanhaAtendimentoPage() {
                 {activeReg && (
                   <Card className="card-shadow border border-slate-200 rounded-tl-none">
                     <CardContent className="p-8 space-y-12">
-                      {activeReg.uf === 'PI' ? (
+                      {activeTable === 'base_consulta_prefeitura_santo_andre' ? (
+                        <>
+                          {/* Prefeitura de Santo André */}
+                          <div className="space-y-10 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest font-sans font-medium tracking-tight">
+                                INFORMAÇÕES DA MATRÍCULA (SANTO ANDRÉ)
+                              </h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "---"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.vinculo || "---"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-6 mt-6">
+                            <div className="flex items-center gap-2">
+                              <div className="w-1 h-3.5 bg-violet-600 rounded-full"></div>
+                              <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens de Cartão</h4>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="p-4 bg-[#F1F5F9] border border-slate-200 rounded-2xl">
+                                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Margem Bruta Cartão</p>
+                                <p className="text-xl font-black text-slate-900">
+                                  {formatCurrency((activeReg as any).margem_bruta_cartao)}
+                                </p>
+                              </div>
+                              {(() => {
+                                const isPositive = (Number((activeReg as any).margem_liquida_cartao) || 0) > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-4 border rounded-2xl",
+                                    isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                  )}>
+                                    <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Líquida Cartão</p>
+                                    <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                      {formatCurrency((activeReg as any).margem_liquida_cartao)}
+                                    </p>
+                                    <div className="flex items-center gap-1.5 mt-2">
+                                      <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        </>
+                      ) : activeReg.uf === 'PI' ? (
                         <>
                           {/* Governo PI - Visual Layout equal to ACESSAR CLIENTE modal */}
                           <div className="space-y-10 text-left">

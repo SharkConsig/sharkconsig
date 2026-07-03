@@ -575,6 +575,7 @@ export default function CampaignsPage() {
         'governo_pi': 'base_consulta_governo_pi',
         'governo_ma': 'base_consulta_governo_ma',
         'governo_rr': 'base_consulta_governo_rr',
+        'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
       };
 
       if (convenioKey && TABLE_MAP[convenioKey]) {
@@ -589,6 +590,8 @@ export default function CampaignsPage() {
         targetTable = 'base_consulta_governo_ma';
       } else if (campaignName.includes('RORAIMA') || campaignName.includes('RR')) {
         targetTable = 'base_consulta_governo_rr';
+      } else if (campaignName.includes('SANTO ANDRÉ') || campaignName.includes('SANTO ANDRE') || campaignName.includes('PREFEITURA SANTO ANDRE') || campaignName.includes('PREF SANTO ANDRE')) {
+        targetTable = 'base_consulta_prefeitura_santo_andre';
       }
 
       const isGovPi = targetTable === 'base_consulta_governo_pi';
@@ -596,6 +599,7 @@ export default function CampaignsPage() {
       const isGovSp = targetTable === 'base_consulta_governo_sp';
       const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
       const isGovMa = targetTable === 'base_consulta_governo_ma';
+      const isSantoAndre = targetTable === 'base_consulta_prefeitura_santo_andre';
       const isMultiConvenio = (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect');
 
       const headersArray = ["CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3"];
@@ -609,6 +613,8 @@ export default function CampaignsPage() {
         headersArray.push("MARGEM 35%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO LÍQUIDA 5%");
       } else if (isGovMa) {
         headersArray.push("MARGEM 35%", "BRUTA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO LÍQUIDA 5%");
+      } else if (isSantoAndre) {
+        headersArray.push("MARGEM BRUTA CARTÃO", "MARGEM LÍQUIDA CARTÃO");
       } else if (isMultiConvenio) {
         headersArray.push(
           "CONVÊNIO",
@@ -681,6 +687,7 @@ export default function CampaignsPage() {
             { name: 'base_consulta_governo_pi', convenio: 'governo_pi', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio" },
             { name: 'base_consulta_governo_ma', convenio: 'governo_ma', columns: "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf" },
             { name: 'base_consulta_governo_rr', convenio: 'governo_rr', columns: "cpf, nome, data_de_nascimento, data_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao" },
+            { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao" },
           ];
 
           const queriesResults = await Promise.all(
@@ -737,7 +744,9 @@ export default function CampaignsPage() {
                   ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5"
                   : isGovMa
                     ? "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf"
-                    : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
+                    : isSantoAndre
+                      ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao"
+                      : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
 
           const { data, error: bcrError } = await withRetry(() =>
             supabase.from(targetTable).select(columnsToSelect).in('cpf', cpfs)
@@ -814,6 +823,17 @@ export default function CampaignsPage() {
               row.beneficio_bruta_5 || 0,
               row.beneficio_liquida_5 || 0
             ];
+          } else if (isSantoAndre) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).margem_bruta_cartao ?? "",
+              (row as any).margem_liquida_cartao ?? ""
+            ];
           } else if (isPrefSp) {
             csvFields = [
               row.cpf,
@@ -889,6 +909,14 @@ export default function CampaignsPage() {
                 "GOVERNO RORAIMA",
                 "", row.margem_emprestimo ?? "", "", "",
                 row.margem_cartao ?? "", "", "", ""
+              ];
+            } else if (conv === "prefeitura_santo_andre") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "PREFEITURA SANTO ANDRÉ",
+                "", "", "", "",
+                (row as any).margem_liquida_cartao ?? "", "", "", ""
               ];
             } else {
               csvFields = [
