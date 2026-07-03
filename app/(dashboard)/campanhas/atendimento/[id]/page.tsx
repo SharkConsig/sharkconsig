@@ -426,6 +426,10 @@ export default function CampanhaAtendimentoPage() {
         'governo_pi': 'base_consulta_governo_pi',
         'governo_ma': 'base_consulta_governo_ma',
         'governo_rr': 'base_consulta_governo_rr',
+        'governo_rj': 'base_consulta_governo_rj',
+        'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
+        'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
+        'governo_mg': 'base_consulta_governo_mg',
       }
 
       if (convenioKey && TABLE_MAP[convenioKey]) {
@@ -440,6 +444,14 @@ export default function CampanhaAtendimentoPage() {
         table = 'base_consulta_governo_ma'
       } else if (campaignName.includes("RORAIMA") || campaignName.includes("RR")) {
         table = 'base_consulta_governo_rr'
+      } else if (campaignName.includes("GOVERNO RJ") || campaignName.includes("RIO DE JANEIRO")) {
+        table = 'base_consulta_governo_rj'
+      } else if (campaignName.includes("SANTO ANDRÉ") || campaignName.includes("SANTO ANDRE") || campaignName.includes("PREFEITURA SANTO ANDRE")) {
+        table = 'base_consulta_prefeitura_santo_andre'
+      } else if (campaignName.includes("CONTAGEM") || campaignName.includes("PREFEITURA CONTAGEM")) {
+        table = 'base_consulta_prefeitura_contagem'
+      } else if (campaignName.includes("GOVERNO MG") || campaignName.includes("MINAS GERAIS")) {
+        table = 'base_consulta_governo_mg'
       }
       
       let data = null;
@@ -565,9 +577,12 @@ export default function CampanhaAtendimentoPage() {
 
         if (availableMembers.length > 0) {
           const selectedIndex = brokerRelIndex % availableMembers.length
+          const campaignHasValidConvenio = convenioKey && TABLE_MAP[convenioKey];
           
-          // Loop to search for the first valid lead configuration starting from selectedIndex
-          for (let i = 0; i < availableMembers.length; i++) {
+          // Loop to search for the first valid lead configuration starting from selectedIndex.
+          // Limit to maximum 30 sequential checks to prevent infinite database lookup lags.
+          const maxChecks = Math.min(availableMembers.length, 30);
+          for (let i = 0; i < maxChecks; i++) {
             const indexToCheck = (selectedIndex + i) % availableMembers.length
             const matchedMember = availableMembers[indexToCheck]
             const tempCpf = matchedMember.cliente_cpf
@@ -576,6 +591,8 @@ export default function CampanhaAtendimentoPage() {
 
             if (tempResolvedConvenio && TABLE_MAP[tempResolvedConvenio]) {
               tempTable = TABLE_MAP[tempResolvedConvenio]
+            } else if (campaignHasValidConvenio) {
+              tempTable = TABLE_MAP[convenioKey]
             } else if (
               !tempResolvedConvenio ||
               tempResolvedConvenio === "detect" ||
@@ -593,6 +610,10 @@ export default function CampanhaAtendimentoPage() {
                 { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
                 { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
                 { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
+                { name: 'base_consulta_governo_rj', convenio: 'governo_rj' },
+                { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
+                { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
+                { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
               ];
               const detectionResults = await Promise.all(
                 splitTables.map(async (t) => {

@@ -33,6 +33,7 @@ import { toast } from "sonner"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import ReactMarkdown from "react-markdown"
+import { Input } from "@/components/ui/input"
 
 interface Attachment {
   name: string
@@ -85,19 +86,381 @@ interface TicketAtendimentoProps {
     arquivo_contracheque?: string | null;
     arquivo_extrato?: string | null;
     arquivo_outros?: string | null;
+    margem?: number | null;
+    margem_liquida_5?: number | null;
+    margem_beneficio_5?: number | null;
+    convenio?: string | null;
   }
   onMessageSent?: () => void
 }
 
+// Helper to extract metadata from description
+const parseDescriptionMetadata = (desc: string) => {
+  try {
+    const match = desc?.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/);
+    if (match && match[1]) {
+      return JSON.parse(match[1]);
+    }
+  } catch (e) {
+    console.error("Error parsing metadata:", e);
+  }
+  return null;
+};
+
+// Helper to remove metadata block from description for display
+const cleanDescription = (desc: string) => {
+  if (!desc) return "";
+  return desc.replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "").trim();
+};
+
+// Helper to add/update metadata block in description
+const updateDescriptionWithMetadata = (desc: string, metadata: Record<string, unknown>) => {
+  const cleaned = cleanDescription(desc);
+  const metadataBlock = `\n\n<!-- TICKET_METADATA: ${JSON.stringify(metadata)} -->`;
+  return cleaned + metadataBlock;
+};
+
 export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoProps) {
   const { perfil, user, isEstagio } = useAuth()
   const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
+
+  const canEditMargins = useMemo(() => {
+    const role = perfil?.role?.toLowerCase()
+    return role === 'supervisor' || role === 'operacional' || role === 'admin' || role === 'diretoria' || role === 'supervisor/coordenador' || role === 'desenvolvedor' || role === 'dev' || role === 'administrador'
+  }, [perfil?.role])
+
+  // States for margins, coefficients, operations
+  const [selectedOperationType, setSelectedOperationType] = useState<'margem' | 'liquida5' | 'beneficio5' | null>(null)
+
+  const [ticketMargins, setTicketMargins] = useState({
+    margem: "",
+    liquida5: "",
+    beneficio5: ""
+  })
+
+  const [ticketCoefficients, setTicketCoefficients] = useState({
+    margem: "0,028",
+    liquida5: "0,053",
+    beneficio5: "0,053"
+  })
+
+  const [ticketOperations, setTicketOperations] = useState({
+    margem: "",
+    liquida5: "",
+    beneficio5: ""
+  })
+
+  const [isSavingMargins, setIsSavingMargins] = useState(false)
+
+  // Initialize and keep states updated
+  useEffect(() => {
+    const meta = parseDescriptionMetadata(ticket.descricao || ticket.description || ticket.content || "");
+    const initialMargem = ticket.margem !== null && ticket.margem !== undefined ? ticket.margem : 0;
+    const initialLiquida = ticket.margem_liquida_5 !== null && ticket.margem_liquida_5 !== undefined ? ticket.margem_liquida_5 : 0;
+    const initialBeneficio = ticket.margem_beneficio_5 !== null && ticket.margem_beneficio_5 !== undefined ? ticket.margem_beneficio_5 : 0;
+
+    const toCurrencyStr = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined || val === "") return "";
+      let num = 0;
+      if (typeof val === 'number') {
+        num = val;
+      } else {
+        const cleaned = val.toString().replace(/[R$\s.]/g, "").replace(",", ".");
+        num = parseFloat(cleaned) || 0;
+      }
+      if (!num) return "";
+      return "R$ " + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    const margemVal = toCurrencyStr(meta?.margem || initialMargem);
+    const liquidaVal = toCurrencyStr(meta?.liquida5 || initialLiquida);
+    const beneficioVal = toCurrencyStr(meta?.beneficio5 || initialBeneficio);
+
+    const coefMargem = meta?.coeficiente_margem || "0,028";
+    const coefLiquida = meta?.coeficiente_liquida5 || "0,053";
+    const coefBeneficio = meta?.coeficiente_beneficio5 || "0,053";
+
+    const calculateOpVal = (marginValStr: string, coefStr: string) => {
+      const marginNum = parseCurrencyToNumber(marginValStr);
+      const cleanedCoef = coefStr.replace(",", ".");
+      const coefVal = parseFloat(cleanedCoef) || 0;
+      if (!marginNum || coefVal === 0) return "";
+      const result = marginNum / coefVal;
+      return "R$ " + result.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    const opMargem = meta?.valor_operacao_margem ? toCurrencyStr(meta.valor_operacao_margem) : calculateOpVal(margemVal, coefMargem);
+    const opLiquida = meta?.valor_operacao_liquida5 ? toCurrencyStr(meta.valor_operacao_liquida5) : calculateOpVal(liquidaVal, coefLiquida);
+    const opBeneficio = meta?.valor_operacao_beneficio5 ? toCurrencyStr(meta.valor_operacao_beneficio5) : calculateOpVal(beneficioVal, coefBeneficio);
+
+    setTicketMargins({
+      margem: margemVal,
+      liquida5: liquidaVal,
+      beneficio5: beneficioVal
+    });
+    setTicketCoefficients({
+      margem: coefMargem,
+      liquida5: coefLiquida,
+      beneficio5: coefBeneficio
+    });
+    setTicketOperations({
+      margem: opMargem,
+      liquida5: opLiquida,
+      beneficio5: opBeneficio
+    });
+
+    let detectedType: 'margem' | 'liquida5' | 'beneficio5' | null = null;
+    const desc = ticket.descricao || ticket.description || ticket.content || "";
+    if (desc.includes("MARGEM 35%")) {
+      detectedType = 'margem';
+    } else if (desc.includes("LÍQUIDA 5%")) {
+      detectedType = 'liquida5';
+    } else if (desc.includes("BENEFÍCIO 5%") || desc.includes("CARTÃO BENEFÍCIO") || desc.includes("CARTÃO CONSIGINADO") || desc.includes("CARTAO CONSIGINADO") || desc.includes("CARTÃO")) {
+      detectedType = 'beneficio5';
+    }
+    
+    setSelectedOperationType(meta?.selected_operation_type || detectedType || null);
+  }, [ticket])
+
+  const formatAsCurrency = (value: string) => {
+    const isNegative = value.includes("-");
+    const digits = value.replace(/\D/g, "");
+    
+    if (digits) {
+      const numberValue = (parseFloat(digits) / 100).toFixed(2);
+      const parts = numberValue.split(".");
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+      return `R$ ${isNegative ? "-" : ""}${parts.join(",")}`;
+    } else if (isNegative) {
+      return "R$ -";
+    }
+    return "";
+  };
+
+  const parseCurrencyToNumber = (val: string) => {
+    if (!val) return 0;
+    const cleaned = val.replace(/[R$\s.]/g, "").replace(",", ".");
+    return parseFloat(cleaned) || 0;
+  };
+
+  const getMarginStyleClasses = (value: string) => {
+    if (!value) return "bg-[#E8E8E8] text-slate-500 border-slate-100";
+    const num = parseCurrencyToNumber(value);
+    if (num < 0) return "bg-red-50 text-red-700 border-red-200 focus:ring-red-200 focus:border-red-400";
+    if (num > 0) return "bg-emerald-50 text-emerald-700 border-emerald-200 focus:ring-emerald-200 focus:border-emerald-400";
+    return "bg-[#E8E8E8] text-slate-500 border-slate-100";
+  };
+
+  const handleMarginChange = (field: 'margem' | 'liquida5' | 'beneficio5', rawValue: string) => {
+    const formatted = formatAsCurrency(rawValue);
+    setTicketMargins(prev => {
+      const updated = { ...prev, [field]: formatted };
+      
+      // Auto-calculate valor operacao
+      const marginNum = parseCurrencyToNumber(formatted);
+      const coefStr = ticketCoefficients[field];
+      const coefNum = parseFloat(coefStr.replace(",", "."));
+      if (coefNum && coefNum !== 0) {
+        const opVal = marginNum / coefNum;
+        const opValFormatted = `R$ ${opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        setTicketOperations(ops => ({ ...ops, [field]: opValFormatted }));
+      } else {
+        setTicketOperations(ops => ({ ...ops, [field]: "" }));
+      }
+      
+      return updated;
+    });
+  };
+
+  const handleCoefChange = (field: 'margem' | 'liquida5' | 'beneficio5', rawValue: string) => {
+    const cleaned = rawValue.replace(/[^0-9,.]/g, "");
+    setTicketCoefficients(prev => {
+      const updated = { ...prev, [field]: cleaned };
+      
+      // Auto-calculate valor operacao
+      const marginNum = parseCurrencyToNumber(ticketMargins[field]);
+      const coefNum = parseFloat(cleaned.replace(",", "."));
+      if (coefNum && coefNum !== 0) {
+        const opVal = marginNum / coefNum;
+        const opValFormatted = `R$ ${opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        setTicketOperations(ops => ({ ...ops, [field]: opValFormatted }));
+      } else {
+        setTicketOperations(ops => ({ ...ops, [field]: "" }));
+      }
+      
+      return updated;
+    });
+  };
+
+  const handleOpChange = (field: 'margem' | 'liquida5' | 'beneficio5', rawValue: string) => {
+    const formatted = formatAsCurrency(rawValue);
+    setTicketOperations(prev => ({ ...prev, [field]: formatted }));
+  };
+
+  const handleSaveMargins = async () => {
+    setIsSavingMargins(true);
+    try {
+      const metadata = {
+        margem: ticketMargins.margem,
+        liquida5: ticketMargins.liquida5,
+        beneficio5: ticketMargins.beneficio5,
+        coeficiente_margem: ticketCoefficients.margem,
+        coeficiente_liquida5: ticketCoefficients.liquida5,
+        coeficiente_beneficio5: ticketCoefficients.beneficio5,
+        valor_operacao_margem: ticketOperations.margem,
+        valor_operacao_liquida5: ticketOperations.liquida5,
+        valor_operacao_beneficio5: ticketOperations.beneficio5,
+        selected_operation_type: selectedOperationType
+      };
+
+      const updatedDescription = updateDescriptionWithMetadata(ticket.descricao || ticket.description || ticket.content || "", metadata);
+
+      // Find selected operation value numeric to store in public.chamados.valor_operacao
+      let selectedValNum = null;
+      if (selectedOperationType === 'margem') {
+        selectedValNum = parseCurrencyToNumber(ticketOperations.margem);
+      } else if (selectedOperationType === 'liquida5') {
+        selectedValNum = parseCurrencyToNumber(ticketOperations.liquida5);
+      } else if (selectedOperationType === 'beneficio5') {
+        selectedValNum = parseCurrencyToNumber(ticketOperations.beneficio5);
+      }
+
+      const { error } = await supabase
+        .from('chamados')
+        .update({
+          // Não alteramos a coluna 'margem' (nem margem_liquida_5, nem margem_beneficio_5) para não alterar a margem do cliente no banco de dados.
+          descricao: updatedDescription,
+          valor_operacao: selectedValNum
+        })
+        .eq('id', ticket.id);
+
+      if (error) throw error;
+
+      // Check if selected operation has been changed to insert a notification in messages
+      const oldMeta = parseDescriptionMetadata(ticket.descricao || ticket.description || ticket.content || "");
+      const oldType = oldMeta?.selected_operation_type;
+      
+      let changed = false;
+      let selectionStr = "";
+
+      if (selectedOperationType) {
+        if (selectedOperationType !== oldType) {
+          changed = true;
+        } else {
+          if (selectedOperationType === 'margem') {
+            if (ticketMargins.margem !== (oldMeta?.margem || "") || ticketOperations.margem !== (oldMeta?.valor_operacao_margem || "")) {
+              changed = true;
+            }
+          } else if (selectedOperationType === 'liquida5') {
+            if (ticketMargins.liquida5 !== (oldMeta?.liquida5 || "") || ticketOperations.liquida5 !== (oldMeta?.valor_operacao_liquida5 || "")) {
+              changed = true;
+            }
+          } else if (selectedOperationType === 'beneficio5') {
+            if (ticketMargins.beneficio5 !== (oldMeta?.beneficio5 || "") || ticketOperations.beneficio5 !== (oldMeta?.valor_operacao_beneficio5 || "")) {
+              changed = true;
+            }
+          }
+        }
+
+        if (selectedOperationType === 'margem') {
+          selectionStr = `Margem 35% - ${ticketMargins.margem || "R$ 0,00"} (Valor Operação: ${ticketOperations.margem || "R$ 0,00"})`;
+        } else if (selectedOperationType === 'liquida5') {
+          selectionStr = `Líquida 5% - ${ticketMargins.liquida5 || "R$ 0,00"} (Valor Operação: ${ticketOperations.liquida5 || "R$ 0,00"})`;
+        } else if (selectedOperationType === 'beneficio5') {
+          selectionStr = `Benefício 5% - ${ticketMargins.beneficio5 || "R$ 0,00"} (Valor Operação: ${ticketOperations.beneficio5 || "R$ 0,00"})`;
+        }
+      }
+
+      const roleStr = perfil?.role?.toLowerCase() || "";
+      const isAllowedRole = roleStr === 'supervisor' || roleStr === 'operacional' || roleStr === 'admin' || roleStr === 'diretoria' || roleStr === 'supervisor/coordenador' || roleStr === 'desenvolvedor' || roleStr === 'dev' || roleStr === 'administrador';
+
+      if (changed && selectionStr && user && perfil && isAllowedRole) {
+        await supabase
+          .from('mensagens_chamado')
+          .insert({
+            chamado_id: parseInt(ticket.id, 10),
+            user_id: user.id,
+            user_nome: perfil.nome,
+            user_role: perfil.role,
+            user_avatar: perfil.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil.nome)}&background=random`,
+            content: `A margem e o valor de operação foram alterados para ${selectionStr}`,
+            action: 'alterou o valor da operação'
+          });
+        fetchMessages(true);
+      }
+
+      toast.success("Dados de margens salvos com sucesso!");
+      setInitialDesc(updatedDescription);
+      if (onMessageSent) {
+        onMessageSent();
+      }
+    } catch (err: unknown) {
+      console.error("Erro ao salvar margens:", err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      toast.error(`Erro ao salvar margens: ${errorMsg}`);
+    } finally {
+      setIsSavingMargins(false);
+    }
+  };
+
+  const getMarginLabel = (field: 'margem' | 'liquida5' | 'beneficio5') => {
+    const conv = ticket.convenio?.toUpperCase();
+    
+    if (conv === "GOVERNO MARANHÃO") {
+      if (field === 'margem') return "MARGEM EMPRÉSTIMO CONSIGNADO";
+      if (field === 'liquida5') return "MARGEM CARTÃO CONSIGNADO";
+      if (field === 'beneficio5') return "MARGEM CARTÃO BENEFÍCIO";
+    }
+    
+    if (conv === "GOVERNO PIAUÍ") {
+      if (field === 'liquida5') return "MARGEM CARTÃO CONSIGNADO";
+      if (field === 'beneficio5') return "MARGEM CARTÃO BENEFÍCIO";
+      if (field === 'margem') return "MARGEM DISPONÍVEL EMPRÉSTIMO";
+    }
+
+    if (conv === "GOVERNO SP" || conv === "PREFEITURA SP") {
+      if (field === 'margem') return "LÍQUIDA CONSIGNAÇÕES";
+      if (field === 'liquida5') return "LÍQUIDA CARTÃO CRÉDITO";
+      if (field === 'beneficio5') return "LÍQUIDA CARTÃO BENEFÍCIO";
+    }
+
+    if (field === 'margem') return "MARGEM 35%";
+    if (field === 'liquida5') return "LÍQUIDA 5%";
+    if (field === 'beneficio5') return "BENEFÍCIO 5%";
+    return "";
+  };
+
+  const calculateValorOperacao = (marginVal: number | undefined | null, coefStr: string) => {
+    if (!marginVal) return "R$ 0,00";
+    
+    const cleanedCoef = coefStr.replace(",", ".");
+    const coefVal = parseFloat(cleanedCoef) || 0;
+
+    if (coefVal === 0) return "R$ 0,00";
+    
+    const result = marginVal / coefVal;
+    
+    return "R$ " + result.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const getMarginClasses = (val: number | undefined | null) => {
+    if (val === undefined || val === null || val === 0) return "bg-[#E8E8E8] text-slate-500 border-slate-100";
+    if (val < 0) return "bg-red-50 text-red-700 border-red-200";
+    if (val > 0) return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    return "bg-[#E8E8E8] text-slate-500 border-slate-100";
+  };
+
   const [messages, setMessages] = useState<Message[]>([])
 
   const isSupervisorOrAbove = useMemo(() => {
     const role = perfil?.role?.toLowerCase()
     return role === 'supervisor' || role === 'diretoria' || role === 'admin' || role === 'supervisor/coordenador'
   }, [perfil?.role])
+
+  const canAskForSupport = useMemo(() => {
+    const role = perfil?.role?.toLowerCase()
+    return role === 'corretor' || isUserEstagio
+  }, [perfil?.role, isUserEstagio])
 
   const hasActiveApoio = useMemo(() => {
     let active = false
@@ -320,7 +683,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
       user_nome: ticket.user_nome || ticket.client,
       user_avatar: ticket.user_avatar || (user?.id === ticket.user_id && perfil?.avatar_url ? perfil.avatar_url : null),
       action: "solicitou",
-      content: initialDesc,
+      content: cleanDescription(initialDesc),
       attachments: ticketAttachments,
       status_change: null,
       created_at: ticket.createdAt || new Date().toISOString()
@@ -685,13 +1048,258 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   const selectedStatus = availableStatuses.find(s => s.id === selectedStatusId);
 
   return (
-    <div className="p-4 sm:p-8 space-y-8 bg-white border-t border-slate-100 max-h-[800px] flex flex-col">
+    <div className="p-4 sm:p-6 space-y-6 bg-white border-t border-slate-100 h-[950px] max-h-[1050px] flex flex-col">
       <input 
         type="file" 
         ref={messageFileInputRef} 
         className="hidden" 
         onChange={handleAddAttachmentToMessage}
       />
+
+      {/* Painel de Margens e Coeficientes */}
+      <div className="bg-slate-50/50 rounded-xl border border-slate-100 p-4 space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+            <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Detalhamento de Margens e Operações</h3>
+          </div>
+          {ticket.convenio && (
+            <span className="px-2.5 py-1 bg-slate-100 rounded text-[9px] font-bold text-slate-600 uppercase">
+              {ticket.convenio}
+            </span>
+          )}
+        </div>
+        
+        <div className="space-y-4">
+          {/* Margem principal / 35% */}
+          {getMarginLabel('margem') && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  {getMarginLabel('margem')}
+                </label>
+                <Input
+                  id="margin-val-margem"
+                  value={ticketMargins.margem}
+                  onChange={(e) => handleMarginChange('margem', e.target.value)}
+                  readOnly={!canEditMargins}
+                  placeholder="R$ 0,00"
+                  className={cn(
+                    "h-[34px] text-[12px] font-bold transition-all",
+                    getMarginStyleClasses(ticketMargins.margem)
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  COEFICIENTE
+                </label>
+                <Input
+                  id="coef-val-margem"
+                  value={ticketCoefficients.margem}
+                  onChange={(e) => handleCoefChange('margem', e.target.value)}
+                  readOnly={!canEditMargins}
+                  placeholder="0,0000"
+                  className={cn(
+                    "h-[34px] text-[12px] font-bold transition-all",
+                    getMarginStyleClasses(ticketMargins.margem)
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  VALOR OPERAÇÃO
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="op-val-margem"
+                    value={ticketOperations.margem}
+                    onChange={(e) => handleOpChange('margem', e.target.value)}
+                    readOnly={!canEditMargins}
+                    placeholder="R$ 0,00"
+                    className={cn(
+                      "h-[34px] text-[12px] font-bold transition-all flex-1",
+                      getMarginStyleClasses(ticketMargins.margem)
+                    )}
+                  />
+                  <label className="flex items-center gap-1 cursor-pointer select-none bg-slate-100 hover:bg-slate-200 px-2 h-[34px] rounded-lg border border-slate-200 transition-all text-[10px] font-bold text-slate-700 shrink-0">
+                    <input
+                      type="radio"
+                      name="selected_operation"
+                      checked={selectedOperationType === 'margem'}
+                      onChange={() => setSelectedOperationType('margem')}
+                      className="w-3 h-3 text-primary border-slate-300 focus:ring-primary cursor-pointer"
+                    />
+                    <span>SELECIONAR ESSE</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Margem Líquida 5% */}
+          {getMarginLabel('liquida5') && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  {getMarginLabel('liquida5')}
+                </label>
+                <Input
+                  id="margin-val-liquida5"
+                  value={ticketMargins.liquida5}
+                  onChange={(e) => handleMarginChange('liquida5', e.target.value)}
+                  readOnly={!canEditMargins}
+                  placeholder="R$ 0,00"
+                  className={cn(
+                    "h-[34px] text-[12px] font-bold transition-all",
+                    getMarginStyleClasses(ticketMargins.liquida5)
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  COEFICIENTE
+                </label>
+                <Input
+                  id="coef-val-liquida5"
+                  value={ticketCoefficients.liquida5}
+                  onChange={(e) => handleCoefChange('liquida5', e.target.value)}
+                  readOnly={!canEditMargins}
+                  placeholder="0,0000"
+                  className={cn(
+                    "h-[34px] text-[12px] font-bold transition-all",
+                    getMarginStyleClasses(ticketMargins.liquida5)
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  VALOR OPERAÇÃO
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="op-val-liquida5"
+                    value={ticketOperations.liquida5}
+                    onChange={(e) => handleOpChange('liquida5', e.target.value)}
+                    readOnly={!canEditMargins}
+                    placeholder="R$ 0,00"
+                    className={cn(
+                      "h-[34px] text-[12px] font-bold transition-all flex-1",
+                      getMarginStyleClasses(ticketMargins.liquida5)
+                    )}
+                  />
+                  <label className="flex items-center gap-1 cursor-pointer select-none bg-slate-100 hover:bg-slate-200 px-2 h-[34px] rounded-lg border border-slate-200 transition-all text-[10px] font-bold text-slate-700 shrink-0">
+                    <input
+                      type="radio"
+                      name="selected_operation"
+                      checked={selectedOperationType === 'liquida5'}
+                      onChange={() => setSelectedOperationType('liquida5')}
+                      className="w-3 h-3 text-primary border-slate-300 focus:ring-primary cursor-pointer"
+                    />
+                    <span>SELECIONAR ESSE</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Margem Benefício 5% */}
+          {getMarginLabel('beneficio5') && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  {getMarginLabel('beneficio5')}
+                </label>
+                <Input
+                  id="margin-val-beneficio5"
+                  value={ticketMargins.beneficio5}
+                  onChange={(e) => handleMarginChange('beneficio5', e.target.value)}
+                  readOnly={!canEditMargins}
+                  placeholder="R$ 0,00"
+                  className={cn(
+                    "h-[34px] text-[12px] font-bold transition-all",
+                    getMarginStyleClasses(ticketMargins.beneficio5)
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  COEFICIENTE
+                </label>
+                <Input
+                  id="coef-val-beneficio5"
+                  value={ticketCoefficients.beneficio5}
+                  onChange={(e) => handleCoefChange('beneficio5', e.target.value)}
+                  readOnly={!canEditMargins}
+                  placeholder="0,0000"
+                  className={cn(
+                    "h-[34px] text-[12px] font-bold transition-all",
+                    getMarginStyleClasses(ticketMargins.beneficio5)
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  VALOR OPERAÇÃO
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="op-val-beneficio5"
+                    value={ticketOperations.beneficio5}
+                    onChange={(e) => handleOpChange('beneficio5', e.target.value)}
+                    readOnly={!canEditMargins}
+                    placeholder="R$ 0,00"
+                    className={cn(
+                      "h-[34px] text-[12px] font-bold transition-all flex-1",
+                      getMarginStyleClasses(ticketMargins.beneficio5)
+                    )}
+                  />
+                  <label className="flex items-center gap-1 cursor-pointer select-none bg-slate-100 hover:bg-slate-200 px-2 h-[34px] rounded-lg border border-slate-200 transition-all text-[10px] font-bold text-slate-700 shrink-0">
+                    <input
+                      type="radio"
+                      name="selected_operation"
+                      checked={selectedOperationType === 'beneficio5'}
+                      onChange={() => setSelectedOperationType('beneficio5')}
+                      className="w-3 h-3 text-primary border-slate-300 focus:ring-primary cursor-pointer"
+                    />
+                    <span>SELECIONAR ESSE</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {canEditMargins && (
+          <div className="flex justify-end pt-2">
+            <Button
+              id="btn-save-margins"
+              type="button"
+              onClick={handleSaveMargins}
+              disabled={isSavingMargins}
+              className="h-8 text-[11px] font-bold bg-[#171717] hover:bg-black text-white px-4 rounded-lg flex items-center gap-1.5 shadow transition-all"
+            >
+              {isSavingMargins ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  Salvar Margens e Operações
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+      </div>
       <div 
         className="flex-1 overflow-y-auto space-y-8 pr-2 custom-scrollbar" 
         ref={scrollRef}
@@ -725,9 +1333,11 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                       <span className="text-[13px] font-bold text-slate-900">{msg.user_nome}</span>
                       <span className="text-[11px] italic text-slate-400">
                         {msg.action === 'pediu_apoio' 
-                          ? 'solicitou apoio na venda 🆘' 
+                          ? (msg.user_role?.toLowerCase() === 'estágio' || msg.user_role?.toLowerCase() === 'estagio' ? 'solicitou apoio no atendimento 🆘' : 'solicitou apoio na venda 🆘')
                           : msg.action === 'resolveu_apoio' 
-                          ? 'concluiu o apoio na venda ✅' 
+                          ? (msg.user_role?.toLowerCase() === 'estágio' || msg.user_role?.toLowerCase() === 'estagio' ? 'concluiu o apoio no atendimento ✅' : 'concluiu o apoio na venda ✅')
+                          : msg.action === 'alterou o valor da operação'
+                          ? 'alterou o valor da operação 💰'
                           : msg.action}
                       </span>
                     </div>
@@ -771,6 +1381,8 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                       ? "bg-rose-50/40 border-rose-100/75 group hover:border-rose-200" 
                       : msg.action === 'resolveu_apoio'
                       ? "bg-emerald-50/40 border-emerald-100/75 group hover:border-emerald-200"
+                      : msg.action === 'alterou o valor da operação'
+                      ? "bg-amber-50/40 border-amber-100/75 group hover:border-amber-200"
                       : "bg-slate-50/50 border-slate-100 group hover:border-primary/20"
                   )}>
                     {editingMessageId === msg.id ? (
@@ -1040,46 +1652,44 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 Anexar Arquivos
               </Button>
               {!isUserEstagio && (
-                <>
-                  <Link 
-                    href={`/propostas/nova?${new URLSearchParams({
-                      nome: ticket.client || "",
-                      cpf: ticket.cpf || "",
-                      nascimento: "31/01/1984",
-                      idLead: ticket.matricula || ticket.id,
-                      idChamado: ticket.id || "",
-                      matricula: ticket.matricula || "",
-                      origem: ticket.origin?.toLowerCase() || "",
-                      tel1: ticket.phone || "",
-                      tel2: ticket.phone_2 || "",
-                      tel3: ticket.phone_3 || "",
-                    }).toString()}`}
-                    className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2 rounded-lg"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    DIGITAR PROPOSTA
-                  </Link>
-
-                  {isSupervisorOrAbove && hasActiveApoio ? (
-                    <Button 
-                      onClick={handleResolveApoio}
-                      disabled={isResolvingApoio}
-                      className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-rose-600 hover:bg-rose-700 shadow-md transition-all flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      {isResolvingApoio ? 'FINALIZANDO...' : 'FINALIZAR APOIO'}
-                    </Button>
-                  ) : (
-                    <Button 
-                      onClick={() => setIsApoioModalOpen(true)}
-                      className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-rose-600 hover:bg-rose-700 shadow-md transition-all flex items-center gap-2"
-                    >
-                      <LifeBuoy className="w-3.5 h-3.5" />
-                      PEDIR APOIO NA VENDA
-                    </Button>
-                  )}
-                </>
+                <Link 
+                  href={`/propostas/nova?${new URLSearchParams({
+                    nome: ticket.client || "",
+                    cpf: ticket.cpf || "",
+                    nascimento: "31/01/1984",
+                    idLead: ticket.matricula || ticket.id,
+                    idChamado: ticket.id || "",
+                    matricula: ticket.matricula || "",
+                    origem: ticket.origin?.toLowerCase() || "",
+                    tel1: ticket.phone || "",
+                    tel2: ticket.phone_2 || "",
+                    tel3: ticket.phone_3 || "",
+                  }).toString()}`}
+                  className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2 rounded-lg"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  DIGITAR PROPOSTA
+                </Link>
               )}
+
+              {isSupervisorOrAbove && hasActiveApoio ? (
+                <Button 
+                  onClick={handleResolveApoio}
+                  disabled={isResolvingApoio}
+                  className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-rose-600 hover:bg-rose-700 shadow-md transition-all flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  {isResolvingApoio ? 'FINALIZANDO...' : 'FINALIZAR APOIO'}
+                </Button>
+              ) : canAskForSupport ? (
+                <Button 
+                  onClick={() => setIsApoioModalOpen(true)}
+                  className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-rose-600 hover:bg-rose-700 shadow-md transition-all flex items-center gap-2"
+                >
+                  <LifeBuoy className="w-3.5 h-3.5" />
+                  {isUserEstagio ? 'PEDIR APOIO NO ATENDIMENTO' : 'PEDIR APOIO NA VENDA'}
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1092,7 +1702,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
             <div className="flex justify-between items-center border-b pb-3">
               <div className="flex items-center gap-2">
                 <LifeBuoy className="w-5 h-5 text-rose-600 animate-pulse" />
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Pedir Apoio na Venda</h3>
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">{isUserEstagio ? 'Pedir Apoio no Atendimento' : 'Pedir Apoio na Venda'}</h3>
               </div>
               <button 
                 onClick={() => setIsApoioModalOpen(false)} 
@@ -1103,12 +1713,12 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
             </div>
             <div className="space-y-3">
               <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wide leading-normal">
-                Explique brevemente ao supervisor qual é o impasse ou a ajuda de que você precisa para destravar esta venda:
+                {isUserEstagio ? 'Explique brevemente ao supervisor qual é o impasse ou a ajuda de que você precisa para este atendimento:' : 'Explique brevemente ao supervisor qual é o impasse ou a ajuda de que você precisa para destravar esta venda:'}
               </p>
               <textarea
                 value={apoioMessage}
                 onChange={(e) => setApoioMessage(e.target.value)}
-                placeholder="Ex: Cliente quer taxa menor ou Negociação travada no prazo"
+                placeholder={isUserEstagio ? "Ex: Dúvida sobre o sistema ou ajuda com os dados" : "Ex: Cliente quer taxa menor ou Negociação travada no prazo"}
                 className="w-full h-28 p-3 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all bg-slate-50/50 resize-none text-slate-700"
               />
             </div>

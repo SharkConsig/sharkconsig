@@ -39,6 +39,17 @@ function NewProposalForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  const [initialParams] = useState({
+    nome: !!searchParams.get("nome"),
+    cpf: !!searchParams.get("cpf"),
+    nascimento: !!searchParams.get("nascimento"),
+    matricula: !!searchParams.get("matricula"),
+    origem: !!searchParams.get("origem"),
+    tel_1: !!searchParams.get("tel1"),
+    tel_2: !!searchParams.get("tel2"),
+    tel_3: !!searchParams.get("tel3"),
+  })
+
   useEffect(() => {
     if (perfil && (isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio')) {
       toast.error("Você não tem acesso a esta página.")
@@ -1252,7 +1263,11 @@ function NewProposalForm() {
               <select 
                 value={formData.origem}
                 onChange={(e) => handleFormChange("origem", e.target.value)}
-                className="w-full h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                disabled={initialParams.origem}
+                className={cn(
+                  "w-full h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors",
+                  initialParams.origem && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                )}
               >
                 <option value="">Selecione</option>
                 <option value="DISPARO">DISPARO</option>
@@ -1270,7 +1285,11 @@ function NewProposalForm() {
               <Input 
                 value={formData.matricula}
                 onChange={(e) => handleFormChange("matricula", e.target.value)}
-                className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                readOnly={initialParams.matricula}
+                className={cn(
+                  "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
+                  initialParams.matricula && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                )}
               />
             </div>
 
@@ -1285,7 +1304,11 @@ function NewProposalForm() {
                 <Input 
                   value={formData.cpf}
                   onChange={(e) => handleFormChange("cpf", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  readOnly={initialParams.cpf}
+                  className={cn(
+                    "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
+                    initialParams.cpf && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                  )}
                 />
               </div>
               <div className="md:col-span-2 space-y-2">
@@ -1293,7 +1316,11 @@ function NewProposalForm() {
                 <Input 
                   value={formData.nome}
                   onChange={(e) => handleFormChange("nome", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  readOnly={initialParams.nome}
+                  className={cn(
+                    "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
+                    initialParams.nome && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                  )}
                 />
               </div>
               <div className="space-y-2">
@@ -1303,7 +1330,11 @@ function NewProposalForm() {
                     type="date"
                     value={toInputDate(formData.nascimento)}
                     onChange={(e) => handleFormChange("nascimento", fromInputDate(e.target.value))}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none" 
+                    readOnly={initialParams.nascimento}
+                    className={cn(
+                      "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none",
+                      initialParams.nascimento && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                    )}
                   />
                 </div>
               </div>
@@ -1393,7 +1424,11 @@ function NewProposalForm() {
                 <Input 
                   value={formData.tel_1}
                   onChange={(e) => handleFormChange("tel_1", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  readOnly={initialParams.tel_1}
+                  className={cn(
+                    "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
+                    initialParams.tel_1 && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                  )}
                 />
               </div>
               <div className="md:col-span-1 space-y-2">
@@ -1401,7 +1436,11 @@ function NewProposalForm() {
                 <Input 
                   value={formData.tel_2}
                   onChange={(e) => handleFormChange("tel_2", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  readOnly={initialParams.tel_2}
+                  className={cn(
+                    "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
+                    initialParams.tel_2 && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                  )}
                 />
               </div>
               <div className="md:col-span-1 space-y-2">
@@ -1409,7 +1448,11 @@ function NewProposalForm() {
                 <Input 
                   value={formData.tel_3}
                   onChange={(e) => handleFormChange("tel_3", e.target.value)}
-                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                  readOnly={initialParams.tel_3}
+                  className={cn(
+                    "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
+                    initialParams.tel_3 && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                  )}
                 />
               </div>
               <div className="md:col-span-2 space-y-2">

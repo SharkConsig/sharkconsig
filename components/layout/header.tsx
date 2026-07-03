@@ -57,9 +57,16 @@ export function Header({ title }: HeaderProps) {
   })
 
   const isSupervisorOrAbove = perfil?.role?.toLowerCase() === 'supervisor' || 
-                               perfil?.role?.toLowerCase() === 'operacional' || 
                                perfil?.role?.toLowerCase() === 'admin' ||
-                               perfil?.role?.toLowerCase() === 'supervisor/coordenador'
+                               perfil?.role?.toLowerCase() === 'supervisor/coordenador' ||
+                               perfil?.role?.toLowerCase() === 'desenvolvedor' ||
+                               perfil?.role?.toLowerCase() === 'dev' ||
+                               perfil?.role?.toLowerCase() === 'administrador'
+
+  const showApoioBtn = perfil?.role?.toLowerCase() === 'supervisor' || 
+                        perfil?.role?.toLowerCase() === 'supervisor/coordenador' ||
+                        perfil?.role?.toLowerCase() === 'desenvolvedor' ||
+                        perfil?.role?.toLowerCase() === 'dev'
 
   const isAdminUser = perfil?.role?.toLowerCase() === 'admin' || isAdmin
 
@@ -148,10 +155,11 @@ export function Header({ title }: HeaderProps) {
         for (const msg of data) {
           if (msg.action === 'pediu_apoio') {
             const resolved = resolveuMsgs.some(r => r.chamado_id === msg.chamado_id && new Date(r.created_at) >= new Date(msg.created_at))
+            const typedMsg = msg as unknown as ApoioRequest
             pedidos.push({
-              ...msg,
+              ...typedMsg,
               is_resolved: resolved
-            } as any)
+            })
           }
         }
 
@@ -319,7 +327,7 @@ export function Header({ title }: HeaderProps) {
           </button>
         )}
 
-        {isSupervisorOrAbove && (
+        {showApoioBtn && (
           <button
             onClick={() => setIsApoioModalOpen(true)}
             className={`relative h-9 px-4 text-[10px] font-black uppercase tracking-widest ${

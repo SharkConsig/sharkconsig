@@ -108,6 +108,127 @@ const NAO_APROVADOS_LABELS = [
   "GOV PR - NOVO NÃO ARPROVADO"
 ]
 
+const parseDescriptionMetadata = (desc: string) => {
+  try {
+    const match = desc?.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/);
+    if (match && match[1]) {
+      return JSON.parse(match[1]);
+    }
+  } catch (e) {
+    console.error("Error parsing metadata in list:", e);
+  }
+  return null;
+};
+
+const getValorOperacaoDeAbertura = (ticket: any) => {
+  const desc = ticket.descricao || ticket.description || ticket.content || "";
+  const meta = parseDescriptionMetadata(desc);
+  
+  // 1. If we have a selected type in metadata
+  const selectedType = meta?.selected_operation_type;
+  if (selectedType) {
+    if (selectedType === 'margem') {
+      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: "Margem 35%", color: "text-amber-600" };
+    }
+    if (selectedType === 'liquida5') {
+      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: "Líquida 5%", color: "text-emerald-600" };
+    }
+    if (selectedType === 'beneficio5') {
+      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: "Benefício 5%", color: "text-blue-600" };
+    }
+  }
+
+  // 2. Fallback to check if valor_operacao is directly in the DB column
+  if (ticket.valor_operacao !== null && ticket.valor_operacao !== undefined && ticket.valor_operacao !== 0) {
+    const valStr = "R$ " + Number(ticket.valor_operacao).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return { valor: valStr, label: "Valor Operação", color: "text-slate-900" };
+  }
+
+  // 3. Fallback to original description text selection
+  let textSelectedType: 'margem' | 'liquida5' | 'beneficio5' | null = null;
+  if (desc.includes("MARGEM 35%")) {
+    textSelectedType = 'margem';
+  } else if (desc.includes("LÍQUIDA 5%")) {
+    textSelectedType = 'liquida5';
+  } else if (desc.includes("BENEFÍCIO 5%") || desc.includes("CARTÃO BENEFÍCIO") || desc.includes("CARTÃO CONSIGINADO") || desc.includes("CARTAO CONSIGINADO") || desc.includes("CARTÃO")) {
+    textSelectedType = 'beneficio5';
+  }
+
+  if (textSelectedType) {
+    if (textSelectedType === 'margem') {
+      if (meta && meta.valor_operacao_margem) return { valor: meta.valor_operacao_margem, label: "Margem 35%", color: "text-amber-600" };
+      const mVal = ticket.margem || 0;
+      const opVal = mVal / 0.028;
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: "Margem 35%", 
+        color: "text-amber-600" 
+      };
+    }
+    if (textSelectedType === 'liquida5') {
+      if (meta && meta.valor_operacao_liquida5) return { valor: meta.valor_operacao_liquida5, label: "Líquida 5%", color: "text-emerald-600" };
+      const mVal = ticket.margem_liquida_5 || 0;
+      const opVal = mVal / 0.053;
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: "Líquida 5%", 
+        color: "text-emerald-600" 
+      };
+    }
+    if (textSelectedType === 'beneficio5') {
+      if (meta && meta.valor_operacao_beneficio5) return { valor: meta.valor_operacao_beneficio5, label: "Benefício 5%", color: "text-blue-600" };
+      const mVal = ticket.margem_beneficio_5 || 0;
+      const opVal = mVal / 0.053;
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: "Benefício 5%", 
+        color: "text-blue-600" 
+      };
+    }
+  }
+
+  // 4. Check meta fields without selection
+  if (meta) {
+    if (meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") {
+      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: "Margem 35%", color: "text-amber-600" };
+    }
+    if (meta.liquida5 && meta.liquida5 !== "" && meta.liquida5 !== "R$ 0,00") {
+      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: "Líquida 5%", color: "text-emerald-600" };
+    }
+    if (meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") {
+      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: "Benefício 5%", color: "text-blue-600" };
+    }
+  }
+
+  // 5. Final database fallbacks
+  if (typeof ticket.margem === 'number' && ticket.margem !== 0) {
+    const opVal = ticket.margem / 0.028;
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: "Margem 35%", 
+      color: "text-amber-600" 
+    };
+  }
+  if (typeof ticket.margem_liquida_5 === 'number' && ticket.margem_liquida_5 !== 0) {
+    const opVal = ticket.margem_liquida_5 / 0.053;
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: "Líquida 5%", 
+      color: "text-emerald-600" 
+    };
+  }
+  if (typeof ticket.margem_beneficio_5 === 'number' && ticket.margem_beneficio_5 !== 0) {
+    const opVal = ticket.margem_beneficio_5 / 0.053;
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: "Benefício 5%", 
+      color: "text-blue-600" 
+    };
+  }
+
+  return { valor: "R$ 0,00", label: "Valor Operação", color: "text-slate-400" };
+};
+
 function MultiSelect({ 
   label, 
   options, 
@@ -1168,7 +1289,7 @@ export default function TicketsPage() {
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[200px]">Cliente / Convênio</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[130px]">CPF</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[120px]">Telefone</th>
-                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right w-[110px]">Margem</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right min-w-[140px]">Valor Operação</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[150px]">Equipe</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aberto</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</th>
@@ -1272,42 +1393,19 @@ export default function TicketsPage() {
                           <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{ticket.cliente_telefone}</td>
                           <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">
                             <div className="flex flex-col items-end">
-                              {(typeof ticket.margem === 'number' && ticket.margem !== 0) && (
-                                <span className="flex flex-col items-end">
-                                  <span className={cn(
-                                    "text-[11px] leading-tight",
-                                    ticket.margem < 0 ? "text-red-600" : "text-slate-900"
-                                  )}>
-                                    R$ {ticket.margem.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              {(() => {
+                                const opData = getValorOperacaoDeAbertura(ticket);
+                                return (
+                                  <span className="flex flex-col items-end">
+                                    <span className="text-[11.5px] leading-tight font-black text-slate-900">
+                                      {opData.valor}
+                                    </span>
+                                    <span className={cn("text-[8px] uppercase font-black tracking-tighter mt-0.5", opData.color)}>
+                                      {opData.label}
+                                    </span>
                                   </span>
-                                  <span className="text-[8px] text-amber-600 uppercase font-black tracking-tighter">Margem 35%</span>
-                                </span>
-                              )}
-                              {(typeof ticket.margem_liquida_5 === 'number' && ticket.margem_liquida_5 !== 0) && (
-                                <span className="flex flex-col items-end mt-1">
-                                  <span className={cn(
-                                    "text-[11px] leading-tight",
-                                    ticket.margem_liquida_5 < 0 ? "text-red-600" : "text-slate-900"
-                                  )}>
-                                    R$ {ticket.margem_liquida_5.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                  </span>
-                                  <span className="text-[8px] text-emerald-600 uppercase font-black tracking-tighter">Líquida 5%</span>
-                                </span>
-                              )}
-                              {(typeof ticket.margem_beneficio_5 === 'number' && ticket.margem_beneficio_5 !== 0) && (
-                                <span className="flex flex-col items-end mt-1">
-                                  <span className={cn(
-                                    "text-[11px] leading-tight",
-                                    ticket.margem_beneficio_5 < 0 ? "text-red-600" : "text-slate-900"
-                                  )}>
-                                    R$ {ticket.margem_beneficio_5.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                  </span>
-                                  <span className="text-[8px] text-blue-600 uppercase font-black tracking-tighter">Benefício 5%</span>
-                                </span>
-                              )}
-                              {(!ticket.margem && !ticket.margem_liquida_5 && !ticket.margem_beneficio_5) && (
-                                <span className="text-slate-400">R$ 0,00</span>
-                              )}
+                                );
+                              })()}
                             </div>
                           </td>
                           <td className="px-4 py-4 text-[10px] font-bold text-slate-400 leading-tight max-w-[120px] truncate" title={ticket.equipe}>
@@ -1387,7 +1485,11 @@ export default function TicketsPage() {
                                     arquivo_rg_verso: ticket.arquivo_rg_verso,
                                     arquivo_contracheque: ticket.arquivo_contracheque,
                                     arquivo_extrato: ticket.arquivo_extrato,
-                                    arquivo_outros: ticket.arquivo_outros
+                                    arquivo_outros: ticket.arquivo_outros,
+                                    margem: ticket.margem,
+                                    margem_liquida_5: ticket.margem_liquida_5,
+                                    margem_beneficio_5: ticket.margem_beneficio_5,
+                                    convenio: ticket.convenio
                                   }} 
                                   onMessageSent={() => {
                                     fetchTickets();

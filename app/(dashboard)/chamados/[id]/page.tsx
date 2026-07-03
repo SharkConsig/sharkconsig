@@ -120,7 +120,11 @@ export default function TicketDetailsPage({ params }: { params: Promise<{ id: st
               arquivo_rg_verso: ticket.arquivo_rg_verso,
               arquivo_contracheque: ticket.arquivo_contracheque,
               arquivo_extrato: ticket.arquivo_extrato,
-              arquivo_outros: ticket.arquivo_outros
+              arquivo_outros: ticket.arquivo_outros,
+              margem: ticket.margem,
+              margem_liquida_5: ticket.margem_liquida_5,
+              margem_beneficio_5: ticket.margem_beneficio_5,
+              convenio: ticket.convenio
             }} 
             onMessageSent={() => {
               // Recarregar se necessário

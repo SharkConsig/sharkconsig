@@ -30,12 +30,7 @@ function NewTicketForm() {
   const searchParams = useSearchParams()
   const { user, perfil } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [description, setDescription] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem('new_ticket_draft') || ""
-    }
-    return ""
-  })
+  const [description, setDescription] = useState<string>("")
 
   // Persist window scroll
   useEffect(() => {
@@ -54,19 +49,14 @@ function NewTicketForm() {
       }, 100)
     }
 
+    // Always clear draft on mount to make sure a new opening of a chamado starts fresh
+    if (typeof window !== "undefined") {
+      localStorage.removeItem('new_ticket_draft')
+    }
+
     return () => window.removeEventListener('scroll', handleWindowScroll)
   }, [])
 
-  // Persist draft
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      if (description) {
-        localStorage.setItem('new_ticket_draft', description)
-      } else {
-        localStorage.removeItem('new_ticket_draft')
-      }
-    }
-  }, [description])
   const [validationError, setValidationError] = useState<string | null>(null)
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -76,6 +66,36 @@ function NewTicketForm() {
     liquida5: searchParams.get("liquida5") || "",
     beneficio5: searchParams.get("beneficio5") || ""
   })
+
+  const [coefficients, setCoefficients] = useState({
+    margem: "0,028",
+    liquida5: "0,053",
+    beneficio5: "0,053"
+  })
+
+  const parseCurrencyToFloat = (val: string) => {
+    if (!val) return 0;
+    
+    // Se o valor contiver tanto ponto quanto vírgula (ex: "1.500,00" ou "R$ 1.500,00")
+    // ou apenas vírgula como separador decimal (ex: "1500,00")
+    if (val.includes(",")) {
+      const cleaned = val.replace(/[R$\s.]/g, "").replace(",", ".");
+      return parseFloat(cleaned) || 0;
+    }
+    
+    // Se contiver apenas pontos ou nenhum separador (ex: "1500.00" ou "1500")
+    const cleaned = val.replace(/[R$\s]/g, "");
+    return parseFloat(cleaned) || 0;
+  };
+
+  const calculateValorOperacao = (marginStr: string, coefStr: string) => {
+    const marginVal = parseCurrencyToFloat(marginStr);
+    const coefVal = parseFloat(coefStr.replace(",", "."));
+    if (!coefVal || isNaN(coefVal) || coefVal === 0) return "R$ 0,00";
+    
+    const res = marginVal / coefVal;
+    return `R$ ${res.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
 
   const isFromClient = !!searchParams.get("nome")
 
@@ -247,19 +267,17 @@ function NewTicketForm() {
   }, [formData.convenio]);
 
   const updateDescription = useCallback((margins: { margem: string, liquida5: string, beneficio5: string }) => {
-    // Build the introductory text
-    const activeLabels = [];
-    if (margins.margem) activeLabels.push(`${getMarginLabel('margem')} (${margins.margem})`);
-    if (margins.liquida5) activeLabels.push(`${getMarginLabel('liquida5')} (${margins.liquida5})`);
-    if (margins.beneficio5) activeLabels.push(`${getMarginLabel('beneficio5')} (${margins.beneficio5})`);
-
     let introText = "";
-    if (activeLabels.length > 0) {
-      if (activeLabels.length === 1) {
-        introText = `Esse chamado é para a ${activeLabels[0]}.`;
-      } else {
-        introText = `Esse chamado é para a ${activeLabels.join(" e ").replace(/ e ([^e]*)$/, " e $1")}.`;
-      }
+    let activeField: 'margem' | 'liquida5' | 'beneficio5' | null = null;
+    
+    if (margins.margem) activeField = 'margem';
+    else if (margins.liquida5) activeField = 'liquida5';
+    else if (margins.beneficio5) activeField = 'beneficio5';
+
+    if (activeField) {
+      const label = getMarginLabel(activeField);
+      const valOperacao = calculateValorOperacao(margins[activeField], coefficients[activeField]);
+      introText = `Esse chamado é para a ${label} com valor de operação ${valOperacao}.`;
     }
 
     setDescription(prevDesc => {
@@ -279,7 +297,7 @@ function NewTicketForm() {
       }
       return lines.join("\n");
     });
-  }, [getMarginLabel]);
+  }, [getMarginLabel, coefficients]);
 
   // Monitor convenio changes to sync description labels
   useEffect(() => {
@@ -529,6 +547,20 @@ function NewTicketForm() {
         finalDescription += "\n\n--- IMAGENS EM ANEXO ---\n" + pastedUrls.map((url, i) => `![Print ${i+1}](${url})`).join("\n");
       }
 
+      // Adicionar metadados iniciais das margens, coeficientes e valores de operação de abertura
+      const initialMetadata = {
+        margem: formData.margem || originalMargins.margem,
+        liquida5: formData.liquida5 || originalMargins.liquida5,
+        beneficio5: formData.beneficio5 || originalMargins.beneficio5,
+        coeficiente_margem: coefficients.margem,
+        coeficiente_liquida5: coefficients.liquida5,
+        coeficiente_beneficio5: coefficients.beneficio5,
+        valor_operacao_margem: calculateValorOperacao(formData.margem || originalMargins.margem, coefficients.margem),
+        valor_operacao_liquida5: calculateValorOperacao(formData.liquida5 || originalMargins.liquida5, coefficients.liquida5),
+        valor_operacao_beneficio5: calculateValorOperacao(formData.beneficio5 || originalMargins.beneficio5, coefficients.beneficio5)
+      };
+      finalDescription += `\n\n<!-- TICKET_METADATA: ${JSON.stringify(initialMetadata)} -->`;
+
       console.log("Enviando dados para o banco de dados...");
       
       // Buscar o ID do status 'ABERTO' dinamicamente
@@ -548,9 +580,9 @@ function NewTicketForm() {
           cliente_telefone: formData.tel1,
           cliente_telefone_2: formData.tel2 || null,
           cliente_telefone_3: formData.tel3 || null,
-          margem: cleanMoney(formData.margem),
-          margem_liquida_5: cleanMoney(formData.liquida5),
-          margem_beneficio_5: cleanMoney(formData.beneficio5),
+          margem: cleanMoney(formData.margem || originalMargins.margem),
+          margem_liquida_5: cleanMoney(formData.liquida5 || originalMargins.liquida5),
+          margem_beneficio_5: cleanMoney(formData.beneficio5 || originalMargins.beneficio5),
           convenio: formData.convenio,
           equipe: formData.equipe,
           matricula: matriculaUrl,
@@ -727,109 +759,211 @@ function NewTicketForm() {
                 {/* Row 4: Margens */}
                 <div className="space-y-4">
                   <p className="text-[10px] font-bold text-primary mb-1 uppercase tracking-wider">Selecione ou digite a margem para qual você deseja abrir esse chamado.</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 items-end">
+                  <div className="flex flex-col gap-4">
                     {getMarginLabel('margem') && (
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                          <span className="whitespace-nowrap">{getMarginLabel('margem')}</span>
-                        </label>
-                        {isFromClient && originalMargins.margem ? (
-                          <button
-                            type="button"
-                            onClick={() => toggleMargin("margem", originalMargins.margem)}
-                            className={cn(
-                              "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
-                              getMarginClasses(originalMargins.margem, !!formData.margem)
-                            )}
-                          >
-                            {formData.margem && <Check className="w-3.5 h-3.5 shrink-0" />}
-                            <span className="truncate">{originalMargins.margem}</span>
-                          </button>
-                        ) : (
-                          <Input 
-                            value={formData.margem}
-                            onChange={(e) => handleMarginInputChange("margem", e.target.value)}
-                            placeholder="R$ 0,00" 
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                            <span className="whitespace-nowrap">{getMarginLabel('margem')}</span>
+                          </label>
+                          {isFromClient && originalMargins.margem ? (
+                            <button
+                              id="btn-original-margin"
+                              type="button"
+                              onClick={() => toggleMargin("margem", originalMargins.margem)}
+                              className={cn(
+                                "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
+                                getMarginClasses(originalMargins.margem, !!formData.margem)
+                              )}
+                            >
+                              {formData.margem && <Check className="w-3.5 h-3.5 shrink-0" />}
+                              <span className="truncate">{originalMargins.margem}</span>
+                            </button>
+                          ) : (
+                            <Input 
+                              id="input-margin-35"
+                              value={formData.margem}
+                              onChange={(e) => handleMarginInputChange("margem", e.target.value)}
+                              placeholder="R$ 0,00" 
+                              className={cn(
+                                "h-[34px] text-[12px] transition-all",
+                                getMarginClasses(formData.margem, !!formData.margem)
+                              )}
+                            />
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            COEFICIENTE
+                          </label>
+                          <Input
+                            id="coeficiente-margem"
+                            value={coefficients.margem}
+                            readOnly
+                            placeholder="0,0000"
                             className={cn(
                               "h-[34px] text-[12px] transition-all",
-                              getMarginClasses(formData.margem, !!formData.margem)
+                              getMarginClasses(formData.margem || originalMargins.margem, !!(formData.margem || originalMargins.margem))
                             )}
                           />
-                        )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            VALOR OPERAÇÃO
+                          </label>
+                          <Input
+                            id="valor-operacao-margem"
+                            value={calculateValorOperacao(formData.margem || originalMargins.margem, coefficients.margem)}
+                            readOnly
+                            placeholder="R$ 0,00"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.margem || originalMargins.margem, !!(formData.margem || originalMargins.margem))
+                            )}
+                          />
+                        </div>
                       </div>
                     )}
 
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                      <span>{getMarginLabel('liquida5')}</span>
-                    </label>
-                    {isFromClient && originalMargins.liquida5 ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleMargin("liquida5", originalMargins.liquida5)}
-                        className={cn(
-                          "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
-                          getMarginClasses(originalMargins.liquida5, !!formData.liquida5)
-                        )}
-                      >
-                        {formData.liquida5 && <Check className="w-3.5 h-3.5 shrink-0" />}
-                        <span className="truncate">{originalMargins.liquida5}</span>
-                      </button>
-                    ) : (
-                      <Input 
-                        value={formData.liquida5}
-                        onChange={(e) => handleMarginInputChange("liquida5", e.target.value)}
-                        placeholder="R$ 0,00" 
-                        className={cn(
-                          "h-[34px] text-[12px] transition-all",
-                          getMarginClasses(formData.liquida5, !!formData.liquida5)
-                        )}
-                      />
-                    )}
-                  </div>
+                    {getMarginLabel('liquida5') && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                            <span>{getMarginLabel('liquida5')}</span>
+                          </label>
+                          {isFromClient && originalMargins.liquida5 ? (
+                            <button
+                              id="btn-original-liquida5"
+                              type="button"
+                              onClick={() => toggleMargin("liquida5", originalMargins.liquida5)}
+                              className={cn(
+                                "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
+                                getMarginClasses(originalMargins.liquida5, !!formData.liquida5)
+                              )}
+                            >
+                              {formData.liquida5 && <Check className="w-3.5 h-3.5 shrink-0" />}
+                              <span className="truncate">{originalMargins.liquida5}</span>
+                            </button>
+                          ) : (
+                            <Input 
+                              id="input-margin-liquida5"
+                              value={formData.liquida5}
+                              onChange={(e) => handleMarginInputChange("liquida5", e.target.value)}
+                              placeholder="R$ 0,00" 
+                              className={cn(
+                                "h-[34px] text-[12px] transition-all",
+                                getMarginClasses(formData.liquida5, !!formData.liquida5)
+                              )}
+                            />
+                          )}
+                        </div>
 
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                      <span>{getMarginLabel('beneficio5')}</span>
-                    </label>
-                    {isFromClient && originalMargins.beneficio5 ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleMargin("beneficio5", originalMargins.beneficio5)}
-                        className={cn(
-                          "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
-                          getMarginClasses(originalMargins.beneficio5, !!formData.beneficio5)
-                        )}
-                      >
-                        {formData.beneficio5 && <Check className="w-3.5 h-3.5 shrink-0" />}
-                        <span className="truncate">{originalMargins.beneficio5}</span>
-                      </button>
-                    ) : (
-                      <Input 
-                        value={formData.beneficio5}
-                        onChange={(e) => handleMarginInputChange("beneficio5", e.target.value)}
-                        placeholder="R$ 0,00" 
-                        className={cn(
-                          "h-[34px] text-[12px] transition-all",
-                          getMarginClasses(formData.beneficio5, !!formData.beneficio5)
-                        )}
-                      />
-                    )}
-                  </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            COEFICIENTE
+                          </label>
+                          <Input
+                            id="coeficiente-liquida5"
+                            value={coefficients.liquida5}
+                            readOnly
+                            placeholder="0,0000"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.liquida5 || originalMargins.liquida5, !!(formData.liquida5 || originalMargins.liquida5))
+                            )}
+                          />
+                        </div>
 
-                  <div className="flex items-center">
-                    <button
-                      type="button"
-                      onClick={clearMargins}
-                      className="text-[10px] font-extrabold text-slate-700 hover:text-slate-900 transition-colors uppercase tracking-wider h-[34px] flex items-center px-2"
-                    >
-                      LIMPAR
-                    </button>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            VALOR OPERAÇÃO
+                          </label>
+                          <Input
+                            id="valor-operacao-liquida5"
+                            value={calculateValorOperacao(formData.liquida5 || originalMargins.liquida5, coefficients.liquida5)}
+                            readOnly
+                            placeholder="R$ 0,00"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.liquida5 || originalMargins.liquida5, !!(formData.liquida5 || originalMargins.liquida5))
+                            )}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {getMarginLabel('beneficio5') && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                            <span>{getMarginLabel('beneficio5')}</span>
+                          </label>
+                          {isFromClient && originalMargins.beneficio5 ? (
+                            <button
+                              id="btn-original-beneficio5"
+                              type="button"
+                              onClick={() => toggleMargin("beneficio5", originalMargins.beneficio5)}
+                              className={cn(
+                                "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
+                                getMarginClasses(originalMargins.beneficio5, !!formData.beneficio5)
+                              )}
+                            >
+                              {formData.beneficio5 && <Check className="w-3.5 h-3.5 shrink-0" />}
+                              <span className="truncate">{originalMargins.beneficio5}</span>
+                            </button>
+                          ) : (
+                            <Input 
+                              id="input-margin-beneficio5"
+                              value={formData.beneficio5}
+                              onChange={(e) => handleMarginInputChange("beneficio5", e.target.value)}
+                              placeholder="R$ 0,00" 
+                              className={cn(
+                                "h-[34px] text-[12px] transition-all",
+                                getMarginClasses(formData.beneficio5, !!formData.beneficio5)
+                              )}
+                            />
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            COEFICIENTE
+                          </label>
+                          <Input
+                            id="coeficiente-beneficio5"
+                            value={coefficients.beneficio5}
+                            readOnly
+                            placeholder="0,0000"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.beneficio5 || originalMargins.beneficio5, !!(formData.beneficio5 || originalMargins.beneficio5))
+                            )}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            VALOR OPERAÇÃO
+                          </label>
+                          <Input
+                            id="valor-operacao-beneficio5"
+                            value={calculateValorOperacao(formData.beneficio5 || originalMargins.beneficio5, coefficients.beneficio5)}
+                            readOnly
+                            placeholder="R$ 0,00"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.beneficio5 || originalMargins.beneficio5, !!(formData.beneficio5 || originalMargins.beneficio5))
+                            )}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
           <div className="space-y-2 mb-6">
               <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">

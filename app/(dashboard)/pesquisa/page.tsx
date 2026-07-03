@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
-import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle, Loader2 } from "lucide-react"
+import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle, Loader2, Calculator } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -13,6 +13,7 @@ import { getContractTypeInfo } from "@/lib/contratos-mapping"
 import { supabase } from "@/lib/supabase"
 import { withRetry } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { SimulationModal } from "@/components/simulation/simulation-modal"
 
 interface LoanData {
   banco: string;
@@ -120,6 +121,7 @@ export default function SearchClientPage() {
   const [showProfile, setShowProfile] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
+  const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false)
   
   const [client, setClient] = useState<ClientData | null>(null)
   const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | null>(null)
@@ -925,6 +927,28 @@ export default function SearchClientPage() {
     return `${day}/${month}/${year}`
   }
 
+  const allRegs = clientType === 'siape' 
+    ? registrations.flatMap(reg => {
+        const isPension = reg.situacao_funcional === 'BENEFICIARIO PENSAO';
+        if (!reg.instituidores || reg.instituidores.length === 0) {
+          const rawName = isPension ? "" : (reg.orgao || "");
+          return [{ 
+            ...reg, 
+            currentInstituidor: isPension ? rawName : translateOrgao(rawName), 
+            currentInstituidorId: null 
+          }];
+        }
+        return reg.instituidores.map((inst) => ({
+          ...reg,
+          ...inst,
+          id: reg.id,
+          instituidor_id: inst.id,
+          currentInstituidor: inst.nome ? (isPension ? inst.nome : translateOrgao(inst.nome)) : (isPension ? "" : translateOrgao(reg.orgao || "")),
+          currentInstituidorId: inst.id
+        }));
+      })
+    : registrations;
+
   return (
     <div className="flex-1 flex flex-col">
       <Header title="ACESSAR CLIENTE" />
@@ -1014,6 +1038,7 @@ export default function SearchClientPage() {
                     <h3 className="text-[16px] font-bold text-slate-900">Dados Pessoais</h3>
                   </div>
                   <button 
+                    type="button"
                     onClick={() => setShowSensitiveData(!showSensitiveData)}
                     className="text-slate-500 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100 rounded-full"
                   >
@@ -1096,26 +1121,6 @@ export default function SearchClientPage() {
 
             {/* Matrículas Section */}
             {clientType === 'siape' && registrations.length > 0 && (() => {
-              const allRegs = registrations.flatMap(reg => {
-                const isPension = reg.situacao_funcional === 'BENEFICIARIO PENSAO';
-                if (!reg.instituidores || reg.instituidores.length === 0) {
-                  const rawName = isPension ? "" : (reg.orgao || "");
-                  return [{ 
-                    ...reg, 
-                    currentInstituidor: isPension ? rawName : translateOrgao(rawName), 
-                    currentInstituidorId: null 
-                  }];
-                }
-                return reg.instituidores.map((inst) => ({
-                  ...reg,
-                  ...inst,
-                  id: reg.id, // Keep registration ID as the main ID for the tab
-                  instituidor_id: inst.id, // Keep track of the specific instituidor ID
-                  currentInstituidor: inst.nome ? (isPension ? inst.nome : translateOrgao(inst.nome)) : (isPension ? "" : translateOrgao(reg.orgao || "")),
-                  currentInstituidorId: inst.id
-                }));
-              });
-
               if (allRegs.length === 0) return null;
 
               return (
@@ -1459,6 +1464,14 @@ export default function SearchClientPage() {
 
                         {/* Footer Buttons */}
                         <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                          <Button
+                            type="button"
+                            onClick={() => setIsSimulationModalOpen(true)}
+                            className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                          >
+                            <Calculator className="w-4 h-4 mr-2" />
+                            Simular Proposta
+                          </Button>
                           <Button 
                             onClick={() => {
                               // Formatar CPF sem máscara para o chamado
@@ -1723,6 +1736,14 @@ export default function SearchClientPage() {
 
                           {/* Footer Buttons for Governo SP */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
                             <Button 
                               onClick={() => {
                                 const rawCpf = client.cpf || "";
@@ -1898,6 +1919,14 @@ export default function SearchClientPage() {
 
                           {/* Footer Buttons for Governo MA */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
                             <Button 
                               onClick={() => {
                                 const rawCpf = client.cpf || "";
@@ -2073,6 +2102,14 @@ export default function SearchClientPage() {
 
                           {/* Footer Buttons for Governo PI */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
                             <Button 
                               onClick={() => {
                                 const rawCpf = client.cpf || "";
@@ -2301,6 +2338,14 @@ export default function SearchClientPage() {
 
                           {/* Footer Buttons for PMSP */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
                             <Button 
                               onClick={() => {
                                 const rawCpf = client.cpf || "";
@@ -2475,6 +2520,14 @@ export default function SearchClientPage() {
 
                           {/* Footer Buttons for GOV RR */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
                             <Button 
                               onClick={() => {
                                 const rawCpf = client.cpf || "";
@@ -2580,6 +2633,14 @@ export default function SearchClientPage() {
 
                           {/* Footer Buttons for GOV RJ */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
                             <Button 
                               onClick={() => {
                                 const rawCpf = client.cpf || "";
@@ -2753,6 +2814,14 @@ export default function SearchClientPage() {
 
                           {/* Footer Buttons for PREF SA */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
                             <Button 
                               onClick={() => {
                                 const rawCpf = client.cpf || "";
@@ -2993,6 +3062,14 @@ export default function SearchClientPage() {
 
                           {/* Footer Buttons for PREF CONTAGEM */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
                             <Button 
                               onClick={() => {
                                 const rawCpf = client.cpf || "";
@@ -3184,6 +3261,14 @@ export default function SearchClientPage() {
 
                           {/* Footer Buttons for GOV MG */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
                             <Button 
                               onClick={() => {
                                 const rawCpf = client.cpf || "";
@@ -3244,6 +3329,14 @@ export default function SearchClientPage() {
             })()}
           </div>
         )}
+        <SimulationModal 
+          isOpen={isSimulationModalOpen} 
+          onClose={() => setIsSimulationModalOpen(false)} 
+          client={client} 
+          registrations={allRegs} 
+          perfil={perfil} 
+          activeRegIndex={activeRegIndex}
+        />
       </div>
     </div>
   )
