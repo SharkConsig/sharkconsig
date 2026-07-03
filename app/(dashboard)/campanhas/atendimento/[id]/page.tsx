@@ -432,8 +432,8 @@ export default function CampanhaAtendimentoPage() {
         'governo_mg': 'base_consulta_governo_mg',
       }
 
-      if (convenioKey && TABLE_MAP[convenioKey]) {
-        table = TABLE_MAP[convenioKey]
+      if (convenioKey && TABLE_MAP[convenioKey || '']) {
+        table = TABLE_MAP[convenioKey || '']
       } else if (campaignName.includes("GOVERNO SP")) {
         table = 'base_consulta_governo_sp'
       } else if (campaignName.includes("PREFEITURA SP")) {
@@ -577,7 +577,7 @@ export default function CampanhaAtendimentoPage() {
 
         if (availableMembers.length > 0) {
           const selectedIndex = brokerRelIndex % availableMembers.length
-          const campaignHasValidConvenio = convenioKey && TABLE_MAP[convenioKey];
+          const campaignHasValidConvenio = convenioKey && TABLE_MAP[convenioKey || ''];
           
           // Loop to search for the first valid lead configuration starting from selectedIndex.
           // Limit to maximum 30 sequential checks to prevent infinite database lookup lags.
@@ -589,10 +589,10 @@ export default function CampanhaAtendimentoPage() {
             const tempResolvedConvenio = matchedMember.convenio || null
             let tempTable = TABLE_MAP[convenioKey || ''] || 'base_consulta_siape'
 
-            if (tempResolvedConvenio && TABLE_MAP[tempResolvedConvenio]) {
-              tempTable = TABLE_MAP[tempResolvedConvenio]
+            if (tempResolvedConvenio && TABLE_MAP[tempResolvedConvenio || '']) {
+              tempTable = TABLE_MAP[tempResolvedConvenio || '']
             } else if (campaignHasValidConvenio) {
-              tempTable = TABLE_MAP[convenioKey]
+              tempTable = TABLE_MAP[convenioKey || '']
             } else if (
               !tempResolvedConvenio ||
               tempResolvedConvenio === "detect" ||
