@@ -917,21 +917,47 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     const loadingToast = toast.loading("Carregando dados do cliente...")
     setIsRedirectingProposta(true)
     let nascimento = "31/01/1984"
+    const cleanCPF = ticket.cpf ? ticket.cpf.replace(/\D/g, "").padStart(11, "0") : ""
     try {
-      const { data: clientData } = await supabase
-        .from('clientes')
-        .select('data_nascimento')
-        .eq('cpf', ticket.cpf)
-        .maybeSingle()
-
-      if (clientData?.data_nascimento) {
-        if (clientData.data_nascimento.includes('-')) {
-          const parts = clientData.data_nascimento.split('-')
-          if (parts.length === 3) {
-            nascimento = `${parts[2]}/${parts[1]}/${parts[0]}`
+      if (cleanCPF) {
+        const tables = [
+          'clientes',
+          'governo_sp_clientes',
+          'prefeitura_sp_clientes',
+          'governo_pi_clientes',
+          'governo_ma_clientes',
+          'governo_rr_clientes',
+          'governo_rj_clientes',
+          'prefeitura_santo_andre_clientes',
+          'prefeitura_contagem_clientes',
+          'governo_mg_clientes'
+        ]
+        
+        const results = await Promise.all(
+          tables.map(async (tableName) => {
+            try {
+              const { data } = await supabase
+                .from(tableName)
+                .select('data_nascimento')
+                .eq('cpf', cleanCPF)
+                .maybeSingle()
+              return data?.data_nascimento || null
+            } catch {
+              return null
+            }
+          })
+        )
+        
+        const foundBirthDate = results.find(Boolean)
+        if (foundBirthDate) {
+          if (foundBirthDate.includes('-')) {
+            const parts = foundBirthDate.split('-')
+            if (parts.length === 3) {
+              nascimento = `${parts[2]}/${parts[1]}/${parts[0]}`
+            }
+          } else {
+            nascimento = foundBirthDate
           }
-        } else {
-          nascimento = clientData.data_nascimento
         }
       }
     } catch (err) {
