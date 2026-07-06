@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { 
   Bold, 
@@ -121,7 +122,9 @@ const updateDescriptionWithMetadata = (desc: string, metadata: Record<string, un
 };
 
 export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoProps) {
+  const router = useRouter()
   const { perfil, user, isEstagio } = useAuth()
+  const [isRedirectingProposta, setIsRedirectingProposta] = useState(false)
   const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
 
   const canEditMargins = useMemo(() => {
@@ -905,6 +908,55 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
     setSelectedFiles(prev => prev.filter((_, i) => i !== index))
   }
 
+  const handleDigitarProposta = async () => {
+    if (isUserEstagio) {
+      toast.error("Você não tem permissão para digitar propostas.")
+      return
+    }
+
+    const loadingToast = toast.loading("Carregando dados do cliente...")
+    setIsRedirectingProposta(true)
+    let nascimento = "31/01/1984"
+    try {
+      const { data: clientData } = await supabase
+        .from('clientes')
+        .select('data_nascimento')
+        .eq('cpf', ticket.cpf)
+        .maybeSingle()
+
+      if (clientData?.data_nascimento) {
+        if (clientData.data_nascimento.includes('-')) {
+          const parts = clientData.data_nascimento.split('-')
+          if (parts.length === 3) {
+            nascimento = `${parts[2]}/${parts[1]}/${parts[0]}`
+          }
+        } else {
+          nascimento = clientData.data_nascimento
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao buscar data de nascimento do cliente:", err)
+    } finally {
+      setIsRedirectingProposta(false)
+      toast.dismiss(loadingToast)
+    }
+
+    const params = new URLSearchParams({
+      nome: ticket.client || "",
+      cpf: ticket.cpf || "",
+      nascimento,
+      idLead: ticket.matricula || ticket.id,
+      idChamado: ticket.id || "",
+      matricula: ticket.matricula || "",
+      origem: ticket.origin?.toLowerCase() || "",
+      tel1: ticket.phone || "",
+      tel2: ticket.phone_2 || "",
+      tel3: ticket.phone_3 || "",
+    })
+
+    router.push(`/propostas/nova?${params.toString()}`)
+  }
+
   const handleFileClick = () => {
     fileInputRef.current?.click()
   }
@@ -1658,24 +1710,14 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 Anexar Arquivos
               </Button>
               {!isUserEstagio && (
-                <Link 
-                  href={`/propostas/nova?${new URLSearchParams({
-                    nome: ticket.client || "",
-                    cpf: ticket.cpf || "",
-                    nascimento: "31/01/1984",
-                    idLead: ticket.matricula || ticket.id,
-                    idChamado: ticket.id || "",
-                    matricula: ticket.matricula || "",
-                    origem: ticket.origin?.toLowerCase() || "",
-                    tel1: ticket.phone || "",
-                    tel2: ticket.phone_2 || "",
-                    tel3: ticket.phone_3 || "",
-                  }).toString()}`}
+                <Button 
+                  onClick={handleDigitarProposta}
+                  disabled={isRedirectingProposta}
                   className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-orange-500 hover:bg-orange-600 shadow-md transition-all flex items-center gap-2 rounded-lg"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  DIGITAR PROPOSTA
-                </Link>
+                  {isRedirectingProposta ? "CARREGANDO..." : "DIGITAR PROPOSTA"}
+                </Button>
               )}
 
               {isSupervisorOrAbove && hasActiveApoio ? (

@@ -885,15 +885,39 @@ export default function TicketsPage() {
     }
   }
 
-  const handleDigitarProposta = (ticket: Ticket) => {
+  const handleDigitarProposta = async (ticket: Ticket) => {
     if (isUserEstagio) {
       toast.error("Você não tem permissão para digitar propostas.")
       return
     }
+    const loadingToast = toast.loading("Carregando dados do cliente...")
+    let nascimento = "31/01/1984"
+    try {
+      const { data: clientData } = await supabase
+        .from('clientes')
+        .select('data_nascimento')
+        .eq('cpf', ticket.cliente_cpf)
+        .maybeSingle()
+
+      if (clientData?.data_nascimento) {
+        if (clientData.data_nascimento.includes('-')) {
+          const parts = clientData.data_nascimento.split('-')
+          if (parts.length === 3) {
+            nascimento = `${parts[2]}/${parts[1]}/${parts[0]}`
+          }
+        } else {
+          nascimento = clientData.data_nascimento
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao buscar data de nascimento do cliente:", err)
+    } finally {
+      toast.dismiss(loadingToast)
+    }
     const params = new URLSearchParams({
       nome: ticket.cliente_nome,
       cpf: ticket.cliente_cpf,
-      nascimento: "31/01/1984", 
+      nascimento, 
       idLead: ticket.matricula || ticket.id.toString(),
       idChamado: ticket.id.toString(),
       matricula: ticket.matricula || "",

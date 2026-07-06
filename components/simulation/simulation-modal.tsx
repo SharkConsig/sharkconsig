@@ -651,7 +651,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       <div className="w-7 h-7 rounded-full bg-[#F5B800]/15 flex items-center justify-center text-[#F5B800] text-sm font-black border border-[#F5B800]/30 shadow-sm shrink-0">
                         $
                       </div>
-                      <p className="text-[26px] font-black text-[#00D97E] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
+                      <p className="text-[26px] font-black text-[#F4C600] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
                     </div>
                   </div>
                   
@@ -794,12 +794,12 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       ))}
                     </tbody>
                   </table>
-                  <div className="bg-[#F5B800] text-[#162546] py-2 px-5 text-center font-bold text-xs uppercase tracking-wider">
-                    Parcela total: {formatBRL(totalNovaParcela)}
+                  <div className="bg-[#F4C600] text-[#162546] h-[58px] px-5 flex items-center justify-center font-bold text-[14px] uppercase tracking-wider">
+                    PARCELA TOTAL: <span className="font-black ml-1.5 text-[16px]">{formatBRL(totalNovaParcela)}</span>
                   </div>
-                  <div className="bg-[#162546] text-white py-3.5 px-5 text-left font-bold flex flex-col gap-0.5 justify-center">
-                    <span className="text-slate-300 font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
-                    <span className="text-base font-black text-white leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
+                  <div className="bg-[#162546] text-[#F4C600] h-[58px] px-5 text-left font-bold flex flex-col gap-0.5 justify-center">
+                    <span className="text-[#F4C600] font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
+                    <span className="text-[15px] font-normal text-[#F4C600] leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
                   </div>
                 </div>
               </div>
@@ -849,8 +849,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           <div className={`bg-[#162546] rounded-2xl ${bannerPadding} text-white flex justify-between items-center shadow-sm relative overflow-visible`}>
             {/* Left side: Client profile */}
             <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-full bg-[#00D97E]/20 flex items-center justify-center text-[#00D97E] shrink-0 border border-[#00D97E]/30 shadow-inner">
-                <User className="w-5.5 h-5.5 fill-[#00D97E]/10" />
+              <div className="w-11 h-11 rounded-full bg-[#F4C600]/20 flex items-center justify-center text-[#F4C600] shrink-0 border border-[#F4C600]/30 shadow-inner">
+                <User className="w-5.5 h-5.5 fill-[#F4C600]/10" />
               </div>
               <div className="flex flex-col text-left max-w-[220px]">
                 <p className="text-[12px] font-black uppercase tracking-wide text-white break-words">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
@@ -872,13 +872,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
             {/* Right side: Corretor info */}
             <div className="flex flex-col text-right items-end gap-1.5 border-l border-slate-700/50 pl-5 max-w-[220px]">
-              <p className="text-xs font-black uppercase text-[#00D97E] tracking-wider break-words w-full">{nomeConsultor || "NOME DO CORRETOR"}</p>
+              <p className="text-xs font-black uppercase text-[#F4C600] tracking-wider break-words w-full">{nomeConsultor || "NOME DO CORRETOR"}</p>
               <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium truncate w-full justify-end">
-                <Mail className="w-3.5 h-3.5 text-[#00D97E] shrink-0" />
+                <Mail className="w-3.5 h-3.5 text-[#F4C600] shrink-0" />
                 <span className="truncate">{corretorEmail}</span>
               </div>
               <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium truncate w-full justify-end">
-                <Phone className="w-3.5 h-3.5 text-[#00D97E] shrink-0" />
+                <Phone className="w-3.5 h-3.5 text-[#F4C600] shrink-0" />
                 <span className="truncate">{telefoneConsultor || "(48) 99656-5896"}</span>
               </div>
             </div>
@@ -891,7 +891,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               <div className="text-left space-y-0.5">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Valor Liberado</p>
                 <div className="flex items-center gap-2 py-0.5 justify-start">
-                  <div className="w-7 h-7 rounded-full bg-[#00D97E]/15 flex items-center justify-center text-[#00D97E] text-sm font-black border border-[#00D97E]/30 shadow-sm shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-[#F4C600]/15 flex items-center justify-center text-[#F4C600] text-sm font-black border border-[#F4C600]/30 shadow-sm shrink-0">
                     $
                   </div>
                   <p className="text-[26px] font-black text-[#6663F2] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
@@ -917,7 +917,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             </div>
 
             {/* Right card: Valor Total Reduzido ao Mês */}
-            <div className={`bg-[#00D97E] rounded-2xl ${cardPadding} flex flex-col justify-center text-[#162546] shadow-sm ${cardMinHeight}`}>
+            <div className={`bg-[#F4C600] rounded-2xl ${cardPadding} flex flex-col justify-center text-[#162546] shadow-sm ${cardMinHeight}`}>
               <div className="text-left space-y-0.5">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#162546]/80">Valor Total Reduzido ao Mês</p>
                 <div className="flex items-center gap-2 py-0.5 justify-start">
@@ -969,7 +969,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
           {/* Table Section: Future Strategy Installments list */}
           <div className={`space-y-0 ${tableSectionPt}`}>
-            <div className="bg-[#00D97E] text-[#162546] text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
+            <div className="bg-[#F4C600] text-[#162546] text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
               PARCELAS APÓS PORTABILIDADE
             </div>
             <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm">
@@ -1003,12 +1003,12 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   ))}
                 </tbody>
               </table>
-              <div className={`bg-[#00D97E] text-[#162546] ${tableFooterPadding} text-center font-bold text-xs uppercase tracking-wider`}>
-                Parcela total: {formatBRL(totalNovaParcela)}
+              <div className="bg-[#F4C600] text-[#162546] h-[58px] px-5 flex items-center justify-center font-bold text-[14px] uppercase tracking-wider">
+                PARCELA TOTAL: <span className="font-black ml-1.5 text-[16px]">{formatBRL(totalNovaParcela)}</span>
               </div>
-              <div className={`bg-[#162546] text-white ${tableDestPadding} text-left font-bold flex flex-col gap-0.5 justify-center`}>
-                <span className="text-slate-300 font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
-                <span className="text-base font-black text-white leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
+              <div className="bg-[#162546] text-[#F4C600] h-[58px] px-5 text-left font-bold flex flex-col gap-0.5 justify-center">
+                <span className="text-[#F4C600] font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
+                <span className="text-[15px] font-normal text-[#F4C600] leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
               </div>
             </div>
           </div>
