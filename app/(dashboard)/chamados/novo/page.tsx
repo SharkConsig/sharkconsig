@@ -254,6 +254,12 @@ function NewTicketForm() {
       if (field === 'beneficio5') return "LÍQUIDA CARTÃO BENEFÍCIO";
     }
 
+    if (conv?.includes("SANTO ANDRÉ") || conv?.includes("SANTO ANDRE")) {
+      if (field === 'margem') return "MARGEM LÍQUIDA EMPRÉSTIMO";
+      if (field === 'liquida5') return "MARGEM LÍQUIDA CARTÃO";
+      if (field === 'beneficio5') return "Margem Benefício Líquida 5%";
+    }
+
     if (conv === "GOVERNO RORAIMA" || conv === "GOV RORAIMA") {
       if (field === 'margem') return "MARGEM EMPRÉSTIMO";
       if (field === 'liquida5') return "MARGEM CARTÃO";
