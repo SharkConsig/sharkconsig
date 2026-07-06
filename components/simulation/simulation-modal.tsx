@@ -567,11 +567,15 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
     const corretorEmail = (() => {
       if (!nomeConsultor) return "corretor@acertofacil.com.br";
       const cleanName = nomeConsultor
+        .trim()
         .toLowerCase()
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]/g, "");
-      return `${cleanName}@acertofacil.com.br`;
+        .replace(/[^a-z0-9\s]/g, "");
+      const parts = cleanName.split(/\s+/).filter(Boolean);
+      if (parts.length === 0) return "corretor@acertofacil.com.br";
+      if (parts.length === 1) return `${parts[0]}@acertofacil.com.br`;
+      return `${parts[0]}.${parts[parts.length - 1]}@acertofacil.com.br`;
     })();
 
     // Spacing configuration for normal single-page template (up to 3 contracts)
@@ -609,7 +613,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                 </div>
                 <span className="text-slate-300 text-3xl font-light">|</span>
                 <div className="flex flex-col text-left">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">Formalização de</span>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none">Formalização de</span>
                   <span className="text-[26px] font-black text-[#162546] tracking-tight leading-tight uppercase">Proposta</span>
                 </div>
               </div>
@@ -618,24 +622,24 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               <div className="bg-[#162546] rounded-2xl p-5 text-white flex justify-between items-center shadow-sm">
                 {/* Left side: Client profile */}
                 <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-full bg-[#F5B800]/20 flex items-center justify-center text-[#F5B800] shrink-0 border border-[#F5B800]/30 shadow-inner">
-                    <User className="w-5.5 h-5.5 fill-[#F5B800]/10" />
+                  <div className="w-11 h-11 rounded-full bg-[#F4C600]/20 flex items-center justify-center text-[#F4C600] shrink-0 border border-[#F4C600]/30 shadow-inner">
+                    <User className="w-5.5 h-5.5 fill-[#F4C600]/10" />
                   </div>
                   <div className="flex flex-col text-left">
                     <p className="text-[12px] font-black uppercase tracking-wide text-white">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
-                    <p className="text-xs text-slate-300 font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
+                    <p className="text-xs text-white font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
                   </div>
                 </div>
 
                 {/* Right side: Corretor info */}
                 <div className="flex flex-col text-right items-end gap-1.5 border-l border-slate-700/50 pl-5">
-                  <p className="text-xs font-black uppercase text-[#F5B800] tracking-wider">{nomeConsultor || "NOME DO CORRETOR"}</p>
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
-                    <Mail className="w-3.5 h-3.5 text-[#F5B800] shrink-0" />
+                  <p className="text-xs font-black uppercase text-[#D6AB00] tracking-wider">{nomeConsultor || "NOME DO CORRETOR"}</p>
+                  <div className="flex items-center gap-1.5 text-[11px] text-white font-medium">
+                    <Mail className="w-3.5 h-3.5 text-[#F4C600] shrink-0" />
                     <span>{corretorEmail}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
-                    <Phone className="w-3.5 h-3.5 text-[#F5B800] shrink-0" />
+                  <div className="flex items-center gap-1.5 text-[11px] text-white font-medium">
+                    <Phone className="w-3.5 h-3.5 text-[#F4C600] shrink-0" />
                     <span>{telefoneConsultor || "(48) 99656-5896"}</span>
                   </div>
                 </div>
@@ -648,25 +652,25 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   <div className="text-left space-y-0.5">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Valor Liberado</p>
                     <div className="flex items-center gap-2 py-0.5 justify-start">
-                      <div className="w-7 h-7 rounded-full bg-[#F5B800]/15 flex items-center justify-center text-[#F5B800] text-sm font-black border border-[#F5B800]/30 shadow-sm shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-[#F4C600]/15 flex items-center justify-center text-[#F4C600] text-sm font-black border border-[#F4C600]/30 shadow-sm shrink-0">
                         $
                       </div>
-                      <p className="text-[26px] font-black text-[#F4C600] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
+                      <p className="text-[28px] font-black text-[#F4C600] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
                     </div>
                   </div>
                   
                   <div className="space-y-0.5 text-left pt-1.5 border-t border-slate-100 mt-1.5">
                     {hasMargemPrincipal && (
-                      <p className="text-[10px] text-slate-400 font-normal">Margem*: <span className="text-slate-400 font-normal">{formatBRL(margemPrincipalVal)}</span></p>
+                      <p className="text-[9px] text-slate-400 font-normal">Margem*: <span className="text-slate-400 font-normal">{formatBRL(margemPrincipalVal)}</span></p>
                     )}
                     {hasMargemCC && (
-                      <p className="text-[10px] text-slate-400 font-normal">Margem CC*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
+                      <p className="text-[9px] text-slate-400 font-normal">Margem CC*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
                     )}
                     {hasMargemCB && (
-                      <p className="text-[10px] text-slate-400 font-normal">Margem CB*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
+                      <p className="text-[9px] text-slate-400 font-normal">Margem CB*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
                     )}
                     {showBancosLine && (
-                      <p className="text-[9px] text-slate-400 italic font-normal mt-0.5">
+                      <p className="text-[8px] text-slate-400 italic font-normal mt-0.5">
                         {destBanksText}
                       </p>
                     )}
@@ -674,7 +678,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                 </div>
 
                 {/* Right card: Valor Total Reduzido ao Mês */}
-                <div className="bg-[#F5B800] rounded-2xl py-3 px-5 flex flex-col justify-between text-[#162546] shadow-sm min-h-[74px]">
+                <div className="bg-[#F4C600] rounded-2xl py-3 px-5 flex flex-col justify-between text-[#162546] shadow-sm min-h-[74px]">
                   <div className="text-left space-y-0.5">
                     <p className="text-[10px] font-black uppercase tracking-widest text-[#162546]/80">Valor Total Reduzido ao Mês</p>
                     <div className="flex items-center gap-2 py-0.5 justify-start">
@@ -753,14 +757,14 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                 </div>
                 <span className="text-slate-300 text-3xl font-light">|</span>
                 <div className="flex flex-col text-left">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">Formalização de</span>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none">Formalização de</span>
                   <span className="text-[26px] font-black text-[#162546] tracking-tight leading-tight uppercase">Proposta</span>
                 </div>
               </div>
 
               {/* Table Section: Future Strategy Installments list */}
               <div className="space-y-0 pt-2 flex-1">
-                <div className="bg-[#F5B800] text-[#162546] text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
+                <div className="bg-[#F4C600] text-[#162546] text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
                   PARCELAS APÓS PORTABILIDADE
                 </div>
                 <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm mb-4">
@@ -797,9 +801,9 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   <div className="bg-[#F4C600] text-[#162546] h-[58px] px-5 flex items-center justify-center font-bold text-[14px] uppercase tracking-wider">
                     PARCELA TOTAL: <span className="font-black ml-1.5 text-[16px]">{formatBRL(totalNovaParcela)}</span>
                   </div>
-                  <div className="bg-[#162546] text-[#F4C600] h-[58px] px-5 text-left font-bold flex flex-col gap-0.5 justify-center">
-                    <span className="text-[#F4C600] font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
-                    <span className="text-[15px] font-normal text-[#F4C600] leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
+                  <div className="bg-[#bc9300] text-[#f9e189] h-[58px] px-5 text-center font-bold flex flex-col gap-0.5 justify-center items-center">
+                    <span className="text-[#f9e189] font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
+                    <span className="text-[14px] font-normal text-[#f9e189] leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
                   </div>
                 </div>
               </div>
@@ -840,7 +844,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             </div>
             <span className="text-slate-300 text-3xl font-light">|</span>
             <div className="flex flex-col text-left">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">Formalização de</span>
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none">Formalização de</span>
               <span className="text-[26px] font-black text-[#162546] tracking-tight leading-tight uppercase">Proposta</span>
             </div>
           </div>
@@ -853,8 +857,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                 <User className="w-5.5 h-5.5 fill-[#F4C600]/10" />
               </div>
               <div className="flex flex-col text-left max-w-[220px]">
-                <p className="text-[12px] font-black uppercase tracking-wide text-white break-words">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
-                <p className="text-xs text-slate-300 font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
+                <p className="text-[12px] font-black uppercase tracking-wide text-white">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
+                <p className="text-xs text-white font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
               </div>
             </div>
 
@@ -872,12 +876,12 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
             {/* Right side: Corretor info */}
             <div className="flex flex-col text-right items-end gap-1.5 border-l border-slate-700/50 pl-5 max-w-[220px]">
-              <p className="text-xs font-black uppercase text-[#F4C600] tracking-wider break-words w-full">{nomeConsultor || "NOME DO CORRETOR"}</p>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium truncate w-full justify-end">
+              <p className="text-xs font-black uppercase text-[#D6AB00] tracking-wider break-words w-full">{nomeConsultor || "NOME DO CORRETOR"}</p>
+              <div className="flex items-center gap-1.5 text-[11px] text-white font-medium truncate w-full justify-end">
                 <Mail className="w-3.5 h-3.5 text-[#F4C600] shrink-0" />
                 <span className="truncate">{corretorEmail}</span>
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium truncate w-full justify-end">
+              <div className="flex items-center gap-1.5 text-[11px] text-white font-medium truncate w-full justify-end">
                 <Phone className="w-3.5 h-3.5 text-[#F4C600] shrink-0" />
                 <span className="truncate">{telefoneConsultor || "(48) 99656-5896"}</span>
               </div>
@@ -889,27 +893,27 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             {/* Left card: Total Valor Liberado */}
             <div className={`border border-slate-200 rounded-2xl ${cardPadding} bg-white flex flex-col justify-center shadow-sm ${cardMinHeight}`}>
               <div className="text-left space-y-0.5">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Valor Liberado</p>
+                <p className="text-[10px] font-black text-[#162546] uppercase tracking-widest">Total Valor Liberado</p>
                 <div className="flex items-center gap-2 py-0.5 justify-start">
                   <div className="w-7 h-7 rounded-full bg-[#F4C600]/15 flex items-center justify-center text-[#F4C600] text-sm font-black border border-[#F4C600]/30 shadow-sm shrink-0">
                     $
                   </div>
-                  <p className="text-[26px] font-black text-[#6663F2] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
+                  <p className="text-[28px] font-black text-[#4c4ac4] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
                 </div>
               </div>
               
               <div className={`space-y-0.5 text-left ${cardBorderPadding}`}>
                 {hasMargemPrincipal && (
-                  <p className="text-[9.5px] text-slate-400 font-normal">Margem*: <span className="text-slate-400 font-normal">{formatBRL(margemPrincipalVal)}</span></p>
+                  <p className="text-[8.5px] text-[#162546] font-normal">Margem*: <span className="text-[#162546] font-normal">{formatBRL(margemPrincipalVal)}</span></p>
                 )}
                 {hasMargemCC && (
-                  <p className="text-[9.5px] text-slate-400 font-normal">Margem CC*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
+                  <p className="text-[8.5px] text-[#162546] font-normal">Margem CC*: <span className="text-[#162546] font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
                 )}
                 {hasMargemCB && (
-                  <p className="text-[9.5px] text-slate-400 font-normal">Margem CB*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
+                  <p className="text-[8.5px] text-[#162546] font-normal">Margem CB*: <span className="text-[#162546] font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
                 )}
                 {showBancosLine && (
-                  <p className="text-[9px] text-slate-400 italic font-normal mt-0.5">
+                  <p className="text-[8px] text-[#162546] italic font-normal mt-0.5">
                     {destBanksText}
                   </p>
                 )}
@@ -1006,9 +1010,9 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               <div className="bg-[#F4C600] text-[#162546] h-[58px] px-5 flex items-center justify-center font-bold text-[14px] uppercase tracking-wider">
                 PARCELA TOTAL: <span className="font-black ml-1.5 text-[16px]">{formatBRL(totalNovaParcela)}</span>
               </div>
-              <div className="bg-[#162546] text-[#F4C600] h-[58px] px-5 text-left font-bold flex flex-col gap-0.5 justify-center">
-                <span className="text-[#F4C600] font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
-                <span className="text-[15px] font-normal text-[#F4C600] leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
+              <div className="bg-[#bc9300] text-[#f9e189] h-[58px] px-5 text-center font-bold flex flex-col gap-0.5 justify-center items-center">
+                <span className="text-[#f9e189] font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
+                <span className="text-[14px] font-normal text-[#f9e189] leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
               </div>
             </div>
           </div>
