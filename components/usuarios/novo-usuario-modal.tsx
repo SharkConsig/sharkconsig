@@ -25,6 +25,7 @@ import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 import { useSidebar } from "@/context/sidebar-context"
+import { useAuth } from "@/context/auth-context"
 import { cn } from "@/lib/utils"
 
 interface UsuarioData {
@@ -35,6 +36,7 @@ interface UsuarioData {
   regime_contratacao?: string
   avatar_url?: string
   foto_campanha_url?: string
+  foto_proposta_url?: string
   supervisor_id?: string
 }
 
@@ -46,6 +48,7 @@ interface NovoUsuarioModalProps {
 
 export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalProps) {
   const { isCollapsed } = useSidebar()
+  const { user: currentUser, refreshPerfil } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
@@ -56,6 +59,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     senha: "",
     avatar_url: "",
     foto_campanha_url: "",
+    foto_proposta_url: "",
     supervisor_id: ""
   })
   const [supervisores, setSupervisores] = useState<{ id: string, nome: string }[]>([])
@@ -68,6 +72,10 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
   const [selectedCampanhaFile, setSelectedCampanhaFile] = useState<File | null>(null)
   const [previewCampanhaUrl, setPreviewCampanhaUrl] = useState<string | null>(null)
 
+  // Proposal Photo State
+  const [selectedPropostaFile, setSelectedPropostaFile] = useState<File | null>(null)
+  const [previewPropostaUrl, setPreviewPropostaUrl] = useState<string | null>(null)
+
   useEffect(() => {
     if (usuario && isOpen) {
       setFormData({
@@ -78,10 +86,12 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         senha: "", // Não mostramos a senha atual por segurança
         avatar_url: usuario.avatar_url || "",
         foto_campanha_url: usuario.foto_campanha_url || "",
+        foto_proposta_url: usuario.foto_proposta_url || "",
         supervisor_id: usuario.supervisor_id || ""
       })
       setPreviewUrl(usuario.avatar_url || null)
       setPreviewCampanhaUrl(usuario.foto_campanha_url || null)
+      setPreviewPropostaUrl(usuario.foto_proposta_url || null)
     } else if (!usuario && isOpen) {
       setFormData({
         nome_completo: "",
@@ -91,12 +101,15 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         senha: "",
         avatar_url: "",
         foto_campanha_url: "",
+        foto_proposta_url: "",
         supervisor_id: ""
       })
       setPreviewUrl(null)
       setSelectedFile(null)
       setPreviewCampanhaUrl(null)
       setSelectedCampanhaFile(null)
+      setPreviewPropostaUrl(null)
+      setSelectedPropostaFile(null)
     }
   }, [usuario, isOpen])
 
@@ -162,6 +175,28 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     setPreviewCampanhaUrl(null)
   }
 
+  const handlePropostaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) { 
+        toast.error("A imagem deve ter menos de 2MB")
+        return
+      }
+      
+      setSelectedPropostaFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPreviewPropostaUrl(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const removePropostaFile = () => {
+    setSelectedPropostaFile(null)
+    setPreviewPropostaUrl(null)
+  }
+
   const uploadAvatar = async (file: File, username: string) => {
     try {
       const fileExt = file.name.split('.').pop()
@@ -224,6 +259,37 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     }
   }
 
+  const uploadFotoProposta = async (file: File, username: string) => {
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `proposta-${username}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `profiles/${fileName}`
+
+      const { error } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { 
+          upsert: true,
+          contentType: file.type
+        })
+
+      if (error) {
+        if (error.message.includes('bucket not found')) {
+          throw new Error("Bucket 'avatars' não encontrado. Crie-o no Supabase.")
+        }
+        throw error
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+
+      return publicUrl
+    } catch (error) {
+      console.error("Erro no upload da foto de proposta:", error)
+      throw error
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -234,8 +300,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     }
 
     setIsLoading(true)
-    let finalAvatarUrl = formData.avatar_url // Mantém a atual if editing
-    let finalFotoCampanhaUrl = formData.foto_campanha_url // Mantém a atual if editing
+    let finalAvatarUrl = selectedFile ? formData.avatar_url : (previewUrl ? formData.avatar_url : "")
+    let finalFotoCampanhaUrl = selectedCampanhaFile ? formData.foto_campanha_url : (previewCampanhaUrl ? formData.foto_campanha_url : "")
+    let finalFotoPropostaUrl = selectedPropostaFile ? formData.foto_proposta_url : (previewPropostaUrl ? formData.foto_proposta_url : "")
 
     try {
       if (selectedFile) {
@@ -260,6 +327,17 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         }
       }
 
+      if (selectedPropostaFile) {
+        try {
+          finalFotoPropostaUrl = await uploadFotoProposta(selectedPropostaFile, formData.username)
+        } catch (uploadPropostaErr: unknown) {
+          const msg = uploadPropostaErr instanceof Error ? uploadPropostaErr.message : "Erro desconhecido";
+          toast.error(`Erro no upload da foto de proposta: ${msg}`)
+          setIsLoading(false)
+          return
+        }
+      }
+
       const isEdit = !!usuario
       const endpoint = isEdit ? "/api/usuarios" : "/api/create-user"
       const method = isEdit ? "PUT" : "POST"
@@ -273,10 +351,11 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
             id: usuario.id, 
             avatar_url: finalAvatarUrl, 
             foto_campanha_url: finalFotoCampanhaUrl,
+            foto_proposta_url: finalFotoPropostaUrl,
             password: formData.senha || undefined,
             supervisor_nome: supervisorNome
           }
-        : { ...formData, avatar_url: finalAvatarUrl, foto_campanha_url: finalFotoCampanhaUrl, supervisor_nome: supervisorNome }
+        : { ...formData, avatar_url: finalAvatarUrl, foto_campanha_url: finalFotoCampanhaUrl, foto_proposta_url: finalFotoPropostaUrl, supervisor_nome: supervisorNome }
 
       const response = await fetch(endpoint, {
         method,
@@ -291,6 +370,15 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       }
 
       toast.success(isEdit ? "Usuário atualizado com sucesso!" : "Usuário criado com sucesso!")
+      
+      if (isEdit && usuario && currentUser && usuario.id === currentUser.id) {
+        try {
+          await refreshPerfil()
+        } catch (refreshErr) {
+          console.error("Erro ao atualizar perfil local:", refreshErr)
+        }
+      }
+
       if (!isEdit) {
         setFormData({
           nome_completo: "",
@@ -300,6 +388,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
           senha: "",
           avatar_url: "",
           foto_campanha_url: "",
+          foto_proposta_url: "",
           supervisor_id: ""
         })
       }
@@ -307,6 +396,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       setPreviewUrl(null)
       setSelectedCampanhaFile(null)
       setPreviewCampanhaUrl(null)
+      setSelectedPropostaFile(null)
+      setPreviewPropostaUrl(null)
       onClose()
     } catch (error: unknown) {
       console.error("Erro ao salvar usuário:", error)
@@ -551,6 +642,59 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                     type="button"
                     variant="outline"
                     onClick={() => document.getElementById('campanha-upload')?.click()}
+                    className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest"
+                  >
+                    Selecionar Foto
+                  </Button>
+                </div>
+
+                {/* Proposal Photo Section (FOTO PROPOSTA SEM FUNDO) */}
+                <div className="flex flex-col items-center w-full pt-8 border-t border-slate-100">
+                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4 block text-center w-full">Foto Proposta (PNG sem fundo)</Label>
+                  <div className="relative group mb-4">
+                    <div className="w-32 h-[93px] relative overflow-hidden rounded-2xl border-4 border-slate-50 shadow-xl ring-1 ring-slate-100 flex items-center justify-center bg-slate-50">
+                      {previewPropostaUrl ? (
+                        <Image 
+                          src={previewPropostaUrl} 
+                          alt="Foto Proposta" 
+                          fill 
+                          className="object-cover rounded-xl"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <Camera className="w-8 h-8 text-slate-300" />
+                      )}
+                    </div>
+                    
+                    {previewPropostaUrl ? (
+                      <button 
+                        type="button"
+                        onClick={removePropostaFile}
+                        className="absolute -top-1 -right-1 bg-rose-500 text-white p-1.5 rounded-full shadow-lg hover:bg-rose-600 transition-all z-10"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    ) : null}
+
+                    <label 
+                      htmlFor="proposta-upload"
+                      className="absolute bottom-0 right-0 bg-white border border-slate-200 p-2 rounded-lg shadow-lg cursor-pointer hover:bg-slate-50 transition-all hover:scale-110"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-slate-600" />
+                      <input 
+                        id="proposta-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handlePropostaFileChange}
+                      />
+                    </label>
+                  </div>
+                  
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById('proposta-upload')?.click()}
                     className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest"
                   >
                     Selecionar Foto

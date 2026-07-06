@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { nome_completo, username, senha, funcao, regime_contratacao, avatar_url, foto_campanha_url, supervisor_id, supervisor_nome } = body;
+    const { nome_completo, username, senha, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome } = body;
 
     if (!nome_completo || !username || !senha || !funcao || !regime_contratacao) {
       return NextResponse.json(
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
     const supabaseAdmin = createAdminClient();
     
-    // Sanitiza o username (remove espaços, converte para minúsculo)
+    // Sanitiza o username (remove espaços, converce para minúsculo)
     const sanitizedUsername = username.trim().toLowerCase().replace(/\s+/g, '.');
     const email = `${sanitizedUsername}@sharkconsig.com`;
 
@@ -28,6 +28,10 @@ export async function POST(request: Request) {
       ? ""
       : (foto_campanha_url || "");
 
+    const safeFotoPropostaUrl = foto_proposta_url?.startsWith('data:image')
+      ? ""
+      : (foto_proposta_url || "");
+
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password: senha,
@@ -39,6 +43,7 @@ export async function POST(request: Request) {
         regime_contratacao,
         avatar_url: safeAvatarUrl,
         foto_campanha_url: safeFotoCampanhaUrl,
+        foto_proposta_url: safeFotoPropostaUrl,
         supervisor_id: supervisor_id || null,
         supervisor_nome: supervisor_nome || null
       },

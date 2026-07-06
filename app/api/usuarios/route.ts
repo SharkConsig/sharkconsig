@@ -38,6 +38,7 @@ export async function GET(request: Request) {
         supervisor_nome: supervisorNome,
         avatar_url: metadata.avatar_url || `https://picsum.photos/seed/${metadata.username || user.id}/200/200`,
         foto_campanha_url: metadata.foto_campanha_url || '',
+        foto_proposta_url: metadata.foto_proposta_url || '',
         status: (metadata.status || 'ATIVO').toUpperCase()
       })
     }
@@ -75,6 +76,7 @@ export async function GET(request: Request) {
         supervisor_nome: supervisorNome,
         avatar_url: metadata.avatar_url || `https://picsum.photos/seed/${metadata.username || user.id}/200/200`,
         foto_campanha_url: metadata.foto_campanha_url || '',
+        foto_proposta_url: metadata.foto_proposta_url || '',
         status: (metadata.status || 'ATIVO').toUpperCase(),
         created_at: user.created_at,
         last_sign_in_at: user.last_sign_in_at
@@ -136,7 +138,7 @@ export async function PUT(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
     const body = await request.json()
-    const { id, email, password, nome_completo, username, funcao, regime_contratacao, avatar_url, foto_campanha_url, supervisor_id, supervisor_nome, status } = body
+    const { id, email, password, nome_completo, username, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome, status } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 })
@@ -169,6 +171,11 @@ export async function PUT(request: Request) {
       metadata.foto_campanha_url = foto_campanha_url?.startsWith('data:image') 
         ? "" 
         : foto_campanha_url;
+    }
+    if (foto_proposta_url !== undefined) {
+      metadata.foto_proposta_url = foto_proposta_url?.startsWith('data:image') 
+        ? "" 
+        : foto_proposta_url;
     }
 
     if (Object.keys(metadata).length > 0) {

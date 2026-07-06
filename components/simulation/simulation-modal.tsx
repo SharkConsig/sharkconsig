@@ -65,7 +65,7 @@ interface SimulationModalProps {
   onClose: () => void;
   client: ClientData | null;
   registrations: Registration[];
-  perfil: { role?: string; nome?: string; telefone?: string; } | null;
+  perfil: { role?: string; nome?: string; telefone?: string; foto_proposta_url?: string; } | null;
   activeRegIndex?: number;
   onProposalSaved?: () => void;
 }
@@ -118,6 +118,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
   const previewRef = useRef<HTMLDivElement>(null);
   const prevIsOpenRef = useRef(false);
+  const perfilInitializedRef = useRef(false);
 
   const isSupervisor = perfil?.role === "Supervisor" || perfil?.role === "Administrador" || perfil?.role === "Desenvolvedor";
 
@@ -209,55 +210,72 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
   // Pre-fill fields on mount or when client changes
   useEffect(() => {
-    const becameOpen = isOpen && !prevIsOpenRef.current;
-    prevIsOpenRef.current = isOpen;
+    if (isOpen) {
+      const becameOpen = !prevIsOpenRef.current;
+      prevIsOpenRef.current = true;
 
-    if (becameOpen) {
-      if (client) {
-        setNomeCliente(client.nome || "");
-        setCpfCliente(maskCPF(client.cpf));
+      if (becameOpen) {
+        if (client) {
+          setNomeCliente(client.nome || "");
+          setCpfCliente(maskCPF(client.cpf));
+        }
       }
-      if (perfil) {
+
+      if (perfil && !perfilInitializedRef.current) {
         setNomeConsultor(perfil.nome || "");
         setTelefoneConsultor(perfil.telefone || "");
+        setFotoCorretor(perfil.foto_proposta_url || "");
+        if (perfil.foto_proposta_url) {
+          setExibirFotoCorretor(true);
+        }
+        perfilInitializedRef.current = true;
+      } else if (!perfil && !perfilInitializedRef.current && becameOpen) {
+        setNomeConsultor("");
+        setTelefoneConsultor("");
+        setFotoCorretor("");
       }
 
       // Default pre-fill if existing loans exist
-      if (existingLoans.length > 0) {
-        const mapped = existingLoans.map((loan, idx) => {
-          const bankName = getContractTypeInfo(loan.tipo).bank || loan.banco || "";
-          const pVal = loan.parcela || 0;
-          const rVal = parseFloat(porcentagemReducao) || 13.78;
-          const calculatedNovaParcela = pVal * (1 - rVal / 100);
-          return {
-            id: loan.id || `loan-${idx}-${Math.random()}`,
-            bancoAtual: bankName,
-            parcelaAtual: pVal ? pVal.toString() : "",
-            prazoAtual: loan.prazo ? loan.prazo.toString() : "",
-            taxaAtual: loan.taxa ? loan.taxa.toString() : "1.5",
-            bancoDestino: bankName || "",
-            novaParcela: calculatedNovaParcela ? calculatedNovaParcela.toFixed(2) : "",
-            novoPrazo: loan.prazo ? loan.prazo.toString() : "",
+      if (becameOpen) {
+        if (existingLoans.length > 0) {
+          const mapped = existingLoans.map((loan, idx) => {
+            const bankName = getContractTypeInfo(loan.tipo).bank || loan.banco || "";
+            const pVal = loan.parcela || 0;
+            const rVal = parseFloat(porcentagemReducao) || 13.78;
+            const calculatedNovaParcela = pVal * (1 - rVal / 100);
+            return {
+              id: loan.id || `loan-${idx}-${Math.random()}`,
+              bancoAtual: bankName,
+              parcelaAtual: pVal ? pVal.toString() : "",
+              prazoAtual: loan.prazo ? loan.prazo.toString() : "",
+              taxaAtual: loan.taxa ? loan.taxa.toString() : "1.5",
+              bancoDestino: bankName || "",
+              novaParcela: calculatedNovaParcela ? calculatedNovaParcela.toFixed(2) : "",
+              novoPrazo: loan.prazo ? loan.prazo.toString() : "",
+              novaTaxa: ""
+            };
+          });
+          setContratos(mapped);
+        } else {
+          setContratos([{
+            id: `loan-default-${Math.random()}`,
+            bancoAtual: "",
+            parcelaAtual: "",
+            prazoAtual: "",
+            taxaAtual: "1.5",
+            bancoDestino: "",
+            novaParcela: "",
+            novoPrazo: "",
             novaTaxa: ""
-          };
-        });
-        setContratos(mapped);
-      } else {
-        setContratos([{
-          id: `loan-default-${Math.random()}`,
-          bancoAtual: "",
-          parcelaAtual: "",
-          prazoAtual: "",
-          taxaAtual: "1.5",
-          bancoDestino: "",
-          novaParcela: "",
-          novoPrazo: "",
-          novaTaxa: ""
-        }]);
-      }
+          }]);
+        }
 
-      // Reset step
-      setStep("model-select");
+        // Reset step
+        setStep("model-select");
+      }
+    } else {
+      prevIsOpenRef.current = false;
+      perfilInitializedRef.current = false;
     }
   }, [client, perfil, isOpen, activeRegIndex, existingLoans, porcentagemReducao]);
 
@@ -842,7 +860,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
             {/* Center side: Broker Photo */}
             {exibirFotoCorretor && fotoCorretor && (
-              <div className="absolute left-1/2 -translate-x-1/2 bottom-0 h-[145px] w-auto flex items-end pointer-events-none z-10">
+              <div className="absolute right-[240px] bottom-0 h-[145px] w-auto flex items-end pointer-events-none z-10">
                 <img 
                   src={fotoCorretor} 
                   alt="Corretor" 

@@ -17,6 +17,7 @@ interface Perfil {
   permissoes: any
   avatar_url?: string
   foto_campanha_url?: string
+  foto_proposta_url?: string
   supervisor_id?: string
   supervisor_nome?: string
   regime_contratacao?: string
@@ -95,6 +96,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser()
       if (currentUser) {
+        try {
+          const res = await fetch(`/api/usuarios?id=${currentUser.id}`)
+          if (res.ok) {
+            const freshUser = await res.json()
+            setPerfil({
+              id: freshUser.id,
+              email: freshUser.email || "",
+              nome: freshUser.nome || "Usuário",
+              username: freshUser.username,
+              role: freshUser.funcao || "Corretor",
+              status: "Ativo",
+              permissoes: {},
+              avatar_url: freshUser.avatar_url,
+              foto_campanha_url: freshUser.foto_campanha_url,
+              foto_proposta_url: freshUser.foto_proposta_url,
+              supervisor_id: freshUser.supervisor_id,
+              supervisor_nome: freshUser.supervisor_nome,
+              regime_contratacao: freshUser.regime_contratacao || ""
+            })
+            return
+          }
+        } catch (apiErr) {
+          console.error("Erro ao carregar dados do usuário da API:", apiErr)
+        }
+
         const metadata = currentUser.user_metadata
         setPerfil({
           id: currentUser.id,
@@ -106,6 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           permissoes: {},
           avatar_url: metadata.avatar_url,
           foto_campanha_url: metadata.foto_campanha_url,
+          foto_proposta_url: metadata.foto_proposta_url,
           supervisor_id: metadata.supervisor_id,
           supervisor_nome: metadata.supervisor_nome,
           regime_contratacao: metadata.regime_contratacao || ""
@@ -134,10 +161,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             permissoes: {},
             avatar_url: metadata.avatar_url,
             foto_campanha_url: metadata.foto_campanha_url,
+            foto_proposta_url: metadata.foto_proposta_url,
             supervisor_id: metadata.supervisor_id,
             supervisor_nome: metadata.supervisor_nome,
             regime_contratacao: metadata.regime_contratacao || ""
           })
+          // Busca dados atualizados do servidor para evitar cache local obsoleto do metadata do auth
+          refreshPerfil()
         } else {
           setPerfil(null)
         }
