@@ -88,6 +88,7 @@ const TABLE_MAP: Record<string, string> = {
   'governo_pi': 'base_consulta_governo_pi',
   'governo_ma': 'base_consulta_governo_ma',
   'governo_rr': 'base_consulta_governo_rr',
+  'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
 };
 
 const TABLE_COLUMNS: Record<string, string[]> = {
@@ -121,6 +122,10 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   'base_consulta_governo_rr': [
     'cpf', 'nome', 'data_de_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
     'margem_emprestimo', 'margem_cartao'
+  ],
+  'base_consulta_prefeitura_santo_andre': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'matricula', 'orgao', 'vinculo', 'margem_bruta_cartao', 'margem_liquida_cartao'
   ]
 };
 
@@ -131,6 +136,7 @@ const CONVENIOS = [
   { id: 'governo_pi', label: 'GOVERNO PIAUÍ' },
   { id: 'governo_ma', label: 'GOVERNO MARANHÃO' },
   { id: 'governo_rr', label: 'GOVERNO RORAIMA' },
+  { id: 'prefeitura_santo_andre', label: 'PREFEITURA SANTO ANDRÉ' },
 ];
 
 export default function NewCampaignPage() {
@@ -190,6 +196,11 @@ export default function NewCampaignPage() {
       } else if (activeConvenio === 'governo_pi') {
         orgaos = ['GOVERNO PIAUI'];
         situacoes = ['APOSENTADO', 'PENSIONISTA', 'ESTAVEL', 'EFETIVO', 'NAO INFORMADO'];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'prefeitura_santo_andre') {
+        orgaos = [];
+        situacoes = [];
         regimes = [];
         ufs = [];
       } else if (activeConvenio === 'governo_ma') {
@@ -257,6 +268,20 @@ export default function NewCampaignPage() {
   }
 
   const getCardNumbers = useCallback(() => {
+    if (activeConvenio === 'prefeitura_santo_andre') {
+      return {
+        idade: 1,
+        orgao: 0,
+        situacao: 0,
+        regime: 0,
+        uf: 0,
+        margem: 0,
+        saldo: 0,
+        loans: 0,
+        cards: 2,
+      };
+    }
+
     if (activeConvenio === 'governo_rr') {
       return {
         idade: 1,
@@ -290,7 +315,7 @@ export default function NewCampaignPage() {
       idade: currentNumber++,
     };
 
-    if (activeConvenio !== 'governo_pi') {
+    if (activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre') {
       numbers['orgao'] = currentNumber++;
       numbers['situacao'] = currentNumber++;
       
@@ -302,7 +327,7 @@ export default function NewCampaignPage() {
 
     numbers['margem'] = currentNumber++;
 
-    if (activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp') {
+    if (activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp') {
       numbers['saldo'] = currentNumber++;
       numbers['loans'] = currentNumber++;
     }
@@ -493,6 +518,10 @@ export default function NewCampaignPage() {
         q = q.not("margem_emprestimo", "is", null);
         if (mMinNum !== null) q = q.gte("margem_emprestimo", mMinNum);
         if (mMaxNum !== null) q = q.lte("margem_emprestimo", mMaxNum);
+      } else if (cols.includes('margem_bruta_cartao')) {
+        q = q.not("margem_bruta_cartao", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_bruta_cartao", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_bruta_cartao", mMaxNum);
       }
     }
 
@@ -606,11 +635,20 @@ export default function NewCampaignPage() {
       }
     } else {
       const cMMin = parseSafeNumber(f.cardMargemMin);
-      if (cMMin !== null) {
+      const cMMax = parseSafeNumber(f.cardMargemMax);
+      if (cMMin !== null || cMMax !== null) {
         if (cols.includes('liquida_5')) {
-          q = q.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+          q = q.not('liquida_5', 'is', null);
+          if (cMMin !== null) q = q.gte('liquida_5', cMMin);
+          if (cMMax !== null) q = q.lte('liquida_5', cMMax);
         } else if (cols.includes('margem_cartao_consignado')) {
-          q = q.not('margem_cartao_consignado', 'is', null).gte('margem_cartao_consignado', cMMin);
+          q = q.not('margem_cartao_consignado', 'is', null);
+          if (cMMin !== null) q = q.gte('margem_cartao_consignado', cMMin);
+          if (cMMax !== null) q = q.lte('margem_cartao_consignado', cMMax);
+        } else if (cols.includes('margem_liquida_cartao')) {
+          q = q.not('margem_liquida_cartao', 'is', null);
+          if (cMMin !== null) q = q.gte('margem_liquida_cartao', cMMin);
+          if (cMMax !== null) q = q.lte('margem_liquida_cartao', cMMax);
         }
       }
       const cBMin = parseSafeNumber(f.cardBeneficioMin);
@@ -1039,6 +1077,7 @@ export default function NewCampaignPage() {
           {filterSections.map((section) => {
             if (activeConvenio === 'governo_rr') return null;
             if (activeConvenio === 'governo_pi') return null;
+            if (activeConvenio === 'prefeitura_santo_andre') return null;
             if (section.id === "4" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             if (section.id === "3" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             if (activeConvenio === 'governo_ma' && (section.id === "3" || section.id === "4")) return null;
@@ -1149,81 +1188,83 @@ export default function NewCampaignPage() {
                       );
                     })}
                   </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+                </CardContent>
+              </Card>
+            );
+          })}
 
           {/* 6. MARGEM */}
-          <Card className={cn(
-            "card-shadow transition-all duration-300",
-            (filters.margemMin || filters.margemMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
-          )}>
-            <CardContent className="p-6 lg:p-8 space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                    (filters.margemMin || filters.margemMax) ? "bg-blue-100" : "bg-slate-50"
-                  )}>
-                    <Wallet className={cn(
-                      "w-4 h-4 transition-colors",
+          {activeConvenio !== 'prefeitura_santo_andre' && (
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.margemMin || filters.margemMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      (filters.margemMin || filters.margemMax) ? "bg-blue-100" : "bg-slate-50"
+                    )}>
+                      <Wallet className={cn(
+                        "w-4 h-4 transition-colors",
+                        (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
+                      )} />
+                    </div>
+                    <h3 className={cn(
+                      "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
                       (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
-                    )} />
+                    )}>
+                      {activeConvenio === 'governo_pi' 
+                        ? `${getCardNumbers()['margem']}. MARGEM DISPONÍVEL EMPRÉSTIMO` 
+                        : activeConvenio === 'prefeitura_sp'
+                          ? `${getCardNumbers()['margem']}. LÍQUIDA CONSIGNADO`
+                          : activeConvenio === 'governo_rr'
+                            ? `${getCardNumbers()['margem']}. MARGEM EMPRÉSTIMO`
+                            : `${getCardNumbers()['margem']}. MARGEM 35%`}
+                    </h3>
                   </div>
-                  <h3 className={cn(
-                    "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
-                    (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
-                  )}>
-                    {activeConvenio === 'governo_pi' 
-                      ? `${getCardNumbers()['margem']}. MARGEM DISPONÍVEL EMPRÉSTIMO` 
-                      : activeConvenio === 'prefeitura_sp'
-                        ? `${getCardNumbers()['margem']}. LÍQUIDA CONSIGNADO`
-                        : activeConvenio === 'governo_rr'
-                          ? `${getCardNumbers()['margem']}. MARGEM EMPRÉSTIMO`
-                          : `${getCardNumbers()['margem']}. MARGEM 35%`}
-                  </h3>
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, margemMin: "", margemMax: "" }))}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors flex items-center gap-1.5"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                    Limpar
+                  </button>
                 </div>
-                <button 
-                  onClick={() => setFilters(prev => ({ ...prev, margemMin: "", margemMax: "" }))}
-                  className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors flex items-center gap-1.5"
-                >
-                  <X className="w-2.5 h-2.5" />
-                  Limpar
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Mínimo</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                    <Input 
-                      className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                      placeholder="0,00" 
-                      inputMode="decimal"
-                      value={filters.margemMin}
-                      onChange={(e) => setFilters(prev => ({ ...prev, margemMin: e.target.value }))}
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Mínimo</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="0,00" 
+                        inputMode="decimal"
+                        value={filters.margemMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, margemMin: e.target.value }))}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Máximo</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                    <Input 
-                      className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                      placeholder="0,00" 
-                      inputMode="decimal"
-                      value={filters.margemMax}
-                      onChange={(e) => setFilters(prev => ({ ...prev, margemMax: e.target.value }))}
-                    />
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Máximo</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="0,00" 
+                        inputMode="decimal"
+                        value={filters.margemMax}
+                        onChange={(e) => setFilters(prev => ({ ...prev, margemMax: e.target.value }))}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && (
             /* 7. SALDO 70% */
             <Card className={cn(
               "card-shadow transition-all duration-300",
@@ -1274,7 +1315,7 @@ export default function NewCampaignPage() {
 
 
           {/* 8. EMPRÉSTIMOS */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1404,7 +1445,7 @@ export default function NewCampaignPage() {
           )}
 
           {/* 9. CARTÕES */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' ? (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' ? (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1743,31 +1784,31 @@ export default function NewCampaignPage() {
                 </div>
               </CardContent>
             </Card>
-          ) : (activeConvenio === 'governo_pi' || activeConvenio === 'governo_ma') ? (
-            /* MARGEM DOS CARTÕES (For Governo Piauí and Governo Maranhão) */
+          ) : (activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_santo_andre' || activeConvenio === 'governo_ma') ? (
+            /* MARGEM DOS CARTÕES (For Governo Piauí, Prefeitura Santo André, and Governo Maranhão) */
             <Card className={cn(
               "card-shadow transition-all duration-300",
-              (filters.cardMargemMin || filters.cardBeneficioMin) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+              (filters.cardMargemMin || filters.cardMargemMax || filters.cardBeneficioMin) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
             )}>
               <CardContent className="p-6 lg:p-8 space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={cn(
                       "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                      (filters.cardMargemMin || filters.cardBeneficioMin) ? "bg-blue-100" : "bg-slate-50"
+                      (filters.cardMargemMin || filters.cardMargemMax || filters.cardBeneficioMin) ? "bg-blue-100" : "bg-slate-50"
                     )}>
                       <CreditCard className={cn(
                         "w-4 h-4 transition-colors",
-                        (filters.cardMargemMin || filters.cardBeneficioMin) ? "text-blue-600" : "text-slate-400"
+                        (filters.cardMargemMin || filters.cardMargemMax || filters.cardBeneficioMin) ? "text-blue-600" : "text-slate-400"
                       )} />
                     </div>
                     <h3 className={cn(
                       "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
-                      (filters.cardMargemMin || filters.cardBeneficioMin) ? "text-blue-600" : "text-slate-400"
+                      (filters.cardMargemMin || filters.cardMargemMax || filters.cardBeneficioMin) ? "text-blue-600" : "text-slate-400"
                     )}>{getCardNumbers()['cards']}. MARGEM DOS CARTÕES</h3>
                   </div>
                   <button 
-                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "" }))}
+                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardMargemMax: "", cardBeneficioMin: "" }))}
                     className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
                   >
                     Limpar
@@ -1775,32 +1816,71 @@ export default function NewCampaignPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO CONSIGNADO (MÍNIMA)</label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                      <Input 
-                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                        placeholder="Ex: 100,00" 
-                        inputMode="decimal"
-                        value={filters.cardMargemMin}
-                        onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO BENEFÍCIO (MÍNIMA)</label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                      <Input 
-                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                        placeholder="Ex: 100,00" 
-                        inputMode="decimal"
-                        value={filters.cardBeneficioMin}
-                        onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
-                      />
-                    </div>
-                  </div>
+                  {activeConvenio === 'prefeitura_santo_andre' ? (
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                          MARGEM LÍQUIDA CARTÃO (MÍNIMA)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardMargemMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                          MARGEM LÍQUIDA CARTÃO (MÁXIMA)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardMargemMax}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMax: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                          MARGEM CARTÃO CONSIGNADO (MÍNIMA)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardMargemMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO BENEFÍCIO (MÍNIMA)</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardBeneficioMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>

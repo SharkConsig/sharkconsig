@@ -24,6 +24,7 @@ import {
 import { getContractTypeInfo } from "@/lib/contratos-mapping";
 import { toPng, toJpeg } from "html-to-image";
 import { jsPDF } from "jspdf";
+import { supabase } from "@/lib/supabase";
 
 interface Contract {
   id?: string;
@@ -66,6 +67,7 @@ interface SimulationModalProps {
   registrations: Registration[];
   perfil: { role?: string; nome?: string; telefone?: string; } | null;
   activeRegIndex?: number;
+  onProposalSaved?: () => void;
 }
 
 interface SimContract {
@@ -80,7 +82,7 @@ interface SimContract {
   novaTaxa: string;
 }
 
-export function SimulationModal({ isOpen, onClose, client, registrations, perfil, activeRegIndex }: SimulationModalProps) {
+export function SimulationModal({ isOpen, onClose, client, registrations, perfil, activeRegIndex, onProposalSaved }: SimulationModalProps) {
   const [step, setStep] = useState<"model-select" | "form" | "preview">("model-select");
   const [model, setModel] = useState<"reducao" | "outros">("reducao");
 
@@ -98,6 +100,11 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const [margemCartaoConsignadoVal, setMargemCartaoConsignadoVal] = useState("");
   const [margemCartaoBeneficioVal, setMargemCartaoBeneficioVal] = useState("");
 
+  // Broker Photo Upload states
+  const [fotoCorretor, setFotoCorretor] = useState<string>("");
+  const [exibirFotoCorretor, setExibirFotoCorretor] = useState<boolean>(true);
+  const [dragActive, setDragActive] = useState<boolean>(false);
+
 
 
   // Multi-contract state
@@ -110,6 +117,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const [isZoomed, setIsZoomed] = useState(false);
 
   const previewRef = useRef<HTMLDivElement>(null);
+  const prevIsOpenRef = useRef(false);
 
   const isSupervisor = perfil?.role === "Supervisor" || perfil?.role === "Administrador" || perfil?.role === "Desenvolvedor";
 
@@ -201,52 +209,57 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
   // Pre-fill fields on mount or when client changes
   useEffect(() => {
-    if (client) {
-      setNomeCliente(client.nome || "");
-      setCpfCliente(maskCPF(client.cpf));
-    }
-    if (perfil) {
-      setNomeConsultor(perfil.nome || "");
-      setTelefoneConsultor(perfil.telefone || "");
-    }
+    const becameOpen = isOpen && !prevIsOpenRef.current;
+    prevIsOpenRef.current = isOpen;
 
-    // Default pre-fill if existing loans exist
-    if (existingLoans.length > 0) {
-      const mapped = existingLoans.map((loan, idx) => {
-        const bankName = getContractTypeInfo(loan.tipo).bank || loan.banco || "";
-        const pVal = loan.parcela || 0;
-        const rVal = parseFloat(porcentagemReducao) || 13.78;
-        const calculatedNovaParcela = pVal * (1 - rVal / 100);
-        return {
-          id: loan.id || `loan-${idx}-${Math.random()}`,
-          bancoAtual: bankName,
-          parcelaAtual: pVal ? pVal.toString() : "",
-          prazoAtual: loan.prazo ? loan.prazo.toString() : "",
-          taxaAtual: loan.taxa ? loan.taxa.toString() : "1.5",
-          bancoDestino: bankName || "",
-          novaParcela: calculatedNovaParcela ? calculatedNovaParcela.toFixed(2) : "",
-          novoPrazo: loan.prazo ? loan.prazo.toString() : "",
+    if (becameOpen) {
+      if (client) {
+        setNomeCliente(client.nome || "");
+        setCpfCliente(maskCPF(client.cpf));
+      }
+      if (perfil) {
+        setNomeConsultor(perfil.nome || "");
+        setTelefoneConsultor(perfil.telefone || "");
+      }
+
+      // Default pre-fill if existing loans exist
+      if (existingLoans.length > 0) {
+        const mapped = existingLoans.map((loan, idx) => {
+          const bankName = getContractTypeInfo(loan.tipo).bank || loan.banco || "";
+          const pVal = loan.parcela || 0;
+          const rVal = parseFloat(porcentagemReducao) || 13.78;
+          const calculatedNovaParcela = pVal * (1 - rVal / 100);
+          return {
+            id: loan.id || `loan-${idx}-${Math.random()}`,
+            bancoAtual: bankName,
+            parcelaAtual: pVal ? pVal.toString() : "",
+            prazoAtual: loan.prazo ? loan.prazo.toString() : "",
+            taxaAtual: loan.taxa ? loan.taxa.toString() : "1.5",
+            bancoDestino: bankName || "",
+            novaParcela: calculatedNovaParcela ? calculatedNovaParcela.toFixed(2) : "",
+            novoPrazo: loan.prazo ? loan.prazo.toString() : "",
+            novaTaxa: ""
+          };
+        });
+        setContratos(mapped);
+      } else {
+        setContratos([{
+          id: `loan-default-${Math.random()}`,
+          bancoAtual: "",
+          parcelaAtual: "",
+          prazoAtual: "",
+          taxaAtual: "1.5",
+          bancoDestino: "",
+          novaParcela: "",
+          novoPrazo: "",
           novaTaxa: ""
-        };
-      });
-      setContratos(mapped);
-    } else {
-      setContratos([{
-        id: `loan-default-${Math.random()}`,
-        bancoAtual: "",
-        parcelaAtual: "",
-        prazoAtual: "",
-        taxaAtual: "1.5",
-        bancoDestino: "",
-        novaParcela: "",
-        novoPrazo: "",
-        novaTaxa: ""
-      }]);
-    }
+        }]);
+      }
 
-    // Reset step
-    setStep("model-select");
-  }, [client, perfil, isOpen, activeRegIndex]);
+      // Reset step
+      setStep("model-select");
+    }
+  }, [client, perfil, isOpen, activeRegIndex, existingLoans, porcentagemReducao]);
 
   // Recalculate new installment values when reduction percentage changes
   useEffect(() => {
@@ -266,6 +279,45 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       );
     }
   }, [porcentagemReducao]);
+
+  // Broker photo file and drag handlers
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const processFile = (file: File) => {
+    if (file && file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setFotoCorretor(event.target.result as string);
+          setExibirFotoCorretor(true);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      processFile(e.target.files[0]);
+    }
+  };
 
   const updateContrato = (index: number, field: keyof SimContract, value: string) => {
     setContratos(prev => {
@@ -361,6 +413,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       await new Promise((resolve) => setTimeout(resolve, 350));
 
       const element = previewRef.current;
+      const roundedHeight = Math.round(element.offsetHeight || element.getBoundingClientRect().height);
       
       // Configure high-quality options for html-to-image
       const options = {
@@ -371,14 +424,18 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           transform: 'scale(1)',
           transformOrigin: 'top left',
           width: '794px',
-          height: '1123px'
+          height: `${roundedHeight}px`
         }
       };
+
+      let finalDataUrl = "";
 
       if (format === "png" || format === "jpg") {
         const dataUrl = format === "png" 
           ? await toPng(element, options) 
           : await toJpeg(element, options);
+
+        finalDataUrl = dataUrl;
 
         const link = document.createElement("a");
         const safeName = (nomeCliente || "Cliente").trim().replace(/\s+/g, "_");
@@ -387,13 +444,60 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         link.click();
       } else if (format === "pdf") {
         const dataUrl = await toPng(element, options);
-        const pdf = new jsPDF("p", "mm", "a4");
+        const pdfHeight = Math.round((roundedHeight * 210) / 794);
+        const pdf = new jsPDF("p", "mm", [210, pdfHeight]);
         
-        // A4 is 210mm x 297mm
-        pdf.addImage(dataUrl, "PNG", 0, 0, 210, 297, undefined, 'FAST');
+        pdf.addImage(dataUrl, "PNG", 0, 0, 210, pdfHeight, undefined, 'FAST');
+
+        finalDataUrl = pdf.output("datauristring");
+
         const safeName = (nomeCliente || "Cliente").trim().replace(/\s+/g, "_");
         pdf.save(`proposta_reducao_${safeName}.pdf`);
       }
+
+      // Save proposal history to Supabase table
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const activeUser = authData?.user;
+        
+        const cleanCpf = (client?.cpf || cpfCliente || "").replace(/\D/g, "");
+        const contractsConsidered = contratos;
+        
+        // Find excluded contracts
+        const contractsExcluded = existingLoans.filter(loan => 
+          !contratos.some(sim => sim.id === loan.id || sim.bancoAtual === loan.banco)
+        );
+
+        const currentTotal = contratos.reduce((acc, c) => acc + (parseFloat(c.parcelaAtual) || 0), 0);
+        const newTotal = contratos.reduce((acc, c) => acc + (parseFloat(c.novaParcela) || 0), 0);
+
+        const { error: saveErr } = await supabase
+          .from("historico_proposta_comercial")
+          .insert({
+            cliente_cpf: cleanCpf,
+            cliente_nome: nomeCliente || client?.nome || "",
+            user_id: activeUser?.id || null,
+            user_nome: nomeConsultor || perfil?.nome || "",
+            user_email: activeUser?.email || perfil?.email || "",
+            telefone_consultor: telefoneConsultor,
+            contratos_considerados: contractsConsidered,
+            contratos_excluidos: contractsExcluded,
+            percentual_reducao: parseFloat(porcentagemReducao) || 13.78,
+            total_parcela_atual: currentTotal,
+            total_parcela_nova: newTotal,
+            arquivo_url: finalDataUrl,
+            tipo_arquivo: format.toUpperCase()
+          });
+
+        if (saveErr) {
+          console.error("Erro ao salvar histórico de proposta:", saveErr);
+        } else {
+          onProposalSaved?.();
+        }
+      } catch (dbErr) {
+        console.error("Erro ao processar salvamento da proposta no banco:", dbErr);
+      }
+
     } catch (err) {
       console.error("Erro ao exportar arquivo:", err);
     } finally {
@@ -440,6 +544,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
     const hasMargemCC = margemCartaoConsignadoVal !== "" && parseFloat(margemCartaoConsignadoVal) > 0;
     const hasMargemCB = margemCartaoBeneficioVal !== "" && parseFloat(margemCartaoBeneficioVal) > 0;
 
+    const numPages = contratos.length >= 4 ? (1 + (contratos.length - 3) * 0.15) : 1;
+
     const corretorEmail = (() => {
       if (!nomeConsultor) return "corretor@acertofacil.com.br";
       const cleanName = nomeConsultor
@@ -450,11 +556,262 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       return `${cleanName}@acertofacil.com.br`;
     })();
 
+    // Spacing configuration for normal single-page template (up to 3 contracts)
+    const outerPadding = "pt-10 px-10 pb-20";
+    const mainSpacing = "space-y-6";
+    const headerPadding = "py-3";
+    const bannerPadding = "p-5";
+    const cardPadding = "py-3 px-5";
+    const cardGap = "gap-6";
+    const cardMinHeight = "min-h-[74px]";
+    const cardBorderPadding = "pt-1.5 border-t border-slate-100 mt-1.5";
+    const tableSectionPt = "pt-2";
+    const tableCellPadding = "p-2.5";
+    const tableHeaderHeight = "py-2";
+    const tableFooterPadding = "py-2 px-5";
+    const tableDestPadding = "py-3.5 px-5";
+    const footerSpacing = "pt-4 mt-8";
+
+    if (false) {
+      // Multi-page template rendering (4 or more contracts)
+      return (
+        <div className="w-[794px] h-[2246px] flex flex-col justify-between bg-white text-slate-900 font-sans text-left">
+          {/* PAGE 1: Intro, Highlights, and Table 1 (Current Installments) */}
+          <div className="w-[794px] h-[1123px] min-h-[1123px] flex flex-col justify-between bg-white pt-10 px-10 pb-16 relative overflow-hidden">
+            <div className="space-y-6">
+              {/* Header section with brand/logo and vertical line divider */}
+              <div className="flex items-center justify-center gap-4 py-3 border-b border-slate-100">
+                <div className="h-10 w-44 relative flex items-center justify-center">
+                  <img 
+                    src="/logo.png" 
+                    alt="Logo ACERTO" 
+                    className="h-10 object-contain w-full" 
+                    crossOrigin="anonymous" 
+                  />
+                </div>
+                <span className="text-slate-300 text-3xl font-light">|</span>
+                <div className="flex flex-col text-left">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">Formalização de</span>
+                  <span className="text-[26px] font-black text-[#162546] tracking-tight leading-tight uppercase">Proposta</span>
+                </div>
+              </div>
+
+              {/* Banner container with client information on left and broker on right */}
+              <div className="bg-[#162546] rounded-2xl p-5 text-white flex justify-between items-center shadow-sm">
+                {/* Left side: Client profile */}
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-full bg-[#F5B800]/20 flex items-center justify-center text-[#F5B800] shrink-0 border border-[#F5B800]/30 shadow-inner">
+                    <User className="w-5.5 h-5.5 fill-[#F5B800]/10" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <p className="text-[12px] font-black uppercase tracking-wide text-white">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
+                    <p className="text-xs text-slate-300 font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
+                  </div>
+                </div>
+
+                {/* Right side: Corretor info */}
+                <div className="flex flex-col text-right items-end gap-1.5 border-l border-slate-700/50 pl-5">
+                  <p className="text-xs font-black uppercase text-[#F5B800] tracking-wider">{nomeConsultor || "NOME DO CORRETOR"}</p>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
+                    <Mail className="w-3.5 h-3.5 text-[#F5B800] shrink-0" />
+                    <span>{corretorEmail}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
+                    <Phone className="w-3.5 h-3.5 text-[#F5B800] shrink-0" />
+                    <span>{telefoneConsultor || "(48) 99656-5896"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cards for Financial Highlights: Total Liberado vs Total Reduzido */}
+              <div className="grid grid-cols-2 gap-6 pt-1">
+                {/* Left card: Total Valor Liberado */}
+                <div className="border border-slate-200 rounded-2xl py-3 px-5 bg-white flex flex-col justify-between shadow-sm min-h-[74px]">
+                  <div className="text-left space-y-0.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Valor Liberado</p>
+                    <div className="flex items-center gap-2 py-0.5 justify-start">
+                      <div className="w-7 h-7 rounded-full bg-[#F5B800]/15 flex items-center justify-center text-[#F5B800] text-sm font-black border border-[#F5B800]/30 shadow-sm shrink-0">
+                        $
+                      </div>
+                      <p className="text-[26px] font-black text-[#00D97E] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-0.5 text-left pt-1.5 border-t border-slate-100 mt-1.5">
+                    {hasMargemPrincipal && (
+                      <p className="text-[10px] text-slate-400 font-normal">Margem*: <span className="text-slate-400 font-normal">{formatBRL(margemPrincipalVal)}</span></p>
+                    )}
+                    {hasMargemCC && (
+                      <p className="text-[10px] text-slate-400 font-normal">Margem CC*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
+                    )}
+                    {hasMargemCB && (
+                      <p className="text-[10px] text-slate-400 font-normal">Margem CB*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
+                    )}
+                    {showBancosLine && (
+                      <p className="text-[9px] text-slate-400 italic font-normal mt-0.5">
+                        {destBanksText}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right card: Valor Total Reduzido ao Mês */}
+                <div className="bg-[#F5B800] rounded-2xl py-3 px-5 flex flex-col justify-between text-[#162546] shadow-sm min-h-[74px]">
+                  <div className="text-left space-y-0.5">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#162546]/80">Valor Total Reduzido ao Mês</p>
+                    <div className="flex items-center gap-2 py-0.5 justify-start">
+                      <TrendingDown className="w-7 h-7 text-[#162546] shrink-0" />
+                      <p className="text-[26px] font-black tracking-tight text-[#162546]">{formatBRL(economiaMensal || 244.19)}</p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] font-normal text-[#162546]/60 text-left pt-1.5 border-t border-[#162546]/10 mt-1.5">
+                    Economia após a finalização da estratégia financeira.
+                  </p>
+                </div>
+              </div>
+
+              {/* Table Section: Current Installments list */}
+              <div className="space-y-0 pt-2">
+                <div className="bg-[#162546] text-white text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
+                  PARCELAS ATUAIS
+                </div>
+                <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm">
+                  <table className="w-full text-left border-collapse table-fixed">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-50/50">
+                        <th className="p-2.5 pl-5 text-left w-[40%]">BANCO ATUAL</th>
+                        <th className="p-2.5 text-left w-[30%]">PARCELA ATUAL</th>
+                        <th className="p-2.5 text-left w-[15%]">PRAZO</th>
+                        {showTaxa && (
+                          <th className="p-2.5 text-left w-[15%]">TAXA ATUAL</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[11px]">
+                      {contratos.map((c, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/30">
+                          <td className="p-2.5 pl-5 font-bold text-slate-800 uppercase truncate">{c.bancoAtual || "NÃO INFORMADO"}</td>
+                          <td className="p-2.5 font-semibold text-slate-700">{formatBRL(c.parcelaAtual)}</td>
+                          <td className="p-2.5 font-bold text-[#162546]">{c.prazoAtual ? `${c.prazoAtual}X` : "-"}</td>
+                          {showTaxa && (
+                            <td className="p-2.5 font-semibold text-slate-600">{c.taxaAtual ? `${parseFloat(c.taxaAtual).toFixed(2)}%` : "-"}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="bg-[#162546] text-white py-2 px-5 text-center font-bold text-xs uppercase tracking-wider">
+                    Parcela total: {formatBRL(totalParcelaAtual)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Page 1 Footer */}
+            <div className="border-t border-slate-100 pt-4 flex justify-between items-start gap-6 mt-auto">
+              <div className="flex-1 text-[7px] text-slate-400 font-bold leading-relaxed space-y-0.5 text-left uppercase tracking-tight">
+                <p>* Cálculos de redução de parcela pela portabilidade sofrem alterações diárias, a depender do saldo devedor.</p>
+                <p>* Estratégia de redução leva em consideração a taxa de juros confirmada pelo cliente.</p>
+                <p>* A taxa de juros final do contrato e a redução real do valor da parcela poderão sobre oscilações a critério das instituições bancárias.</p>
+              </div>
+              <div className="shrink-0 flex items-center justify-center border border-slate-200 px-3 py-1.5 rounded bg-slate-50 font-black text-[9px] text-slate-700 tracking-wider">
+                PÁGINA 1/2
+              </div>
+            </div>
+          </div>
+
+          {/* PAGE 2: Table 2 (Future Installments) and Final Verification Disclaimer */}
+          <div className="w-[794px] h-[1123px] min-h-[1123px] flex flex-col justify-between bg-white pt-10 px-10 pb-16 relative overflow-hidden border-t border-slate-100">
+            <div className="space-y-6">
+              {/* Header section with brand/logo and vertical line divider */}
+              <div className="flex items-center justify-center gap-4 py-3 border-b border-slate-100">
+                <div className="h-10 w-44 relative flex items-center justify-center">
+                  <img 
+                    src="/logo.png" 
+                    alt="Logo ACERTO" 
+                    className="h-10 object-contain w-full" 
+                    crossOrigin="anonymous" 
+                  />
+                </div>
+                <span className="text-slate-300 text-3xl font-light">|</span>
+                <div className="flex flex-col text-left">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">Formalização de</span>
+                  <span className="text-[26px] font-black text-[#162546] tracking-tight leading-tight uppercase">Proposta</span>
+                </div>
+              </div>
+
+              {/* Table Section: Future Strategy Installments list */}
+              <div className="space-y-0 pt-2 flex-1">
+                <div className="bg-[#F5B800] text-[#162546] text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
+                  PARCELAS APÓS PORTABILIDADE
+                </div>
+                <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm mb-4">
+                  <table className="w-full text-left border-collapse table-fixed">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-50/50">
+                        {showBancoDestino && (
+                          <th className="p-2.5 pl-5 text-left w-[40%]">BANCO</th>
+                        )}
+                        <th className={`p-2.5 ${!showBancoDestino ? 'pl-5 w-[60%]' : 'w-[30%]'} text-left`}>PARCELA</th>
+                        <th className="p-2.5 text-left w-[15%]">PRAZO</th>
+                        {showNovaTaxa && (
+                          <th className="p-2.5 text-left w-[15%]">TAXA</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[11px]">
+                      {contratos.map((c, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/30">
+                          {showBancoDestino && (
+                            <td className="p-2.5 pl-5 font-bold text-slate-800 uppercase truncate">
+                              {c.bancoDestino || "REDUÇÃO GARANTIDA"}
+                            </td>
+                          )}
+                          <td className={`p-2.5 ${!showBancoDestino ? 'pl-5' : ''} font-bold text-slate-800`}>{formatBRL(c.novaParcela)}</td>
+                          <td className="p-2.5 font-bold text-[#162546]">{c.novoPrazo || c.prazoAtual ? `${c.novoPrazo || c.prazoAtual}X` : "-"}</td>
+                          {showNovaTaxa && (
+                            <td className="p-2.5 font-semibold text-slate-600">{c.novaTaxa ? `${parseFloat(c.novaTaxa).toFixed(2)}%` : "-"}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="bg-[#F5B800] text-[#162546] py-2 px-5 text-center font-bold text-xs uppercase tracking-wider">
+                    Parcela total: {formatBRL(totalNovaParcela)}
+                  </div>
+                  <div className="bg-[#162546] text-white py-3.5 px-5 text-left font-bold flex flex-col gap-0.5 justify-center">
+                    <span className="text-slate-300 font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
+                    <span className="text-base font-black text-white leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Page 2 Footer Disclaimer & Verification */}
+            <div className="border-t border-slate-100 pt-4 flex justify-between items-start gap-6 mt-auto">
+              <div className="flex-1 text-[7px] text-slate-400 font-bold leading-relaxed space-y-0.5 text-left uppercase tracking-tight">
+                <p>* As taxas de juros ofertadas pelas instituições bancárias levam em consideração as demais linhas de crédito disponívels ao cliente.</p>
+                <p>* Essa proposta é válida por 48 horas após o envio deste documento.</p>
+                <p>* CB é Cartão Benefício e CC é Cartão Consignado.</p>
+                <p>* Está ciente o beneficiário que a tomada de outro crédito fora dessa proposta ou ficar devedor em algum banco, afeta diretamente a possibilidade de entrega da oferta, taxas e prazo.</p>
+              </div>
+              <div className="shrink-0 flex items-center justify-center border border-slate-200 px-3 py-1.5 rounded bg-slate-50 font-black text-[9px] text-slate-700 tracking-wider">
+                acertofacilpromotora.com.br | PÁGINA 2/2
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Default return for single page template
     return (
-      <div className="w-full h-full flex flex-col justify-between text-left relative bg-white p-10 font-sans text-slate-900 shrink-0">
-        <div className="space-y-6">
+      <div 
+        className={`w-full flex flex-col justify-start text-left relative bg-white ${outerPadding} font-sans text-slate-900 shrink-0`}
+      >
+        <div className={mainSpacing}>
           {/* Header section with brand/logo and vertical line divider */}
-          <div className="flex items-center justify-center gap-4 py-3 border-b border-slate-100">
+          <div className={`flex items-center justify-center gap-4 ${headerPadding} border-b border-slate-100`}>
             <div className="h-10 w-44 relative flex items-center justify-center">
               <img 
                 src="/logo.png" 
@@ -471,55 +828,67 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           </div>
 
           {/* Banner container with client information on left and broker on right */}
-          <div className="bg-[#162546] rounded-2xl p-5 text-white flex justify-between items-center shadow-sm">
+          <div className={`bg-[#162546] rounded-2xl ${bannerPadding} text-white flex justify-between items-center shadow-sm relative overflow-visible`}>
             {/* Left side: Client profile */}
             <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-full bg-[#F5B800]/20 flex items-center justify-center text-[#F5B800] shrink-0 border border-[#F5B800]/30 shadow-inner">
-                <User className="w-5.5 h-5.5 fill-[#F5B800]/10" />
+              <div className="w-11 h-11 rounded-full bg-[#00D97E]/20 flex items-center justify-center text-[#00D97E] shrink-0 border border-[#00D97E]/30 shadow-inner">
+                <User className="w-5.5 h-5.5 fill-[#00D97E]/10" />
               </div>
-              <div className="flex flex-col text-left">
-                <p className="text-[13px] font-black uppercase tracking-wide text-white">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
+              <div className="flex flex-col text-left max-w-[220px]">
+                <p className="text-[12px] font-black uppercase tracking-wide text-white break-words">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
                 <p className="text-xs text-slate-300 font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
               </div>
             </div>
 
-            {/* Right side: Corretor info */}
-            <div className="flex flex-col text-right items-end gap-1.5 border-l border-slate-700/50 pl-5">
-              <p className="text-xs font-black uppercase text-[#F5B800] tracking-wider">{nomeConsultor || "NOME DO CORRETOR"}</p>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
-                <Mail className="w-3.5 h-3.5 text-[#F5B800] shrink-0" />
-                <span>{corretorEmail}</span>
+            {/* Center side: Broker Photo */}
+            {exibirFotoCorretor && fotoCorretor && (
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-0 h-[145px] w-auto flex items-end pointer-events-none z-10">
+                <img 
+                  src={fotoCorretor} 
+                  alt="Corretor" 
+                  className="h-full w-auto object-contain object-bottom select-none"
+                  crossOrigin="anonymous"
+                />
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
-                <Phone className="w-3.5 h-3.5 text-[#F5B800] shrink-0" />
-                <span>{telefoneConsultor || "(48) 99656-5896"}</span>
+            )}
+
+            {/* Right side: Corretor info */}
+            <div className="flex flex-col text-right items-end gap-1.5 border-l border-slate-700/50 pl-5 max-w-[220px]">
+              <p className="text-xs font-black uppercase text-[#00D97E] tracking-wider break-words w-full">{nomeConsultor || "NOME DO CORRETOR"}</p>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium truncate w-full justify-end">
+                <Mail className="w-3.5 h-3.5 text-[#00D97E] shrink-0" />
+                <span className="truncate">{corretorEmail}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium truncate w-full justify-end">
+                <Phone className="w-3.5 h-3.5 text-[#00D97E] shrink-0" />
+                <span className="truncate">{telefoneConsultor || "(48) 99656-5896"}</span>
               </div>
             </div>
           </div>
 
           {/* Cards for Financial Highlights: Total Liberado vs Total Reduzido */}
-          <div className="grid grid-cols-2 gap-6 pt-1">
+          <div className={`grid grid-cols-2 ${cardGap} pt-1`}>
             {/* Left card: Total Valor Liberado */}
-            <div className="border border-slate-200 rounded-2xl py-3 px-5 bg-white flex flex-col justify-between shadow-sm min-h-[74px]">
+            <div className={`border border-slate-200 rounded-2xl ${cardPadding} bg-white flex flex-col justify-center shadow-sm ${cardMinHeight}`}>
               <div className="text-left space-y-0.5">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Valor Liberado</p>
                 <div className="flex items-center gap-2 py-0.5 justify-start">
-                  <div className="w-7 h-7 rounded-full bg-[#F5B800]/15 flex items-center justify-center text-[#F5B800] text-sm font-black border border-[#F5B800]/30 shadow-sm shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-[#00D97E]/15 flex items-center justify-center text-[#00D97E] text-sm font-black border border-[#00D97E]/30 shadow-sm shrink-0">
                     $
                   </div>
-                  <p className="text-[26px] font-black text-[#00D97E] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
+                  <p className="text-[26px] font-black text-[#6663F2] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
                 </div>
               </div>
               
-              <div className="space-y-0.5 text-left pt-1.5 border-t border-slate-100 mt-1.5">
+              <div className={`space-y-0.5 text-left ${cardBorderPadding}`}>
                 {hasMargemPrincipal && (
-                  <p className="text-[10px] text-slate-400 font-normal">Margem*: <span className="text-slate-400 font-normal">{formatBRL(margemPrincipalVal)}</span></p>
+                  <p className="text-[9.5px] text-slate-400 font-normal">Margem*: <span className="text-slate-400 font-normal">{formatBRL(margemPrincipalVal)}</span></p>
                 )}
                 {hasMargemCC && (
-                  <p className="text-[10px] text-slate-400 font-normal">Margem CC*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
+                  <p className="text-[9.5px] text-slate-400 font-normal">Margem CC*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
                 )}
                 {hasMargemCB && (
-                  <p className="text-[10px] text-slate-400 font-normal">Margem CB*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
+                  <p className="text-[9.5px] text-slate-400 font-normal">Margem CB*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
                 )}
                 {showBancosLine && (
                   <p className="text-[9px] text-slate-400 italic font-normal mt-0.5">
@@ -530,7 +899,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             </div>
 
             {/* Right card: Valor Total Reduzido ao Mês */}
-            <div className="bg-[#F5B800] rounded-2xl py-3 px-5 flex flex-col justify-between text-[#162546] shadow-sm min-h-[74px]">
+            <div className={`bg-[#00D97E] rounded-2xl ${cardPadding} flex flex-col justify-center text-[#162546] shadow-sm ${cardMinHeight}`}>
               <div className="text-left space-y-0.5">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#162546]/80">Valor Total Reduzido ao Mês</p>
                 <div className="flex items-center gap-2 py-0.5 justify-start">
@@ -538,14 +907,14 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   <p className="text-[26px] font-black tracking-tight text-[#162546]">{formatBRL(economiaMensal || 244.19)}</p>
                 </div>
               </div>
-              <p className="text-[10px] font-normal text-[#162546]/60 text-left pt-1.5 border-t border-[#162546]/10 mt-1.5">
+              <p className={`text-[10px] font-normal text-[#162546]/60 text-left ${cardBorderPadding}`}>
                 Economia após a finalização da estratégia financeira.
               </p>
             </div>
           </div>
 
           {/* Table Section: Current Installments list */}
-          <div className="space-y-0 pt-2">
+          <div className={`space-y-0 ${tableSectionPt}`}>
             <div className="bg-[#162546] text-white text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
               PARCELAS ATUAIS
             </div>
@@ -553,69 +922,73 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               <table className="w-full text-left border-collapse table-fixed">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-50/50">
-                    <th className="p-2.5 pl-5 text-left w-[40%]">BANCO ATUAL</th>
-                    <th className="p-2.5 text-left w-[30%]">PARCELA ATUAL</th>
-                    <th className="p-2.5 text-left w-[15%]">PRAZO</th>
+                    <th className={`${tableHeaderHeight} pl-5 text-left w-[40%]`}>BANCO ATUAL</th>
+                    <th className={`${tableHeaderHeight} text-left w-[30%]`}>PARCELA ATUAL</th>
+                    <th className={`${tableHeaderHeight} text-left w-[15%]`}>PRAZO</th>
                     {showTaxa && (
-                      <th className="p-2.5 text-left w-[15%]">TAXA ATUAL</th>
+                      <th className={`${tableHeaderHeight} text-left w-[15%]`}>TAXA ATUAL</th>
                     )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[11px]">
                   {contratos.map((c, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/30">
-                      <td className="p-2.5 pl-5 font-bold text-slate-800 uppercase truncate">{c.bancoAtual || "NÃO INFORMADO"}</td>
-                      <td className="p-2.5 font-semibold text-slate-700">{formatBRL(c.parcelaAtual)}</td>
-                      <td className="p-2.5 font-bold text-[#162546]">{c.prazoAtual ? `${c.prazoAtual}X` : "-"}</td>
+                      <td className={`${tableCellPadding} pl-5 font-bold text-slate-800 uppercase truncate`}>{c.bancoAtual || "NÃO INFORMADO"}</td>
+                      <td className={`${tableCellPadding} font-semibold text-slate-700`}>{formatBRL(c.parcelaAtual)}</td>
+                      <td className={`${tableCellPadding} font-bold text-[#162546]`}>{c.prazoAtual ? `${c.prazoAtual}X` : "-"}</td>
                       {showTaxa && (
-                        <td className="p-2.5 font-semibold text-slate-600">{c.taxaAtual ? `${parseFloat(c.taxaAtual).toFixed(2)}%` : "-"}</td>
+                        <td className={`${tableCellPadding} font-semibold text-slate-600`}>{c.taxaAtual ? `${parseFloat(c.taxaAtual).toFixed(2)}%` : "-"}</td>
                       )}
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div className="bg-[#162546] text-white py-2 px-5 text-center font-bold text-xs uppercase tracking-wider">
+              <div className={`bg-[#162546] text-white ${tableFooterPadding} text-center font-bold text-xs uppercase tracking-wider`}>
                 Parcela total: {formatBRL(totalParcelaAtual)}
               </div>
             </div>
           </div>
 
           {/* Table Section: Future Strategy Installments list */}
-          <div className="space-y-0 pt-1">
-            <div className="bg-[#F5B800] text-[#162546] text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
+          <div className={`space-y-0 ${tableSectionPt}`}>
+            <div className="bg-[#00D97E] text-[#162546] text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
               PARCELAS APÓS PORTABILIDADE
             </div>
             <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm">
               <table className="w-full text-left border-collapse table-fixed">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-50/50">
-                    <th className="p-2.5 pl-5 text-left w-[40%]">BANCO</th>
-                    <th className="p-2.5 text-left w-[30%]">PARCELA</th>
-                    <th className="p-2.5 text-left w-[15%]">PRAZO</th>
+                    {showBancoDestino && (
+                      <th className={`${tableHeaderHeight} pl-5 text-left w-[40%]`}>BANCO</th>
+                    )}
+                    <th className={`${tableHeaderHeight} text-left ${showBancoDestino ? 'w-[30%]' : 'pl-5 w-[60%]'}`}>PARCELA</th>
+                    <th className={`${tableHeaderHeight} text-left w-[15%]`}>PRAZO</th>
                     {showNovaTaxa && (
-                      <th className="p-2.5 text-left w-[15%]">TAXA</th>
+                      <th className={`${tableHeaderHeight} text-left w-[15%]`}>TAXA</th>
                     )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[11px]">
                   {contratos.map((c, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/30">
-                      <td className="p-2.5 pl-5 font-bold text-slate-800 uppercase truncate">
-                        {showBancoDestino && c.bancoDestino ? c.bancoDestino : "REDUÇÃO GARANTIDA"}
-                      </td>
-                      <td className="p-2.5 font-bold text-slate-800">{formatBRL(c.novaParcela)}</td>
-                      <td className="p-2.5 font-bold text-[#162546]">{c.novoPrazo || c.prazoAtual ? `${c.novoPrazo || c.prazoAtual}X` : "-"}</td>
+                      {showBancoDestino && (
+                        <td className={`${tableCellPadding} pl-5 font-bold text-slate-800 uppercase truncate`}>
+                          {c.bancoDestino || "REDUÇÃO GARANTIDA"}
+                        </td>
+                      )}
+                      <td className={`${tableCellPadding} ${!showBancoDestino ? 'pl-5' : ''} font-bold text-slate-800`}>{formatBRL(c.novaParcela)}</td>
+                      <td className={`${tableCellPadding} font-bold text-[#162546]`}>{c.novoPrazo || c.prazoAtual ? `${c.novoPrazo || c.prazoAtual}X` : "-"}</td>
                       {showNovaTaxa && (
-                        <td className="p-2.5 font-semibold text-slate-600">{c.novaTaxa ? `${parseFloat(c.novaTaxa).toFixed(2)}%` : "-"}</td>
+                        <td className={`${tableCellPadding} font-semibold text-slate-600`}>{c.novaTaxa ? `${parseFloat(c.novaTaxa).toFixed(2)}%` : "-"}</td>
                       )}
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div className="bg-[#F5B800] text-[#162546] py-2 px-5 text-center font-bold text-xs uppercase tracking-wider">
+              <div className={`bg-[#00D97E] text-[#162546] ${tableFooterPadding} text-center font-bold text-xs uppercase tracking-wider`}>
                 Parcela total: {formatBRL(totalNovaParcela)}
               </div>
-              <div className="bg-[#162546] text-white py-3.5 px-5 text-left font-bold flex flex-col gap-0.5 justify-center">
+              <div className={`bg-[#162546] text-white ${tableDestPadding} text-left font-bold flex flex-col gap-0.5 justify-center`}>
                 <span className="text-slate-300 font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
                 <span className="text-base font-black text-white leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
               </div>
@@ -624,7 +997,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         </div>
 
         {/* Footer Disclaimer & Verification */}
-        <div className="border-t border-slate-100 pt-4 flex justify-between items-start gap-6 mt-4">
+        <div className={`border-t border-slate-100 ${footerSpacing} flex justify-between items-start gap-6`}>
           <div className="flex-1 text-[7px] text-slate-400 font-bold leading-relaxed space-y-0.5 text-left uppercase tracking-tight">
             <p>* Cálculos de redução de parcela pela portabilidade sofrem alterações diárias, a depender do saldo devedor.</p>
             <p>* Estratégia de redução leva em consideração a taxa de juros confirmada pelo cliente.</p>
@@ -768,7 +1141,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                     </div>
 
                     {/* Section: Responsável */}
-                    <div className="space-y-3 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
+                    <div className="space-y-4 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
                        <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
                         <Briefcase className="w-4 h-4 text-slate-400" />
                         <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Responsável pela Venda</span>
@@ -792,6 +1165,83 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                             className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
                             placeholder="(00) 00000-0000"
                           />
+                        </div>
+                      </div>
+
+                      {/* Photo Upload Container */}
+                      <div className="pt-2 space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Foto do Corretor (PNG sem fundo)</label>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Upload Drag & Drop Area */}
+                          <div 
+                            className={`md:col-span-2 border border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-center transition-all cursor-pointer relative min-h-[85px] ${
+                              dragActive 
+                                ? "border-blue-500 bg-blue-50/50" 
+                                : "border-slate-200 hover:border-slate-300 bg-white"
+                            }`}
+                            onDragEnter={handleDrag}
+                            onDragLeave={handleDrag}
+                            onDragOver={handleDrag}
+                            onDrop={handleDrop}
+                            onClick={() => document.getElementById("broker-photo-upload")?.click()}
+                          >
+                            <input 
+                              type="file" 
+                              id="broker-photo-upload" 
+                              className="hidden" 
+                              accept="image/*"
+                              onChange={handleFileChange}
+                            />
+                            <div className="space-y-1">
+                              <p className="text-[11px] font-bold text-slate-700">
+                                Clique para selecionar ou arraste sua foto aqui
+                              </p>
+                              <p className="text-[9px] text-slate-400 font-medium">
+                                Formato recomendado: PNG transparente (sem fundo)
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Thumbnail / Config Area */}
+                          <div className="border border-slate-150 rounded-xl p-3 bg-white flex flex-col justify-between min-h-[85px]">
+                            {fotoCorretor ? (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-10 h-10 rounded-lg bg-slate-100 overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center">
+                                    <img src={fotoCorretor} alt="Preview" className="w-full h-full object-contain" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[10px] font-black text-slate-700 truncate">Foto Carregada</p>
+                                    <button 
+                                      type="button"
+                                      onClick={() => {
+                                        setFotoCorretor("");
+                                        setExibirFotoCorretor(false);
+                                      }}
+                                      className="text-red-500 hover:text-red-700 text-[9px] font-bold uppercase tracking-wider"
+                                    >
+                                      Remover
+                                    </button>
+                                  </div>
+                                </div>
+                                <label className="flex items-center gap-2 cursor-pointer pt-1 border-t border-slate-100">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={exibirFotoCorretor}
+                                    onChange={(e) => setExibirFotoCorretor(e.target.checked)}
+                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                                  />
+                                  <span className="text-[9.5px] font-bold text-slate-600 uppercase tracking-tight select-none">Mostrar no PDF</span>
+                                </label>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center h-full text-center text-slate-400">
+                                <p className="text-[10px] font-bold uppercase tracking-wider">Nenhuma foto</p>
+                                <p className="text-[9px] mt-0.5">Sem exibição no topo</p>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1237,28 +1687,33 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       onClick={() => setIsZoomed(true)}
                       className="w-full border border-slate-200 rounded-3xl overflow-hidden shadow-lg bg-slate-500/5 p-4 flex justify-center cursor-zoom-in hover:shadow-xl hover:border-slate-300 transition-all group relative"
                     >
-                      {/* Scale Wrapper for 794x1123 flyer to fit in thumbnail nicely without clipping */}
-                      <div className="w-full flex justify-center items-start overflow-hidden" style={{ height: '480px' }}>
-                        <div 
-                          className="origin-top scale-[0.42] sm:scale-[0.45] transition-transform group-hover:scale-[0.43] sm:group-hover:scale-[0.46]"
-                          style={{ width: '794px', height: '1123px' }}
-                        >
-                          {/* The Template Canvas - standard A4 aspect ratio representation */}
-                          <div 
-                            ref={previewRef}
-                            id="proposal-export-template"
-                            className="bg-white text-slate-900 font-sans shadow-xl w-[794px] h-[1123px] flex flex-col justify-between relative overflow-hidden shrink-0 text-left"
-                            style={{
-                              width: '794px',
-                              height: '1123px',
-                              minWidth: '794px',
-                              minHeight: '1123px'
-                            }}
-                          >
-                            {renderProposalTemplateContent(false)}
+                      {/* Scale Wrapper for flyer to fit in thumbnail nicely without clipping */}
+                      {(() => {
+                        return (
+                          <div className="w-full flex justify-center items-start overflow-hidden" style={{ height: '480px' }}>
+                            <div 
+                              className="origin-top transition-transform"
+                              style={{ 
+                                width: '794px', 
+                                transform: `scale(0.40)`
+                              }}
+                            >
+                              {/* The Template Canvas - standard A4 aspect ratio representation */}
+                              <div 
+                                ref={previewRef}
+                                id="proposal-export-template"
+                                className="bg-white text-slate-900 font-sans shadow-xl w-[794px] flex flex-col justify-start relative overflow-hidden shrink-0 text-left h-auto"
+                                style={{
+                                  width: '794px',
+                                  minWidth: '794px',
+                                }}
+                              >
+                                {renderProposalTemplateContent(false)}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -1344,12 +1799,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             <div className="w-full flex justify-center items-start">
               {/* Copy of the Proposal Template Flyer shown at 100% size with scrolling */}
               <div 
-                className="bg-white text-slate-900 font-sans w-[794px] h-[1123px] flex flex-col justify-between relative overflow-hidden shrink-0 shadow-lg text-left"
+                className="bg-white text-slate-900 font-sans w-[794px] flex flex-col justify-start relative overflow-hidden shrink-0 shadow-lg text-left h-auto"
                 style={{
                   width: '794px',
-                  height: '1123px',
                   minWidth: '794px',
-                  minHeight: '1123px'
                 }}
               >
                 {renderProposalTemplateContent(true)}

@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Header } from "@/components/layout/header"
-import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle, Loader2, Calculator } from "lucide-react"
+import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle, Loader2, Calculator, History, Download, FileText, FileImage } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -133,6 +133,39 @@ export default function SearchClientPage() {
   const [clientTickets, setClientTickets] = useState<Record<string, unknown>[]>([])
   const [isLoadingClientTickets, setIsLoadingClientTickets] = useState(false)
 
+  const [clientProposals, setClientProposals] = useState<Record<string, any>[]>([])
+  const [isLoadingClientProposals, setIsLoadingClientProposals] = useState(false)
+
+  const fetchClientProposals = async () => {
+    if (!client?.cpf) {
+      setClientProposals([])
+      return
+    }
+    setIsLoadingClientProposals(true)
+    try {
+      const cleanCpf = client.cpf.replace(/\D/g, "")
+      const { data, error: fetchErr } = await supabase
+        .from('historico_proposta_comercial')
+        .select('*')
+        .eq('cliente_cpf', cleanCpf)
+        .order('created_at', { ascending: false })
+
+      if (fetchErr) {
+        console.error("Erro ao buscar histórico de propostas:", fetchErr)
+      } else {
+        setClientProposals(data || [])
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsLoadingClientProposals(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchClientProposals()
+  }, [client?.cpf])
+
   useEffect(() => {
     async function fetchClientTickets() {
       if (!client?.cpf) {
@@ -260,6 +293,109 @@ export default function SearchClientPage() {
                       })()}
                     </div>
                   </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderClientProposalsHistory = () => {
+    if (isLoadingClientProposals) {
+      return (
+        <div className="mt-8 pt-8 border-t border-slate-100 flex items-center gap-2 justify-center py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">
+          <Loader2 className="w-4 h-4 animate-spin text-[#162546]" />
+          <span>Buscando histórico de propostas...</span>
+        </div>
+      );
+    }
+
+    if (clientProposals.length === 0) return null;
+
+    const handleDownloadProposal = (proposal: any) => {
+      if (!proposal.arquivo_url) return;
+      const link = document.createElement("a");
+      link.href = proposal.arquivo_url;
+      const extension = proposal.tipo_arquivo?.toLowerCase() === "pdf" ? "pdf" : "jpg";
+      const safeName = (proposal.cliente_nome || "Cliente").trim().replace(/\s+/g, "_");
+      link.download = `proposta_reducao_${safeName}.${extension}`;
+      link.click();
+    };
+
+    return (
+      <div className="mt-8 pt-8 border-t border-slate-100 space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-5 bg-[#162546] rounded-full"></div>
+          <h4 className="text-[12px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
+            Histórico de Propostas Comerciais{" "}
+            <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-[#162546]/10 text-[#162546] border-none font-black font-sans uppercase">
+              {clientProposals.length} {clientProposals.length === 1 ? 'Proposta' : 'Propostas'}
+            </Badge>
+          </h4>
+        </div>
+        
+        <div className="flex flex-col gap-3">
+          {clientProposals.map((proposal) => {
+            const dateStr = proposal.created_at ? (() => {
+              try {
+                const d = new Date(proposal.created_at);
+                if (isNaN(d.getTime())) return "--/--/---- às --:--";
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                const hours = String(d.getHours()).padStart(2, '0');
+                const minutes = String(d.getMinutes()).padStart(2, '0');
+                return `${day}/${month}/${year} às ${hours}:${minutes}`;
+              } catch (e) {
+                return "Sem data";
+              }
+            })() : "--/--/---- às --:--";
+
+            return (
+              <div 
+                key={proposal.id} 
+                className="p-4 rounded-xl border border-slate-100 bg-slate-50/10 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-[#162546]/20 hover:bg-slate-50/20 transition-all shadow-[0_1px_3px_rgba(22,37,70,0.01)]"
+              >
+                <div className="flex items-center gap-3 min-w-[150px]">
+                  <div className="w-8 h-8 rounded-lg bg-[#162546]/5 border border-[#162546]/15 flex items-center justify-center text-[#162546]">
+                    <History className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
+                    <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block truncate max-w-[140px]">{proposal.user_nome || proposal.user_email || "Não informado"}</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Estratégia de Redução</span>
+                  <span className="text-[12px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
+                    {proposal.percentual_reducao ? `${parseFloat(proposal.percentual_reducao).toFixed(2)}%` : "13.78%"} de Redução
+                  </span>
+                </div>
+
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Total de Parcelas</span>
+                  <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                    {formatCurrency(proposal.total_parcela_atual || 0)} ➔ <span className="text-emerald-600">{formatCurrency(proposal.total_parcela_nova || 0)}</span>
+                  </span>
+                </div>
+
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+                  <span className="text-[11px] font-bold text-slate-500 leading-none block">{dateStr}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => handleDownloadProposal(proposal)}
+                    className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {proposal.tipo_arquivo || "PDF"}
+                  </Button>
                 </div>
               </div>
             );
@@ -1461,6 +1597,7 @@ export default function SearchClientPage() {
                         })()}
 
                         {renderClientTicketsHistory()}
+                        {renderClientProposalsHistory()}
 
                         {/* Footer Buttons */}
                         <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -1733,6 +1870,7 @@ export default function SearchClientPage() {
                           </div>
 
                           {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
 
                           {/* Footer Buttons for Governo SP */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -1916,6 +2054,7 @@ export default function SearchClientPage() {
                           </div>
 
                           {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
 
                           {/* Footer Buttons for Governo MA */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -2099,6 +2238,7 @@ export default function SearchClientPage() {
                           </div>
 
                           {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
 
                           {/* Footer Buttons for Governo PI */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -2335,6 +2475,7 @@ export default function SearchClientPage() {
                           </div>
 
                           {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
 
                           {/* Footer Buttons for PMSP */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -2517,6 +2658,7 @@ export default function SearchClientPage() {
                           </div>
 
                           {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
 
                           {/* Footer Buttons for GOV RR */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -2630,6 +2772,7 @@ export default function SearchClientPage() {
                           </div>
 
                           {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
 
                           {/* Footer Buttons for GOV RJ */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -2811,6 +2954,7 @@ export default function SearchClientPage() {
                           </div>
 
                           {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
 
                           {/* Footer Buttons for PREF SA */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -3059,6 +3203,7 @@ export default function SearchClientPage() {
                           </div>
 
                           {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
 
                           {/* Footer Buttons for PREF CONTAGEM */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -3258,6 +3403,7 @@ export default function SearchClientPage() {
                           </div>
 
                           {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
 
                           {/* Footer Buttons for GOV MG */}
                           <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
@@ -3336,6 +3482,7 @@ export default function SearchClientPage() {
           registrations={allRegs} 
           perfil={perfil} 
           activeRegIndex={activeRegIndex}
+          onProposalSaved={fetchClientProposals}
         />
       </div>
     </div>
