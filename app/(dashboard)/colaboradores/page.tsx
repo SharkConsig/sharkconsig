@@ -539,7 +539,7 @@ export default function ColaboradoresPage() {
               status: "Inativo",
               exitDate: c.exitDate || new Date().toLocaleDateString("pt-BR"),
               // preenchendo somente com os dados das colunas da tabela de lá (Ex-colaboradores)
-              joinDate: "",
+              joinDate: c.joinDate,
               bank: "",
               bankAgency: "",
               bankAccount: "",
