@@ -556,6 +556,7 @@ export default function DistribuicaoCampanhaPage() {
       if (fetchError) throw fetchError;
 
       const brokerStats: Record<string, { total: number; tabulacoes: Record<string, number>; last_active: string | null; entrou: string | null; saiu: string | null; isOnline: boolean }> = {};
+      const brokerUniqueCpfs: Record<string, Set<string>> = {};
 
       const sortedAtts = (attendances || []).slice().sort((a, b) => {
         return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
@@ -572,6 +573,7 @@ export default function DistribuicaoCampanhaPage() {
             saiu: null,
             isOnline: false
           };
+          brokerUniqueCpfs[brokerId] = new Set();
         }
 
         if (att.cliente_cpf === '00000000000') {
@@ -584,7 +586,10 @@ export default function DistribuicaoCampanhaPage() {
             brokerStats[brokerId].isOnline = false;
           }
         } else {
-          brokerStats[brokerId].total += 1;
+          const normCpf = att.cliente_cpf ? att.cliente_cpf.replace(/\D/g, "").padStart(11, '0') : '';
+          if (normCpf) {
+            brokerUniqueCpfs[brokerId].add(normCpf);
+          }
           const tab = att.tabulacao || 'Não tabulado';
           brokerStats[brokerId].tabulacoes[tab] = (brokerStats[brokerId].tabulacoes[tab] || 0) + 1;
 
@@ -593,6 +598,13 @@ export default function DistribuicaoCampanhaPage() {
               brokerStats[brokerId].last_active = att.created_at;
             }
           }
+        }
+      });
+
+      // Assign the unique CPFs count to broker total
+      Object.keys(brokerStats).forEach((brokerId) => {
+        if (brokerUniqueCpfs[brokerId]) {
+          brokerStats[brokerId].total = brokerUniqueCpfs[brokerId].size;
         }
       });
 
@@ -726,18 +738,34 @@ export default function DistribuicaoCampanhaPage() {
       try {
         const campaignIds = filteredData.map(c => c.id)
         if (campaignIds.length > 0) {
-          const { data: countRecords } = await supabase
-            .from('campanha_atendimentos')
-            .select('campanha_id')
-            .in('campanha_id', campaignIds)
-            .neq('cliente_cpf', '00000000000')
-
           const counts: Record<string, number> = {}
-          if (countRecords) {
-            countRecords.forEach(r => {
-              counts[r.campanha_id] = (counts[r.campanha_id] || 0) + 1
-            })
-          }
+          
+          await Promise.all(campaignIds.map(async (campId) => {
+            const { data: countRecords, error: countErr } = await supabase
+              .from('campanha_atendimentos')
+              .select('cliente_cpf')
+              .eq('campanha_id', campId)
+              .neq('cliente_cpf', '00000000000')
+
+            if (countErr) {
+              console.warn(`Could not fetch worked counts for campaign ${campId}:`, countErr)
+              return
+            }
+
+            if (countRecords) {
+              const uniqueCpfs = new Set<string>()
+              countRecords.forEach(r => {
+                if (r.cliente_cpf) {
+                  const normCpf = r.cliente_cpf.replace(/\D/g, "").padStart(11, '0');
+                  if (normCpf) {
+                    uniqueCpfs.add(normCpf)
+                  }
+                }
+              })
+              counts[campId] = uniqueCpfs.size
+            }
+          }))
+
           setWorkedCounts(counts)
         } else {
           setWorkedCounts({})

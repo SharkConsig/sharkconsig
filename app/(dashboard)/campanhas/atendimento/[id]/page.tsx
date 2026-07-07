@@ -519,7 +519,7 @@ export default function CampanhaAtendimentoPage() {
         if (attendedErr) {
           console.warn("Erro ao buscar atendimentos existentes:", attendedErr)
         }
-        const attendedCpfs = new Set((attendedRows || []).map(r => r.cliente_cpf ? r.cliente_cpf.padStart(11, '0') : ''))
+        const attendedCpfs = new Set((attendedRows || []).map(r => r.cliente_cpf ? r.cliente_cpf.replace(/\D/g, "").padStart(11, '0') : ''))
 
         // 2. Obter todos os vínculos (claims) ativos de outros corretores
         // Fallback backward-compatible db fetch for campanha_vinculos (wrapped in try/catch to suppress failures)
@@ -536,7 +536,7 @@ export default function CampanhaAtendimentoPage() {
             const claimExpirationMs = 10 * 60 * 1000
             claimedRows.forEach(r => {
               if (r.cliente_cpf) {
-                const paddedClaimedCpf = r.cliente_cpf.padStart(11, '0')
+                const paddedClaimedCpf = r.cliente_cpf.replace(/\D/g, "").padStart(11, '0')
                 const claimTime = r.created_at ? new Date(r.created_at).getTime() : 0;
                 if (!claimTime || now - claimTime < claimExpirationMs) {
                   claimedCpfs.add(paddedClaimedCpf);
@@ -551,7 +551,7 @@ export default function CampanhaAtendimentoPage() {
         // Add real-time active claims stored in filters
         Object.entries(activeClaims).forEach(([cid, val]: [string, any]) => {
           if (cid !== userId && val?.cliente_cpf) {
-            claimedCpfs.add(val.cliente_cpf.padStart(11, '0'))
+            claimedCpfs.add(val.cliente_cpf.replace(/\D/g, "").padStart(11, '0'))
           }
         })
 
@@ -571,7 +571,7 @@ export default function CampanhaAtendimentoPage() {
         // 4. Filtrar pelos CPFs que ainda não foram tabulados e não estão vinculados a outro corretor neste exato momento
         const availableMembers = (allMembers || []).filter(m => {
           if (!m.cliente_cpf) return false;
-          const paddedCpf = m.cliente_cpf.padStart(11, '0')
+          const paddedCpf = m.cliente_cpf.replace(/\D/g, "").padStart(11, '0')
           return !attendedCpfs.has(paddedCpf) && !claimedCpfs.has(paddedCpf)
         })
 
@@ -598,6 +598,7 @@ export default function CampanhaAtendimentoPage() {
               tempResolvedConvenio === "detect" ||
               tempResolvedConvenio === "importado" ||
               tempResolvedConvenio === "multi" ||
+              !campaignHasValidConvenio ||
               convenioKey === "detect" ||
               convenioKey === "importado" ||
               convenioKey === "multi"
@@ -873,11 +874,11 @@ export default function CampanhaAtendimentoPage() {
         }
       }
 
-      // 2. Count progress for this broker
-      const { count, error: countError } = await withRetry(() => 
+      // 2. Count unique CPFs progress for this broker
+      const { data: attendedRowsForBroker, error: countError } = await withRetry(() => 
         supabase
           .from('campanha_atendimentos')
-          .select('*', { count: 'exact', head: true })
+          .select('cliente_cpf')
           .eq('campanha_id', campaignId)
           .eq('corretor_id', userId)
           .neq('cliente_cpf', '00000000000')
@@ -888,7 +889,9 @@ export default function CampanhaAtendimentoPage() {
         throw countError
       }
       
-      const finishedCount = count || 0
+      const finishedCount = attendedRowsForBroker
+        ? new Set(attendedRowsForBroker.map(r => r.cliente_cpf ? r.cliente_cpf.replace(/\D/g, "").padStart(11, '0') : '')).size
+        : 0
       setCompletedCount(finishedCount)
       console.log("Progresso do corretor:", finishedCount)
       
