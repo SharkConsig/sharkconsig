@@ -144,17 +144,33 @@ export default function SearchClientPage() {
     setIsLoadingClientProposals(true)
     try {
       const cleanCpf = client.cpf.replace(/\D/g, "")
-      const { data, error: fetchErr } = await supabase
-        .from('historico_proposta_comercial')
-        .select('*')
-        .eq('cliente_cpf', cleanCpf)
-        .order('created_at', { ascending: false })
+      
+      const [p1, p2] = await Promise.all([
+        supabase
+          .from('historico_proposta_comercial')
+          .select('*')
+          .eq('cliente_cpf', cleanCpf),
+        supabase
+          .from('historico_proposta_comercial_novo_formato')
+          .select('*')
+          .eq('cliente_cpf', cleanCpf)
+      ]);
 
-      if (fetchErr) {
-        console.error("Erro ao buscar histórico de propostas:", fetchErr)
-      } else {
-        setClientProposals(data || [])
+      let combined: Record<string, any>[] = [];
+      if (p1.data) {
+        combined = combined.concat(p1.data.map((item: any) => ({ ...item, isNovoFormato: false })));
       }
+      if (p2.data) {
+        combined = combined.concat(p2.data.map((item: any) => ({ ...item, isNovoFormato: true })));
+      }
+
+      combined.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      setClientProposals(combined);
     } catch (e) {
       console.error(e)
     } finally {
@@ -353,6 +369,12 @@ export default function SearchClientPage() {
               }
             })() : "--/--/---- às --:--";
 
+            const roleLower = perfil?.role?.toLowerCase() || "";
+            const isCorretor = roleLower === 'corretor';
+            const isEstagiario = isUserEstagio || roleLower === 'estágio' || roleLower === 'estagio';
+            const isSupervisor = roleLower === 'supervisor';
+            const shouldHideDownload = isCorretor || isEstagiario || isSupervisor;
+
             return (
               <div 
                 key={proposal.id} 
@@ -369,18 +391,50 @@ export default function SearchClientPage() {
                 </div>
 
                 <div className="flex flex-col">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Estratégia de Redução</span>
-                  <span className="text-[12px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
-                    {proposal.percentual_reducao ? `${parseFloat(proposal.percentual_reducao).toFixed(2)}%` : "13.78%"} de Redução
-                  </span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Estratégia</span>
+                  {proposal.isNovoFormato ? (
+                    <span className="text-[12px] font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
+                      Novo Formato
+                    </span>
+                  ) : (
+                    <span className="text-[12px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
+                      REDUÇÃO DE PARCELA
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-col">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Total de Parcelas</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Liberado</span>
                   <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
-                    {formatCurrency(proposal.total_parcela_atual || 0)} ➔ <span className="text-emerald-600">{formatCurrency(proposal.total_parcela_nova || 0)}</span>
+                    {proposal.valor_liberado ? (
+                      <span className="text-emerald-600 font-bold">{formatCurrency(proposal.valor_liberado)}</span>
+                    ) : (
+                      <span className="text-slate-400">--</span>
+                    )}
                   </span>
                 </div>
+
+                {!proposal.isNovoFormato && (
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+                      PARCELA ANTIGA {"->"} PARCELA NOVA
+                    </span>
+                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                      <span className="text-slate-800">{formatCurrency(proposal.total_parcela_atual || 0)}</span> ➔ <span className="text-emerald-600 font-bold">{formatCurrency(proposal.total_parcela_nova || 0)}</span>
+                    </span>
+                  </div>
+                )}
+
+                {!proposal.isNovoFormato && (
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Diferença nas Parcelas</span>
+                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                      <span className="text-emerald-600 font-black">
+                        {formatCurrency((proposal.total_parcela_nova || 0) - (proposal.total_parcela_atual || 0))}
+                      </span>
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex flex-col">
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
@@ -388,14 +442,16 @@ export default function SearchClientPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    onClick={() => handleDownloadProposal(proposal)}
-                    className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    {proposal.tipo_arquivo || "PDF"}
-                  </Button>
+                  {!shouldHideDownload && (
+                    <Button
+                      type="button"
+                      onClick={() => handleDownloadProposal(proposal)}
+                      className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {proposal.tipo_arquivo || "PDF"}
+                    </Button>
+                  )}
                 </div>
               </div>
             );

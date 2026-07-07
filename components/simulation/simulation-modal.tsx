@@ -524,23 +524,65 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         const currentTotal = contratos.reduce((acc, c) => acc + (parseFloat(c.parcelaAtual) || 0), 0);
         const newTotal = contratos.reduce((acc, c) => acc + (parseFloat(c.novaParcela) || 0), 0);
 
-        const { error: saveErr } = await supabase
-          .from("historico_proposta_comercial")
-          .insert({
-            cliente_cpf: cleanCpf,
-            cliente_nome: nomeCliente || client?.nome || "",
-            user_id: activeUser?.id || null,
-            user_nome: nomeConsultor || perfil?.nome || "",
-            user_email: activeUser?.email || perfil?.email || "",
-            telefone_consultor: telefoneConsultor,
-            contratos_considerados: contractsConsidered,
-            contratos_excluidos: contractsExcluded,
-            percentual_reducao: parseFloat(porcentagemReducao) || 13.78,
-            total_parcela_atual: currentTotal,
-            total_parcela_nova: newTotal,
-            arquivo_url: finalDataUrl,
-            tipo_arquivo: format.toUpperCase()
-          });
+        let saveErr;
+
+        if (model === "novo-formato") {
+          const docsNecessarios = [
+            docFoto && "Foto segurando o documento",
+            docRG && "RG ou CNH (FRENTE E VERSO)",
+            docEndereco && "Endereço completo por escrito",
+            docEmail && "E-mail",
+            docResidencia && "Comprovante de residência (quando exigido pelo banco)",
+            docContracheque && "Último contracheque",
+            docExtrato && "Extrato de empréstimos (consignações)",
+            docAutorizacao && `Autorização para o banco ${bancoAutorizacao ? (bancoAutorizacao.toLowerCase() === "portal" ? "(via app do Portal)" : bancoAutorizacao) : "(via app do Portal)"}`
+          ].filter(Boolean);
+
+          const { error } = await supabase
+            .from("historico_proposta_comercial_novo_formato")
+            .insert({
+              cliente_cpf: cleanCpf,
+              cliente_nome: nomeCliente || client?.nome || "",
+              user_id: activeUser?.id || null,
+              user_nome: nomeConsultor || perfil?.nome || "",
+              user_email: activeUser?.email || perfil?.email || "",
+              telefone_consultor: telefoneConsultor,
+              valor_liberado: parseFloat(valorLiberado) || 0,
+              nome_card_esquerdo: tituloCardEsquerdo,
+              prazo_real_esquerdo: parseInt(prazoEfetivoRotativo) || 0,
+              taxa_real_esquerdo: parseFloat(taxaEfetivaRotativo.replace(",", ".")) || 0,
+              margem_esquerda: parseFloat(String(margemPrincipalVal || 0)) || 0,
+              prazo_real_direito: parseInt(prazoEfetivoNovo) || 0,
+              taxa_real_direito: parseFloat(taxaEfetivaNovo.replace(",", ".")) || 0,
+              meses_a_menos: parseInt(mesesAMenos) || 0,
+              validade_proposta: parseInt(validadeDias) || 0,
+              documentos_necessarios: docsNecessarios,
+              banco: bancoAutorizacao,
+              arquivo_url: finalDataUrl,
+              tipo_arquivo: format.toUpperCase()
+            });
+          saveErr = error;
+        } else {
+          const { error } = await supabase
+            .from("historico_proposta_comercial")
+            .insert({
+              cliente_cpf: cleanCpf,
+              cliente_nome: nomeCliente || client?.nome || "",
+              user_id: activeUser?.id || null,
+              user_nome: nomeConsultor || perfil?.nome || "",
+              user_email: activeUser?.email || perfil?.email || "",
+              telefone_consultor: telefoneConsultor,
+              contratos_considerados: contractsConsidered,
+              contratos_excluidos: contractsExcluded,
+              percentual_reducao: parseFloat(porcentagemReducao) || 13.78,
+              total_parcela_atual: currentTotal,
+              total_parcela_nova: newTotal,
+              valor_liberado: parseFloat(valorLiberado) || null,
+              arquivo_url: finalDataUrl,
+              tipo_arquivo: format.toUpperCase()
+            });
+          saveErr = error;
+        }
 
         if (saveErr) {
           console.error("Erro ao salvar histórico de proposta:", saveErr);

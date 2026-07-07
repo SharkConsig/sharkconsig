@@ -451,6 +451,70 @@ function NewProposalForm() {
     return hasAllFields && hasSelection && hasRgFrente && hasContraCheque;
   })();
 
+  const getMissingFields = () => {
+    const missing: string[] = [];
+
+    const fieldLabels: Record<string, string> = {
+      nome: "Nome completo",
+      cpf: "CPF",
+      nascimento: "Data de nascimento",
+      matricula: "Matrícula",
+      origem: "Origem/Órgão",
+      naturalidade: "Naturalidade",
+      uf_naturalidade: "UF de Naturalidade",
+      identidade: "Identidade (Nº do RG)",
+      orgao_emissor: "Órgão emissor do RG",
+      uf_emissao: "UF de emissão do RG",
+      data_emissao: "Data de emissão do RG",
+      nome_mae: "Nome da mãe",
+      nome_pai: "Nome do pai",
+      tel_1: "Telefone",
+      email: "E-mail",
+      cep: "CEP",
+      endereco: "Endereço",
+      numero: "Número",
+      bairro: "Bairro",
+      cidade: "Cidade",
+      uf: "UF",
+      banco_cliente: "Banco do cliente",
+      agencia: "Agência bancária",
+      conta: "Conta bancária",
+      dv: "Dígito verificador da conta",
+      tipo_conta: "Tipo de conta",
+      valor_parcela: "Valor da parcela",
+      valor_producao_corretor: "Valor de produção",
+      coeficiente_prazo: "Coeficiente/Prazo"
+    };
+
+    const requiredFields = [
+      'nome', 'cpf', 'nascimento', 'matricula', 'origem', 
+      'naturalidade', 'uf_naturalidade', 'identidade', 'orgao_emissor', 'uf_emissao', 'data_emissao',
+      'nome_mae', 'nome_pai', 'tel_1', 'email', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'uf',
+      'banco_cliente', 'agencia', 'conta', 'dv', 'tipo_conta', 'valor_parcela', 'valor_producao_corretor',
+      'coeficiente_prazo'
+    ];
+
+    requiredFields.forEach(field => {
+      const val = formData[field as keyof typeof formData];
+      const isFilled = typeof val === 'string' ? val.trim() !== "" : !!val;
+      if (!isFilled) {
+        missing.push(fieldLabels[field] || field);
+      }
+    });
+
+    if (!selection.convenio) missing.push("Convênio");
+    if (!selection.banco) missing.push("Banco");
+    if (!selection.operacao) missing.push("Operação");
+
+    const hasRgFrente = !!selectedFiles.frente || !!existingAttachments.frente;
+    const hasContraCheque = !!selectedFiles.contracheque || !!existingAttachments.contracheque;
+
+    if (!hasRgFrente) missing.push("Anexo: RG ou CNH (FRENTE)");
+    if (!hasContraCheque) missing.push("Anexo: Contra Cheque");
+
+    return missing;
+  };
+
   const fileRefs = {
     frente: useRef<HTMLInputElement>(null),
     verso: useRef<HTMLInputElement>(null),
@@ -2042,6 +2106,24 @@ function NewProposalForm() {
               ))}
             </div>
           </div>
+
+          {!isFormValid && (
+            <div className="mt-8 p-4 bg-red-50 border border-red-200 rounded-xl text-left w-full">
+              <p className="text-[11px] font-black text-red-700 uppercase tracking-wider mb-2">
+                Campos obrigatórios pendentes para habilitar a conclusão da proposta:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {getMissingFields().map((field, idx) => (
+                  <span 
+                    key={idx} 
+                    className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold bg-red-100 text-red-800 uppercase tracking-wider"
+                  >
+                    • {field}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap justify-center gap-4 pt-12">
             <Button 

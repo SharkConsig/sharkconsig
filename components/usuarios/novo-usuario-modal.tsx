@@ -134,8 +134,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { 
-        toast.error("A imagem deve ter menos de 2MB")
+      if (file.size > 6 * 1024 * 1024) { 
+        toast.error("A imagem deve ter menos de 6MB")
         return
       }
       
@@ -156,8 +156,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
   const handleCampanhaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { 
-        toast.error("A imagem deve ter menos de 2MB")
+      if (file.size > 6 * 1024 * 1024) { 
+        toast.error("A imagem deve ter menos de 6MB")
         return
       }
       
@@ -178,8 +178,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
   const handlePropostaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { 
-        toast.error("A imagem deve ter menos de 2MB")
+      if (file.size > 6 * 1024 * 1024) { 
+        toast.error("A imagem deve ter menos de 6MB")
         return
       }
       
@@ -702,7 +702,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                 </div>
                 
                 <p className="text-[9px] font-medium text-slate-400 text-center leading-relaxed max-w-[160px]">
-                  Formatos aceitos: JPG, PNG até 2MB.
+                  Formatos aceitos: JPG, PNG até 6MB.
                 </p>
               </div>
             </div>

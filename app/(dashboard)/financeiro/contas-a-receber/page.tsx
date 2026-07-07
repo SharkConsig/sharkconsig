@@ -406,6 +406,7 @@ export default function ContasAReceberPage() {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null)
   
   const [receivedProposalIds, setReceivedProposalIds] = useState<Record<string, boolean>>({})
+  const [receivedProposalDates, setReceivedProposalDates] = useState<Record<string, string>>({})
   const [customCommissionPercents, setCustomCommissionPercents] = useState<Record<string, number>>({})
 
   useEffect(() => {
@@ -414,6 +415,14 @@ export default function ContasAReceberPage() {
       if (stored) {
         try {
           setReceivedProposalIds(JSON.parse(stored))
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      const storedDates = window.localStorage.getItem("receber_pago_dates")
+      if (storedDates) {
+        try {
+          setReceivedProposalDates(JSON.parse(storedDates))
         } catch (e) {
           console.error(e)
         }
@@ -431,10 +440,25 @@ export default function ContasAReceberPage() {
 
   const toggleReceivedStatus = (idLead: string) => {
     setReceivedProposalIds(prev => {
-      const updated = { ...prev, [idLead]: !prev[idLead] }
+      const isNowReceived = !prev[idLead]
+      const updated = { ...prev, [idLead]: isNowReceived }
       if (typeof window !== "undefined") {
         window.localStorage.setItem("receber_pago_status_ids", JSON.stringify(updated))
       }
+
+      setReceivedProposalDates(prevDates => {
+        const updatedDates = { ...prevDates }
+        if (isNowReceived) {
+          updatedDates[idLead] = new Date().toISOString()
+        } else {
+          delete updatedDates[idLead]
+        }
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("receber_pago_dates", JSON.stringify(updatedDates))
+        }
+        return updatedDates
+      })
+
       return updated
     })
   }
@@ -1031,7 +1055,14 @@ export default function ContasAReceberPage() {
 
     const matchesDate = (() => {
       if (!startDate && !endDate) return true
-      const compareDate = proposal.data_pago_cliente || proposal.updated_at || proposal.created_at
+      
+      const isReceived = !!receivedProposalIds[proposal.id_lead]
+      const receivedDate = receivedProposalDates[proposal.id_lead]
+      
+      const compareDate = (isReceived && receivedDate)
+        ? receivedDate
+        : (proposal.data_pago_cliente || proposal.updated_at || proposal.created_at)
+
       if (!compareDate) return true
       
       try {
