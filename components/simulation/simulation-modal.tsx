@@ -107,6 +107,20 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   // Validade state
   const [validadeDias, setValidadeDias] = useState("4");
 
+  // Options states
+  const [tituloCardEsquerdo, setTituloCardEsquerdo] = useState<"FORMATO ROTATIVO" | "FORMATO ANTIGO">("FORMATO ROTATIVO");
+  const [ocultarPrazoReal, setOcultarPrazoReal] = useState<boolean>(false);
+  const [ocultarTaxaReal, setOcultarTaxaReal] = useState<boolean>(false);
+  const [ocultarMargem, setOcultarMargem] = useState<boolean>(false);
+
+  // Manual edit flags for styling pre-filled inputs
+  const [isManualPrazoEfetivoRotativo, setIsManualPrazoEfetivoRotativo] = useState<boolean>(false);
+  const [isManualTaxaEfetivaRotativo, setIsManualTaxaEfetivaRotativo] = useState<boolean>(false);
+  const [isManualPrazoEfetivoNovo, setIsManualPrazoEfetivoNovo] = useState<boolean>(false);
+  const [isManualTaxaEfetivaNovo, setIsManualTaxaEfetivaNovo] = useState<boolean>(false);
+  const [isManualMesesAMenos, setIsManualMesesAMenos] = useState<boolean>(false);
+  const [isManualValidadeDias, setIsManualValidadeDias] = useState<boolean>(false);
+
   // Form states
   const [nomeCliente, setNomeCliente] = useState("");
   const [cpfCliente, setCpfCliente] = useState("");
@@ -935,10 +949,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                 </h4>
 
                 <div className={`grid grid-cols-2 ${cardGap}`}>
-                  {/* Card Esquerdo: FORMATO ROTATIVO */}
+                  {/* Card Esquerdo: FORMATO ROTATIVO ou customizado */}
                   <div className={`border border-slate-200 rounded-2xl ${cardPadding} bg-white flex flex-col justify-between shadow-sm ${cardMinHeight}`}>
                     <div className="text-left space-y-1">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">FORMATO ROTATIVO</p>
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{tituloCardEsquerdo}</p>
                       <div className="pt-2">
                         <p className="text-[11px] font-bold text-slate-400">VALOR LIBERADO</p>
                         <p className="text-[26px] font-black text-slate-400 tracking-tight leading-none mt-1">
@@ -947,17 +961,27 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       </div>
                     </div>
 
-                    <div className="py-2 space-y-1 border-t border-slate-100 mt-2 text-left">
-                      <p className="text-[10px] text-slate-500 font-medium">
-                        Prazo real: <span className="font-normal text-slate-700">{prazoEfetivoRotativo} meses</span>
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-medium">
-                        Taxa real: <span className="font-normal text-slate-700">{taxaEfetivaRotativo}% a.m.</span>
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-medium">
-                        Margem: <span className="font-normal text-slate-700">{formatBRL(margemPrincipalVal || 0)}</span>
-                      </p>
-                    </div>
+                    {(!ocultarPrazoReal || !ocultarTaxaReal || !ocultarMargem) ? (
+                      <div className="py-2 space-y-1 border-t border-slate-100 mt-2 text-left">
+                        {!ocultarPrazoReal && (
+                          <p className="text-[10px] text-slate-500 font-medium">
+                            Prazo real: <span className="font-normal text-slate-700">{prazoEfetivoRotativo} meses</span>
+                          </p>
+                        )}
+                        {!ocultarTaxaReal && (
+                          <p className="text-[10px] text-slate-500 font-medium">
+                            Taxa real: <span className="font-normal text-slate-700">{taxaEfetivaRotativo}% a.m.</span>
+                          </p>
+                        )}
+                        {!ocultarMargem && (
+                          <p className="text-[10px] text-slate-500 font-medium">
+                            Margem: <span className="font-normal text-slate-700">{formatBRL(margemPrincipalVal || 0)}</span>
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="py-2 mt-2" />
+                    )}
 
                     <div className="bg-red-50 text-red-600 rounded-xl py-2 px-3 text-[10px] font-black uppercase tracking-wider text-center mt-2">
                       Mais tempo pagando juros
@@ -976,14 +1000,22 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       </div>
                     </div>
 
-                    <div className="py-2 space-y-1 border-t border-slate-700/50 mt-2 text-left">
-                      <p className="text-[10px] text-slate-300 font-medium">
-                        Prazo real: <span className="font-normal text-white">{prazoEfetivoNovo} meses</span>
-                      </p>
-                      <p className="text-[10px] text-slate-300 font-medium">
-                        Taxa real: <span className="font-normal text-white">{taxaEfetivaNovo}% a.m.</span>
-                      </p>
-                    </div>
+                    {(!ocultarPrazoReal || !ocultarTaxaReal) ? (
+                      <div className="py-2 space-y-1 border-t border-slate-700/50 mt-2 text-left">
+                        {!ocultarPrazoReal && (
+                          <p className="text-[10px] text-slate-300 font-medium">
+                            Prazo real: <span className="font-normal text-white">{prazoEfetivoNovo} meses</span>
+                          </p>
+                        )}
+                        {!ocultarTaxaReal && (
+                          <p className="text-[10px] text-slate-300 font-medium">
+                            Taxa real: <span className="font-normal text-white">{taxaEfetivaNovo}% a.m.</span>
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="py-2 mt-2" />
+                    )}
 
                     <div className="bg-[#F4C600] text-[#162546] rounded-xl py-2 px-3 text-[10px] font-black uppercase tracking-wider text-center mt-2">
                       Mais economia
@@ -993,17 +1025,34 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
                 {/* Bottom Indicators Row */}
                 <div className="grid grid-cols-3 gap-4 text-center py-3 bg-slate-50 border border-slate-250/60 rounded-2xl">
-                  <div className="space-y-1">
-                    <p className="text-[12px] font-black text-[#162546]">{mesesAMenos} MESES A MENOS</p>
-                    <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider">Pagando juros</p>
-                  </div>
-                  <div className="space-y-1 border-x border-slate-200 flex flex-col justify-center items-center">
-                    <p className="text-[14px] font-black text-[#162546]">ESTRATÉGIA VALIDADA!</p>
-                  </div>
+                  {!ocultarPrazoReal ? (
+                    <>
+                      <div className="space-y-1">
+                        <p className="text-[12px] font-black text-[#162546]">{mesesAMenos} MESES A MENOS</p>
+                        <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider">Pagando juros</p>
+                      </div>
+                      <div className="space-y-1 border-x border-slate-200 flex flex-col justify-center items-center">
+                        <p className="text-[14px] font-black text-[#162546]">ESTRATÉGIA VALIDADA!</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div></div>
+                      <div className="space-y-1 border-r border-slate-200 flex flex-col justify-center items-center">
+                        <p className="text-[14px] font-black text-[#162546]">ESTRATÉGIA VALIDADA!</p>
+                      </div>
+                    </>
+                  )}
                   <div className="space-y-1">
                     <p className="text-[12px] font-black text-[#162546]">Menos juros</p>
                     <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider">Mais liberdade</p>
                   </div>
+                </div>
+
+                {/* Diferença no seu bolso */}
+                <div className="bg-emerald-50 border border-emerald-150 rounded-2xl p-3 text-center space-y-0.5 shadow-sm">
+                  <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-widest leading-tight">DIFERENÇA NO SEU BOLSO</p>
+                  <p className="text-[18px] font-black text-emerald-600 leading-none">+{formatBRL(valorNovo - valorRotativo)}</p>
                 </div>
 
                 {/* Document Checklist Section */}
@@ -1841,19 +1890,71 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               </p>
                             </div>
 
+                            {/* Dropdown Left Card and Hide Info Checkboxes */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nome do Card Esquerdo</label>
+                                <select
+                                  value={tituloCardEsquerdo}
+                                  onChange={(e) => setTituloCardEsquerdo(e.target.value as any)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[12px] font-bold text-slate-400 focus:outline-none focus:border-blue-500 shadow-sm"
+                                >
+                                  <option value="FORMATO ROTATIVO" className="text-slate-800">FORMATO ROTATIVO</option>
+                                  <option value="FORMATO ANTIGO" className="text-slate-800">FORMATO ANTIGO</option>
+                                </select>
+                              </div>
+                              <div className="flex flex-col gap-2 pt-2 md:pt-0">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Ocultar na Proposta</span>
+                                <div className="flex flex-wrap gap-x-4 gap-y-2 bg-white border border-slate-150 rounded-xl p-2 shadow-sm">
+                                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={ocultarPrazoReal} 
+                                      onChange={(e) => setOcultarPrazoReal(e.target.checked)}
+                                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                                    />
+                                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Prazo Real</span>
+                                  </label>
+                                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={ocultarTaxaReal} 
+                                      onChange={(e) => setOcultarTaxaReal(e.target.checked)}
+                                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                                    />
+                                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Taxa Real</span>
+                                  </label>
+                                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={ocultarMargem} 
+                                      onChange={(e) => setOcultarMargem(e.target.checked)}
+                                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                                    />
+                                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Margem</span>
+                                  </label>
+                                </div>
+                              </div>
+                            </div>
+
                             {/* Left vs Right parameters */}
-                            <div className="grid grid-cols-1 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               {/* Left Card Config */}
                               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Formato Rotativo (Card Esquerdo)</span>
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{tituloCardEsquerdo} (Card Esquerdo)</span>
                                 <div className="grid grid-cols-2 gap-3">
                                   <div className="space-y-1">
                                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Prazo Real (Meses)</label>
                                     <input 
                                       type="number" 
                                       value={prazoEfetivoRotativo}
-                                      onChange={(e) => setPrazoEfetivoRotativo(e.target.value)}
-                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                      onChange={(e) => {
+                                        setPrazoEfetivoRotativo(e.target.value);
+                                        setIsManualPrazoEfetivoRotativo(true);
+                                      }}
+                                      className={`w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[12px] font-bold focus:outline-none focus:border-blue-500 shadow-sm ${
+                                        isManualPrazoEfetivoRotativo ? "text-slate-800" : "text-slate-400"
+                                      }`}
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -1861,8 +1962,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                     <input 
                                       type="text" 
                                       value={taxaEfetivaRotativo}
-                                      onChange={(e) => setTaxaEfetivaRotativo(e.target.value)}
-                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                      onChange={(e) => {
+                                        setTaxaEfetivaRotativo(e.target.value);
+                                        setIsManualTaxaEfetivaRotativo(true);
+                                      }}
+                                      className={`w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[12px] font-bold focus:outline-none focus:border-blue-500 shadow-sm ${
+                                        isManualTaxaEfetivaRotativo ? "text-slate-800" : "text-slate-400"
+                                      }`}
                                     />
                                   </div>
                                 </div>
@@ -1902,6 +2008,41 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                   </div>
                                 </div>
                               </div>
+
+                              {/* Right Card Config */}
+                              <div className="p-4 bg-yellow-50/40 border border-yellow-200/50 rounded-xl space-y-3">
+                                <span className="text-[10px] font-black text-yellow-600 uppercase tracking-wider">Novo Formato (Card Direito)</span>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-[#162546] uppercase tracking-widest">Prazo Real (Meses)</label>
+                                    <input 
+                                      type="number" 
+                                      value={prazoEfetivoNovo}
+                                      onChange={(e) => {
+                                        setPrazoEfetivoNovo(e.target.value);
+                                        setIsManualPrazoEfetivoNovo(true);
+                                      }}
+                                      className={`w-full bg-white border border-yellow-200 rounded-xl px-3 py-1.5 text-[12px] font-bold focus:outline-none focus:border-yellow-500 shadow-sm ${
+                                        isManualPrazoEfetivoNovo ? "text-slate-800" : "text-slate-400"
+                                      }`}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-[#162546] uppercase tracking-widest">Taxa Real % a.m.</label>
+                                    <input 
+                                      type="text" 
+                                      value={taxaEfetivaNovo}
+                                      onChange={(e) => {
+                                        setTaxaEfetivaNovo(e.target.value);
+                                        setIsManualTaxaEfetivaNovo(true);
+                                      }}
+                                      className={`w-full bg-white border border-yellow-200 rounded-xl px-3 py-1.5 text-[12px] font-bold focus:outline-none focus:border-yellow-500 shadow-sm ${
+                                        isManualTaxaEfetivaNovo ? "text-slate-800" : "text-slate-400"
+                                      }`}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
                             </div>
 
                             {/* Indicators and Validade */}
@@ -1911,8 +2052,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                 <input 
                                   type="number" 
                                   value={mesesAMenos}
-                                  onChange={(e) => setMesesAMenos(e.target.value)}
-                                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                  onChange={(e) => {
+                                    setMesesAMenos(e.target.value);
+                                    setIsManualMesesAMenos(true);
+                                  }}
+                                  className={`w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold focus:outline-none focus:border-blue-500 shadow-sm ${
+                                    isManualMesesAMenos ? "text-slate-800" : "text-slate-400"
+                                  }`}
                                 />
                               </div>
                               <div className="space-y-1">
@@ -1920,8 +2066,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                 <input 
                                   type="number" 
                                   value={validadeDias}
-                                  onChange={(e) => setValidadeDias(e.target.value)}
-                                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                  onChange={(e) => {
+                                    setValidadeDias(e.target.value);
+                                    setIsManualValidadeDias(true);
+                                  }}
+                                  className={`w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold focus:outline-none focus:border-blue-500 shadow-sm ${
+                                    isManualValidadeDias ? "text-slate-800" : "text-slate-400"
+                                  }`}
                                 />
                               </div>
                             </div>
