@@ -84,7 +84,28 @@ interface SimContract {
 
 export function SimulationModal({ isOpen, onClose, client, registrations, perfil, activeRegIndex, onProposalSaved }: SimulationModalProps) {
   const [step, setStep] = useState<"model-select" | "form" | "preview">("model-select");
-  const [model, setModel] = useState<"reducao" | "outros">("reducao");
+  const [model, setModel] = useState<"reducao" | "novo-formato">("reducao");
+
+  // Novo Formato states
+  const [prazoEfetivoRotativo, setPrazoEfetivoRotativo] = useState("96");
+  const [taxaEfetivaRotativo, setTaxaEfetivaRotativo] = useState("4,75");
+  const [prazoEfetivoNovo, setPrazoEfetivoNovo] = useState("29");
+  const [taxaEfetivaNovo, setTaxaEfetivaNovo] = useState("1,67");
+  const [mesesAMenos, setMesesAMenos] = useState("67");
+
+  // Documentação Necessária states
+  const [docFoto, setDocFoto] = useState(true);
+  const [docRG, setDocRG] = useState(true);
+  const [docEndereco, setDocEndereco] = useState(true);
+  const [docEmail, setDocEmail] = useState(true);
+  const [docResidencia, setDocResidencia] = useState(false);
+  const [docContracheque, setDocContracheque] = useState(true);
+  const [docExtrato, setDocExtrato] = useState(true);
+  const [docAutorizacao, setDocAutorizacao] = useState(true);
+  const [bancoAutorizacao, setBancoAutorizacao] = useState("Portal");
+
+  // Validade state
+  const [validadeDias, setValidadeDias] = useState("4");
 
   // Form states
   const [nomeCliente, setNomeCliente] = useState("");
@@ -544,6 +565,23 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
   // Helper to render the complete proposal template flyer with exact matching structure and values
   const renderProposalTemplateContent = (isZoom: boolean) => {
+    const valorNovo = parseFloat(valorLiberado) || 0;
+    const valorRotativo = valorNovo * 0.70;
+
+    const expirationDate = (() => {
+      const days = parseInt(validadeDias) || 5;
+      const date = new Date();
+      let addedDays = 0;
+      while (addedDays < days) {
+        date.setDate(date.getDate() + 1);
+        const dayOfWeek = date.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Skip weekends
+          addedDays++;
+        }
+      }
+      return date.toLocaleDateString("pt-BR");
+    })();
+
     const totalParcelaAtual = contratos.reduce((acc, c) => acc + (parseFloat(c.parcelaAtual) || 0), 0);
     const totalNovaParcela = contratos.reduce((acc, c) => acc + (parseFloat(c.novaParcela) || 0), 0);
     const economiaMensal = Math.max(0, totalParcelaAtual - totalNovaParcela);
@@ -575,7 +613,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       const parts = cleanName.split(/\s+/).filter(Boolean);
       if (parts.length === 0) return "corretor@acertofacil.com.br";
       if (parts.length === 1) return `${parts[0]}@acertofacil.com.br`;
-      return `${parts[0]}.${parts[parts.length - 1]}@acertofacil.com.br`;
+      const lastInitial = parts[parts.length - 1][0] || "";
+      return lastInitial ? `${parts[0]}.${lastInitial}@acertofacil.com.br` : `${parts[0]}@acertofacil.com.br`;
     })();
 
     // Spacing configuration for normal single-page template (up to 3 contracts)
@@ -888,146 +927,277 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             </div>
           </div>
 
-          {/* Cards for Financial Highlights: Total Liberado vs Total Reduzido */}
-          <div className={`grid grid-cols-2 ${cardGap} pt-1`}>
-            {/* Left card: Total Valor Liberado */}
-            <div className={`border border-slate-200 rounded-2xl ${cardPadding} bg-white flex flex-col justify-center shadow-sm ${cardMinHeight}`}>
-              <div className="text-left space-y-0.5">
-                <p className="text-[10px] font-black text-[#162546] uppercase tracking-widest">Total Valor Liberado</p>
-                <div className="flex items-center gap-2 py-0.5 justify-start">
-                  <div className="w-7 h-7 rounded-full bg-[#F4C600]/15 flex items-center justify-center text-[#F4C600] text-sm font-black border border-[#F4C600]/30 shadow-sm shrink-0">
-                    $
+          {model === "novo-formato" ? (
+            <div className="space-y-4 pt-1 flex-1 flex flex-col justify-between">
+              <div className="space-y-4">
+                <h4 className="text-center text-[#162546] font-black text-[12px] uppercase tracking-wider">
+                  MAIS VALOR LIBERADO, MUITO MAIS VANTAGEM PARA VOCÊ!
+                </h4>
+
+                <div className={`grid grid-cols-2 ${cardGap}`}>
+                  {/* Card Esquerdo: FORMATO ROTATIVO */}
+                  <div className={`border border-slate-200 rounded-2xl ${cardPadding} bg-white flex flex-col justify-between shadow-sm ${cardMinHeight}`}>
+                    <div className="text-left space-y-1">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">FORMATO ROTATIVO</p>
+                      <div className="pt-2">
+                        <p className="text-[11px] font-bold text-slate-400">VALOR LIBERADO</p>
+                        <p className="text-[26px] font-black text-slate-400 tracking-tight leading-none mt-1">
+                          {formatBRL(valorRotativo)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="py-2 space-y-1 border-t border-slate-100 mt-2 text-left">
+                      <p className="text-[10px] text-slate-500 font-medium">
+                        Prazo real: <span className="font-normal text-slate-700">{prazoEfetivoRotativo} meses</span>
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium">
+                        Taxa real: <span className="font-normal text-slate-700">{taxaEfetivaRotativo}% a.m.</span>
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium">
+                        Margem: <span className="font-normal text-slate-700">{formatBRL(margemPrincipalVal || 0)}</span>
+                      </p>
+                    </div>
+
+                    <div className="bg-red-50 text-red-600 rounded-xl py-2 px-3 text-[10px] font-black uppercase tracking-wider text-center mt-2">
+                      Mais tempo pagando juros
+                    </div>
                   </div>
-                  <p className="text-[28px] font-black text-[#4c4ac4] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
+
+                  {/* Card Direito: NOVO FORMATO */}
+                  <div className={`bg-[#162546] border border-[#162546] rounded-2xl ${cardPadding} flex flex-col justify-between shadow-sm ${cardMinHeight}`}>
+                    <div className="text-left space-y-1 text-white">
+                      <p className="text-[10px] font-black text-[#F4C600] uppercase tracking-widest">NOVO FORMATO</p>
+                      <div className="pt-2">
+                        <p className="text-[11px] font-bold text-[#F4C600]/80">VALOR LIBERADO</p>
+                        <p className="text-[26px] font-black text-[#F4C600] tracking-tight leading-none mt-1">
+                          {formatBRL(valorNovo)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="py-2 space-y-1 border-t border-slate-700/50 mt-2 text-left">
+                      <p className="text-[10px] text-slate-300 font-medium">
+                        Prazo real: <span className="font-normal text-white">{prazoEfetivoNovo} meses</span>
+                      </p>
+                      <p className="text-[10px] text-slate-300 font-medium">
+                        Taxa real: <span className="font-normal text-white">{taxaEfetivaNovo}% a.m.</span>
+                      </p>
+                    </div>
+
+                    <div className="bg-[#F4C600] text-[#162546] rounded-xl py-2 px-3 text-[10px] font-black uppercase tracking-wider text-center mt-2">
+                      Mais economia
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Indicators Row */}
+                <div className="grid grid-cols-3 gap-4 text-center py-3 bg-slate-50 border border-slate-250/60 rounded-2xl">
+                  <div className="space-y-1">
+                    <p className="text-[12px] font-black text-[#162546]">{mesesAMenos} MESES A MENOS</p>
+                    <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider">Pagando juros</p>
+                  </div>
+                  <div className="space-y-1 border-x border-slate-200 flex flex-col justify-center items-center">
+                    <p className="text-[14px] font-black text-[#162546]">ESTRATÉGIA VALIDADA!</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[12px] font-black text-[#162546]">Menos juros</p>
+                    <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider">Mais liberdade</p>
+                  </div>
+                </div>
+
+                {/* Document Checklist Section */}
+                <div className="space-y-2 pt-2 text-left">
+                  <h5 className="text-[10px] font-black text-[#162546] uppercase tracking-widest pl-1">
+                    Documentação Necessária para Análise
+                  </h5>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 bg-slate-50/50 border border-slate-150 rounded-2xl p-4">
+                    {[
+                      { label: "Foto (RG ou CNH)", checked: docFoto },
+                      { label: "Endereço completo por escrito", checked: docEndereco },
+                      { label: "E-mail", checked: docEmail },
+                      { label: "Comprovante de residência (quando exigido pelo banco)", checked: docResidencia },
+                      { label: "Último contracheque", checked: docContracheque },
+                      { label: "Extrato de empréstimos (consignações)", checked: docExtrato },
+                      { label: `Autorização para o banco ${bancoAutorizacao ? (bancoAutorizacao.toLowerCase() === "portal" ? "(via app do Portal)" : bancoAutorizacao) : "(via app do Portal)"}`, checked: docAutorizacao },
+                    ].map((doc, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 ${
+                          doc.checked 
+                            ? "bg-emerald-500 text-white" 
+                            : "border border-slate-200 text-slate-300"
+                        }`}>
+                          {doc.checked && <Check className="w-2.5 h-2.5 stroke-[3.5]" />}
+                        </div>
+                        <span className={`text-[10px] ${doc.checked ? "text-slate-800 font-bold" : "text-slate-400 font-medium"}`}>
+                          {doc.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Proposal Validity section */}
+                <div className="pt-1.5">
+                  <div className="bg-[#162546] text-[#F4C600] text-[9.5px] font-black uppercase tracking-widest py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
+                    <span>VALIDADE DA PROPOSTA:</span>
+                    <span>Até {expirationDate} ({validadeDias} dias úteis a partir de hoje)</span>
+                  </div>
                 </div>
               </div>
-              
-              <div className={`space-y-0.5 text-left ${cardBorderPadding}`}>
-                {hasMargemPrincipal && (
-                  <p className="text-[8.5px] text-[#162546] font-normal">Margem*: <span className="text-[#162546] font-normal">{formatBRL(margemPrincipalVal)}</span></p>
-                )}
-                {hasMargemCC && (
-                  <p className="text-[8.5px] text-[#162546] font-normal">Margem CC*: <span className="text-[#162546] font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
-                )}
-                {hasMargemCB && (
-                  <p className="text-[8.5px] text-[#162546] font-normal">Margem CB*: <span className="text-[#162546] font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
-                )}
-                {showBancosLine && (
-                  <p className="text-[8px] text-[#162546] italic font-normal mt-0.5">
-                    {destBanksText}
+            </div>
+          ) : (
+            <>
+              {/* Cards for Financial Highlights: Total Liberado vs Total Reduzido */}
+              <div className={`grid grid-cols-2 ${cardGap} pt-1`}>
+                {/* Left card: Total Valor Liberado */}
+                <div className={`border border-slate-200 rounded-2xl ${cardPadding} bg-white flex flex-col justify-center shadow-sm ${cardMinHeight}`}>
+                  <div className="text-left space-y-0.5">
+                    <p className="text-[10px] font-black text-[#162546] uppercase tracking-widest">Total Valor Liberado</p>
+                    <div className="flex items-center gap-2 py-0.5 justify-start">
+                      <div className="w-7 h-7 rounded-full bg-[#F4C600]/15 flex items-center justify-center text-[#F4C600] text-sm font-black border border-[#F4C600]/30 shadow-sm shrink-0">
+                        $
+                      </div>
+                      <p className="text-[28px] font-black text-[#4c4ac4] tracking-tight">{formatBRL(valorLiberado || 13214.70)}</p>
+                    </div>
+                  </div>
+                  
+                  <div className={`space-y-0.5 text-left ${cardBorderPadding}`}>
+                    {hasMargemPrincipal && (
+                      <p className="text-[8.5px] text-[#162546] font-normal">Margem*: <span className="text-[#162546] font-normal">{formatBRL(margemPrincipalVal)}</span></p>
+                    )}
+                    {hasMargemCC && (
+                      <p className="text-[8.5px] text-[#162546] font-normal">Margem CC*: <span className="text-[#162546] font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
+                    )}
+                    {hasMargemCB && (
+                      <p className="text-[8.5px] text-[#162546] font-normal">Margem CB*: <span className="text-[#162546] font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
+                    )}
+                    {showBancosLine && (
+                      <p className="text-[8px] text-[#162546] italic font-normal mt-0.5">
+                        {destBanksText}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right card: Valor Total Reduzido ao Mês */}
+                <div className={`bg-[#F4C600] rounded-2xl ${cardPadding} flex flex-col justify-center text-[#162546] shadow-sm ${cardMinHeight}`}>
+                  <div className="text-left space-y-0.5">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#162546]/80">Valor Total Reduzido ao Mês</p>
+                    <div className="flex items-center gap-2 py-0.5 justify-start">
+                      <TrendingDown className="w-7 h-7 text-[#162546] shrink-0" />
+                      <p className="text-[26px] font-black tracking-tight text-[#162546]">{formatBRL(economiaMensal || 244.19)}</p>
+                    </div>
+                  </div>
+                  <p className={`text-[10px] font-normal text-[#162546]/60 text-left ${cardBorderPadding}`}>
+                    Economia após a finalização da estratégia financeira.
                   </p>
-                )}
-              </div>
-            </div>
-
-            {/* Right card: Valor Total Reduzido ao Mês */}
-            <div className={`bg-[#F4C600] rounded-2xl ${cardPadding} flex flex-col justify-center text-[#162546] shadow-sm ${cardMinHeight}`}>
-              <div className="text-left space-y-0.5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-[#162546]/80">Valor Total Reduzido ao Mês</p>
-                <div className="flex items-center gap-2 py-0.5 justify-start">
-                  <TrendingDown className="w-7 h-7 text-[#162546] shrink-0" />
-                  <p className="text-[26px] font-black tracking-tight text-[#162546]">{formatBRL(economiaMensal || 244.19)}</p>
                 </div>
               </div>
-              <p className={`text-[10px] font-normal text-[#162546]/60 text-left ${cardBorderPadding}`}>
-                Economia após a finalização da estratégia financeira.
-              </p>
-            </div>
-          </div>
 
-          {/* Table Section: Current Installments list */}
-          <div className={`space-y-0 ${tableSectionPt}`}>
-            <div className="bg-[#162546] text-white text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
-              PARCELAS ATUAIS
-            </div>
-            <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm">
-              <table className="w-full text-left border-collapse table-fixed">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-50/50">
-                    <th className={`${tableHeaderHeight} pl-5 text-left w-[40%]`}>BANCO ATUAL</th>
-                    <th className={`${tableHeaderHeight} text-left w-[30%]`}>PARCELA ATUAL</th>
-                    <th className={`${tableHeaderHeight} text-left w-[15%]`}>PRAZO</th>
-                    {showTaxa && (
-                      <th className={`${tableHeaderHeight} text-left w-[15%]`}>TAXA ATUAL</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[11px]">
-                  {contratos.map((c, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/30">
-                      <td className={`${tableCellPadding} pl-5 font-bold text-slate-800 uppercase truncate`}>{c.bancoAtual || "NÃO INFORMADO"}</td>
-                      <td className={`${tableCellPadding} font-semibold text-slate-700`}>{formatBRL(c.parcelaAtual)}</td>
-                      <td className={`${tableCellPadding} font-bold text-[#162546]`}>{c.prazoAtual ? `${c.prazoAtual}X` : "-"}</td>
-                      {showTaxa && (
-                        <td className={`${tableCellPadding} font-semibold text-slate-600`}>{c.taxaAtual ? `${parseFloat(c.taxaAtual).toFixed(2)}%` : "-"}</td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className={`bg-[#162546] text-white ${tableFooterPadding} text-center font-bold text-xs uppercase tracking-wider`}>
-                Parcela total: {formatBRL(totalParcelaAtual)}
+              {/* Table Section: Current Installments list */}
+              <div className={`space-y-0 ${tableSectionPt}`}>
+                <div className="bg-[#162546] text-white text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
+                  PARCELAS ATUAIS
+                </div>
+                <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm">
+                  <table className="w-full text-left border-collapse table-fixed">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-50/50">
+                        <th className={`${tableHeaderHeight} pl-5 text-left w-[40%]`}>BANCO ATUAL</th>
+                        <th className={`${tableHeaderHeight} text-left w-[30%]`}>PARCELA ATUAL</th>
+                        <th className={`${tableHeaderHeight} text-left w-[15%]`}>PRAZO</th>
+                        {showTaxa && (
+                          <th className={`${tableHeaderHeight} text-left w-[15%]`}>TAXA ATUAL</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[11px]">
+                      {contratos.map((c, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/30">
+                          <td className={`${tableCellPadding} pl-5 font-bold text-slate-800 uppercase truncate`}>{c.bancoAtual || "NÃO INFORMADO"}</td>
+                          <td className={`${tableCellPadding} font-semibold text-slate-700`}>{formatBRL(c.parcelaAtual)}</td>
+                          <td className={`${tableCellPadding} font-bold text-[#162546]`}>{c.prazoAtual ? `${c.prazoAtual}X` : "-"}</td>
+                          {showTaxa && (
+                            <td className={`${tableCellPadding} font-semibold text-slate-600`}>{c.taxaAtual ? `${parseFloat(c.taxaAtual).toFixed(2)}%` : "-"}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className={`bg-[#162546] text-white ${tableFooterPadding} text-center font-bold text-xs uppercase tracking-wider`}>
+                    Parcela total: {formatBRL(totalParcelaAtual)}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Table Section: Future Strategy Installments list */}
-          <div className={`space-y-0 ${tableSectionPt}`}>
-            <div className="bg-[#F4C600] text-[#162546] text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
-              PARCELAS APÓS PORTABILIDADE
-            </div>
-            <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm">
-              <table className="w-full text-left border-collapse table-fixed">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-50/50">
-                    {showBancoDestino && (
-                      <th className={`${tableHeaderHeight} pl-5 text-left w-[40%]`}>BANCO</th>
-                    )}
-                    <th className={`${tableHeaderHeight} text-left ${showBancoDestino ? 'w-[30%]' : 'pl-5 w-[60%]'}`}>PARCELA</th>
-                    <th className={`${tableHeaderHeight} text-left w-[15%]`}>PRAZO</th>
-                    {showNovaTaxa && (
-                      <th className={`${tableHeaderHeight} text-left w-[15%]`}>TAXA</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[11px]">
-                  {contratos.map((c, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/30">
-                      {showBancoDestino && (
-                        <td className={`${tableCellPadding} pl-5 font-bold text-slate-800 uppercase truncate`}>
-                          {c.bancoDestino || "REDUÇÃO GARANTIDA"}
-                        </td>
-                      )}
-                      <td className={`${tableCellPadding} ${!showBancoDestino ? 'pl-5' : ''} font-bold text-slate-800`}>{formatBRL(c.novaParcela)}</td>
-                      <td className={`${tableCellPadding} font-bold text-[#162546]`}>{c.novoPrazo || c.prazoAtual ? `${c.novoPrazo || c.prazoAtual}X` : "-"}</td>
-                      {showNovaTaxa && (
-                        <td className={`${tableCellPadding} font-semibold text-slate-600`}>{c.novaTaxa ? `${parseFloat(c.novaTaxa).toFixed(2)}%` : "-"}</td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="bg-[#F4C600] text-[#162546] h-[58px] px-5 flex items-center justify-center font-bold text-[14px] uppercase tracking-wider">
-                PARCELA TOTAL: <span className="font-black ml-1.5 text-[16px]">{formatBRL(totalNovaParcela)}</span>
+              {/* Table Section: Future Strategy Installments list */}
+              <div className={`space-y-0 ${tableSectionPt}`}>
+                <div className="bg-[#F4C600] text-[#162546] text-center py-2 rounded-t-xl font-black text-xs tracking-widest uppercase">
+                  PARCELAS APÓS PORTABILIDADE
+                </div>
+                <div className="border border-slate-200 border-t-0 rounded-b-xl overflow-hidden bg-white shadow-sm">
+                  <table className="w-full text-left border-collapse table-fixed">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-50/50">
+                        {showBancoDestino && (
+                          <th className={`${tableHeaderHeight} pl-5 text-left w-[40%]`}>BANCO</th>
+                        )}
+                        <th className={`${tableHeaderHeight} text-left ${showBancoDestino ? 'w-[30%]' : 'pl-5 w-[60%]'}`}>PARCELA</th>
+                        <th className={`${tableHeaderHeight} text-left w-[15%]`}>PRAZO</th>
+                        {showNovaTaxa && (
+                          <th className={`${tableHeaderHeight} text-left w-[15%]`}>TAXA</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[11px]">
+                      {contratos.map((c, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/30">
+                          {showBancoDestino && (
+                            <td className={`${tableCellPadding} pl-5 font-bold text-slate-800 uppercase truncate`}>
+                              {c.bancoDestino || "REDUÇÃO GARANTIDA"}
+                            </td>
+                          )}
+                          <td className={`${tableCellPadding} ${!showBancoDestino ? 'pl-5' : ''} font-bold text-slate-800`}>{formatBRL(c.novaParcela)}</td>
+                          <td className={`${tableCellPadding} font-bold text-[#162546]`}>{c.novoPrazo || c.prazoAtual ? `${c.novoPrazo || c.prazoAtual}X` : "-"}</td>
+                          {showNovaTaxa && (
+                            <td className={`${tableCellPadding} font-semibold text-slate-600`}>{c.novaTaxa ? `${parseFloat(c.novaTaxa).toFixed(2)}%` : "-"}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="bg-[#F4C600] text-[#162546] h-[58px] px-5 flex items-center justify-center font-bold text-[14px] uppercase tracking-wider">
+                    PARCELA TOTAL: <span className="font-black ml-1.5 text-[16px]">{formatBRL(totalNovaParcela)}</span>
+                  </div>
+                  <div className="bg-[#bc9300] text-[#f9e189] h-[58px] px-5 text-center font-bold flex flex-col gap-0.5 justify-center items-center">
+                    <span className="text-[#f9e189] font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
+                    <span className="text-[14px] font-normal text-[#f9e189] leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
+                  </div>
+                </div>
               </div>
-              <div className="bg-[#bc9300] text-[#f9e189] h-[58px] px-5 text-center font-bold flex flex-col gap-0.5 justify-center items-center">
-                <span className="text-[#f9e189] font-medium text-[8px] tracking-wider leading-none">VALOR TOTAL PARCELA APÓS ESTRATÉGIA FINANCEIRA:</span>
-                <span className="text-[14px] font-normal text-[#f9e189] leading-none mt-1">{formatBRL(valorTotalPosEstrategia)}</span>
-              </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
 
         {/* Footer Disclaimer & Verification */}
         <div className={`border-t border-slate-100 ${footerSpacing} flex justify-between items-start gap-6`}>
           <div className="flex-1 text-[7px] text-slate-400 font-bold leading-relaxed space-y-0.5 text-left uppercase tracking-tight">
-            <p>* Cálculos de redução de parcela pela portabilidade sofrem alterações diárias, a depender do saldo devedor.</p>
-            <p>* Estratégia de redução leva em consideração a taxa de juros confirmada pelo cliente.</p>
-            <p>* A taxa de juros final do contrato e a redução real do valor da parcela poderão sobre oscilações a critério das instituições bancárias.</p>
-            <p>* As taxas de juros ofertadas pelas instituições bancárias levam em consideração as demais linhas de crédito disponívels ao cliente.</p>
-            <p>* Essa proposta é válida por 48 horas após o envio deste documento.</p>
-            <p>* CB é Cartão Benefício e CC é Cartão Consignado.</p>
-            <p>* Está ciente o beneficiário que a tomada de outro crédito fora dessa proposta ou ficar devedor em algum banco, afeta diretamente a possibilidade de entrega da oferta, taxas e prazo.</p>
+            {model === "novo-formato" ? (
+              <p className="text-[8.5px] text-[#162546] font-bold italic leading-relaxed text-left normal-case">
+                Observação: Em caso de qualquer dúvida ou se precisar de suporte durante o processo, estou à disposição para ajudar no que for necessário e intermediar junto ao banco para que a proposta seja concluída da melhor forma possível.
+              </p>
+            ) : (
+              <>
+                <p>* Cálculos de redução de parcela pela portabilidade sofrem alterações diárias, a depender do saldo devedor.</p>
+                <p>* Estratégia de redução leva em consideração a taxa de juros confirmada pelo cliente.</p>
+                <p>* A taxa de juros final do contrato e a redução real do valor da parcela poderão sobre oscilações a critério das instituições bancárias.</p>
+                <p>* As taxas de juros ofertadas pelas instituições bancárias levam em consideração as demais lines de crédito disponívels ao cliente.</p>
+                <p>* Essa proposta é válida por 48 horas após o envio deste documento.</p>
+                <p>* CB é Cartão Benefício e CC é Cartão Consignado.</p>
+                <p>* Está ciente o beneficiário que a tomada de outro crédito fora dessa proposta ou ficar devedor em algum banco, afeta diretamente a possibilidade de entrega da oferta, taxas e prazo.</p>
+              </>
+            )}
           </div>
           <div className="shrink-0 flex items-center justify-center border border-slate-200 px-3 py-1.5 rounded bg-slate-50 font-black text-[9px] text-slate-700 tracking-wider">
             acertofacilpromotora.com.br
@@ -1103,24 +1273,25 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                     </div>
                   </div>
 
-                  {/* Option Outros (Desabilitado) */}
+                  {/* Option Novo Formato */}
                   <div 
-                    className="p-6 bg-slate-50/70 border border-slate-200 rounded-2xl flex flex-col justify-between h-48 opacity-70 relative overflow-hidden"
+                    onClick={() => {
+                      setModel("novo-formato");
+                      setStep("form");
+                    }}
+                    className="p-6 bg-[#F4C600]/5 hover:bg-[#F4C600]/10 border-2 border-[#F4C600]/20 hover:border-[#F4C600]/40 rounded-2xl cursor-pointer transition-all flex flex-col justify-between group h-48"
                   >
                     <div className="space-y-2">
-                      <div className="w-10 h-10 bg-slate-200 text-slate-400 rounded-xl flex items-center justify-center">
-                        <Sparkles className="w-5 h-5" />
+                      <div className="w-10 h-10 bg-[#F4C600] text-[#162546] rounded-xl flex items-center justify-center font-bold">
+                        ★
                       </div>
-                      <h5 className="text-[14px] font-bold text-slate-400 uppercase tracking-wider">Outras Estratégias</h5>
-                      <p className="text-[12px] text-slate-400 leading-relaxed">
-                        Novas modelagens como redução de taxa de juros pura, portabilidade com troco elevado e liberação de nova margem.
+                      <h5 className="text-[14px] font-bold text-slate-900 uppercase tracking-wider">Novo Formato</h5>
+                      <p className="text-[12px] text-slate-600 leading-relaxed">
+                        Exiba o comparativo inteligente entre o formato rotativo tradicional e o novo formato, mostrando as vantagens financeiras para o cliente.
                       </p>
                     </div>
-                    <span className="absolute top-4 right-4 bg-slate-200 text-slate-600 px-2.5 py-1 text-[8px] font-bold uppercase tracking-widest rounded-full">
-                      Breve
-                    </span>
-                    <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest self-end">
-                      Indisponível Inicialmente
+                    <div className="flex items-center gap-1.5 text-[#162546] text-[11px] font-bold uppercase tracking-wider group-hover:translate-x-1 transition-transform self-end">
+                      Iniciar Simulação <ArrowRight className="w-4 h-4" />
                     </div>
                   </div>
                 </div>
@@ -1268,376 +1439,582 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       </div>
                     </div>
 
-                    {/* Section: Resumo Estratégia */}
-                    <div className="space-y-4 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
-                      <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
-                        <Sparkles className="w-4 h-4 text-slate-400" />
-                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">RESUMO</span>
-                      </div>
+                    {model === "reducao" && (
+                      <>
+                        {/* Section: Resumo Estratégia */}
+                        <div className="space-y-4 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
+                          <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                            <Sparkles className="w-4 h-4 text-slate-400" />
+                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">RESUMO</span>
+                          </div>
 
-                      {/* Line with three margin fields */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                        {/* MARGEM PRINCIPAL */}
-                        {(() => {
-                          const isPrincipalActive = margemPrincipalVal !== "";
-                          const principalValNum = parseFloat(margemPrincipalVal);
-                          const isPrincipalPositive = !isNaN(principalValNum) ? principalValNum > 0 : clientPrincipalMargem > 0;
-                          return (
+                          {/* Line with three margin fields */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                            {/* MARGEM PRINCIPAL */}
+                            {(() => {
+                              const isPrincipalActive = margemPrincipalVal !== "";
+                              const principalValNum = parseFloat(margemPrincipalVal);
+                              const isPrincipalPositive = !isNaN(principalValNum) ? principalValNum > 0 : clientPrincipalMargem > 0;
+                              return (
+                                <div className="space-y-1">
+                                  <div className="h-8 flex items-end pb-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Margem Principal</label>
+                                  </div>
+                                  <div className="relative">
+                                    <span className={`absolute left-3.5 top-2.5 text-[11px] font-bold transition-colors duration-200 ${
+                                      isPrincipalActive
+                                        ? isPrincipalPositive ? "text-emerald-500" : "text-red-500"
+                                        : "text-slate-400"
+                                    }`}>R$</span>
+                                    <input 
+                                      type="number" 
+                                      step="0.01"
+                                      value={margemPrincipalVal}
+                                      onChange={(e) => setMargemPrincipalVal(e.target.value)}
+                                      className={`w-full border rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold focus:outline-none transition-all duration-200 text-right ${
+                                        isPrincipalActive
+                                          ? isPrincipalPositive
+                                            ? "bg-emerald-50/80 border-emerald-300 text-emerald-800 focus:border-emerald-500 placeholder:text-slate-400/60"
+                                            : "bg-red-50/80 border-red-300 text-red-800 focus:border-red-500 placeholder:text-slate-400/60"
+                                          : "bg-white border-slate-200 text-slate-800 focus:border-blue-500 placeholder:text-slate-400/40"
+                                      }`}
+                                      placeholder={clientPrincipalMargem !== undefined ? clientPrincipalMargem.toFixed(2).replace(".", ",") : "0,00"}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* MARGEM CARTÃO CONSIGNADO */}
+                            {(() => {
+                              const isCartaoConsignadoActive = margemCartaoConsignadoVal !== "";
+                              const cartaoConsignadoValNum = parseFloat(margemCartaoConsignadoVal);
+                              const isCartaoConsignadoPositive = !isNaN(cartaoConsignadoValNum) ? cartaoConsignadoValNum > 0 : clientCartaoConsignadoMargem > 0;
+                              return (
+                                <div className="space-y-1">
+                                  <div className="h-8 flex items-end pb-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Margem Cartão Consignado</label>
+                                  </div>
+                                  <div className="relative">
+                                    <span className={`absolute left-3.5 top-2.5 text-[11px] font-bold transition-colors duration-200 ${
+                                      isCartaoConsignadoActive
+                                        ? isCartaoConsignadoPositive ? "text-emerald-500" : "text-red-500"
+                                        : "text-slate-400"
+                                    }`}>R$</span>
+                                    <input 
+                                      type="number" 
+                                      step="0.01"
+                                      value={margemCartaoConsignadoVal}
+                                      onChange={(e) => setMargemCartaoConsignadoVal(e.target.value)}
+                                      className={`w-full border rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold focus:outline-none transition-all duration-200 text-right ${
+                                        isCartaoConsignadoActive
+                                          ? isCartaoConsignadoPositive
+                                            ? "bg-emerald-50/80 border-emerald-300 text-emerald-800 focus:border-emerald-500 placeholder:text-slate-400/60"
+                                            : "bg-red-50/80 border-red-300 text-red-800 focus:border-red-500 placeholder:text-slate-400/60"
+                                          : "bg-white border-slate-200 text-slate-800 focus:border-blue-500 placeholder:text-slate-400/40"
+                                      }`}
+                                      placeholder={clientCartaoConsignadoMargem !== undefined ? clientCartaoConsignadoMargem.toFixed(2).replace(".", ",") : "0,00"}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* MARGEM CARTÃO BENEFÍCIO */}
+                            {(() => {
+                              const isCartaoBeneficioActive = margemCartaoBeneficioVal !== "";
+                              const cartaoBeneficioValNum = parseFloat(margemCartaoBeneficioVal);
+                              const isCartaoBeneficioPositive = !isNaN(cartaoBeneficioValNum) ? cartaoBeneficioValNum > 0 : clientCartaoBeneficioMargem > 0;
+                              return (
+                                <div className="space-y-1">
+                                  <div className="h-8 flex items-end pb-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Margem Cartão Benefício</label>
+                                  </div>
+                                  <div className="relative">
+                                    <span className={`absolute left-3.5 top-2.5 text-[11px] font-bold transition-colors duration-200 ${
+                                      isCartaoBeneficioActive
+                                        ? isCartaoBeneficioPositive ? "text-purple-500" : "text-red-500"
+                                        : "text-slate-400"
+                                    }`}>R$</span>
+                                    <input 
+                                      type="number" 
+                                      step="0.01"
+                                      value={margemCartaoBeneficioVal}
+                                      onChange={(e) => setMargemCartaoBeneficioVal(e.target.value)}
+                                      className={`w-full border rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold focus:outline-none transition-all duration-200 text-right ${
+                                        isCartaoBeneficioActive
+                                          ? isCartaoBeneficioPositive
+                                            ? "bg-purple-50/80 border-purple-300 text-purple-800 focus:border-purple-500 placeholder:text-slate-400/60"
+                                            : "bg-red-50/80 border-red-300 text-red-800 focus:border-red-500 placeholder:text-slate-400/60"
+                                          : "bg-white border-slate-200 text-slate-800 focus:border-blue-500 placeholder:text-slate-400/40"
+                                      }`}
+                                      placeholder={clientCartaoBeneficioMargem !== undefined ? clientCartaoBeneficioMargem.toFixed(2).replace(".", ",") : "0,00"}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Line with Valor Liberado and Porcentagem de Redução */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div className="space-y-1">
                               <div className="h-8 flex items-end pb-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Margem Principal</label>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Valor Liberado</label>
                               </div>
                               <div className="relative">
-                                <span className={`absolute left-3.5 top-2.5 text-[11px] font-bold transition-colors duration-200 ${
-                                  isPrincipalActive
-                                    ? isPrincipalPositive ? "text-emerald-500" : "text-red-500"
-                                    : "text-slate-400"
-                                }`}>R$</span>
+                                <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
                                   type="number" 
                                   step="0.01"
-                                  value={margemPrincipalVal}
-                                  onChange={(e) => setMargemPrincipalVal(e.target.value)}
-                                  className={`w-full border rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold focus:outline-none transition-all duration-200 text-right ${
-                                    isPrincipalActive
-                                      ? isPrincipalPositive
-                                        ? "bg-emerald-50/80 border-emerald-300 text-emerald-800 focus:border-emerald-500 placeholder:text-slate-400/60"
-                                        : "bg-red-50/80 border-red-300 text-red-800 focus:border-red-500 placeholder:text-slate-400/60"
-                                      : "bg-white border-slate-200 text-slate-800 focus:border-blue-500 placeholder:text-slate-400/40"
-                                  }`}
-                                  placeholder={clientPrincipalMargem !== undefined ? clientPrincipalMargem.toFixed(2).replace(".", ",") : "0,00"}
+                                  value={valorLiberado}
+                                  onChange={(e) => setValorLiberado(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                  placeholder="0,00"
                                 />
                               </div>
                             </div>
-                          );
-                        })()}
-
-                        {/* MARGEM CARTÃO CONSIGNADO */}
-                        {(() => {
-                          const isCartaoConsignadoActive = margemCartaoConsignadoVal !== "";
-                          const cartaoConsignadoValNum = parseFloat(margemCartaoConsignadoVal);
-                          const isCartaoConsignadoPositive = !isNaN(cartaoConsignadoValNum) ? cartaoConsignadoValNum > 0 : clientCartaoConsignadoMargem > 0;
-                          return (
                             <div className="space-y-1">
-                              <div className="h-8 flex items-end pb-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Margem Cartão Consignado</label>
+                              <div className="h-8 flex items-end justify-between pb-1">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Porcentagem de Redução</label>
+                                {!isSupervisor && (
+                                  <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded uppercase leading-none">Supervisor apenas</span>
+                                )}
                               </div>
                               <div className="relative">
-                                <span className={`absolute left-3.5 top-2.5 text-[11px] font-bold transition-colors duration-200 ${
-                                  isCartaoConsignadoActive
-                                    ? isCartaoConsignadoPositive ? "text-emerald-500" : "text-red-500"
-                                    : "text-slate-400"
-                                }`}>R$</span>
                                 <input 
                                   type="number" 
                                   step="0.01"
-                                  value={margemCartaoConsignadoVal}
-                                  onChange={(e) => setMargemCartaoConsignadoVal(e.target.value)}
-                                  className={`w-full border rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold focus:outline-none transition-all duration-200 text-right ${
-                                    isCartaoConsignadoActive
-                                      ? isCartaoConsignadoPositive
-                                        ? "bg-emerald-50/80 border-emerald-300 text-emerald-800 focus:border-emerald-500 placeholder:text-slate-400/60"
-                                        : "bg-red-50/80 border-red-300 text-red-800 focus:border-red-500 placeholder:text-slate-400/60"
-                                      : "bg-white border-slate-200 text-slate-800 focus:border-blue-500 placeholder:text-slate-400/40"
+                                  value={porcentagemReducao}
+                                  onChange={(e) => setPorcentagemReducao(e.target.value)}
+                                  className={`w-full border rounded-xl px-3.5 py-2 text-[12px] font-bold focus:outline-none shadow-sm pr-7 text-right ${
+                                    isSupervisor 
+                                      ? "bg-white border-slate-200 text-slate-800 focus:border-blue-500" 
+                                      : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
                                   }`}
-                                  placeholder={clientCartaoConsignadoMargem !== undefined ? clientCartaoConsignadoMargem.toFixed(2).replace(".", ",") : "0,00"}
+                                  disabled={!isSupervisor}
                                 />
+                                <span className="absolute right-3 top-2.5 text-[11px] font-bold text-slate-400">%</span>
                               </div>
                             </div>
-                          );
-                        })()}
+                          </div>
+                        </div>
 
-                        {/* MARGEM CARTÃO BENEFÍCIO */}
-                        {(() => {
-                          const isCartaoBeneficioActive = margemCartaoBeneficioVal !== "";
-                          const cartaoBeneficioValNum = parseFloat(margemCartaoBeneficioVal);
-                          const isCartaoBeneficioPositive = !isNaN(cartaoBeneficioValNum) ? cartaoBeneficioValNum > 0 : clientCartaoBeneficioMargem > 0;
-                          return (
-                            <div className="space-y-1">
-                              <div className="h-8 flex items-end pb-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Margem Cartão Benefício</label>
-                              </div>
-                              <div className="relative">
-                                <span className={`absolute left-3.5 top-2.5 text-[11px] font-bold transition-colors duration-200 ${
-                                  isCartaoBeneficioActive
-                                    ? isCartaoBeneficioPositive ? "text-purple-500" : "text-red-500"
-                                    : "text-slate-400"
-                                }`}>R$</span>
-                                <input 
-                                  type="number" 
-                                  step="0.01"
-                                  value={margemCartaoBeneficioVal}
-                                  onChange={(e) => setMargemCartaoBeneficioVal(e.target.value)}
-                                  className={`w-full border rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold focus:outline-none transition-all duration-200 text-right ${
-                                    isCartaoBeneficioActive
-                                      ? isCartaoBeneficioPositive
-                                        ? "bg-purple-50/80 border-purple-300 text-purple-800 focus:border-purple-500 placeholder:text-slate-400/60"
-                                        : "bg-red-50/80 border-red-300 text-red-800 focus:border-red-500 placeholder:text-slate-400/60"
-                                      : "bg-white border-slate-200 text-slate-800 focus:border-blue-500 placeholder:text-slate-400/40"
-                                  }`}
-                                  placeholder={clientCartaoBeneficioMargem !== undefined ? clientCartaoBeneficioMargem.toFixed(2).replace(".", ",") : "0,00"}
-                                />
-                              </div>
+                        {/* Section: Situação das Parcelas */}
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                            <div className="flex items-center gap-2">
+                              <Building className="w-4 h-4 text-slate-400" />
+                              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">SITUAÇÃO ATUAL DAS PARCELAS</span>
                             </div>
-                          );
-                        })()}
-                      </div>
-
-                      {/* Line with Valor Liberado and Porcentagem de Redução */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                        <div className="space-y-1">
-                          <div className="h-8 flex items-end pb-1">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Valor Liberado</label>
-                          </div>
-                          <div className="relative">
-                            <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
-                            <input 
-                              type="number" 
-                              step="0.01"
-                              value={valorLiberado}
-                              onChange={(e) => setValorLiberado(e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
-                              placeholder="0,00"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="h-8 flex items-end justify-between pb-1">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Porcentagem de Redução</label>
-                            {!isSupervisor && (
-                              <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded uppercase leading-none">Supervisor apenas</span>
-                            )}
-                          </div>
-                          <div className="relative">
-                            <input 
-                              type="number" 
-                              step="0.01"
-                              value={porcentagemReducao}
-                              onChange={(e) => setPorcentagemReducao(e.target.value)}
-                              className={`w-full border rounded-xl px-3.5 py-2 text-[12px] font-bold focus:outline-none shadow-sm pr-7 text-right ${
-                                isSupervisor 
-                                  ? "bg-white border-slate-200 text-slate-800 focus:border-blue-500" 
-                                  : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
-                              }`}
-                              disabled={!isSupervisor}
-                            />
-                            <span className="absolute right-3 top-2.5 text-[11px] font-bold text-slate-400">%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-
-                    
-                    {/* Section: Situação das Parcelas */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <Building className="w-4 h-4 text-slate-400" />
-                          <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">SITUAÇÃO ATUAL DAS PARCELAS</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Exibir Taxa</span>
-                            <button
-                              type="button"
-                              onClick={() => setShowTaxa(!showTaxa)}
-                              className={`p-1 rounded ${showTaxa ? "text-[#162546] bg-[#162546]/10" : "text-slate-400 hover:bg-slate-100"}`}
-                            >
-                              {showTaxa ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        {contratos.map((contrato, index) => (
-                          <div key={contrato.id || index} className="p-5 bg-slate-50/50 border border-slate-150 rounded-2xl space-y-4 relative">
-                            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                              <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                                Contrato #{index + 1}
-                              </span>
-                              {contratos.length > 1 && (
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">Exibir Taxa</span>
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoveContrato(contrato.id)}
-                                  className="text-red-500 hover:text-red-700 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 hover:bg-red-50 rounded-lg transition-colors animate-fade-in"
+                                  onClick={() => setShowTaxa(!showTaxa)}
+                                  className={`p-1 rounded ${showTaxa ? "text-[#162546] bg-[#162546]/10" : "text-slate-400 hover:bg-slate-100"}`}
                                 >
-                                  Remover Contrato
+                                  {showTaxa ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                                 </button>
-                              )}
+                              </div>
                             </div>
+                          </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco Atual</label>
-                                <input 
-                                  type="text" 
-                                  value={contrato.bancoAtual}
-                                  onChange={(e) => updateContrato(index, "bancoAtual", e.target.value)}
-                                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm uppercase"
-                                  placeholder="Ex: ITAÚ"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Parcela Atual</label>
-                                <div className="relative">
-                                  <span className="absolute left-3.5 top-2 text-[11px] font-bold text-slate-400">R$</span>
-                                  <input 
-                                    type="number" 
-                                    step="0.01"
-                                    value={contrato.parcelaAtual}
-                                    onChange={(e) => updateContrato(index, "parcelaAtual", e.target.value)}
-                                    className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
-                                    placeholder="0,00"
-                                  />
+                          <div className="space-y-4">
+                            {contratos.map((contrato, index) => (
+                              <div key={contrato.id || index} className="p-5 bg-slate-50/50 border border-slate-150 rounded-2xl space-y-4 relative">
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">
+                                    Contrato #{index + 1}
+                                  </span>
+                                  {contratos.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveContrato(contrato.id)}
+                                      className="text-red-500 hover:text-red-700 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 hover:bg-red-50 rounded-lg transition-colors animate-fade-in"
+                                    >
+                                      Remover Contrato
+                                    </button>
+                                  )}
                                 </div>
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Prazo Atual (meses)</label>
-                                <input 
-                                  type="number" 
-                                  value={contrato.prazoAtual}
-                                  onChange={(e) => updateContrato(index, "prazoAtual", e.target.value)}
-                                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
-                                  placeholder="Ex: 84"
-                                />
-                              </div>
-                              {showTaxa && (
-                                <div className="space-y-1">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Taxa Atual % (Opcional)</label>
-                                  <div className="relative">
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco Atual</label>
+                                    <input 
+                                      type="text" 
+                                      value={contrato.bancoAtual}
+                                      onChange={(e) => updateContrato(index, "bancoAtual", e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm uppercase"
+                                      placeholder="Ex: ITAÚ"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Parcela Atual</label>
+                                    <div className="relative">
+                                      <span className="absolute left-3.5 top-2 text-[11px] font-bold text-slate-400">R$</span>
+                                      <input 
+                                        type="number" 
+                                        step="0.01"
+                                        value={contrato.parcelaAtual}
+                                        onChange={(e) => updateContrato(index, "parcelaAtual", e.target.value)}
+                                        className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                        placeholder="0,00"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Prazo Atual (meses)</label>
                                     <input 
                                       type="number" 
-                                      step="0.01"
-                                      value={contrato.taxaAtual}
-                                      onChange={(e) => updateContrato(index, "taxaAtual", e.target.value)}
-                                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm pr-7 text-right"
-                                      placeholder="0,00"
+                                      value={contrato.prazoAtual}
+                                      onChange={(e) => updateContrato(index, "prazoAtual", e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                      placeholder="Ex: 84"
                                     />
-                                    <span className="absolute right-3 top-2 text-[11px] font-bold text-slate-400">%</span>
                                   </div>
+                                  {showTaxa && (
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Taxa Atual % (Opcional)</label>
+                                      <div className="relative">
+                                        <input 
+                                          type="number" 
+                                          step="0.01"
+                                          value={contrato.taxaAtual}
+                                          onChange={(e) => updateContrato(index, "taxaAtual", e.target.value)}
+                                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm pr-7 text-right"
+                                          placeholder="0,00"
+                                        />
+                                        <span className="absolute right-3 top-2 text-[11px] font-bold text-slate-400">%</span>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
 
-                      {/* Add Contract Button */}
-                      <div className="pt-2 flex justify-start">
-                        <button
-                          type="button"
-                          onClick={handleAddContrato}
-                          className="px-5 py-2.5 bg-[#162546]/10 text-[#162546] hover:bg-[#162546]/15 text-[11px] font-bold uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer"
-                        >
-                          + Adicionar Outro Contrato
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Section: Como Fica as Parcelas Após Estratégia */}
-                    <div className="space-y-4 pt-4">
-                      <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <Building className="w-4 h-4 text-slate-400" />
-                          <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">COMO FICA AS PARCELAS APÓS ESTRATÉGIA</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Exibir Banco Destino</span>
+                          {/* Add Contract Button */}
+                          <div className="pt-2 flex justify-start">
                             <button
                               type="button"
-                              onClick={() => setShowBancoDestino(!showBancoDestino)}
-                              className={`p-1 rounded ${showBancoDestino ? "text-[#162546] bg-[#162546]/10" : "text-slate-400 hover:bg-slate-100"}`}
+                              onClick={handleAddContrato}
+                              className="px-5 py-2.5 bg-[#162546]/10 text-[#162546] hover:bg-[#162546]/15 text-[11px] font-bold uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer"
                             >
-                              {showBancoDestino ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                            </button>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Exibir Nova Taxa</span>
-                            <button
-                              type="button"
-                              onClick={() => setShowNovaTaxa(!showNovaTaxa)}
-                              className={`p-1 rounded ${showNovaTaxa ? "text-[#162546] bg-[#162546]/10" : "text-slate-400 hover:bg-slate-100"}`}
-                            >
-                              {showNovaTaxa ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                              + Adicionar Outro Contrato
                             </button>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="space-y-4">
-                        {contratos.map((contrato, index) => (
-                          <div key={`estr-${contrato.id || index}`} className="p-5 bg-slate-50/50 border border-slate-150 rounded-2xl space-y-4 relative">
-                            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                              <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                                Estratégia Contrato #{index + 1}
-                              </span>
+                        {/* Section: Como Fica as Parcelas Após Estratégia */}
+                        <div className="space-y-4 pt-4">
+                          <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                            <div className="flex items-center gap-2">
+                              <Building className="w-4 h-4 text-slate-400" />
+                              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">COMO FICA AS PARCELAS APÓS ESTRATÉGIA</span>
                             </div>
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">Exibir Banco Destino</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowBancoDestino(!showBancoDestino)}
+                                  className={`p-1 rounded ${showBancoDestino ? "text-[#162546] bg-[#162546]/10" : "text-slate-400 hover:bg-slate-100"}`}
+                                >
+                                  {showBancoDestino ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">Exibir Nova Taxa</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowNovaTaxa(!showNovaTaxa)}
+                                  className={`p-1 rounded ${showNovaTaxa ? "text-[#162546] bg-[#162546]/10" : "text-slate-400 hover:bg-slate-100"}`}
+                                >
+                                  {showNovaTaxa ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                              {showBancoDestino ? (
-                                <div className="space-y-1">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco Destino</label>
-                                  <input 
-                                    type="text" 
-                                    value={contrato.bancoDestino}
-                                    onChange={(e) => updateContrato(index, "bancoDestino", e.target.value)}
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm uppercase"
-                                    placeholder="Ex: CAIXA"
-                                  />
+                          <div className="space-y-4">
+                            {contratos.map((contrato, index) => (
+                              <div key={`estr-${contrato.id || index}`} className="p-5 bg-slate-50/50 border border-slate-150 rounded-2xl space-y-4 relative">
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">
+                                    Estratégia Contrato #{index + 1}
+                                  </span>
                                 </div>
-                              ) : (
-                                <div className="hidden md:block" />
-                              )}
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nova Parcela</label>
-                                <div className="relative">
-                                  <span className="absolute left-3.5 top-2 text-[11px] font-bold text-slate-400">R$</span>
-                                  <input 
-                                    type="number" 
-                                    step="0.01"
-                                    value={contrato.novaParcela}
-                                    onChange={(e) => updateContrato(index, "novaParcela", e.target.value)}
-                                    className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
-                                    placeholder="0,00"
-                                  />
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                                  {showBancoDestino ? (
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco Destino</label>
+                                      <input 
+                                        type="text" 
+                                        value={contrato.bancoDestino}
+                                        onChange={(e) => updateContrato(index, "bancoDestino", e.target.value)}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm uppercase"
+                                        placeholder="Ex: CAIXA"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="hidden md:block" />
+                                  )}
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nova Parcela</label>
+                                    <div className="relative">
+                                      <span className="absolute left-3.5 top-2 text-[11px] font-bold text-slate-400">R$</span>
+                                      <input 
+                                        type="number" 
+                                        step="0.01"
+                                        value={contrato.novaParcela}
+                                        onChange={(e) => updateContrato(index, "novaParcela", e.target.value)}
+                                        className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                        placeholder="0,00"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Prazo Novo</label>
+                                    <input 
+                                      type="number" 
+                                      value={contrato.novoPrazo}
+                                      onChange={(e) => updateContrato(index, "novoPrazo", e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                      placeholder="Ex: 84"
+                                    />
+                                  </div>
+                                  {showNovaTaxa ? (
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nova Taxa % (Opcional)</label>
+                                      <div className="relative">
+                                        <input 
+                                          type="number" 
+                                          step="0.01"
+                                          value={contrato.novaTaxa || ""}
+                                          onChange={(e) => updateContrato(index, "novaTaxa", e.target.value)}
+                                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm pr-7 text-right"
+                                          placeholder="0,00"
+                                        />
+                                        <span className="absolute right-3 top-2 text-[11px] font-bold text-slate-400">%</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="hidden md:block" />
+                                  )}
                                 </div>
                               </div>
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Prazo Novo</label>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {model === "novo-formato" && (
+                      <div className="space-y-6 animate-fade-in">
+                        {/* Section: Parâmetros do Novo Formato */}
+                        <div className="space-y-4 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
+                          <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                            <Sparkles className="w-4 h-4 text-[#F4C600]" />
+                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Parâmetros da Proposta</span>
+                          </div>
+
+                          <div className="space-y-4">
+                            {/* Valor Liberado */}
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Valor Liberado (Novo Formato)</label>
+                              <div className="relative">
+                                <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
                                   type="number" 
-                                  value={contrato.novoPrazo}
-                                  onChange={(e) => updateContrato(index, "novoPrazo", e.target.value)}
-                                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
-                                  placeholder="Ex: 84"
+                                  step="0.01"
+                                  value={valorLiberado}
+                                  onChange={(e) => setValorLiberado(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                  placeholder="0,00"
                                 />
                               </div>
-                              {showNovaTaxa ? (
+                              <p className="text-[9px] text-slate-400 font-medium italic mt-1">
+                                * O valor do Formato Rotativo será calculado automaticamente como 30% menor do que este valor.
+                              </p>
+                            </div>
+
+                            {/* Left vs Right parameters */}
+                            <div className="grid grid-cols-1 gap-4">
+                              {/* Left Card Config */}
+                              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Formato Rotativo (Card Esquerdo)</span>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Prazo Real (Meses)</label>
+                                    <input 
+                                      type="number" 
+                                      value={prazoEfetivoRotativo}
+                                      onChange={(e) => setPrazoEfetivoRotativo(e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Taxa Real % a.m.</label>
+                                    <input 
+                                      type="text" 
+                                      value={taxaEfetivaRotativo}
+                                      onChange={(e) => setTaxaEfetivaRotativo(e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Margens de Consulta Visual */}
+                                <div className="pt-2 border-t border-slate-200/60">
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Margens para Consulta:</span>
+                                  <div className="grid grid-cols-3 gap-1.5 bg-white p-2 rounded-lg border border-slate-150 text-[9px]">
+                                    <div>
+                                      <p className="font-semibold text-slate-400 uppercase leading-tight text-[7px]">Principal</p>
+                                      <p className="font-black text-slate-700 leading-none mt-0.5">{formatBRL(clientPrincipalMargem || 0)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-slate-400 uppercase leading-tight text-[7px]">Cartão Cons.</p>
+                                      <p className="font-black text-slate-700 leading-none mt-0.5">{formatBRL(clientCartaoConsignadoMargem || 0)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-slate-400 uppercase leading-tight text-[7px]">Cartão Ben.</p>
+                                      <p className="font-black text-purple-700 leading-none mt-0.5">{formatBRL(clientCartaoBeneficioMargem || 0)}</p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Campo de Digitação de Margem */}
                                 <div className="space-y-1">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nova Taxa % (Opcional)</label>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Margem:</label>
                                   <div className="relative">
+                                    <span className="absolute left-3.5 top-1.5 text-[11px] font-bold text-slate-400">R$</span>
                                     <input 
                                       type="number" 
                                       step="0.01"
-                                      value={contrato.novaTaxa || ""}
-                                      onChange={(e) => updateContrato(index, "novaTaxa", e.target.value)}
-                                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm pr-7 text-right"
+                                      value={margemPrincipalVal}
+                                      onChange={(e) => setMargemPrincipalVal(e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-1.5 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                       placeholder="0,00"
                                     />
-                                    <span className="absolute right-3 top-2 text-[11px] font-bold text-slate-400">%</span>
                                   </div>
                                 </div>
-                              ) : (
-                                <div className="hidden md:block" />
-                              )}
+                              </div>
+                            </div>
+
+                            {/* Indicators and Validade */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Meses a menos pagando juros</label>
+                                <input 
+                                  type="number" 
+                                  value={mesesAMenos}
+                                  onChange={(e) => setMesesAMenos(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Validade da Proposta (Dias)</label>
+                                <input 
+                                  type="number" 
+                                  value={validadeDias}
+                                  onChange={(e) => setValidadeDias(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                />
+                              </div>
                             </div>
                           </div>
-                        ))}
+                        </div>
+
+                        {/* Section: Documentação Necessária */}
+                        <div className="space-y-4 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
+                          <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Documentação Necessária</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docFoto} 
+                                onChange={(e) => setDocFoto(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Foto (RG ou CNH)</span>
+                            </label>
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docEndereco} 
+                                onChange={(e) => setDocEndereco(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Endereço completo por escrito</span>
+                            </label>
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docEmail} 
+                                onChange={(e) => setDocEmail(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">E-mail</span>
+                            </label>
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docResidencia} 
+                                onChange={(e) => setDocResidencia(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Comprovante de residência (quando exigido)</span>
+                            </label>
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docContracheque} 
+                                onChange={(e) => setDocContracheque(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Último contracheque</span>
+                            </label>
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docExtrato} 
+                                onChange={(e) => setDocExtrato(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Extrato de empréstimos (consignações)</span>
+                            </label>
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docAutorizacao} 
+                                onChange={(e) => setDocAutorizacao(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Autorização para o banco ({bancoAutorizacao || "Portal"})</span>
+                            </label>
+                          </div>
+
+                          {/* Campo de Banco para Autorização */}
+                          <div className="pt-3 border-t border-slate-150">
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco para Autorização</label>
+                              <input 
+                                type="text" 
+                                value={bancoAutorizacao}
+                                onChange={(e) => setBancoAutorizacao(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-1.5 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                placeholder="Digite o banco para substituir (Portal)"
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                 </div>
 
@@ -1676,7 +2053,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   </button>
                   <button
                     onClick={() => setStep("preview")}
-                    disabled={!nomeCliente || totalParcelaAtual <= 0 || totalNovaParcela <= 0}
+                    disabled={model === "reducao" ? (!nomeCliente || totalParcelaAtual <= 0 || totalNovaParcela <= 0) : (!nomeCliente || !valorLiberado)}
                     className="px-8 py-2.5 bg-[#162546] hover:bg-[#162546]/90 disabled:opacity-50 text-white text-[11px] font-bold uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer"
                   >
                     Visualizar Proposta Comercial <ArrowRight className="w-4 h-4" />
