@@ -145,7 +145,7 @@ export default function SearchClientPage() {
     try {
       const cleanCpf = client.cpf.replace(/\D/g, "")
       
-      const [p1, p2] = await Promise.all([
+      const [p1, p2, p3] = await Promise.all([
         supabase
           .from('historico_proposta_comercial')
           .select('*')
@@ -153,15 +153,22 @@ export default function SearchClientPage() {
         supabase
           .from('historico_proposta_comercial_novo_formato')
           .select('*')
+          .eq('cliente_cpf', cleanCpf),
+        supabase
+          .from('historico_proposta_comercial_quitacao_contrato')
+          .select('*')
           .eq('cliente_cpf', cleanCpf)
       ]);
 
       let combined: Record<string, any>[] = [];
       if (p1.data) {
-        combined = combined.concat(p1.data.map((item: any) => ({ ...item, isNovoFormato: false })));
+        combined = combined.concat(p1.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: false })));
       }
       if (p2.data) {
-        combined = combined.concat(p2.data.map((item: any) => ({ ...item, isNovoFormato: true })));
+        combined = combined.concat(p2.data.map((item: any) => ({ ...item, isNovoFormato: true, isQuitacao: false })));
+      }
+      if (p3.data) {
+        combined = combined.concat(p3.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: true })));
       }
 
       combined.sort((a, b) => {
@@ -392,7 +399,11 @@ export default function SearchClientPage() {
 
                 <div className="flex flex-col">
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Estratégia</span>
-                  {proposal.isNovoFormato ? (
+                  {proposal.isQuitacao ? (
+                    <span className="text-[12px] font-bold text-[#162546] bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
+                      Quitação de Contrato
+                    </span>
+                  ) : proposal.isNovoFormato ? (
                     <span className="text-[12px] font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
                       Novo Formato
                     </span>
@@ -414,7 +425,7 @@ export default function SearchClientPage() {
                   </span>
                 </div>
 
-                {!proposal.isNovoFormato && (
+                {!proposal.isNovoFormato && !proposal.isQuitacao && (
                   <div className="flex flex-col">
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
                       PARCELA ANTIGA {"->"} PARCELA NOVA
@@ -425,12 +436,34 @@ export default function SearchClientPage() {
                   </div>
                 )}
 
-                {!proposal.isNovoFormato && (
+                {proposal.isQuitacao && (
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+                      PARCELA ANTIGA {"->"} PARCELA NOVA
+                    </span>
+                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                      <span className="text-slate-800">{formatCurrency(proposal.parcela_atual || 0)}</span> ➔ <span className="text-emerald-600 font-bold">{formatCurrency(proposal.nova_parcela || 0)}</span>
+                    </span>
+                  </div>
+                )}
+
+                {!proposal.isNovoFormato && !proposal.isQuitacao && (
                   <div className="flex flex-col">
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Diferença nas Parcelas</span>
                     <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
                       <span className="text-emerald-600 font-black">
                         {formatCurrency((proposal.total_parcela_nova || 0) - (proposal.total_parcela_atual || 0))}
+                      </span>
+                    </span>
+                  </div>
+                )}
+
+                {proposal.isQuitacao && (
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Redução Mensal</span>
+                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                      <span className="text-emerald-600 font-black">
+                        {formatCurrency(proposal.reducao_mensal || 0)}
                       </span>
                     </span>
                   </div>

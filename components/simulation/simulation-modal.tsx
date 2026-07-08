@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   X, 
@@ -19,7 +19,8 @@ import {
   Phone,
   Building,
   Mail,
-  Zap
+  Zap,
+  AlertTriangle
 } from "lucide-react";
 import { getContractTypeInfo } from "@/lib/contratos-mapping";
 import { toPng, toJpeg } from "html-to-image";
@@ -84,7 +85,25 @@ interface SimContract {
 
 export function SimulationModal({ isOpen, onClose, client, registrations, perfil, activeRegIndex, onProposalSaved }: SimulationModalProps) {
   const [step, setStep] = useState<"model-select" | "form" | "preview">("model-select");
-  const [model, setModel] = useState<"reducao" | "novo-formato">("reducao");
+  const [model, setModel] = useState<"reducao" | "novo-formato" | "quitacao">("reducao");
+
+  // Quitacao states
+  const [quitacaoBancoAtual, setQuitacaoBancoAtual] = useState("");
+  const [quitacaoSaldoQuitacao, setQuitacaoSaldoQuitacao] = useState("");
+  const [quitacaoParcelaAtual, setQuitacaoParcelaAtual] = useState("");
+  const [quitacaoPrazoRestante, setQuitacaoPrazoRestante] = useState("");
+  const [quitacaoTotalAPagar, setQuitacaoTotalAPagar] = useState("");
+  const [ocultarQuitacaoPrazoRestante, setOcultarQuitacaoPrazoRestante] = useState(false);
+  const [ocultarQuitacaoTotalAPagar, setOcultarQuitacaoTotalAPagar] = useState(false);
+  const [ocultarQuitacaoBancoAtual, setOcultarQuitacaoBancoAtual] = useState(false);
+
+  const [quitacaoNovaParcela, setQuitacaoNovaParcela] = useState("");
+  const [quitacaoMargemVolta, setQuitacaoMargemVolta] = useState("");
+  const [quitacaoValorLiberado, setQuitacaoValorLiberado] = useState("");
+  const [quitacaoEconomiaTotal, setQuitacaoEconomiaTotal] = useState("");
+  const [ocultarQuitacaoTroco, setOcultarQuitacaoTroco] = useState(false);
+  const [ocultarQuitacaoEconomiaTotal, setOcultarQuitacaoEconomiaTotal] = useState(false);
+  const quitacaoMostrarTroco = !ocultarQuitacaoTroco;
 
   // Novo Formato states
   const [prazoEfetivoRotativo, setPrazoEfetivoRotativo] = useState("96");
@@ -105,7 +124,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const [bancoAutorizacao, setBancoAutorizacao] = useState("Portal");
 
   // Validade state
-  const [validadeDias, setValidadeDias] = useState("4");
+  const [validadeDias, setValidadeDias] = useState("3");
 
   // Options states
   const [tituloCardEsquerdo, setTituloCardEsquerdo] = useState<"FORMATO ROTATIVO" | "FORMATO ANTIGO">("FORMATO ROTATIVO");
@@ -224,17 +243,14 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
   const { principal: clientPrincipalMargem, cartaoConsignado: clientCartaoConsignadoMargem, cartaoBeneficio: clientCartaoBeneficioMargem } = getClientMargins();
 
-  // Existing loan contracts for dropdown pre-fill - filter by active registration if available
-  const existingLoans = (() => {
-    if (activeRegIndex !== undefined && registrations[activeRegIndex]) {
-      const contracts = registrations[activeRegIndex].itens_credito || [];
-      return contracts.filter(c => getContractTypeInfo(c.tipo).category === "EMPRESTIMO");
-    }
+  // Existing loan contracts for dropdown pre-fill - bring ALL contracts from ALL registrations
+  const existingLoans = useMemo(() => {
+    if (!registrations) return [];
     return registrations.flatMap(reg => {
       const contracts = reg.itens_credito || [];
       return contracts.filter(c => getContractTypeInfo(c.tipo).category === "EMPRESTIMO");
     });
-  })();
+  }, [registrations]);
 
   const maskCPF = (cpf: string) => {
     if (!cpf) return "";
@@ -271,7 +287,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       }
 
       // Default pre-fill if existing loans exist
-      if (becameOpen) {
+      const hasOnlyDefaultEmpty = contratos.length === 0 || (contratos.length === 1 && !contratos[0].bancoAtual && !contratos[0].parcelaAtual);
+      if (becameOpen || (hasOnlyDefaultEmpty && existingLoans.length > 0)) {
         if (existingLoans.length > 0) {
           const mapped = existingLoans.map((loan, idx) => {
             const bankName = getContractTypeInfo(loan.tipo).bank || loan.banco || "";
@@ -291,6 +308,22 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             };
           });
           setContratos(mapped);
+
+          // Pre-fill quitacao states - keep fields empty as requested
+          setQuitacaoBancoAtual("");
+          setQuitacaoParcelaAtual("");
+          setQuitacaoPrazoRestante("");
+          setQuitacaoMargemVolta("");
+          setQuitacaoNovaParcela("");
+          setQuitacaoSaldoQuitacao("");
+          setQuitacaoValorLiberado("");
+          setQuitacaoTotalAPagar("");
+          setQuitacaoEconomiaTotal("");
+          setOcultarQuitacaoPrazoRestante(false);
+          setOcultarQuitacaoTotalAPagar(false);
+          setOcultarQuitacaoBancoAtual(false);
+          setOcultarQuitacaoTroco(false);
+          setOcultarQuitacaoEconomiaTotal(false);
         } else {
           setContratos([{
             id: `loan-default-${Math.random()}`,
@@ -303,6 +336,21 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             novoPrazo: "",
             novaTaxa: ""
           }]);
+
+          setQuitacaoBancoAtual("");
+          setQuitacaoParcelaAtual("");
+          setQuitacaoPrazoRestante("");
+          setQuitacaoMargemVolta("");
+          setQuitacaoNovaParcela("");
+          setQuitacaoSaldoQuitacao("");
+          setQuitacaoValorLiberado("");
+          setQuitacaoTotalAPagar("");
+          setQuitacaoEconomiaTotal("");
+          setOcultarQuitacaoPrazoRestante(false);
+          setOcultarQuitacaoTotalAPagar(false);
+          setOcultarQuitacaoBancoAtual(false);
+          setOcultarQuitacaoTroco(false);
+          setOcultarQuitacaoEconomiaTotal(false);
         }
 
         // Reset step
@@ -534,7 +582,6 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             docEmail && "E-mail",
             docResidencia && "Comprovante de residência (quando exigido pelo banco)",
             docContracheque && "Último contracheque",
-            docExtrato && "Extrato de empréstimos (consignações)",
             docAutorizacao && `Autorização para o banco ${bancoAutorizacao ? (bancoAutorizacao.toLowerCase() === "portal" ? "(via app do Portal)" : bancoAutorizacao) : "(via app do Portal)"}`
           ].filter(Boolean);
 
@@ -558,6 +605,42 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               validade_proposta: parseInt(validadeDias) || 0,
               documentos_necessarios: docsNecessarios,
               banco: bancoAutorizacao,
+              arquivo_url: finalDataUrl,
+              tipo_arquivo: format.toUpperCase()
+            });
+          saveErr = error;
+        } else if (model === "quitacao") {
+          const docsNecessarios = [
+            docFoto && "Foto segurando o documento",
+            docRG && "RG ou CNH (FRENTE E VERSO)",
+            docEndereco && "Endereço completo por escrito",
+            docEmail && "E-mail",
+            docResidencia && "Comprovante de residência (quando exigido pelo banco)",
+            docContracheque && "Último contracheque",
+            docAutorizacao && `Autorização para o banco ${bancoAutorizacao ? (bancoAutorizacao.toLowerCase() === "portal" ? "(via app do Portal)" : bancoAutorizacao) : "(via app do Portal)"}`
+          ].filter(Boolean);
+
+          const { error } = await supabase
+            .from("historico_proposta_comercial_quitacao_contrato")
+            .insert({
+              cliente_cpf: cleanCpf,
+              cliente_nome: nomeCliente || client?.nome || "",
+              user_id: activeUser?.id || null,
+              user_nome: nomeConsultor || perfil?.nome || "",
+              user_email: activeUser?.email || perfil?.email || "",
+              telefone_consultor: telefoneConsultor,
+              valor_liberado: quitacaoMostrarTroco ? (parseFloat(quitacaoValorLiberado) || null) : null,
+              banco_atual: quitacaoBancoAtual,
+              saldo_quitacao: parseFloat(quitacaoSaldoQuitacao) || null,
+              parcela_atual: parseFloat(quitacaoParcelaAtual) || null,
+              prazo_restante: quitacaoPrazoRestante,
+              nova_parcela: parseFloat(quitacaoNovaParcela) || null,
+              reducao_mensal: Math.max(0, (parseFloat(quitacaoParcelaAtual) || 0) - (parseFloat(quitacaoNovaParcela) || 0)),
+              margem_voltou_folha: parseFloat(quitacaoMargemVolta) || null,
+              banco_autorizacao: bancoAutorizacao,
+              mostrar_troco: quitacaoMostrarTroco,
+              validade_proposta: parseInt(validadeDias) || 5,
+              documentos_necessarios: docsNecessarios,
               arquivo_url: finalDataUrl,
               tipo_arquivo: format.toUpperCase()
             });
@@ -623,6 +706,52 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const renderProposalTemplateContent = (isZoom: boolean) => {
     const valorNovo = parseFloat(valorLiberado) || 0;
     const valorRotativo = valorNovo * 0.70;
+
+    const getOrgaoLabelAndValue = () => {
+      const activeReg = (activeRegIndex !== undefined && registrations && registrations[activeRegIndex]) 
+        ? registrations[activeRegIndex] 
+        : (registrations && registrations[0] ? registrations[0] : null);
+
+      if (!activeReg) {
+        return { label: "ÓRGÃO", value: "NÃO INFORMADO" };
+      }
+
+      // 1. Governo de Roraima (governo_rr)
+      const hasGovRR = activeReg.governo_rr_instituidores !== undefined || activeReg.uf === 'RR';
+      if (hasGovRR) {
+        const lotacao = (activeReg.governo_rr_instituidores as any)?.[0] || {};
+        const value = lotacao.origem || activeReg.secretaria || activeReg.orgao || "NÃO INFORMADO";
+        return { label: "INSTITUIDOR (ORIGEM)", value: String(value).toUpperCase() };
+      }
+
+      // 2. SIAPE
+      if (activeReg.currentInstituidor !== undefined) {
+        return { 
+          label: "ÓRGÃO (VÍNCULO)", 
+          value: String(activeReg.currentInstituidor || activeReg.orgao || "NÃO INFORMADO").toUpperCase() 
+        };
+      }
+
+      // 3. Governo Maranhão
+      if (activeReg.governo_ma_lotacoes !== undefined) {
+        const lotacao = (activeReg.governo_ma_lotacoes as any)?.[0] || {};
+        const value = lotacao.orgao || activeReg.secretaria || activeReg.orgao || "NÃO INFORMADO";
+        return { label: "ÓRGÃO", value: String(value).toUpperCase() };
+      }
+
+      // 4. Governo Piauí
+      if (activeReg.governo_pi_lotacoes !== undefined) {
+        const lotacao = (activeReg.governo_pi_lotacoes as any)?.[0] || {};
+        const value = lotacao.orgao || activeReg.secretaria || activeReg.orgao || "NÃO INFORMADO";
+        return { label: "ÓRGÃO", value: String(value).toUpperCase() };
+      }
+
+      // 5. Default Fallback
+      const value = activeReg.orgao || activeReg.secretaria || "NÃO INFORMADO";
+      return { label: "ÓRGÃO", value: String(value).toUpperCase() };
+    };
+
+    const orgaoInfo = getOrgaoLabelAndValue();
 
     const expirationDate = (() => {
       const days = parseInt(validadeDias) || 5;
@@ -723,6 +852,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   <div className="flex flex-col text-left">
                     <p className="text-[12px] font-black uppercase tracking-wide text-white">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
                     <p className="text-xs text-white font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
+                    <p className="text-xs text-white font-mono tracking-wider font-semibold uppercase">{orgaoInfo.value}</p>
                   </div>
                 </div>
 
@@ -954,6 +1084,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               <div className="flex flex-col text-left max-w-[220px]">
                 <p className="text-[12px] font-black uppercase tracking-wide text-white">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
                 <p className="text-xs text-white font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
+                <p className="text-xs text-white font-mono tracking-wider font-semibold uppercase">{orgaoInfo.value}</p>
               </div>
             </div>
 
@@ -1100,7 +1231,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                 {/* Document Checklist Section */}
                 <div className="space-y-2 pt-2 text-left">
                   <h5 className="text-[10px] font-black text-[#162546] uppercase tracking-widest pl-1">
-                    Documentação Necessária para Análise
+                    Para garantir essa condição é necessário apenas:
                   </h5>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 bg-slate-50/50 border border-slate-150 rounded-2xl p-4">
                     {[
@@ -1109,7 +1240,178 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       { label: "E-mail", checked: docEmail },
                       { label: "Comprovante de residência (quando exigido pelo banco)", checked: docResidencia },
                       { label: "Último contracheque", checked: docContracheque },
-                      { label: "Extrato de empréstimos (consignações)", checked: docExtrato },
+                      { label: `Autorização para o banco ${bancoAutorizacao ? (bancoAutorizacao.toLowerCase() === "portal" ? "(via app do Portal)" : bancoAutorizacao) : "(via app do Portal)"}`, checked: docAutorizacao },
+                    ].map((doc, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 ${
+                          doc.checked 
+                            ? "bg-emerald-500 text-white" 
+                            : "border border-slate-200 text-slate-300"
+                        }`}>
+                          {doc.checked && <Check className="w-2.5 h-2.5 stroke-[3.5]" />}
+                        </div>
+                        <span className={`text-[10px] ${doc.checked ? "text-slate-800 font-bold" : "text-slate-400 font-medium"}`}>
+                          {doc.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Proposal Validity section */}
+              <div className="pt-1.5">
+                <div className="bg-[#162546] text-[#F4C600] text-[9.5px] font-black uppercase tracking-widest py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
+                  <span>VALIDADE DA PROPOSTA:</span>
+                  <span>Até {expirationDate} ({validadeDias} dias úteis a partir de hoje)</span>
+                </div>
+              </div>
+            </div>
+          ) : model === "quitacao" ? (
+            <div className="space-y-5 pt-1 flex-1 flex flex-col justify-between">
+              <div className="space-y-5">
+                {/* Title and Subtitle Header */}
+                <div className="text-center space-y-1">
+                  <h4 className="text-[#162546] font-black text-[16px] uppercase tracking-wide">
+                    QUITAÇÃO DE CONTRATO COM REDUÇÃO NA FOLHA
+                  </h4>
+                  <p className="text-[11px] font-bold text-slate-500 italic">
+                    "Troca de uma parcela pesada por uma estratégia mais leve."
+                  </p>
+                </div>
+
+                {/* Grid with Current Contract vs New Strategy */}
+                <div className="grid grid-cols-2 gap-5">
+                  {/* Left Column: Contrato Atual */}
+                  <div className="border border-slate-200 rounded-2xl p-4 bg-white flex flex-col justify-between min-h-[185px] shadow-sm">
+                    <div className="text-left space-y-2">
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-100 pb-1 flex items-center gap-1.5">
+                        <Building className="w-3.5 h-3.5 text-slate-400" /> CONTRATO ATUAL
+                      </p>
+                      <div className="space-y-1.5 pt-1">
+                        {!ocultarQuitacaoBancoAtual && (
+                          <p className="text-[13px] text-slate-500 font-bold leading-tight">
+                            Banco: <span className="font-black text-slate-700 uppercase block sm:inline">{quitacaoBancoAtual || "NÃO INFORMADO"}</span>
+                          </p>
+                        )}
+                        <p className="text-[13px] text-slate-500 font-bold leading-tight">
+                          Parcela Atual: <span className="font-black text-[#c44a4a] block sm:inline">{formatBRL(quitacaoParcelaAtual)}</span>
+                        </p>
+                        <p className="text-[13px] text-slate-500 font-bold leading-tight">
+                          Saldo para Quitação: <span className="font-black text-[#c44a4a] block sm:inline">{formatBRL(quitacaoSaldoQuitacao)}</span>
+                        </p>
+                        {!ocultarQuitacaoPrazoRestante && quitacaoPrazoRestante && (
+                          <p className="text-[13px] text-slate-500 font-bold leading-tight">
+                            Prazo Restante: <span className="font-black text-[#c44a4a] block sm:inline">{quitacaoPrazoRestante}</span>
+                          </p>
+                        )}
+                        {!ocultarQuitacaoTotalAPagar && quitacaoTotalAPagar && (
+                          <p className="text-[13px] text-slate-500 font-bold leading-tight">
+                            Total a Pagar: <span className="font-black text-[#c44a4a] block sm:inline">{formatBRL(quitacaoTotalAPagar)}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <div className="bg-red-50 border border-red-100 rounded-full py-1.5 px-3 text-center text-[10px] font-black text-[#c44a4a] tracking-wider uppercase">
+                        MAIS JUROS
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: CONTRATO OTIMIZADO */}
+                  <div className="bg-[#162546] border border-[#162546] rounded-2xl p-4 flex flex-col justify-between min-h-[185px] shadow-sm text-white">
+                    <div className="text-left space-y-2">
+                      <p className="text-[9px] font-black text-[#F4C600] uppercase tracking-widest border-b border-slate-700/50 pb-1 flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-[#F4C600]" /> CONTRATO OTIMIZADO
+                      </p>
+                      <div className="space-y-1.5 pt-1">
+                        <p className="text-[13px] text-slate-300 font-bold leading-tight">
+                          Parcela Ajustada: <span className="font-black text-[#F4C600] block sm:inline">{formatBRL(quitacaoNovaParcela)}</span>
+                        </p>
+                        <p className="text-[13px] text-slate-300 font-bold leading-tight">
+                          Margem que Volta para a Folha: <span className="font-black text-[#F4C600] block sm:inline">{formatBRL(quitacaoMargemVolta)}</span>
+                        </p>
+                        {!ocultarQuitacaoTroco && quitacaoValorLiberado && (
+                          <p className="text-[13px] text-slate-300 font-bold leading-tight mt-1">
+                            Troco: <span className="font-black text-[#F4C600] block sm:inline">{formatBRL(quitacaoValorLiberado)}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <div className="bg-[#F4C600] rounded-full py-1.5 px-3 text-center text-[10px] font-black text-[#162546] tracking-wider uppercase">
+                        MAIS ECONOMIA
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Indicators Row for Quitação */}
+                {(() => {
+                  const quitacaoPAtual = parseFloat(quitacaoParcelaAtual) || 0;
+                  const quitacaoPNova = parseFloat(quitacaoNovaParcela) || 0;
+                  const quitacaoReducaoMensal = Math.max(0, quitacaoPAtual - quitacaoPNova);
+                  const quitacaoPrazo = parseInt(quitacaoPrazoRestante) || 84;
+                  const calculatedQuitacaoEconomiaTotal = quitacaoReducaoMensal * quitacaoPrazo;
+                  const displayEconomiaTotal = quitacaoEconomiaTotal ? parseFloat(quitacaoEconomiaTotal) : calculatedQuitacaoEconomiaTotal;
+                  const quitacaoTrocoVal = parseFloat(quitacaoValorLiberado) || 0;
+                  const showEconomia = !ocultarQuitacaoEconomiaTotal;
+                  const showTroco = !ocultarQuitacaoTroco;
+                  const colsCount = 1 + (showEconomia ? 1 : 0) + (showTroco ? 1 : 0);
+
+                  return (
+                    <div className={`grid ${
+                      colsCount === 1 ? "grid-cols-1" : colsCount === 2 ? "grid-cols-2" : "grid-cols-3"
+                    } gap-4 text-center py-4 px-6 bg-[#e6f7f0] border border-[#c3ede0] rounded-3xl shadow-sm`}>
+                      <div className={`space-y-1 flex flex-col justify-center items-center ${colsCount > 1 ? "border-r border-[#c3ede0]" : ""}`}>
+                        <p className="text-[10px] font-black text-[#006d51] uppercase tracking-widest leading-none">REDUÇÃO MENSAL</p>
+                        <p className="text-[24px] font-black text-[#00a374] leading-none">{formatBRL(quitacaoReducaoMensal)}</p>
+                      </div>
+                      {showEconomia && (
+                        <div className={`space-y-1 flex flex-col justify-center items-center ${showTroco ? "border-r border-[#c3ede0]" : ""}`}>
+                          <p className="text-[10px] font-black text-[#006d51] uppercase tracking-widest leading-none">ECONOMIA TOTAL</p>
+                          <p className="text-[26px] font-black text-[#00a374] leading-none">
+                            {formatBRL(displayEconomiaTotal)}
+                          </p>
+                        </div>
+                      )}
+                      {showTroco && (
+                        <div className="space-y-1 flex flex-col justify-center items-center">
+                          <p className="text-[10px] font-black text-[#006d51] uppercase tracking-widest leading-none">TROCO</p>
+                          <p className="text-[24px] font-black text-[#00a374] leading-none">
+                            {formatBRL(quitacaoTrocoVal)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Call to Decision Trigger Block */}
+                <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3.5 text-center flex flex-col items-center justify-center space-y-1 shadow-sm">
+                  <div className="flex items-center gap-2 text-amber-800 justify-center">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="text-[10px] font-black uppercase tracking-wider">Atenção - Oportunidade por Tempo Limitado</span>
+                  </div>
+                  <p className="text-[9.5px] font-bold text-amber-900 leading-normal">
+                    A cada mês com essa parcela ativa, você paga mais juros e a estratégia perde economia.
+                  </p>
+                </div>
+
+                {/* Document Checklist Section */}
+                <div className="space-y-2 pt-1 text-left">
+                  <h5 className="text-[10px] font-black text-[#162546] uppercase tracking-widest pl-1">
+                    Para garantir essa condição é necessário apenas:
+                  </h5>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 bg-slate-50/50 border border-slate-150 rounded-2xl p-4">
+                    {[
+                      { label: "Foto (RG ou CNH)", checked: docFoto },
+                      { label: "Endereço completo por escrito", checked: docEndereco },
+                      { label: "E-mail", checked: docEmail },
+                      { label: "Comprovante de residência (quando exigido pelo banco)", checked: docResidencia },
+                      { label: "Último contracheque", checked: docContracheque },
                       { label: `Autorização para o banco ${bancoAutorizacao ? (bancoAutorizacao.toLowerCase() === "portal" ? "(via app do Portal)" : bancoAutorizacao) : "(via app do Portal)"}`, checked: docAutorizacao },
                     ].map((doc, idx) => (
                       <div key={idx} className="flex items-center gap-2">
@@ -1129,12 +1431,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                 </div>
 
                 {/* Proposal Validity section */}
-                <div className="pt-1.5">
+                <div className="pt-1">
                   <div className="bg-[#162546] text-[#F4C600] text-[9.5px] font-black uppercase tracking-widest py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
                     <span>VALIDADE DA PROPOSTA:</span>
                     <span>Até {expirationDate} ({validadeDias} dias úteis a partir de hoje)</span>
                   </div>
                 </div>
+
               </div>
             </div>
           ) : (
@@ -1274,7 +1577,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         {/* Footer Disclaimer & Verification */}
         <div className={`border-t border-slate-100 ${footerSpacing} flex justify-between items-start gap-6`}>
           <div className="flex-1 text-[7px] text-slate-400 font-bold leading-relaxed space-y-0.5 text-left uppercase tracking-tight">
-            {model === "novo-formato" ? (
+            {model === "novo-formato" || model === "quitacao" ? (
               <p className="text-[8.5px] text-[#162546] font-bold italic leading-relaxed text-left normal-case">
                 Observação: Em caso de qualquer dúvida ou se precisar de suporte durante o processo, estou à disposição para ajudar no que for necessário e intermediar junto ao banco para que a proposta seja concluída da melhor forma possível.
               </p>
@@ -1341,14 +1644,14 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   <p className="text-[13px] text-slate-500">Selecione o modelo matemático e de negócios ideal para a proposta do cliente.</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
                   {/* Option Redução de Parcela */}
                   <div 
                     onClick={() => {
                       setModel("reducao");
                       setStep("form");
                     }}
-                    className="p-6 bg-blue-50/50 hover:bg-blue-50 border-2 border-blue-100 hover:border-blue-300 rounded-2xl cursor-pointer transition-all flex flex-col justify-between group h-48"
+                    className="p-6 bg-blue-50/50 hover:bg-blue-50 border-2 border-blue-100 hover:border-blue-300 rounded-2xl cursor-pointer transition-all flex flex-col justify-between group min-h-[250px]"
                   >
                     <div className="space-y-2">
                       <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center">
@@ -1370,7 +1673,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       setModel("novo-formato");
                       setStep("form");
                     }}
-                    className="p-6 bg-[#F4C600]/5 hover:bg-[#F4C600]/10 border-2 border-[#F4C600]/20 hover:border-[#F4C600]/40 rounded-2xl cursor-pointer transition-all flex flex-col justify-between group h-48"
+                    className="p-6 bg-[#F4C600]/5 hover:bg-[#F4C600]/10 border-2 border-[#F4C600]/20 hover:border-[#F4C600]/40 rounded-2xl cursor-pointer transition-all flex flex-col justify-between group min-h-[250px]"
                   >
                     <div className="space-y-2">
                       <div className="w-10 h-10 bg-[#F4C600] text-[#162546] rounded-xl flex items-center justify-center font-bold">
@@ -1382,6 +1685,28 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 text-[#162546] text-[11px] font-bold uppercase tracking-wider group-hover:translate-x-1 transition-transform self-end">
+                      Iniciar Simulação <ArrowRight className="w-4 h-4" />
+                    </div>
+                  </div>
+
+                  {/* Option Quitação de Contrato */}
+                  <div 
+                    onClick={() => {
+                      setModel("quitacao");
+                      setStep("form");
+                    }}
+                    className="p-6 bg-emerald-50/50 hover:bg-emerald-50 border-2 border-emerald-100 hover:border-emerald-300 rounded-2xl cursor-pointer transition-all flex flex-col justify-between group min-h-[250px]"
+                  >
+                    <div className="space-y-2">
+                      <div className="w-10 h-10 bg-emerald-600 text-white rounded-xl flex items-center justify-center font-bold">
+                        <Zap className="w-5 h-5" />
+                      </div>
+                      <h5 className="text-[14px] font-bold text-slate-900 uppercase tracking-wider">Quitação de Contrato</h5>
+                      <p className="text-[12px] text-slate-600 leading-relaxed">
+                        Reduza o peso mensal da folha trocando uma parcela pesada por uma condição mais leve.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-emerald-600 text-[11px] font-bold uppercase tracking-wider group-hover:translate-x-1 transition-transform self-end">
                       Iniciar Simulação <ArrowRight className="w-4 h-4" />
                     </div>
                   </div>
@@ -1401,7 +1726,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                         <User className="w-4 h-4 text-slate-400" />
                         <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Dados do Cliente</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                         <div className="space-y-1">
                           <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nome do Cliente</label>
                           <input 
@@ -1419,6 +1744,20 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                             onChange={(e) => setCpfCliente(e.target.value)}
                             className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-500 focus:outline-none shadow-sm cursor-not-allowed"
                             disabled
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Validade da Proposta (Dias)</label>
+                          <input 
+                            type="number" 
+                            value={validadeDias}
+                            onChange={(e) => {
+                              setValidadeDias(e.target.value);
+                              setIsManualValidadeDias(true);
+                            }}
+                            className={`w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold focus:outline-none focus:border-blue-500 shadow-sm ${
+                              isManualValidadeDias ? "text-slate-800" : "text-slate-400"
+                            }`}
                           />
                         </div>
                       </div>
@@ -1903,6 +2242,240 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       </>
                     )}
 
+                    {model === "quitacao" && (
+                      <div className="space-y-6 animate-fade-in">
+                        {/* Section: Contratos Atuais */}
+                        <div className="space-y-4 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
+                          <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                            <Building className="w-4 h-4 text-emerald-600" />
+                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Contratos Atuais</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                            {/* Banco Atual */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco Atual</label>
+                                <label className="flex items-center gap-1 cursor-pointer select-none">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={ocultarQuitacaoBancoAtual}
+                                    onChange={(e) => setOcultarQuitacaoBancoAtual(e.target.checked)}
+                                    className="rounded border-slate-300 text-red-600 focus:ring-red-500 w-3 h-3 cursor-pointer"
+                                  />
+                                  <span className="text-[8px] font-extrabold text-red-500 uppercase tracking-wider">Ocultar</span>
+                                </label>
+                              </div>
+                              <input 
+                                type="text"
+                                value={quitacaoBancoAtual}
+                                onChange={(e) => setQuitacaoBancoAtual(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                placeholder="Ex: Banco do Brasil"
+                              />
+                            </div>
+
+                            {/* Saldo para Quitação */}
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Saldo para Quitação</label>
+                              <div className="relative">
+                                <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  value={quitacaoSaldoQuitacao}
+                                  onChange={(e) => setQuitacaoSaldoQuitacao(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Parcela Atual */}
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Parcela Atual</label>
+                              <div className="relative">
+                                <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  value={quitacaoParcelaAtual}
+                                  onChange={(e) => {
+                                    setQuitacaoParcelaAtual(e.target.value);
+                                    setQuitacaoMargemVolta(e.target.value);
+                                  }}
+                                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Prazo Restante */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Prazo Restante</label>
+                                <label className="flex items-center gap-1 cursor-pointer select-none">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={ocultarQuitacaoPrazoRestante}
+                                    onChange={(e) => setOcultarQuitacaoPrazoRestante(e.target.checked)}
+                                    className="rounded border-slate-300 text-red-600 focus:ring-red-500 w-3 h-3 cursor-pointer"
+                                  />
+                                  <span className="text-[8px] font-extrabold text-red-500 uppercase tracking-wider">Ocultar</span>
+                                </label>
+                              </div>
+                              <input 
+                                type="text"
+                                value={quitacaoPrazoRestante}
+                                onChange={(e) => setQuitacaoPrazoRestante(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                placeholder="Ex: 48x"
+                              />
+                            </div>
+
+                            {/* Total a Pagar */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Total a Pagar</label>
+                                <label className="flex items-center gap-1 cursor-pointer select-none">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={ocultarQuitacaoTotalAPagar}
+                                    onChange={(e) => setOcultarQuitacaoTotalAPagar(e.target.checked)}
+                                    className="rounded border-slate-300 text-red-600 focus:ring-red-500 w-3 h-3 cursor-pointer"
+                                  />
+                                  <span className="text-[8px] font-extrabold text-red-500 uppercase tracking-wider">Ocultar</span>
+                                </label>
+                              </div>
+                              <div className="relative">
+                                <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  value={quitacaoTotalAPagar}
+                                  onChange={(e) => setQuitacaoTotalAPagar(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Section: Após Estratégia */}
+                        <div className="space-y-4 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
+                          <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                            <Sparkles className="w-4 h-4 text-emerald-600" />
+                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Após Estratégia</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                            {/* Nova Parcela */}
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nova Parcela</label>
+                              <div className="relative">
+                                <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  value={quitacaoNovaParcela}
+                                  onChange={(e) => setQuitacaoNovaParcela(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Redução Mensal */}
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Redução Mensal (Cálculo)</label>
+                              <div className="w-full bg-emerald-50 border border-emerald-100 rounded-xl px-3.5 py-2 h-[38px] flex items-center justify-between shadow-sm">
+                                <span className="text-[11px] font-bold text-emerald-700">R$</span>
+                                <span className="text-[12px] font-extrabold text-emerald-800">
+                                  {(() => {
+                                    const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+                                    const pNova = parseFloat(quitacaoNovaParcela) || 0;
+                                    const red = Math.max(0, pAtual - pNova);
+                                    return red.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                  })()}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Margem que Volta para a Folha */}
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Margem que Volta para a Folha</label>
+                              <div className="relative">
+                                <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  value={quitacaoMargemVolta}
+                                  onChange={(e) => setQuitacaoMargemVolta(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Valor Liberado / Troco */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Valor Liberado/Troco</label>
+                                <label className="flex items-center gap-1 cursor-pointer select-none">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={ocultarQuitacaoTroco}
+                                    onChange={(e) => setOcultarQuitacaoTroco(e.target.checked)}
+                                    className="rounded border-slate-300 text-red-600 focus:ring-red-500 w-3 h-3 cursor-pointer"
+                                  />
+                                  <span className="text-[8px] font-extrabold text-red-500 uppercase tracking-wider">Ocultar</span>
+                                </label>
+                              </div>
+                              <div className="relative">
+                                <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  value={quitacaoValorLiberado}
+                                  onChange={(e) => setQuitacaoValorLiberado(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Economia Total */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Economia Total</label>
+                                <label className="flex items-center gap-1 cursor-pointer select-none">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={ocultarQuitacaoEconomiaTotal}
+                                    onChange={(e) => setOcultarQuitacaoEconomiaTotal(e.target.checked)}
+                                    className="rounded border-slate-300 text-red-600 focus:ring-red-500 w-3 h-3 cursor-pointer"
+                                  />
+                                  <span className="text-[8px] font-extrabold text-red-500 uppercase tracking-wider">Ocultar</span>
+                                </label>
+                              </div>
+                              <div className="relative">
+                                <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  value={quitacaoEconomiaTotal}
+                                  onChange={(e) => setQuitacaoEconomiaTotal(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {model === "novo-formato" && (
                       <div className="space-y-6 animate-fade-in">
                         {/* Section: Parâmetros do Novo Formato */}
@@ -2087,8 +2660,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               </div>
                             </div>
 
-                            {/* Indicators and Validade */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Indicators */}
+                            <div className="grid grid-cols-1 gap-4">
                               <div className="space-y-1">
                                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Meses a menos pagando juros</label>
                                 <input 
@@ -2100,20 +2673,6 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                   }}
                                   className={`w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold focus:outline-none focus:border-blue-500 shadow-sm ${
                                     isManualMesesAMenos ? "text-slate-800" : "text-slate-400"
-                                  }`}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Validade da Proposta (Dias)</label>
-                                <input 
-                                  type="number" 
-                                  value={validadeDias}
-                                  onChange={(e) => {
-                                    setValidadeDias(e.target.value);
-                                    setIsManualValidadeDias(true);
-                                  }}
-                                  className={`w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold focus:outline-none focus:border-blue-500 shadow-sm ${
-                                    isManualValidadeDias ? "text-slate-800" : "text-slate-400"
                                   }`}
                                 />
                               </div>
@@ -2172,15 +2731,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               />
                               <span className="text-[11px] font-semibold text-slate-700">Último contracheque</span>
                             </label>
-                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
-                              <input 
-                                type="checkbox" 
-                                checked={docExtrato} 
-                                onChange={(e) => setDocExtrato(e.target.checked)}
-                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
-                              />
-                              <span className="text-[11px] font-semibold text-slate-700">Extrato de empréstimos (consignações)</span>
-                            </label>
+
                             <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
                               <input 
                                 type="checkbox" 
@@ -2211,30 +2762,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
                 </div>
 
-                {/* Real-time Math Summary Card */}
-                {totalParcelaAtual > 0 && totalNovaParcela > 0 && (
-                  <div className="p-6 bg-slate-900 text-white rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Economia Imediata Identificada</p>
-                      <h4 className="text-[18px] font-bold tracking-tight">Otimização Realizada com Sucesso!</h4>
-                      <p className="text-[12px] text-slate-300">Confira o resumo financeiro calculado em tempo real para a proposta.</p>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 md:gap-10 border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-10">
-                      <div className="space-y-0.5">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Redução Mensal</p>
-                        <p className="text-[16px] font-bold text-emerald-400">{formatBRL(economiaMensal)}</p>
-                      </div>
-                      <div className="space-y-0.5">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Redução Absoluta</p>
-                        <p className="text-[16px] font-bold text-emerald-400">{parseFloat(porcentagemReducao).toFixed(2)}%</p>
-                      </div>
-                      <div className="space-y-0.5 col-span-2 sm:col-span-1">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Economia Total</p>
-                        <p className="text-[16px] font-bold text-emerald-400">{formatBRL(totalContratoEconomia)}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
+
 
                 {/* Bottom Actions */}
                 <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
@@ -2246,7 +2774,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   </button>
                   <button
                     onClick={() => setStep("preview")}
-                    disabled={model === "reducao" ? (!nomeCliente || totalParcelaAtual <= 0 || totalNovaParcela <= 0) : (!nomeCliente || !valorLiberado)}
+                    disabled={
+                      model === "reducao" 
+                        ? (!nomeCliente || totalParcelaAtual <= 0 || totalNovaParcela <= 0) 
+                        : model === "quitacao"
+                          ? (!nomeCliente || !quitacaoSaldoQuitacao || !quitacaoParcelaAtual || !quitacaoNovaParcela)
+                          : (!nomeCliente || !valorLiberado)
+                    }
                     className="px-8 py-2.5 bg-[#162546] hover:bg-[#162546]/90 disabled:opacity-50 text-white text-[11px] font-bold uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer"
                   >
                     Visualizar Proposta Comercial <ArrowRight className="w-4 h-4" />
