@@ -91,7 +91,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const [quitacaoBancoAtual, setQuitacaoBancoAtual] = useState("");
   const [quitacaoSaldoQuitacao, setQuitacaoSaldoQuitacao] = useState("");
   const [quitacaoParcelaAtual, setQuitacaoParcelaAtual] = useState("");
-  const [quitacaoPrazoRestante, setQuitacaoPrazoRestante] = useState("");
+  const [quitacaoPrazoRestante, setQuitacaoPrazoRestante] = useState("96x");
   const [quitacaoTotalAPagar, setQuitacaoTotalAPagar] = useState("");
   const [ocultarQuitacaoPrazoRestante, setOcultarQuitacaoPrazoRestante] = useState(false);
   const [ocultarQuitacaoTotalAPagar, setOcultarQuitacaoTotalAPagar] = useState(false);
@@ -120,7 +120,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const [docResidencia, setDocResidencia] = useState(false);
   const [docContracheque, setDocContracheque] = useState(true);
   const [docExtrato, setDocExtrato] = useState(true);
-  const [docAutorizacao, setDocAutorizacao] = useState(true);
+  const [docAutorizacao, setDocAutorizacao] = useState(false);
   const [bancoAutorizacao, setBancoAutorizacao] = useState("Portal");
 
   // Validade state
@@ -139,10 +139,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const [isManualTaxaEfetivaNovo, setIsManualTaxaEfetivaNovo] = useState<boolean>(false);
   const [isManualMesesAMenos, setIsManualMesesAMenos] = useState<boolean>(false);
   const [isManualValidadeDias, setIsManualValidadeDias] = useState<boolean>(false);
+  const [isManualQuitacaoTotalAPagar, setIsManualQuitacaoTotalAPagar] = useState<boolean>(false);
+  const [isManualQuitacaoEconomiaTotal, setIsManualQuitacaoEconomiaTotal] = useState<boolean>(false);
 
   // Form states
   const [nomeCliente, setNomeCliente] = useState("");
   const [cpfCliente, setCpfCliente] = useState("");
+  const [orgaoCliente, setOrgaoCliente] = useState("");
   const [nomeConsultor, setNomeConsultor] = useState("");
   const [telefoneConsultor, setTelefoneConsultor] = useState("");
   
@@ -252,6 +255,49 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
     });
   }, [registrations]);
 
+  const resolveOrgao = (activeReg: any): string => {
+    if (!activeReg) return "NÃO INFORMADO";
+
+    // 1. Governo de Roraima (governo_rr)
+    const hasGovRR = activeReg.governo_rr_instituidores !== undefined || activeReg.uf === 'RR';
+    if (hasGovRR) {
+      const lotacao = activeReg.governo_rr_instituidores?.[0] || {};
+      return lotacao.origem || activeReg.secretaria || activeReg.orgao || "NÃO INFORMADO";
+    }
+
+    // 2. SIAPE
+    if (activeReg.currentInstituidor !== undefined) {
+      return activeReg.currentInstituidor || activeReg.orgao || "NÃO INFORMADO";
+    }
+
+    // 3. Governo Maranhão
+    if (activeReg.governo_ma_lotacoes !== undefined) {
+      const lotacao = activeReg.governo_ma_lotacoes?.[0] || {};
+      return lotacao.orgao || activeReg.secretaria || activeReg.orgao || "NÃO INFORMADO";
+    }
+
+    // 4. Governo Piauí
+    if (activeReg.governo_pi_lotacoes !== undefined) {
+      const lotacao = activeReg.governo_pi_lotacoes?.[0] || {};
+      return lotacao.orgao || activeReg.secretaria || activeReg.orgao || "NÃO INFORMADO";
+    }
+
+    // 5. Governo SP
+    if (activeReg.governo_sp_lotacoes !== undefined) {
+      const lotacao = activeReg.governo_sp_lotacoes?.[0] || {};
+      return lotacao.orgao || activeReg.orgao || activeReg.secretaria || "NÃO INFORMADO";
+    }
+
+    // 6. Prefeitura SP
+    if (activeReg.prefeitura_sp_lotacoes !== undefined) {
+      const lotacao = activeReg.prefeitura_sp_lotacoes?.[0] || {};
+      return lotacao.orgao || activeReg.orgao || activeReg.secretaria || "NÃO INFORMADO";
+    }
+
+    // 7. Fallback para outros convênios (como governo_rj, prefeitura_santo_andre, prefeitura_contagem, governo_mg)
+    return activeReg.orgao || activeReg.secretaria || "NÃO INFORMADO";
+  };
+
   const maskCPF = (cpf: string) => {
     if (!cpf) return "";
     const clean = cpf.replace(/\D/g, "");
@@ -270,6 +316,12 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           setNomeCliente(client.nome || "");
           setCpfCliente(maskCPF(client.cpf));
         }
+        const activeReg = (activeRegIndex !== undefined && registrations && registrations[activeRegIndex]) 
+          ? registrations[activeRegIndex] 
+          : (registrations && registrations[0] ? registrations[0] : null);
+        
+        const initialOrgao = resolveOrgao(activeReg);
+        setOrgaoCliente(String(initialOrgao).toUpperCase());
       }
 
       if (perfil && !perfilInitializedRef.current) {
@@ -312,13 +364,15 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           // Pre-fill quitacao states - keep fields empty as requested
           setQuitacaoBancoAtual("");
           setQuitacaoParcelaAtual("");
-          setQuitacaoPrazoRestante("");
+          setQuitacaoPrazoRestante("96x");
           setQuitacaoMargemVolta("");
           setQuitacaoNovaParcela("");
           setQuitacaoSaldoQuitacao("");
           setQuitacaoValorLiberado("");
           setQuitacaoTotalAPagar("");
           setQuitacaoEconomiaTotal("");
+          setIsManualQuitacaoTotalAPagar(false);
+          setIsManualQuitacaoEconomiaTotal(false);
           setOcultarQuitacaoPrazoRestante(false);
           setOcultarQuitacaoTotalAPagar(false);
           setOcultarQuitacaoBancoAtual(false);
@@ -339,13 +393,15 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
           setQuitacaoBancoAtual("");
           setQuitacaoParcelaAtual("");
-          setQuitacaoPrazoRestante("");
+          setQuitacaoPrazoRestante("96x");
           setQuitacaoMargemVolta("");
           setQuitacaoNovaParcela("");
           setQuitacaoSaldoQuitacao("");
           setQuitacaoValorLiberado("");
           setQuitacaoTotalAPagar("");
           setQuitacaoEconomiaTotal("");
+          setIsManualQuitacaoTotalAPagar(false);
+          setIsManualQuitacaoEconomiaTotal(false);
           setOcultarQuitacaoPrazoRestante(false);
           setOcultarQuitacaoTotalAPagar(false);
           setOcultarQuitacaoBancoAtual(false);
@@ -380,6 +436,28 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       );
     }
   }, [porcentagemReducao]);
+
+  // Automatically calculate Quitação Total a Pagar and Economia Total
+  useEffect(() => {
+    if (!isManualQuitacaoTotalAPagar) {
+      const parsedPrazo = parseInt(quitacaoPrazoRestante) || 96;
+      const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+      const calculatedTotal = pAtual * parsedPrazo;
+      setQuitacaoTotalAPagar(calculatedTotal > 0 ? calculatedTotal.toFixed(2) : "");
+    }
+  }, [quitacaoParcelaAtual, quitacaoPrazoRestante, isManualQuitacaoTotalAPagar]);
+
+  useEffect(() => {
+    if (!isManualQuitacaoEconomiaTotal) {
+      const parsedPrazo = parseInt(quitacaoPrazoRestante) || 96;
+      const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+      const calculatedTotal = pAtual * parsedPrazo;
+      const totalAPagar = quitacaoTotalAPagar ? parseFloat(quitacaoTotalAPagar) : calculatedTotal;
+      const pNova = parseFloat(quitacaoNovaParcela) || 0;
+      const calculatedEconomia = totalAPagar - (pNova * parsedPrazo);
+      setQuitacaoEconomiaTotal(calculatedEconomia !== 0 ? calculatedEconomia.toFixed(2) : "");
+    }
+  }, [quitacaoTotalAPagar, quitacaoParcelaAtual, quitacaoPrazoRestante, quitacaoNovaParcela, isManualQuitacaoEconomiaTotal]);
 
   // Broker photo file and drag handlers
   const handleDrag = (e: React.DragEvent) => {
@@ -716,39 +794,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         return { label: "ÓRGÃO", value: "NÃO INFORMADO" };
       }
 
-      // 1. Governo de Roraima (governo_rr)
       const hasGovRR = activeReg.governo_rr_instituidores !== undefined || activeReg.uf === 'RR';
-      if (hasGovRR) {
-        const lotacao = (activeReg.governo_rr_instituidores as any)?.[0] || {};
-        const value = lotacao.origem || activeReg.secretaria || activeReg.orgao || "NÃO INFORMADO";
-        return { label: "INSTITUIDOR (ORIGEM)", value: String(value).toUpperCase() };
-      }
-
-      // 2. SIAPE
-      if (activeReg.currentInstituidor !== undefined) {
-        return { 
-          label: "ÓRGÃO (VÍNCULO)", 
-          value: String(activeReg.currentInstituidor || activeReg.orgao || "NÃO INFORMADO").toUpperCase() 
-        };
-      }
-
-      // 3. Governo Maranhão
-      if (activeReg.governo_ma_lotacoes !== undefined) {
-        const lotacao = (activeReg.governo_ma_lotacoes as any)?.[0] || {};
-        const value = lotacao.orgao || activeReg.secretaria || activeReg.orgao || "NÃO INFORMADO";
-        return { label: "ÓRGÃO", value: String(value).toUpperCase() };
-      }
-
-      // 4. Governo Piauí
-      if (activeReg.governo_pi_lotacoes !== undefined) {
-        const lotacao = (activeReg.governo_pi_lotacoes as any)?.[0] || {};
-        const value = lotacao.orgao || activeReg.secretaria || activeReg.orgao || "NÃO INFORMADO";
-        return { label: "ÓRGÃO", value: String(value).toUpperCase() };
-      }
-
-      // 5. Default Fallback
-      const value = activeReg.orgao || activeReg.secretaria || "NÃO INFORMADO";
-      return { label: "ÓRGÃO", value: String(value).toUpperCase() };
+      const label = hasGovRR 
+        ? "INSTITUIDOR (ORIGEM)" 
+        : (activeReg.currentInstituidor !== undefined ? "ÓRGÃO (VÍNCULO)" : "ÓRGÃO");
+      
+      const value = resolveOrgao(activeReg);
+      return { label, value: String(value).toUpperCase() };
     };
 
     const orgaoInfo = getOrgaoLabelAndValue();
@@ -852,7 +904,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   <div className="flex flex-col text-left">
                     <p className="text-[12px] font-black uppercase tracking-wide text-white">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
                     <p className="text-xs text-white font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
-                    <p className="text-xs text-white font-mono tracking-wider font-semibold uppercase">{orgaoInfo.value}</p>
+                    <p className="text-xs text-white font-mono tracking-wider font-semibold uppercase">{orgaoCliente || orgaoInfo.value}</p>
                   </div>
                 </div>
 
@@ -1084,7 +1136,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               <div className="flex flex-col text-left max-w-[220px]">
                 <p className="text-[12px] font-black uppercase tracking-wide text-white">{nomeCliente || "NOME COMPLETO DO CLIENTE"}</p>
                 <p className="text-xs text-white font-mono tracking-wider font-semibold">{(cpfCliente || "040.***.***.49").replace("-", ".")}</p>
-                <p className="text-xs text-white font-mono tracking-wider font-semibold uppercase">{orgaoInfo.value}</p>
+                <p className="text-xs text-white font-mono tracking-wider font-semibold uppercase">{orgaoCliente || orgaoInfo.value}</p>
               </div>
             </div>
 
@@ -1301,14 +1353,22 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                         <p className="text-[13px] text-slate-500 font-bold leading-tight">
                           Saldo para Quitação: <span className="font-black text-[#c44a4a] block sm:inline">{formatBRL(quitacaoSaldoQuitacao)}</span>
                         </p>
-                        {!ocultarQuitacaoPrazoRestante && quitacaoPrazoRestante && (
+                        {!ocultarQuitacaoPrazoRestante && (
                           <p className="text-[13px] text-slate-500 font-bold leading-tight">
-                            Prazo Restante: <span className="font-black text-[#c44a4a] block sm:inline">{quitacaoPrazoRestante}</span>
+                            Prazo Restante: <span className="font-black text-[#c44a4a] block sm:inline">{quitacaoPrazoRestante || "96x"}</span>
                           </p>
                         )}
-                        {!ocultarQuitacaoTotalAPagar && quitacaoTotalAPagar && (
+                        {!ocultarQuitacaoTotalAPagar && (
                           <p className="text-[13px] text-slate-500 font-bold leading-tight">
-                            Total a Pagar: <span className="font-black text-[#c44a4a] block sm:inline">{formatBRL(quitacaoTotalAPagar)}</span>
+                            Total a Pagar: <span className="font-black text-[#c44a4a] block sm:inline">
+                              {(() => {
+                                const parsedPrazo = parseInt(quitacaoPrazoRestante) || 96;
+                                const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+                                const defaultCalculated = pAtual * parsedPrazo;
+                                const finalTotal = quitacaoTotalAPagar ? parseFloat(quitacaoTotalAPagar) : defaultCalculated;
+                                return formatBRL(finalTotal);
+                              })()}
+                            </span>
                           </p>
                         )}
                       </div>
@@ -1353,9 +1413,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   const quitacaoPAtual = parseFloat(quitacaoParcelaAtual) || 0;
                   const quitacaoPNova = parseFloat(quitacaoNovaParcela) || 0;
                   const quitacaoReducaoMensal = Math.max(0, quitacaoPAtual - quitacaoPNova);
-                  const quitacaoPrazo = parseInt(quitacaoPrazoRestante) || 84;
-                  const calculatedQuitacaoEconomiaTotal = quitacaoReducaoMensal * quitacaoPrazo;
-                  const displayEconomiaTotal = quitacaoEconomiaTotal ? parseFloat(quitacaoEconomiaTotal) : calculatedQuitacaoEconomiaTotal;
+                  const quitacaoPrazo = parseInt(quitacaoPrazoRestante) || 96;
+                  
+                  const calculatedTotalAPagar = quitacaoPAtual * quitacaoPrazo;
+                  const actualTotalAPagar = quitacaoTotalAPagar ? parseFloat(quitacaoTotalAPagar) : calculatedTotalAPagar;
+                  
+                  const calculatedEconomia = actualTotalAPagar - (quitacaoPNova * quitacaoPrazo);
+                  const displayEconomiaTotal = quitacaoEconomiaTotal ? parseFloat(quitacaoEconomiaTotal) : calculatedEconomia;
                   const quitacaoTrocoVal = parseFloat(quitacaoValorLiberado) || 0;
                   const showEconomia = !ocultarQuitacaoEconomiaTotal;
                   const showTroco = !ocultarQuitacaoTroco;
@@ -1726,7 +1790,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                         <User className="w-4 h-4 text-slate-400" />
                         <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Dados do Cliente</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
                         <div className="space-y-1">
                           <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nome do Cliente</label>
                           <input 
@@ -1744,6 +1808,15 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                             onChange={(e) => setCpfCliente(e.target.value)}
                             className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-500 focus:outline-none shadow-sm cursor-not-allowed"
                             disabled
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</label>
+                          <input 
+                            type="text" 
+                            value={orgaoCliente}
+                            onChange={(e) => setOrgaoCliente(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
                           />
                         </div>
                         <div className="space-y-1">
@@ -2353,9 +2426,22 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                   type="number"
                                   step="0.01"
                                   value={quitacaoTotalAPagar}
-                                  onChange={(e) => setQuitacaoTotalAPagar(e.target.value)}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setQuitacaoTotalAPagar(val);
+                                    if (val === "") {
+                                      setIsManualQuitacaoTotalAPagar(false);
+                                    } else {
+                                      setIsManualQuitacaoTotalAPagar(true);
+                                    }
+                                  }}
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
-                                  placeholder="0,00"
+                                  placeholder={(() => {
+                                    const parsedPrazo = parseInt(quitacaoPrazoRestante) || 96;
+                                    const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+                                    const calc = pAtual * parsedPrazo;
+                                    return calc > 0 ? calc.toFixed(2) : "0,00";
+                                  })()}
                                 />
                               </div>
                             </div>
@@ -2465,11 +2551,105 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                   type="number"
                                   step="0.01"
                                   value={quitacaoEconomiaTotal}
-                                  onChange={(e) => setQuitacaoEconomiaTotal(e.target.value)}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setQuitacaoEconomiaTotal(val);
+                                    if (val === "") {
+                                      setIsManualQuitacaoEconomiaTotal(false);
+                                    } else {
+                                      setIsManualQuitacaoEconomiaTotal(true);
+                                    }
+                                  }}
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
-                                  placeholder="0,00"
+                                  placeholder={(() => {
+                                    const parsedPrazo = parseInt(quitacaoPrazoRestante) || 96;
+                                    const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+                                    const calculatedTotal = pAtual * parsedPrazo;
+                                    const totalAPagarVal = quitacaoTotalAPagar ? parseFloat(quitacaoTotalAPagar) : calculatedTotal;
+                                    const pNova = parseFloat(quitacaoNovaParcela) || 0;
+                                    const calc = totalAPagarVal - (pNova * parsedPrazo);
+                                    return calc !== 0 ? calc.toFixed(2) : "0,00";
+                                  })()}
                                 />
                               </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Section: Documentação Necessária */}
+                        <div className="space-y-4 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
+                          <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Documentação Necessária</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docFoto} 
+                                onChange={(e) => setDocFoto(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Foto (RG ou CNH)</span>
+                            </label>
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docEndereco} 
+                                onChange={(e) => setDocEndereco(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Endereço completo por escrito</span>
+                            </label>
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docEmail} 
+                                onChange={(e) => setDocEmail(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">E-mail</span>
+                            </label>
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docResidencia} 
+                                onChange={(e) => setDocResidencia(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Comprovante de residência (quando exigido)</span>
+                            </label>
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docContracheque} 
+                                onChange={(e) => setDocContracheque(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Último contracheque</span>
+                            </label>
+
+                            <label className="flex items-center gap-2.5 cursor-pointer p-2 bg-white border border-slate-150 rounded-xl hover:bg-slate-50 transition-colors select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={docAutorizacao} 
+                                onChange={(e) => setDocAutorizacao(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-700">Autorização para o banco ({bancoAutorizacao || "Portal"})</span>
+                            </label>
+                          </div>
+
+                          {/* Campo de Banco para Autorização */}
+                          <div className="pt-3 border-t border-slate-150">
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco para Autorização</label>
+                              <input 
+                                type="text" 
+                                value={bancoAutorizacao}
+                                onChange={(e) => setBancoAutorizacao(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-1.5 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                placeholder="Digite o banco para substituir (Portal)"
+                              />
                             </div>
                           </div>
                         </div>
