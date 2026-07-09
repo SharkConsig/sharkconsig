@@ -108,7 +108,7 @@ interface ClientData {
 }
 
 interface ConvenioProfile {
-  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg';
+  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms';
   client: ClientData;
   registrations: Registration[];
 }
@@ -124,7 +124,7 @@ export default function SearchClientPage() {
   const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false)
   
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
@@ -414,16 +414,43 @@ export default function SearchClientPage() {
                   )}
                 </div>
 
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Liberado</span>
-                  <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
-                    {proposal.valor_liberado ? (
-                      <span className="text-emerald-600 font-bold">{formatCurrency(proposal.valor_liberado)}</span>
-                    ) : (
-                      <span className="text-slate-400">--</span>
-                    )}
-                  </span>
-                </div>
+                {!proposal.isQuitacao && !proposal.isNovoFormato && (
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Liberado</span>
+                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                      {proposal.valor_liberado ? (
+                        <span className="text-emerald-600 font-bold">{formatCurrency(proposal.valor_liberado)}</span>
+                      ) : (
+                        <span className="text-slate-400">--</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+
+                {proposal.isNovoFormato && (
+                  <>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Antigo</span>
+                      <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                        {proposal.valor_liberado ? (
+                          <span className="text-slate-500 font-bold">{formatCurrency(proposal.valor_liberado * 0.70)}</span>
+                        ) : (
+                          <span className="text-slate-400">--</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Atual</span>
+                      <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                        {proposal.valor_liberado ? (
+                          <span className="text-[#F4C600] font-black">{formatCurrency(proposal.valor_liberado)}</span>
+                        ) : (
+                          <span className="text-slate-400">--</span>
+                        )}
+                      </span>
+                    </div>
+                  </>
+                )}
 
                 {!proposal.isNovoFormato && !proposal.isQuitacao && (
                   <div className="flex flex-col">
@@ -439,13 +466,34 @@ export default function SearchClientPage() {
                 {proposal.isQuitacao && (
                   <div className="flex flex-col">
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
-                      PARCELA ANTIGA {"->"} PARCELA NOVA
+                      Saldo para Quitação
                     </span>
                     <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
-                      <span className="text-slate-800">{formatCurrency(proposal.parcela_atual || 0)}</span> ➔ <span className="text-emerald-600 font-bold">{formatCurrency(proposal.nova_parcela || 0)}</span>
+                      <span className="text-[#c44a4a] font-bold">
+                        {proposal.saldo_quitacao ? formatCurrency(proposal.saldo_quitacao) : "--"}
+                      </span>
                     </span>
                   </div>
                 )}
+
+                {proposal.isQuitacao && (() => {
+                  const prazo = parseInt(proposal.prazo_restante) || 96;
+                  const pAtual = parseFloat(proposal.parcela_atual) || 0;
+                  const pNova = parseFloat(proposal.nova_parcela) || 0;
+                  const economiaTotal = Math.max(0, (pAtual - pNova) * prazo);
+                  return (
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+                        Economia Total
+                      </span>
+                      <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                        <span className="text-emerald-600 font-bold">
+                          {formatCurrency(economiaTotal)}
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {!proposal.isNovoFormato && !proposal.isQuitacao && (
                   <div className="flex flex-col">
@@ -495,7 +543,7 @@ export default function SearchClientPage() {
   };
 
   const fetchRegistrationsForType = async (
-    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg',
+    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms',
     clientData: ClientData
   ): Promise<Registration[]> => {
     const ensureArray = (val: unknown): Record<string, unknown>[] => {
@@ -718,11 +766,27 @@ export default function SearchClientPage() {
           instituidores: []
         }
       }) as unknown as Registration[]
+    } else if (type === 'governo_ms') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('governo_ms_matriculas').select('*').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => {
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          orgao: r.orgao as string | null,
+          uf: 'MS',
+          instituidores: []
+        }
+      }) as unknown as Registration[]
     }
     return []
   }
 
-  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | null) => {
+  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | null) => {
     const tableMap = {
       siape: 'clientes',
       governo_sp: 'governo_sp_clientes',
@@ -733,7 +797,8 @@ export default function SearchClientPage() {
       governo_rj: 'governo_rj_clientes',
       prefeitura_santo_andre: 'prefeitura_santo_andre_clientes',
       prefeitura_contagem: 'prefeitura_contagem_clientes',
-      governo_mg: 'governo_mg_clientes'
+      governo_mg: 'governo_mg_clientes',
+      governo_ms: 'governo_ms_clientes'
     }
 
     const foundProfiles: ConvenioProfile[] = []
@@ -753,9 +818,9 @@ export default function SearchClientPage() {
             telefone_2: (data.telefone_2 || data.telefone_recado) as string | null,
             telefone_3: data.telefone_3 as string | null,
           }
-          const regs = await fetchRegistrationsForType(type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg', clientObj)
+          const regs = await fetchRegistrationsForType(type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms', clientObj)
           return {
-            type: type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg',
+            type: type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms',
             client: clientObj,
             registrations: regs
           }
@@ -841,6 +906,7 @@ export default function SearchClientPage() {
         { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
         { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
         { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
+        { name: 'base_consulta_governo_ms', convenio: 'governo_ms' },
       ];
 
       const results = await Promise.all(
@@ -864,7 +930,7 @@ export default function SearchClientPage() {
 
       const quickData = results.find(r => r !== null) || null;
 
-      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | null = null
+      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | null = null
       let resolvedCpf = cleanCPF
 
       if (quickData) {
@@ -880,6 +946,7 @@ export default function SearchClientPage() {
         else if (source === 'prefeitura_santo_andre') preferredType = 'prefeitura_santo_andre'
         else if (source === 'prefeitura_contagem') preferredType = 'prefeitura_contagem'
         else if (source === 'governo_mg') preferredType = 'governo_mg'
+        else if (source === 'governo_ms') preferredType = 'governo_ms'
       }
 
       await loadProfilesForCpf(resolvedCpf, preferredType)
@@ -994,6 +1061,7 @@ export default function SearchClientPage() {
         { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
         { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
         { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
+        { name: 'base_consulta_governo_ms', convenio: 'governo_ms' },
       ];
 
       const results = await Promise.all(
@@ -1017,7 +1085,7 @@ export default function SearchClientPage() {
 
       const quickData = results.find(r => r !== null) || null;
 
-      const targetConvenio = quickData?.convenio as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | undefined
+      const targetConvenio = quickData?.convenio as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | undefined
       const finalCpf = quickData?.cpf || cleanCPF
       
       const isActuallyAPhone = digits.length >= 8 && digits.length <= 13
@@ -1038,11 +1106,12 @@ export default function SearchClientPage() {
         governo_rj: 'governo_rj_clientes',
         prefeitura_santo_andre: 'prefeitura_santo_andre_clientes',
         prefeitura_contagem: 'prefeitura_contagem_clientes',
-        governo_mg: 'governo_mg_clientes'
+        governo_mg: 'governo_mg_clientes',
+        governo_ms: 'governo_ms_clientes'
       }
 
       let foundCpf: string | null = null
-      let foundType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | null = null
+      let foundType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | null = null
 
       for (const [type, table] of Object.entries(tableMap)) {
         const query = supabase.from(table).select('cpf')
@@ -1228,7 +1297,8 @@ export default function SearchClientPage() {
                       p.type === 'governo_rj' ? 'GOVERNO RIO DE JANEIRO' :
                       p.type === 'prefeitura_santo_andre' ? 'PREFEITURA SANTO ANDRÉ' :
                       p.type === 'prefeitura_contagem' ? 'PREFEITURA CONTAGEM' :
-                      p.type === 'governo_mg' ? 'GOVERNO MINAS GERAIS' : String(p.type).toUpperCase();
+                      p.type === 'governo_mg' ? 'GOVERNO MINAS GERAIS' : 
+                      p.type === 'governo_ms' ? 'GOVERNO MATO GROSSO DO SUL' : String(p.type).toUpperCase();
                     
                     return (
                       <button
@@ -2911,6 +2981,120 @@ export default function SearchClientPage() {
                                     tel3: unmaskPhone(client.telefone_3),
                                     origem: "pesquisa",
                                     convenio: "GOVERNO RIO DE JANEIRO"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {clientType === 'governo_ms' && registrations.length > 0 && (() => {
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-ms-${reg.id}-${idx}`}
+                        type="button"
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
+                  {registrations[activeRegIndex] && (() => {
+                    const reg = registrations[activeRegIndex];
+                    
+                    return (
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                        <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-teal-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (GOVERNO DO MATO GROSSO DO SUL)</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[13px] font-bold text-slate-900">{reg.matricula}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.orgao || "NÃO INFORMADO"}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
+
+                          {/* Footer Buttons for GOV MS */}
+                          <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
+                            <Button 
+                              onClick={() => {
+                                const rawCpf = client.cpf || "";
+                                const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: formattedCpf,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  margem: "R$ 0,00",
+                                  liquida5: "R$ 0,00",
+                                  beneficio5: "R$ 0,00",
+                                  convenio: "GOVERNO MATO GROSSO DO SUL",
+                                  matricula: reg.matricula || ""
+                                });
+                                router.push(`/chamados/novo?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Abrir Chamado
+                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "GOVERNO MATO GROSSO DO SUL"
                                   });
                                   router.push(`/propostas/nova?${params.toString()}`);
                                 }}
