@@ -555,17 +555,36 @@ export default function CampanhaAtendimentoPage() {
           }
         })
 
-        // 3. Obter todos os membros cadastrados na campanha_membros da campanha ordenados pela fila
-        const { data: allMembers, error: membersErr } = await withRetry(() =>
-          supabase
-            .from('campanha_membros')
-            .select('cliente_cpf, convenio')
-            .eq('campanha_id', camp.id)
-            .order('ordem_fila', { ascending: true })
-        )
-        if (membersErr) {
-          console.error("Erro ao buscar membros da campanha:", membersErr)
-          throw membersErr
+        // 3. Obter todos os membros cadastrados na campanha_membros da campanha ordenados pela fila (paginado em loops para superar o limite padrão de 1000 do Supabase)
+        let allMembers: { cliente_cpf: string | null; convenio?: string | null }[] = [];
+        let hasMoreMembers = true;
+        let memberOffset = 0;
+        const memberLimit = 1000;
+
+        while (hasMoreMembers) {
+          const { data: memberBatch, error: membersErr } = await withRetry(() =>
+            supabase
+              .from('campanha_membros')
+              .select('cliente_cpf, convenio')
+              .eq('campanha_id', camp.id)
+              .order('ordem_fila', { ascending: true })
+              .range(memberOffset, memberOffset + memberLimit - 1)
+          );
+
+          if (membersErr) {
+            console.error("Erro ao buscar membros da campanha:", membersErr);
+            throw membersErr;
+          }
+
+          if (memberBatch && memberBatch.length > 0) {
+            allMembers = [...allMembers, ...memberBatch];
+            memberOffset += memberBatch.length;
+            if (memberBatch.length < memberLimit) {
+              hasMoreMembers = false;
+            }
+          } else {
+            hasMoreMembers = false;
+          }
         }
 
         // 4. Filtrar pelos CPFs que ainda não foram tabulados e não estão vinculados a outro corretor neste exato momento
@@ -600,6 +619,7 @@ export default function CampanhaAtendimentoPage() {
               { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
               { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
               { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
+              { name: 'base_consulta_governo_ms', convenio: 'governo_ms' },
             ];
 
             // 1. Determinar tabela preferencial de consulta
