@@ -910,7 +910,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
                 {/* Right side: Corretor info */}
                 <div className="flex flex-col text-right items-end gap-1.5 border-l border-slate-700/50 pl-5">
-                  <p className="text-xs font-black uppercase text-[#D6AB00] tracking-wider">{nomeConsultor || "NOME DO CORRETOR"}</p>
+                  <p className="text-xs font-black uppercase text-[#D6AB00] tracking-wider">{nomeConsultor || "NOME DO USUÁRIO"}</p>
                   <div className="flex items-center gap-1.5 text-[11px] text-white font-medium">
                     <Mail className="w-3.5 h-3.5 text-[#F4C600] shrink-0" />
                     <span>{corretorEmail}</span>
@@ -1154,7 +1154,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
             {/* Right side: Corretor info */}
             <div className="flex flex-col text-right items-end gap-1.5 border-l border-slate-700/50 pl-5 max-w-[220px]">
-              <p className="text-xs font-black uppercase text-[#D6AB00] tracking-wider break-words w-full">{nomeConsultor || "NOME DO CORRETOR"}</p>
+              <p className="text-xs font-black uppercase text-[#D6AB00] tracking-wider break-words w-full">{nomeConsultor || "NOME DO USUÁRIO"}</p>
               <div className="flex items-center gap-1.5 text-[11px] text-white font-medium truncate w-full justify-end">
                 <Mail className="w-3.5 h-3.5 text-[#F4C600] shrink-0" />
                 <span className="truncate">{corretorEmail}</span>
@@ -1686,7 +1686,6 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               </div>
               <div>
                 <h3 className="text-[15px] font-bold text-slate-900 tracking-tight">Simulação de Proposta Comercial</h3>
-                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest mt-0.5">Ferramenta de Apoio a Vendas</p>
               </div>
             </div>
             <button 
@@ -1840,11 +1839,11 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                     <div className="space-y-4 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
                        <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
                         <Briefcase className="w-4 h-4 text-slate-400" />
-                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Responsável pela Venda</span>
+                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Usuário Responsável</span>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                         <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nome do Corretor</label>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nome do Usuário</label>
                           <input 
                             type="text" 
                             value={nomeConsultor}
@@ -1866,7 +1865,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
                       {/* Photo Upload Container */}
                       <div className="pt-2 space-y-2">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Foto do Corretor (PNG sem fundo)</label>
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Foto do Usuário (PNG sem fundo)</label>
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {/* Upload Drag & Drop Area */}
