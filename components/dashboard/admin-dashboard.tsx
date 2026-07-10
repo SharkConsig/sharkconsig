@@ -391,37 +391,58 @@ export function AdminDashboard({
   const fetchProposalsStats = React.useCallback(async () => {
     setIsProposalsStatsLoading(true)
     try {
-      const [r1, r2, r3] = await Promise.all([
-        supabase
-          .from('historico_proposta_comercial')
-          .select('id, cliente_nome, user_nome, user_email, total_parcela_atual, total_parcela_nova, valor_liberado, created_at, arquivo_url, tipo_arquivo'),
-        supabase
-          .from('historico_proposta_comercial_novo_formato')
-          .select('id, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo'),
-        supabase
-          .from('historico_proposta_comercial_quitacao_contrato')
-          .select('id, cliente_nome, user_nome, user_email, saldo_quitacao, parcela_atual, prazo_restante, nova_parcela, reducao_mensal, created_at, arquivo_url, tipo_arquivo')
+      // 1. Buscar contagens exatas de forma ultra-rápida (head: true, payload zero de linhas)
+      const [c1, c2, c3] = await Promise.all([
+        supabase.from('historico_proposta_comercial').select('*', { count: 'exact', head: true }),
+        supabase.from('historico_proposta_comercial_novo_formato').select('*', { count: 'exact', head: true }),
+        supabase.from('historico_proposta_comercial_quitacao_contrato').select('*', { count: 'exact', head: true })
       ])
 
-      const countReducao = r1.data?.length || 0
-      const countNovoFormato = r2.data?.length || 0
-      const countQuitacao = r3.data?.length || 0
+      const countReducao = c1.count || 0
+      const countNovoFormato = c2.count || 0
+      const countQuitacao = c3.count || 0
       const total = countReducao + countNovoFormato + countQuitacao
 
-      const totalReducaoValor = (r1.data || []).reduce((acc: number, item: any) => {
+      // 2. Buscar apenas as colunas numéricas de valor para somar os totais acumulados de forma leve
+      const [v1, v2, v3] = await Promise.all([
+        supabase.from('historico_proposta_comercial').select('valor_liberado'),
+        supabase.from('historico_proposta_comercial_novo_formato').select('valor_liberado'),
+        supabase.from('historico_proposta_comercial_quitacao_contrato').select('saldo_quitacao')
+      ])
+
+      const totalReducaoValor = (v1.data || []).reduce((acc: number, item: any) => {
         const val = parseFloat(item.valor_liberado)
         return acc + (isNaN(val) ? 0 : val)
       }, 0)
 
-      const totalNovoFormatoValor = (r2.data || []).reduce((acc: number, item: any) => {
+      const totalNovoFormatoValor = (v2.data || []).reduce((acc: number, item: any) => {
         const val = parseFloat(item.valor_liberado)
         return acc + (isNaN(val) ? 0 : val)
       }, 0)
 
-      const totalQuitacaoValor = (r3.data || []).reduce((acc: number, item: any) => {
+      const totalQuitacaoValor = (v3.data || []).reduce((acc: number, item: any) => {
         const val = parseFloat(item.saldo_quitacao)
         return acc + (isNaN(val) ? 0 : val)
       }, 0)
+
+      // 3. Buscar detalhes completos apenas das últimas 200 propostas de cada tipo para o histórico do painel
+      const [r1, r2, r3] = await Promise.all([
+        supabase
+          .from('historico_proposta_comercial')
+          .select('id, cliente_nome, user_nome, user_email, total_parcela_atual, total_parcela_nova, valor_liberado, created_at, arquivo_url, tipo_arquivo')
+          .order('created_at', { ascending: false })
+          .limit(200),
+        supabase
+          .from('historico_proposta_comercial_novo_formato')
+          .select('id, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo')
+          .order('created_at', { ascending: false })
+          .limit(200),
+        supabase
+          .from('historico_proposta_comercial_quitacao_contrato')
+          .select('id, cliente_nome, user_nome, user_email, saldo_quitacao, parcela_atual, prazo_restante, nova_parcela, reducao_mensal, created_at, arquivo_url, tipo_arquivo')
+          .order('created_at', { ascending: false })
+          .limit(200)
+      ])
 
       let combined: any[] = []
       if (r1.data) {
@@ -1629,6 +1650,7 @@ export function AdminDashboard({
             <MessageSquare className="w-4 h-4" />
             CHAMADOS
           </button>
+          {/* Aba Propostas Comerciais desativada temporariamente para otimização de performance no Supabase
           <button
             onClick={() => setActiveTab('propostas_comerciais')}
             className={cn(
@@ -1641,6 +1663,7 @@ export function AdminDashboard({
             <FileSpreadsheet className="w-4 h-4" />
             PROPOSTAS COMERCIAIS
           </button>
+          */}
           <button
             onClick={() => setActiveTab('financeiro')}
             className={cn(
