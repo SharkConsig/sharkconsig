@@ -538,7 +538,7 @@ export default function CampanhaAtendimentoPage() {
               if (r.cliente_cpf) {
                 const paddedClaimedCpf = r.cliente_cpf.replace(/\D/g, "").padStart(11, '0')
                 const claimTime = r.created_at ? new Date(r.created_at).getTime() : 0;
-                if (claimTime && now - claimTime < claimExpirationMs) {
+                if (!claimTime || now - claimTime < claimExpirationMs) {
                   claimedCpfs.add(paddedClaimedCpf);
                 }
               }
@@ -555,36 +555,17 @@ export default function CampanhaAtendimentoPage() {
           }
         })
 
-        // 3. Obter todos os membros cadastrados na campanha_membros da campanha ordenados pela fila (paginado em loops para superar o limite padrão de 1000 do Supabase)
-        let allMembers: { cliente_cpf: string | null; convenio?: string | null }[] = [];
-        let hasMoreMembers = true;
-        let memberOffset = 0;
-        const memberLimit = 1000;
-
-        while (hasMoreMembers) {
-          const { data: memberBatch, error: membersErr } = await withRetry(() =>
-            supabase
-              .from('campanha_membros')
-              .select('cliente_cpf, convenio')
-              .eq('campanha_id', camp.id)
-              .order('ordem_fila', { ascending: true })
-              .range(memberOffset, memberOffset + memberLimit - 1)
-          );
-
-          if (membersErr) {
-            console.error("Erro ao buscar membros da campanha:", membersErr);
-            throw membersErr;
-          }
-
-          if (memberBatch && memberBatch.length > 0) {
-            allMembers = [...allMembers, ...memberBatch];
-            memberOffset += memberBatch.length;
-            if (memberBatch.length < memberLimit) {
-              hasMoreMembers = false;
-            }
-          } else {
-            hasMoreMembers = false;
-          }
+        // 3. Obter todos os membros cadastrados na campanha_membros da campanha ordenados pela fila
+        const { data: allMembers, error: membersErr } = await withRetry(() =>
+          supabase
+            .from('campanha_membros')
+            .select('cliente_cpf, convenio')
+            .eq('campanha_id', camp.id)
+            .order('ordem_fila', { ascending: true })
+        )
+        if (membersErr) {
+          console.error("Erro ao buscar membros da campanha:", membersErr)
+          throw membersErr
         }
 
         // 4. Filtrar pelos CPFs que ainda não foram tabulados e não estão vinculados a outro corretor neste exato momento
@@ -599,88 +580,89 @@ export default function CampanhaAtendimentoPage() {
           const campaignHasValidConvenio = convenioKey && TABLE_MAP[convenioKey || ''];
           
           // Loop to search for the first valid lead configuration starting from selectedIndex.
-          // Limit to maximum 300 sequential checks to prevent infinite database lookup lags.
-          const maxChecks = Math.min(availableMembers.length, 300);
+          // Limit to maximum 30 sequential checks to prevent infinite database lookup lags.
+          const maxChecks = Math.min(availableMembers.length, 30);
           for (let i = 0; i < maxChecks; i++) {
             const indexToCheck = (selectedIndex + i) % availableMembers.length
             const matchedMember = availableMembers[indexToCheck]
             const tempCpf = matchedMember.cliente_cpf
-            const cleanTempCpf = tempCpf.replace(/\D/g, "").padStart(11, '0')
             const tempResolvedConvenio = matchedMember.convenio || null
-            
-            const splitTables = [
-              { name: 'base_consulta_siape', convenio: 'siape' },
-              { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
-              { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
-              { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
-              { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
-              { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
-              { name: 'base_consulta_governo_rj', convenio: 'governo_rj' },
-              { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
-              { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
-              { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
-              { name: 'base_consulta_governo_ms', convenio: 'governo_ms' },
-            ];
+            let tempTable = TABLE_MAP[convenioKey || ''] || 'base_consulta_siape'
 
-            // 1. Determinar tabela preferencial de consulta
-            let tempTable = 'base_consulta_siape'
             if (tempResolvedConvenio && TABLE_MAP[tempResolvedConvenio || '']) {
               tempTable = TABLE_MAP[tempResolvedConvenio || '']
             } else if (campaignHasValidConvenio) {
               tempTable = TABLE_MAP[convenioKey || '']
-            }
-
-            // 2. Buscar o lead completo na tabela preferencial
-            const paddedFetchedCpf = cleanTempCpf
-            let { data: fullLead, error: fullLeadError } = await withRetry(() => 
-              supabase.from(tempTable).select('*').eq('cpf', paddedFetchedCpf).limit(1)
-            )
-
-            // 3. Se não encontrar na tabela preferencial, buscar dinamicamente em todas as tabelas de consulta
-            if (fullLeadError || !fullLead || fullLead.length === 0) {
-              console.log(`CPF ${tempCpf} não encontrado na tabela preferencial ${tempTable}. Realizando busca em todas as tabelas de consulta...`);
-              
+            } else if (
+              !tempResolvedConvenio ||
+              tempResolvedConvenio === "detect" ||
+              tempResolvedConvenio === "importado" ||
+              tempResolvedConvenio === "multi" ||
+              !campaignHasValidConvenio ||
+              convenioKey === "detect" ||
+              convenioKey === "importado" ||
+              convenioKey === "multi"
+            ) {
+              // Resolve convenio dynamically at runtime by checking all tables in parallel
+              const splitTables = [
+                { name: 'base_consulta_siape', convenio: 'siape' },
+                { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
+                { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
+                { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
+                { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
+                { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
+                { name: 'base_consulta_governo_rj', convenio: 'governo_rj' },
+                { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
+                { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
+                { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
+              ];
               const detectionResults = await Promise.all(
                 splitTables.map(async (t) => {
                   try {
+                    const paddedCpf = tempCpf.padStart(11, '0')
                     const { data: dDataList, error: dErr } = await supabase
                       .from(t.name)
-                      .select('*')
-                      .eq('cpf', paddedFetchedCpf)
+                      .select('cpf')
+                      .eq('cpf', paddedCpf)
                       .limit(1)
                     if (!dErr && dDataList && dDataList.length > 0) {
-                      return { table: t.name, convenio: t.convenio, lead: dDataList[0] };
+                      return t.name;
                     }
                   } catch (e) {
-                    console.warn(`Erro na busca do CPF ${tempCpf} na tabela ${t.name}:`, e);
+                    console.warn(`Erro na deteção do CPF ${tempCpf} na tabela ${t.name}:`, e);
                   }
                   return null;
                 })
               );
-
-              const foundResult = detectionResults.find((r) => r !== null);
-              if (foundResult) {
-                data = foundResult.lead;
-                table = foundResult.table;
-                
-                // Silently cache/update back to campanha_membros for subsequent ultra-fast database query runs
-                const detectedConvenio = foundResult.convenio;
-                supabase
-                  .from('campanha_membros')
-                  .update({ convenio: detectedConvenio })
-                  .eq('campanha_id', camp.id)
-                  .eq('cliente_cpf', tempCpf)
-                  .then(() => {});
-                  
-                break; // Encontrou o lead! Finaliza a busca.
-              } else {
-                console.warn(`CPF ${tempCpf} cadastrado na campanha não foi localizado em nenhuma tabela de consulta do CRM. Pulando...`);
+              const foundTable = detectionResults.find((r) => r !== null);
+              if (foundTable) {
+                tempTable = foundTable;
+                const detectedConvenio = splitTables.find((t) => t.name === foundTable)?.convenio;
+                if (detectedConvenio) {
+                  // Silently cache/update back to campanha_membros for subsequent ultra-fast database query runs
+                  supabase
+                    .from('campanha_membros')
+                    .update({ convenio: detectedConvenio })
+                    .eq('campanha_id', camp.id)
+                    .eq('cliente_cpf', tempCpf)
+                    .then(() => {});
+                }
               }
-            } else {
-              // Encontrou na tabela preferencial!
+            }
+
+            const paddedFetchedCpf = tempCpf.padStart(11, '0')
+            const { data: fullLead, error: fullLeadError } = await withRetry(() => 
+              supabase.from(tempTable).select('*').eq('cpf', paddedFetchedCpf).limit(1)
+            )
+            if (fullLeadError) throw fullLeadError
+            
+            if (fullLead && fullLead.length > 0) {
+              // Found a valid existing lead
               data = fullLead[0]
               table = tempTable
-              break; // Finaliza a busca.
+              break; // exit search loop
+            } else {
+              console.warn(`CPF ${tempCpf} cadastrado na campanha não foi localizado em nenhuma tabela de consulta. Pulando...`);
             }
           }
         }

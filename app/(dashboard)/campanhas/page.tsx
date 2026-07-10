@@ -638,16 +638,8 @@ export default function CampaignsPage() {
       const pageSize = 100 // Lotes menores reduzem chance de timeout individual
       let totalProcessed = 0
       
-      // Obter contagem exata e real-time de membros na campanha_membros
-      const { count: realCount, error: countErr } = await supabase
-        .from('campanha_membros')
-        .select('*', { count: 'exact', head: true })
-        .eq('campanha_id', campaign.id);
-
-      const actualPublicoEstimado = countErr ? (campaign.publico_estimado || 0) : (realCount || 0);
-
       const startRange = partIndex * PART_SIZE;
-      const endRange = Math.min((partIndex + 1) * PART_SIZE - 1, (actualPublicoEstimado || 0) - 1);
+      const endRange = Math.min((partIndex + 1) * PART_SIZE - 1, (campaign.publico_estimado || 0) - 1);
       const totalToExport = Math.max(0, endRange - startRange + 1);
 
       if (totalToExport <= 0) {
@@ -677,8 +669,6 @@ export default function CampaignsPage() {
           break;
         }
 
-        const normalizeCpf = (c: string) => c.replace(/\D/g, "").padStart(11, '0');
-
         const cpfs = memberBatch
           .map((m: { cliente_cpf: string | null }) => m.cliente_cpf)
           .filter((cpf): cpf is string => !!cpf);
@@ -686,60 +676,24 @@ export default function CampaignsPage() {
           break;
         }
 
-        // Expand CPFs to include all common formats for database matches (padded, unpadded, formatted)
-        const expandedCpfs = Array.from(new Set(cpfs.flatMap(cpf => {
-          const clean = cpf.replace(/\D/g, "");
-          if (!clean) return [cpf];
-          const padded = clean.padStart(11, '0');
-          const unpadded = clean.replace(/^0+/, '');
-          const formatted = `${padded.substring(0, 3)}.${padded.substring(3, 6)}.${padded.substring(6, 9)}-${padded.substring(9, 11)}`;
-          return [cpf, clean, padded, unpadded, formatted];
-        })));
-
         const detectedConvenios = new Map<string, string>();
         let bcrData: Record<string, unknown>[] = [];
 
-        const tablesList = [
-          { name: 'base_consulta_siape', convenio: 'siape', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo" },
-          { name: 'base_consulta_governo_sp', convenio: 'governo_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_governo_pi', convenio: 'governo_pi', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio" },
-          { name: 'base_consulta_governo_ma', convenio: 'governo_ma', columns: "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf" },
-          { name: 'base_consulta_governo_rr', convenio: 'governo_rr', columns: "cpf, nome, data_de_nascimento, data_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao" },
-          { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao" },
-          { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_governo_mg', convenio: 'governo_mg', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_governo_rj', convenio: 'governo_rj', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_governo_ms', convenio: 'governo_ms', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-        ];
+        if (isMultiConvenio) {
+          const tablesList = [
+            { name: 'base_consulta_siape', convenio: 'siape', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo" },
+            { name: 'base_consulta_governo_sp', convenio: 'governo_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+            { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5" },
+            { name: 'base_consulta_governo_pi', convenio: 'governo_pi', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio" },
+            { name: 'base_consulta_governo_ma', convenio: 'governo_ma', columns: "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf" },
+            { name: 'base_consulta_governo_rr', convenio: 'governo_rr', columns: "cpf, nome, data_de_nascimento, data_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao" },
+            { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao" },
+          ];
 
-        // 1. Buscar primeiro na tabela preferencial da campanha (targetTable)
-        const targetTableObj = tablesList.find(t => t.name === targetTable) || tablesList[0];
-        const { data: primaryData, error: bcrError } = await withRetry(() =>
-          supabase.from(targetTable).select(targetTableObj.columns).in('cpf', expandedCpfs)
-        );
-        if (bcrError) throw bcrError;
-
-        const foundNormCpfs = new Set((primaryData || []).map(r => normalizeCpf(r.cpf as string)));
-        const missingCpfsOriginal = cpfs.filter(cpf => !foundNormCpfs.has(normalizeCpf(cpf)));
-        const tempBcrData = [...(primaryData || [])];
-
-        // 2. Se houver CPFs ausentes, buscar nas outras tabelas em paralelo
-        if (missingCpfsOriginal.length > 0) {
-          const expandedMissingCpfs = Array.from(new Set(missingCpfsOriginal.flatMap(cpf => {
-            const clean = cpf.replace(/\D/g, "");
-            if (!clean) return [cpf];
-            const padded = clean.padStart(11, '0');
-            const unpadded = clean.replace(/^0+/, '');
-            const formatted = `${padded.substring(0, 3)}.${padded.substring(3, 6)}.${padded.substring(6, 9)}-${padded.substring(9, 11)}`;
-            return [cpf, clean, padded, unpadded, formatted];
-          })));
-
-          const otherTablesList = tablesList.filter(t => t.name !== targetTable);
           const queriesResults = await Promise.all(
-            otherTablesList.map(async (t) => {
+            tablesList.map(async (t) => {
               try {
-                const { data, error } = await supabase.from(t.name).select(t.columns).in('cpf', expandedMissingCpfs);
+                const { data, error } = await supabase.from(t.name).select(t.columns).in('cpf', cpfs);
                 if (!error && data) {
                   return { data, convenio: t.convenio };
                 }
@@ -750,55 +704,75 @@ export default function CampaignsPage() {
             })
           );
 
+          const tempBcrData: Record<string, unknown>[] = [];
           const matchedCpfs = new Set<string>();
+
           queriesResults.forEach(({ data, convenio }) => {
             if (data && data.length > 0) {
               (data as Record<string, unknown>[]).forEach((row) => {
-                if (row && row.cpf) {
-                  const normRowCpf = normalizeCpf(row.cpf as string);
-                  if (!foundNormCpfs.has(normRowCpf) && !matchedCpfs.has(normRowCpf)) {
-                    matchedCpfs.add(normRowCpf);
-                    detectedConvenios.set(normRowCpf, convenio);
-                    tempBcrData.push(row);
+                if (row && row.cpf && !matchedCpfs.has(row.cpf as string)) {
+                  matchedCpfs.add(row.cpf as string);
+                  detectedConvenios.set(row.cpf as string, convenio);
+                  tempBcrData.push(row);
 
-                    const currentMember = (memberBatch as { cliente_cpf: string | null; convenio?: string | null }[]).find(
-                      (m) => m.cliente_cpf && normalizeCpf(m.cliente_cpf) === normRowCpf
-                    );
-                    if (currentMember && (!currentMember.convenio || currentMember.convenio === "detect" || currentMember.convenio === "importado" || currentMember.convenio === "multi")) {
-                      supabase
-                        .from('campanha_membros')
-                        .update({ convenio })
-                        .eq('campanha_id', campaign.id)
-                        .eq('cliente_cpf', currentMember.cliente_cpf as string)
-                        .then(() => {});
-                    }
+                  const currentMember = (memberBatch as { cliente_cpf: string | null; convenio?: string | null }[]).find((m) => m.cliente_cpf === row.cpf);
+                  if (currentMember && (!currentMember.convenio || currentMember.convenio === "detect" || currentMember.convenio === "importado" || currentMember.convenio === "multi")) {
+                    supabase
+                      .from('campanha_membros')
+                      .update({ convenio })
+                      .eq('campanha_id', campaign.id)
+                      .eq('cliente_cpf', row.cpf as string)
+                      .then(() => {});
                   }
                 }
               });
             }
           });
-        }
+          bcrData = tempBcrData;
+        } else {
+          const isGovSp = targetTable === 'base_consulta_governo_sp';
+          const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
+          const isGovMa = targetTable === 'base_consulta_governo_ma';
+          const isGovRr = targetTable === 'base_consulta_governo_rr';
+          const columnsToSelect = isGovPi
+            ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio"
+            : isGovRr
+              ? "cpf, nome, data_de_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao"
+              : isGovSp
+                ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5"
+                : isPrefSp
+                  ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5"
+                  : isGovMa
+                    ? "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf"
+                    : isSantoAndre
+                      ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao"
+                      : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
 
-        bcrData = tempBcrData;
+          const { data, error: bcrError } = await withRetry(() =>
+            supabase.from(targetTable).select(columnsToSelect).in('cpf', cpfs)
+          );
+          if (bcrError) throw bcrError;
+          bcrData = data || [];
+        }
 
         const memberConvenioMap = new Map<string, string>(
           memberBatch.map((m: { cliente_cpf: string | null; convenio?: string | null }) => {
             const cpf = m.cliente_cpf || "";
             const conv = m.convenio && m.convenio !== "detect" && m.convenio !== "importado" && m.convenio !== "multi"
               ? m.convenio
-              : (detectedConvenios.get(normalizeCpf(cpf)) || "siape");
-            return [normalizeCpf(cpf), conv];
+              : (detectedConvenios.get(cpf) || "siape");
+            return [cpf, conv];
           })
         );
 
         // O(N) Maps lookup para preservar a ordem exata de ordem_fila sem loops lineares complexos
         const bcrMap = new Map<string, ICampaignMembroRow>(
-          (bcrData || []).map((row) => [normalizeCpf(row.cpf as string), row as unknown as ICampaignMembroRow])
+          (bcrData || []).map((row) => [row.cpf as string, row as unknown as ICampaignMembroRow])
         );
 
         const sortedBatchData: ICampaignMembroRow[] = [];
         cpfs.forEach((cpf: string) => {
-          const matchedRow = bcrMap.get(normalizeCpf(cpf));
+          const matchedRow = bcrMap.get(cpf);
           if (matchedRow) {
             sortedBatchData.push(matchedRow);
           }
@@ -887,7 +861,7 @@ export default function CampaignsPage() {
               row.beneficio_liquida_5 || 0
             ];
           } else if (isMultiConvenio) {
-            const conv = memberConvenioMap.get(normalizeCpf(row.cpf)) || "siape";
+            const conv = memberConvenioMap.get(row.cpf) || "siape";
             if (conv === "siape") {
               csvFields = [
                 row.cpf, row.nome, row.data_nascimento || "",

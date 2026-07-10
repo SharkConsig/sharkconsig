@@ -120,13 +120,6 @@ const parseDescriptionMetadata = (desc: string) => {
   return null;
 };
 
-const parseValorToNumber = (valStr: string) => {
-  if (!valStr) return 0;
-  const clean = valStr.replace("R$", "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-  const num = parseFloat(clean);
-  return isNaN(num) ? 0 : num;
-};
-
 const getValorOperacaoDeAbertura = (ticket: any) => {
   const desc = ticket.descricao || ticket.description || ticket.content || "";
   const meta = parseDescriptionMetadata(desc);
@@ -683,38 +676,17 @@ export default function TicketsPage() {
     })
   }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus])
 
-  // Summing values per status label
-  const statusValues = useMemo(() => {
-    const res: Record<string, number> = {}
-    baseFilteredTickets.forEach(t => {
-      const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
-      const opData = getValorOperacaoDeAbertura(t)
-      const opVal = parseValorToNumber(opData.valor)
-      res[s] = (res[s] || 0) + opVal
-    })
-    return res;
-  }, [baseFilteredTickets])
-
   const statusCards = useMemo(() => statusCardsList.map(card => {
     let count = counts[card.label] || 0
-    let totalValor = statusValues[card.label] || 0
-    
     if (card.label === "ABERTO") {
       count = (counts["ABERTO"] || 0) + (counts["ABERTOS"] || 0)
-      totalValor = (statusValues["ABERTO"] || 0) + (statusValues["ABERTOS"] || 0)
     } else if (card.label === "AGUARDANDO OPERACIONAL") {
       count = counts["AGUARDANDO OPERACIONAL"] || 0
-      totalValor = statusValues["AGUARDANDO OPERACIONAL"] || 0
     } else if (card.label === "APROVADOS") {
       count = APROVADOS_LABELS.reduce((acc, label) => {
         const u = label.toUpperCase()
         const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
         return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
-      }, 0)
-      totalValor = APROVADOS_LABELS.reduce((acc, label) => {
-        const u = label.toUpperCase()
-        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
-        return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
       }, 0)
     } else if (card.label === "NÃO APROVADOS") {
       count = NAO_APROVADOS_LABELS.reduce((acc, label) => {
@@ -722,20 +694,11 @@ export default function TicketsPage() {
         const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
         return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
       }, 0)
-      totalValor = NAO_APROVADOS_LABELS.reduce((acc, label) => {
-        const u = label.toUpperCase()
-        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
-        return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
-      }, 0)
     } else if (card.label === "TODOS") {
       count = baseFilteredTickets.length
-      totalValor = baseFilteredTickets.reduce((acc, t) => {
-        const opData = getValorOperacaoDeAbertura(t)
-        return acc + parseValorToNumber(opData.valor)
-      }, 0)
     }
-    return { ...card, count, totalValor }
-  }), [counts, statusValues, baseFilteredTickets])
+    return { ...card, count }
+  }), [counts, baseFilteredTickets.length])
 
   const handleParentClick = (status: string) => {
     setCurrentPage(1)
@@ -1252,22 +1215,13 @@ export default function TicketsPage() {
               key={card.label}
               onClick={() => handleParentClick(card.label)}
               className={cn(
-                "p-4 bg-white border-t-4 rounded-xl card-shadow transition-all text-left group hover:-translate-y-1 flex flex-col justify-between min-h-[145px]",
+                "p-4 bg-white border-t-4 rounded-xl card-shadow transition-all text-left group hover:-translate-y-1",
                 card.color,
                 selectedStatus === card.label && "ring-2 ring-primary ring-offset-2 scale-105"
               )}
             >
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight mb-2 group-hover:text-slate-600">{card.label}</p>
-                <p className={cn("text-2xl font-black", card.textColor)}>{card.count}</p>
-                <p className="text-[10px] font-black text-slate-400 tracking-tighter mt-0.5">
-                  {baseFilteredTickets.length ? Math.round((card.count / baseFilteredTickets.length) * 100) : 0}% do Total
-                </p>
-              </div>
-              <div className="mt-3 pt-2 border-t border-dashed border-slate-100 w-full">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
-                <p className={cn("text-sm font-black", card.textColor)}>{card.totalValor ? Number(card.totalValor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : "R$ 0,00"}</p>
-              </div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight mb-2 group-hover:text-slate-600">{card.label}</p>
+              <p className={cn("text-2xl font-black", card.textColor)}>{card.count}</p>
             </button>
           ))}
         </div>
