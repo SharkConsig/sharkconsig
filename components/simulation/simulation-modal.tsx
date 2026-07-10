@@ -1723,7 +1723,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       </div>
                       <h5 className="text-[14px] font-bold text-slate-900 uppercase tracking-wider">Redução de Parcela</h5>
                       <p className="text-[12px] text-slate-600 leading-relaxed">
-                        Gere economia imediata reduzindo o valor da parcela mensal com base na taxa de redução padrão de 13,78%.
+                        Gere economia e entregue valor para o cliente.
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 text-blue-600 text-[11px] font-bold uppercase tracking-wider group-hover:translate-x-1 transition-transform self-end">
@@ -1745,7 +1745,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       </div>
                       <h5 className="text-[14px] font-bold text-slate-900 uppercase tracking-wider">Novo Formato</h5>
                       <p className="text-[12px] text-slate-600 leading-relaxed">
-                        Exiba o comparativo inteligente entre o formato rotativo tradicional e o novo formato, mostrando as vantagens financeiras para o cliente.
+                        Exiba o comparativo inteligente entre os formatos padrão e a nova opção que você tem para o cliente.
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 text-[#162546] text-[11px] font-bold uppercase tracking-wider group-hover:translate-x-1 transition-transform self-end">

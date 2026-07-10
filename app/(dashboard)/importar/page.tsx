@@ -2533,17 +2533,45 @@ export default function ImportBatchPage() {
                 .eq('id', currentBatch.id);
             });
 
-            // Trigger background refresh of the search base (Optimized Split Tables)
+            // Trigger background refresh of the specific search base (Optimized Split Tables)
+            // We map the import type to its corresponding refresh function
+            let rpcFunctionName = 'refresh_all_base_consultas'; // Fallback if type is not recognized
+            if (type === 'SIAPE' || type === 'CONTRATOS') {
+              rpcFunctionName = 'refresh_base_consulta_siape';
+            } else if (type === 'GOVERNO_SP') {
+              rpcFunctionName = 'refresh_base_consulta_governo_sp';
+            } else if (type === 'PREFEITURA_SP') {
+              rpcFunctionName = 'refresh_base_consulta_prefeitura_sp';
+            } else if (type === 'GOVERNO_PI') {
+              rpcFunctionName = 'refresh_base_consulta_governo_pi';
+            } else if (type === 'GOVERNO_MA') {
+              rpcFunctionName = 'refresh_base_consulta_governo_ma';
+            } else if (type === 'GOVERNO_RR') {
+              rpcFunctionName = 'refresh_base_consulta_governo_rr';
+            } else if (type === 'GOVERNO_RJ') {
+              rpcFunctionName = 'refresh_base_consulta_governo_rj';
+            } else if (type === 'PREFEITURA_SANTO_ANDRE') {
+              rpcFunctionName = 'refresh_base_consulta_prefeitura_santo_andre';
+            } else if (type === 'PREFEITURA_CONTAGEM') {
+              rpcFunctionName = 'refresh_base_consulta_prefeitura_contagem';
+            } else if (type === 'GOVERNO_MG') {
+              rpcFunctionName = 'refresh_base_consulta_governo_mg';
+            } else if (type === 'GOVERNO_MS') {
+              rpcFunctionName = 'refresh_base_consulta_governo_ms';
+            }
+
+            console.log(`Disparando atualização rápida da tabela correspondente: ${rpcFunctionName}`);
+
             // We don't await this to avoid UI blocking if it takes too long
-            supabase.rpc('refresh_all_base_consultas').then(({ data, error }) => {
+            supabase.rpc(rpcFunctionName).then(({ data, error }) => {
               if (error) {
                 // Se der timeout, avisamos que continuará processando
-                console.warn("A atualização das tabelas de consulta rápida pode ter ultrapassado o tempo limite, mas deve continuar no servidor:", error);
+                console.warn(`A atualização da tabela ${rpcFunctionName} pode ter ultrapassado o tempo limite, mas deve continuar no servidor:`, error);
               } else {
-                console.log("Tabelas de consulta rápida atualizadas com sucesso:", data);
+                console.log(`Tabela ${rpcFunctionName} atualizada com sucesso:`, data);
               }
             }).catch(err => {
-              console.warn("Erro ao disparar refresh da base (Catch):", err);
+              console.warn(`Erro ao disparar refresh da base ${rpcFunctionName} (Catch):`, err);
             });
 
           } catch (err) {

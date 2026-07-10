@@ -199,9 +199,12 @@ export function AdminDashboard({
     countNovoFormato: number;
     countQuitacao: number;
     recentProposals: any[];
+    totalReducaoValor: number;
+    totalQuitacaoValor: number;
+    totalNovoFormatoValor: number;
   } | null>(null)
   const [isProposalsStatsLoading, setIsProposalsStatsLoading] = React.useState(false)
-  const [selectedProposalCard, setSelectedProposalCard] = React.useState<'total' | 'reducao' | 'quitacao' | 'novo_formato'>('reducao')
+  const [selectedProposalCard, setSelectedProposalCard] = React.useState<'total' | 'reducao' | 'quitacao' | 'novo_formato'>('total')
   const [analysisTab, setAnalysisTab] = React.useState<'produtos' | 'convenios' | 'bancos' | 'comercial'>('produtos')
   const [rankingMetric, setRankingMetric] = React.useState<'producao' | 'receita' | 'crescimento'>('producao')
   const [expandedSupervisorIds, setExpandedSupervisorIds] = React.useState<Record<string, boolean>>({})
@@ -391,19 +394,34 @@ export function AdminDashboard({
       const [r1, r2, r3] = await Promise.all([
         supabase
           .from('historico_proposta_comercial')
-          .select('*'),
+          .select('id, cliente_nome, user_nome, user_email, total_parcela_atual, total_parcela_nova, valor_liberado, created_at, arquivo_url, tipo_arquivo'),
         supabase
           .from('historico_proposta_comercial_novo_formato')
-          .select('*'),
+          .select('id, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo'),
         supabase
           .from('historico_proposta_comercial_quitacao_contrato')
-          .select('*')
+          .select('id, cliente_nome, user_nome, user_email, saldo_quitacao, parcela_atual, prazo_restante, nova_parcela, reducao_mensal, created_at, arquivo_url, tipo_arquivo')
       ])
 
       const countReducao = r1.data?.length || 0
       const countNovoFormato = r2.data?.length || 0
       const countQuitacao = r3.data?.length || 0
       const total = countReducao + countNovoFormato + countQuitacao
+
+      const totalReducaoValor = (r1.data || []).reduce((acc: number, item: any) => {
+        const val = parseFloat(item.valor_liberado)
+        return acc + (isNaN(val) ? 0 : val)
+      }, 0)
+
+      const totalNovoFormatoValor = (r2.data || []).reduce((acc: number, item: any) => {
+        const val = parseFloat(item.valor_liberado)
+        return acc + (isNaN(val) ? 0 : val)
+      }, 0)
+
+      const totalQuitacaoValor = (r3.data || []).reduce((acc: number, item: any) => {
+        const val = parseFloat(item.saldo_quitacao)
+        return acc + (isNaN(val) ? 0 : val)
+      }, 0)
 
       let combined: any[] = []
       if (r1.data) {
@@ -439,7 +457,10 @@ export function AdminDashboard({
         countReducao,
         countNovoFormato,
         countQuitacao,
-        recentProposals: combined
+        recentProposals: combined,
+        totalReducaoValor,
+        totalQuitacaoValor,
+        totalNovoFormatoValor
       })
     } catch (error) {
       console.error("Erro ao buscar estatísticas de propostas comerciais:", error)
@@ -2528,14 +2549,16 @@ export function AdminDashboard({
                   <div
                     onClick={() => setSelectedProposalCard('total')}
                     className={cn(
-                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none",
+                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
                       selectedProposalCard === 'total'
                         ? "bg-white border-[#1C2643] ring-2 ring-[#1C2643]/10 shadow-md scale-[1.02]"
                         : "bg-white border-slate-100 hover:border-[#1C2643]/30 hover:shadow-sm"
                     )}
                   >
-                    <p className="text-[10px] font-black text-[#1C2643] uppercase tracking-[0.2em] mb-1">Total Enviadas</p>
-                    <p className="text-3xl font-black text-[#1C2643] tracking-tighter">{proposalsStats?.total || 0}</p>
+                    <div>
+                      <p className="text-[10px] font-black text-[#1C2643] uppercase tracking-[0.2em] mb-1">Total Enviadas</p>
+                      <p className="text-3xl font-black text-[#1C2643] tracking-tighter">{proposalsStats?.total || 0}</p>
+                    </div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tighter">100%</span>
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">Acumulado</p>
@@ -2545,57 +2568,87 @@ export function AdminDashboard({
                   <div
                     onClick={() => setSelectedProposalCard('reducao')}
                     className={cn(
-                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none",
+                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
                       selectedProposalCard === 'reducao'
                         ? "bg-emerald-50/70 border-emerald-500 ring-2 ring-emerald-500/10 shadow-md scale-[1.02]"
                         : "bg-white border-slate-100 hover:border-emerald-300 hover:shadow-sm"
                     )}
                   >
-                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-1">Redução de Parcela</p>
-                    <p className="text-3xl font-black text-emerald-600 tracking-tighter">{proposalsStats?.countReducao || 0}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] font-black text-emerald-600 uppercase tracking-tighter">
-                        {proposalsStats?.total ? Math.round((proposalsStats.countReducao / proposalsStats.total) * 100) : 0}%
-                      </span>
-                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                    <div>
+                      <p className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-1">Redução de Parcela</p>
+                      <p className="text-3xl font-black text-emerald-600 tracking-tighter">{proposalsStats?.countReducao || 0}</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] font-black text-emerald-600 uppercase tracking-tighter">
+                          {proposalsStats?.total ? Math.round((proposalsStats.countReducao / proposalsStats.total) * 100) : 0}%
+                        </span>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-emerald-100/40">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Total Liberado</span>
+                        <span className="text-sm font-black text-emerald-600 font-mono leading-none">
+                          {formatCurrency(proposalsStats?.totalReducaoValor || 0)}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
                   <div
                     onClick={() => setSelectedProposalCard('quitacao')}
                     className={cn(
-                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none",
+                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
                       selectedProposalCard === 'quitacao'
                         ? "bg-amber-50/70 border-amber-500 ring-2 ring-amber-500/10 shadow-md scale-[1.02]"
                         : "bg-white border-slate-100 hover:border-amber-300 hover:shadow-sm"
                     )}
                   >
-                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-[0.2em] mb-1">Quitação de Contrato</p>
-                    <p className="text-3xl font-black text-amber-600 tracking-tighter">{proposalsStats?.countQuitacao || 0}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] font-black text-amber-600 uppercase tracking-tighter">
-                        {proposalsStats?.total ? Math.round((proposalsStats.countQuitacao / proposalsStats.total) * 100) : 0}%
-                      </span>
-                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                    <div>
+                      <p className="text-[10px] font-black text-amber-600 uppercase tracking-[0.2em] mb-1">Quitação de Contrato</p>
+                      <p className="text-3xl font-black text-amber-600 tracking-tighter">{proposalsStats?.countQuitacao || 0}</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] font-black text-amber-600 uppercase tracking-tighter">
+                          {proposalsStats?.total ? Math.round((proposalsStats.countQuitacao / proposalsStats.total) * 100) : 0}%
+                        </span>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-amber-100/40">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Total Saldo Quitação</span>
+                        <span className="text-sm font-black text-amber-600 font-mono leading-none">
+                          {formatCurrency(proposalsStats?.totalQuitacaoValor || 0)}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
                   <div
                     onClick={() => setSelectedProposalCard('novo_formato')}
                     className={cn(
-                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none",
+                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
                       selectedProposalCard === 'novo_formato'
                         ? "bg-yellow-50/70 border-yellow-500 ring-2 ring-yellow-500/10 shadow-md scale-[1.02]"
                         : "bg-white border-slate-100 hover:border-yellow-300 hover:shadow-sm"
                     )}
                   >
-                    <p className="text-[10px] font-black text-yellow-600 uppercase tracking-[0.2em] mb-1">Novo Formato</p>
-                    <p className="text-3xl font-black text-yellow-600 tracking-tighter">{proposalsStats?.countNovoFormato || 0}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] font-black text-yellow-600 uppercase tracking-tighter">
-                        {proposalsStats?.total ? Math.round((proposalsStats.countNovoFormato / proposalsStats.total) * 100) : 0}%
-                      </span>
-                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                    <div>
+                      <p className="text-[10px] font-black text-yellow-600 uppercase tracking-[0.2em] mb-1">Novo Formato</p>
+                      <p className="text-3xl font-black text-yellow-600 tracking-tighter">{proposalsStats?.countNovoFormato || 0}</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] font-black text-yellow-600 uppercase tracking-tighter">
+                          {proposalsStats?.total ? Math.round((proposalsStats.countNovoFormato / proposalsStats.total) * 100) : 0}%
+                        </span>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-yellow-100/40">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Total Valor Atual</span>
+                        <span className="text-sm font-black text-yellow-600 font-mono leading-none">
+                          {formatCurrency(proposalsStats?.totalNovoFormatoValor || 0)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2609,7 +2662,7 @@ export function AdminDashboard({
                       </h3>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
                         {selectedProposalCard === 'total' 
-                          ? "Selecione uma estratégia acima para visualizar o histórico" 
+                          ? "Resumo de envios por colaborador" 
                           : `Visualizando histórico da estratégia: ${
                               selectedProposalCard === 'reducao' ? "Redução de Parcela" :
                               selectedProposalCard === 'quitacao' ? "Quitação de Contrato" : "Novo Formato"
@@ -2619,14 +2672,160 @@ export function AdminDashboard({
                     </div>
                   </div>
 
-                  {selectedProposalCard === 'total' ? (
-                    <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-dashed border-slate-200">
-                      <FileSpreadsheet className="w-12 h-12 text-slate-300 mb-3" />
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center">
-                        Selecione uma das estratégias acima para visualizar o histórico de propostas
-                      </p>
-                    </div>
-                  ) : filteredProposals.length > 0 ? (
+                  {selectedProposalCard === 'total' ? (() => {
+                    const userStatsMap: Record<string, {
+                      name: string;
+                      email: string;
+                      reducaoCount: number;
+                      reducaoValue: number;
+                      quitacaoCount: number;
+                      quitacaoValue: number;
+                      novoFormatoCount: number;
+                      novoFormatoValue: number;
+                      totalCount: number;
+                      totalValue: number;
+                    }> = {};
+
+                    (proposalsStats?.recentProposals || []).forEach((p: any) => {
+                      const email = (p.user_email || "sem-email").toLowerCase().trim();
+                      const name = p.user_nome || p.user_email || "Não informado";
+                      
+                      if (!userStatsMap[email]) {
+                        userStatsMap[email] = {
+                          name: name,
+                          email: email,
+                          reducaoCount: 0,
+                          reducaoValue: 0,
+                          quitacaoCount: 0,
+                          quitacaoValue: 0,
+                          novoFormatoCount: 0,
+                          novoFormatoValue: 0,
+                          totalCount: 0,
+                          totalValue: 0
+                        };
+                      }
+                      
+                      const stats = userStatsMap[email];
+                      
+                      if (p.isQuitacao) {
+                        const val = parseFloat(p.saldo_quitacao);
+                        const validVal = isNaN(val) ? 0 : val;
+                        stats.quitacaoCount += 1;
+                        stats.quitacaoValue += validVal;
+                        stats.totalCount += 1;
+                        stats.totalValue += validVal;
+                      } else if (p.isNovoFormato) {
+                        const val = parseFloat(p.valor_liberado);
+                        const validVal = isNaN(val) ? 0 : val;
+                        stats.novoFormatoCount += 1;
+                        stats.novoFormatoValue += validVal;
+                        stats.totalCount += 1;
+                        stats.totalValue += validVal;
+                      } else {
+                        const val = parseFloat(p.valor_liberado);
+                        const validVal = isNaN(val) ? 0 : val;
+                        stats.reducaoCount += 1;
+                        stats.reducaoValue += validVal;
+                        stats.totalCount += 1;
+                        stats.totalValue += validVal;
+                      }
+                    });
+
+                    const sortedUsersStats = Object.values(userStatsMap).sort((a, b) => b.totalCount - a.totalCount);
+
+                    if (sortedUsersStats.length === 0) {
+                      return (
+                        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-dashed border-slate-200">
+                          <FileSpreadsheet className="w-12 h-12 text-slate-300 mb-3" />
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center">
+                            Nenhuma proposta enviada até o momento.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="bg-white rounded-2xl border border-slate-100 overflow-x-auto shadow-sm">
+                        <table className="w-full text-left border-collapse min-w-[800px]">
+                          <thead>
+                            <tr className="bg-slate-50/50 border-b border-slate-200">
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-[#1C2643] uppercase tracking-widest text-right bg-slate-50/30">Total Enviadas</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-50/20">Redução de Parcela</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-amber-600 uppercase tracking-widest text-right bg-amber-50/20">Quitação de Contrato</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-yellow-600 uppercase tracking-widest text-right bg-yellow-50/20">Novo Formato</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {sortedUsersStats.map((stats, idx) => {
+                              const position = idx + 1;
+                              return (
+                                <tr key={stats.email || idx} className="hover:bg-slate-50/80 transition-colors">
+                                  <td className="px-4 py-4">
+                                    <div className="flex items-center gap-3">
+                                      <div className={cn(
+                                        "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                                        position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                        position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
+                                        position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                        "bg-white text-slate-400 border-slate-100"
+                                      )}>
+                                        {position}º
+                                      </div>
+                                      <div>
+                                        <p className="text-[14px] font-black tracking-tight text-[#1C2643]">
+                                          {formatName(stats.name)}
+                                        </p>
+                                        <p className="text-[10px] font-bold text-slate-400 tracking-tighter uppercase">{stats.email}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-4 text-right bg-slate-50/30">
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-[14px] font-black text-[#1C2643]">{stats.totalCount}</span>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        {formatCurrency(stats.totalValue)}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-4 text-right bg-emerald-50/20">
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-[14px] font-black text-emerald-600">
+                                        {formatCurrency(stats.reducaoValue)}
+                                      </span>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        {stats.reducaoCount} {stats.reducaoCount === 1 ? 'proposta' : 'propostas'}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-4 text-right bg-amber-50/20">
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-[14px] font-black text-amber-600">
+                                        {formatCurrency(stats.quitacaoValue)}
+                                      </span>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        {stats.quitacaoCount} {stats.quitacaoCount === 1 ? 'proposta' : 'propostas'}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-4 text-right bg-yellow-50/20">
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-[14px] font-black text-yellow-600">
+                                        {formatCurrency(stats.novoFormatoValue)}
+                                      </span>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        {stats.novoFormatoCount} {stats.novoFormatoCount === 1 ? 'proposta' : 'propostas'}
+                                      </span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })() : filteredProposals.length > 0 ? (
                     <div className="flex flex-col gap-4">
                       {filteredProposals.map((item: any, idx: number) => {
                         const formattedDate = item.created_at ? format(new Date(item.created_at), "dd/MM/yyyy 'às' HH:mm") : "--"
@@ -2692,9 +2891,9 @@ export function AdminDashboard({
                               <div className="flex items-center">
                                 <button
                                   onClick={() => handleDownloadProposal(item)}
-                                  className="h-9 px-4 text-xs font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                                  className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer"
                                 >
-                                  <Download className="w-3.5 h-3.5" />
+                                  <Download className="w-3 h-3" />
                                   JPG
                                 </button>
                               </div>
@@ -2749,9 +2948,9 @@ export function AdminDashboard({
                               <div className="flex items-center">
                                 <button
                                   onClick={() => handleDownloadProposal(item)}
-                                  className="h-9 px-4 text-xs font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                                  className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer"
                                 >
-                                  <Download className="w-3.5 h-3.5" />
+                                  <Download className="w-3 h-3" />
                                   JPG
                                 </button>
                               </div>
@@ -2814,9 +3013,9 @@ export function AdminDashboard({
                               <div className="flex items-center">
                                 <button
                                   onClick={() => handleDownloadProposal(item)}
-                                  className="h-9 px-4 text-xs font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                                  className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer"
                                 >
-                                  <Download className="w-3.5 h-3.5" />
+                                  <Download className="w-3 h-3" />
                                   JPG
                                 </button>
                               </div>
