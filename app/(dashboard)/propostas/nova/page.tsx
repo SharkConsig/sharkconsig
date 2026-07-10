@@ -40,6 +40,7 @@ function NewProposalForm() {
   const canEditPreFilled = ["operacional", "monitoramento", "administrador", "desenvolvedor", "admin"].includes(roleLower)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const isFromChamado = !!searchParams.get("idChamado")
 
   const [initialParams] = useState({
     nome: !!searchParams.get("nome"),
@@ -1382,10 +1383,10 @@ function NewProposalForm() {
                 <Input 
                   value={formData.nome}
                   onChange={(e) => handleFormChange("nome", e.target.value)}
-                  readOnly={initialParams.nome && !canEditPreFilled}
+                  readOnly={initialParams.nome && !canEditPreFilled && !(isFromChamado && isCorretor)}
                   className={cn(
                     "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
-                    (initialParams.nome && !canEditPreFilled) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                    (initialParams.nome && !canEditPreFilled && !(isFromChamado && isCorretor)) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
                   )}
                 />
               </div>
@@ -1396,10 +1397,10 @@ function NewProposalForm() {
                     type="date"
                     value={toInputDate(formData.nascimento)}
                     onChange={(e) => handleFormChange("nascimento", fromInputDate(e.target.value))}
-                    readOnly={initialParams.nascimento && !canEditPreFilled}
+                    readOnly={initialParams.nascimento && !canEditPreFilled && !(isFromChamado && isCorretor)}
                     className={cn(
                       "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none",
-                      (initialParams.nascimento && !canEditPreFilled) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                      (initialParams.nascimento && !canEditPreFilled && !(isFromChamado && isCorretor)) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
                     )}
                   />
                 </div>

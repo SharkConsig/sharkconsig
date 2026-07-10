@@ -111,6 +111,12 @@ interface TicketStats {
   byOrigin: { name: string; value: number }[]
   byConvenio: { name: string; value: number }[]
   byBroker: { name: string; value: number }[]
+  abertoValue?: number
+  aguardandoOperacionalValue?: number
+  inNegotiationValue?: number
+  approvedValue?: number
+  notApprovedValue?: number
+  totalValue?: number
 }
 
 interface Campaign {
@@ -171,6 +177,136 @@ const normalizeStatus = (s: string) => {
     .toUpperCase()
     .replace(/\s+/g, ' ')
     .trim();
+};
+
+const parseDescriptionMetadata = (desc: string) => {
+  try {
+    const match = desc?.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/);
+    if (match && match[1]) {
+      return JSON.parse(match[1]);
+    }
+  } catch (e) {
+    console.error("Error parsing metadata in list:", e);
+  }
+  return null;
+};
+
+const getValorOperacaoDeAbertura = (ticket: any) => {
+  const desc = ticket.descricao || ticket.description || ticket.content || "";
+  const meta = parseDescriptionMetadata(desc);
+  const conv = ticket.convenio?.toUpperCase() || "";
+  const isSantoAndre = conv.includes("SANTO ANDRÉ") || conv.includes("SANTO ANDRE");
+  
+  // 1. If we have a selected type in metadata
+  const selectedType = meta?.selected_operation_type;
+  if (selectedType) {
+    if (selectedType === 'margem') {
+      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" };
+    }
+    if (selectedType === 'liquida5') {
+      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" };
+    }
+    if (selectedType === 'beneficio5') {
+      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" };
+    }
+  }
+
+  // 2. Fallback to check if valor_operacao is directly in the DB column
+  if (ticket.valor_operacao !== null && ticket.valor_operacao !== undefined && ticket.valor_operacao !== 0) {
+    const valStr = "R$ " + Number(ticket.valor_operacao).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return { valor: valStr, label: "Valor Operação", color: "text-slate-900" };
+  }
+
+  // 3. Fallback to original description text selection
+  let textSelectedType: 'margem' | 'liquida5' | 'beneficio5' | null = null;
+  if (desc.includes("MARGEM 35%") || desc.includes("MARGEM LÍQUIDA EMPRÉSTIMO")) {
+    textSelectedType = 'margem';
+  } else if (desc.includes("LÍQUIDA 5%") || desc.includes("MARGEM LÍQUIDA CARTÃO")) {
+    textSelectedType = 'liquida5';
+  } else if (desc.includes("BENEFÍCIO 5%") || desc.includes("CARTÃO BENEFÍCIO") || desc.includes("CARTÃO CONSIGINADO") || desc.includes("CARTAO CONSIGINADO") || desc.includes("CARTÃO")) {
+    textSelectedType = 'beneficio5';
+  }
+
+  if (textSelectedType) {
+    if (textSelectedType === 'margem') {
+      if (meta && meta.valor_operacao_margem) return { valor: meta.valor_operacao_margem, label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" };
+      const mVal = ticket.margem || 0;
+      const opVal = mVal / 0.028;
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
+        color: "text-amber-600" 
+      };
+    }
+    if (textSelectedType === 'liquida5') {
+      if (meta && meta.valor_operacao_liquida5) return { valor: meta.valor_operacao_liquida5, label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" };
+      const mVal = ticket.margem_liquida_5 || 0;
+      const opVal = mVal / 0.053;
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", 
+        color: "text-emerald-600" 
+      };
+    }
+    if (textSelectedType === 'beneficio5') {
+      if (meta && meta.valor_operacao_beneficio5) return { valor: meta.valor_operacao_beneficio5, label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" };
+      const mVal = ticket.margem_beneficio_5 || 0;
+      const opVal = mVal / 0.053;
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
+        color: "text-blue-600" 
+      };
+    }
+  }
+
+  // 4. Check meta fields without selection
+  if (meta) {
+    if (meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") {
+      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" };
+    }
+    if (meta.liquida5 && meta.liquida5 !== "" && meta.liquida5 !== "R$ 0,00") {
+      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" };
+    }
+    if (meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") {
+      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" };
+    }
+  }
+
+  // 5. Final database fallbacks
+  if (typeof ticket.margem === 'number' && ticket.margem !== 0) {
+    const opVal = ticket.margem / 0.028;
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
+      color: "text-amber-600" 
+    };
+  }
+  if (typeof ticket.margem_liquida_5 === 'number' && ticket.margem_liquida_5 !== 0) {
+    const opVal = ticket.margem_liquida_5 / 0.053;
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", 
+      color: "text-emerald-600" 
+    };
+  }
+  if (typeof ticket.margem_beneficio_5 === 'number' && ticket.margem_beneficio_5 !== 0) {
+    const opVal = ticket.margem_beneficio_5 / 0.053;
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
+      color: "text-blue-600" 
+    };
+  }
+
+  return { valor: "R$ 0,00", label: "Valor Operação", color: "text-slate-400" };
+};
+
+const parseValorToNumber = (valStr: string) => {
+  if (!valStr) return 0;
+  const clean = valStr.replace("R$", "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const num = parseFloat(clean);
+  return isNaN(num) ? 0 : num;
 };
 
 const NEGOCIACAO_LABELS = [
@@ -1141,6 +1277,7 @@ export default function DashboardPage() {
         interface Ticket {
           id?: string
           status?: string
+          status_chamados?: { id: number; nome: string; cor?: string }
           origem?: string
           convenio?: string
           cliente_cpf?: string
@@ -1150,7 +1287,10 @@ export default function DashboardPage() {
           created_at?: string
         }
         
-        let ticketsQuery = supabase.from('chamados').select('*')
+        let ticketsQuery = supabase.from('chamados').select(`
+          *,
+          status_chamados:status_id (*)
+        `)
         
         // Filter by role
         if (!isAdmin) {
@@ -1174,19 +1314,27 @@ export default function DashboardPage() {
         
         const ticketSummary = allTickets.reduce((acc, ticket) => {
           acc.total++
-          const status = ticket.status || 'ABERTO'
-          const ticketStatusUpper = (ticket.status || 'ABERTO').toUpperCase()
-          const ticketStatusNormalized = normalizeStatus(ticket.status || 'ABERTO')
+          const ticketStatusStr = ticket.status_chamados?.nome || ticket.status || 'ABERTO'
+          const status = ticketStatusStr
+          const ticketStatusUpper = ticketStatusStr.toUpperCase()
+          const ticketStatusNormalized = normalizeStatus(ticketStatusStr)
 
           acc.byStatus[status] = (acc.byStatus[status] || 0) + 1
           
+          const opData = getValorOperacaoDeAbertura(ticket)
+          const opValue = parseValorToNumber(opData.valor)
+          acc.totalValue += opValue
+
           // Check if it's Approved
           const isApproved = APROVADOS_LABELS.some(label => {
             const u = label.toUpperCase()
             const ua = normalizeStatus(u)
             return ticketStatusUpper === u || ticketStatusNormalized === ua
           })
-          if (isApproved) acc.approved++
+          if (isApproved) {
+            acc.approved++
+            acc.approvedValue += opValue
+          }
 
           // Check if it's Not Approved
           const isNotApproved = NAO_APROVADOS_LABELS.some(label => {
@@ -1194,23 +1342,31 @@ export default function DashboardPage() {
             const ua = normalizeStatus(u)
             return ticketStatusUpper === u || ticketStatusNormalized === ua
           })
-          if (isNotApproved) acc.notApproved++
+          if (isNotApproved) {
+            acc.notApproved++
+            acc.notApprovedValue += opValue
+          }
 
           // Check if it's in Negotiation
           const isInNegotiation = NEGOCIACAO_LABELS.some(label => {
             const u = normalizeStatus(label)
             return ticketStatusNormalized.includes(u)
           })
-          if (isInNegotiation) acc.inNegotiation++
+          if (isInNegotiation) {
+            acc.inNegotiation++
+            acc.inNegotiationValue += opValue
+          }
 
           // Check if it's Aberto
           if (ticketStatusUpper === 'ABERTO' || ticketStatusUpper === 'ABERTOS') {
             acc.aberto++
+            acc.abertoValue += opValue
           }
 
           // Check if it's Aguardando Operacional
           if (ticketStatusUpper === 'AGUARDANDO OPERACIONAL') {
             acc.aguardandoOperacional++
+            acc.aguardandoOperacionalValue += opValue
           }
 
           const origin = ticket.origem || 'NÃO INFORMADO'
@@ -1225,6 +1381,11 @@ export default function DashboardPage() {
           else if (convention.includes('PIAUÍ') || convention.includes('PIAUI')) convCategory = 'PREFEITURA PIAUÍ'
           else if (convention.includes('MARANHÃO') || convention.includes('MARANHAO')) convCategory = 'PREFEITURA MARANHÃO'
           else if (convention.includes('GOVBR') || convention.includes('GOVERNO BR') || convention.includes('RORAIMA')) convCategory = 'GOVERNO RORAIMA'
+          else if (convention.includes('RIO DE JANEIRO') || convention.includes('RJ')) convCategory = 'GOVERNO RIO DE JANEIRO'
+          else if (convention.includes('SANTO ANDRÉ') || convention.includes('SANTO ANDRE')) convCategory = 'PREFEITURA SANTO ANDRÉ'
+          else if (convention.includes('CONTAGEM')) convCategory = 'PREFEITURA CONTAGEM'
+          else if (convention.includes('MINAS GERAIS') || convention.includes('MG')) convCategory = 'GOVERNO MINAS GERAIS'
+          else if (convention.includes('MATO GROSSO DO SUL') || convention.includes('MS')) convCategory = 'GOVERNO MATO GROSSO DO SUL'
           
           acc.byConvenio[convCategory] = (acc.byConvenio[convCategory] || 0) + 1
 
@@ -1254,6 +1415,12 @@ export default function DashboardPage() {
           inNegotiation: 0,
           aberto: 0,
           aguardandoOperacional: 0,
+          totalValue: 0,
+          notApprovedValue: 0,
+          approvedValue: 0,
+          inNegotiationValue: 0,
+          abertoValue: 0,
+          aguardandoOperacionalValue: 0,
           byStatus: {} as Record<string, number>, 
           byOrigin: {} as Record<string, number>,
           byConvenio: {} as Record<string, number>,
@@ -1311,12 +1478,26 @@ export default function DashboardPage() {
           }))
           .sort((a, b) => b.value - a.value)
 
-        const convenioOrder = ['SIAPE/FEDERAL', 'GOVERNO SP', 'PREFEITURA SP', 'PREFEITURA PIAUÍ', 'PREFEITURA MARANHÃO', 'GOVERNO RORAIMA', 'OUTROS']
+        const convenioOrder = [
+          'SIAPE/FEDERAL', 
+          'GOVERNO SP', 
+          'PREFEITURA SP', 
+          'PREFEITURA PIAUÍ', 
+          'PREFEITURA MARANHÃO', 
+          'GOVERNO RORAIMA', 
+          'GOVERNO RIO DE JANEIRO',
+          'PREFEITURA SANTO ANDRÉ',
+          'PREFEITURA CONTAGEM',
+          'GOVERNO MINAS GERAIS',
+          'GOVERNO MATO GROSSO DO SUL',
+          'OUTROS'
+        ]
         const byConvenio = convenioOrder
           .map(name => ({
             name,
             value: ticketSummary.byConvenio[name] || 0
           }))
+          .sort((a, b) => b.value - a.value)
 
         const finalTicketStats = {
           total: ticketSummary.total,
@@ -1325,6 +1506,12 @@ export default function DashboardPage() {
           inNegotiation: ticketSummary.inNegotiation,
           aberto: ticketSummary.aberto,
           aguardandoOperacional: ticketSummary.aguardandoOperacional,
+          totalValue: ticketSummary.totalValue,
+          notApprovedValue: ticketSummary.notApprovedValue,
+          approvedValue: ticketSummary.approvedValue,
+          inNegotiationValue: ticketSummary.inNegotiationValue,
+          abertoValue: ticketSummary.abertoValue,
+          aguardandoOperacionalValue: ticketSummary.aguardandoOperacionalValue,
           byStatus,
           byOrigin,
           byConvenio,
@@ -3107,6 +3294,10 @@ export default function DashboardPage() {
                   </span>
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
                 </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[#FE9A00]/20">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-[#FE9A00] tracking-tight">{formatCurrency(ticketStats?.abertoValue || 0)}</p>
+                </div>
               </DashboardCard>
 
               <DashboardCard className="p-6 bg-[#FF6A03]/5 border-[#FF6A03]/20 shadow-sm">
@@ -3117,6 +3308,10 @@ export default function DashboardPage() {
                     {ticketStats?.total ? Math.round((ticketStats.aguardandoOperacional / ticketStats.total) * 100) : 0}%
                   </span>
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[#FF6A03]/20">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-[#FF6A03] tracking-tight">{formatCurrency(ticketStats?.aguardandoOperacionalValue || 0)}</p>
                 </div>
               </DashboardCard>
 
@@ -3129,6 +3324,10 @@ export default function DashboardPage() {
                   </span>
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
                 </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[#06BADC]/20">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-[#06BADC] tracking-tight">{formatCurrency(ticketStats?.inNegotiationValue || 0)}</p>
+                </div>
               </DashboardCard>
 
               <DashboardCard className="p-6 bg-[#10b981]/5 border-[#10b981]/20 shadow-sm">
@@ -3139,6 +3338,10 @@ export default function DashboardPage() {
                     {ticketStats?.total ? Math.round((ticketStats.approved / ticketStats.total) * 100) : 0}%
                   </span>
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[#10b981]/20">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-[#10b981] tracking-tight">{formatCurrency(ticketStats?.approvedValue || 0)}</p>
                 </div>
               </DashboardCard>
 
@@ -3151,6 +3354,10 @@ export default function DashboardPage() {
                   </span>
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
                 </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[#ef4444]/20">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-[#ef4444] tracking-tight">{formatCurrency(ticketStats?.notApprovedValue || 0)}</p>
+                </div>
               </DashboardCard>
 
               <DashboardCard className="p-6 bg-slate-50/30 border-slate-200 shadow-sm">
@@ -3161,6 +3368,10 @@ export default function DashboardPage() {
                     100%
                   </span>
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">Acumulado</p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-slate-200">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-slate-600 tracking-tight">{formatCurrency(ticketStats?.totalValue || 0)}</p>
                 </div>
               </DashboardCard>
             </div>

@@ -638,8 +638,16 @@ export default function CampaignsPage() {
       const pageSize = 100 // Lotes menores reduzem chance de timeout individual
       let totalProcessed = 0
       
+      // Obter contagem exata e real-time de membros na campanha_membros
+      const { count: realCount, error: countErr } = await supabase
+        .from('campanha_membros')
+        .select('*', { count: 'exact', head: true })
+        .eq('campanha_id', campaign.id);
+
+      const actualPublicoEstimado = countErr ? (campaign.publico_estimado || 0) : (realCount || 0);
+
       const startRange = partIndex * PART_SIZE;
-      const endRange = Math.min((partIndex + 1) * PART_SIZE - 1, (campaign.publico_estimado || 0) - 1);
+      const endRange = Math.min((partIndex + 1) * PART_SIZE - 1, (actualPublicoEstimado || 0) - 1);
       const totalToExport = Math.max(0, endRange - startRange + 1);
 
       if (totalToExport <= 0) {
@@ -679,21 +687,39 @@ export default function CampaignsPage() {
         const detectedConvenios = new Map<string, string>();
         let bcrData: Record<string, unknown>[] = [];
 
-        if (isMultiConvenio) {
-          const tablesList = [
-            { name: 'base_consulta_siape', convenio: 'siape', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo" },
-            { name: 'base_consulta_governo_sp', convenio: 'governo_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-            { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5" },
-            { name: 'base_consulta_governo_pi', convenio: 'governo_pi', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio" },
-            { name: 'base_consulta_governo_ma', convenio: 'governo_ma', columns: "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf" },
-            { name: 'base_consulta_governo_rr', convenio: 'governo_rr', columns: "cpf, nome, data_de_nascimento, data_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao" },
-            { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao" },
-          ];
+        const tablesList = [
+          { name: 'base_consulta_siape', convenio: 'siape', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo" },
+          { name: 'base_consulta_governo_sp', convenio: 'governo_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_pi', convenio: 'governo_pi', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio" },
+          { name: 'base_consulta_governo_ma', convenio: 'governo_ma', columns: "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf" },
+          { name: 'base_consulta_governo_rr', convenio: 'governo_rr', columns: "cpf, nome, data_de_nascimento, data_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao" },
+          { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao" },
+          { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_mg', convenio: 'governo_mg', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_rj', convenio: 'governo_rj', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_ms', convenio: 'governo_ms', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+        ];
 
+        // 1. Buscar primeiro na tabela preferencial da campanha (targetTable)
+        const targetTableObj = tablesList.find(t => t.name === targetTable) || tablesList[0];
+        const { data: primaryData, error: bcrError } = await withRetry(() =>
+          supabase.from(targetTable).select(targetTableObj.columns).in('cpf', cpfs)
+        );
+        if (bcrError) throw bcrError;
+
+        const foundCpfSet = new Set((primaryData || []).map(r => r.cpf));
+        const missingCpfs = cpfs.filter(cpf => !foundCpfSet.has(cpf));
+
+        const tempBcrData = [...(primaryData || [])];
+
+        // 2. Se houver CPFs ausentes, buscar nas outras tabelas em paralelo
+        if (missingCpfs.length > 0) {
+          const otherTablesList = tablesList.filter(t => t.name !== targetTable);
           const queriesResults = await Promise.all(
-            tablesList.map(async (t) => {
+            otherTablesList.map(async (t) => {
               try {
-                const { data, error } = await supabase.from(t.name).select(t.columns).in('cpf', cpfs);
+                const { data, error } = await supabase.from(t.name).select(t.columns).in('cpf', missingCpfs);
                 if (!error && data) {
                   return { data, convenio: t.convenio };
                 }
@@ -704,13 +730,11 @@ export default function CampaignsPage() {
             })
           );
 
-          const tempBcrData: Record<string, unknown>[] = [];
           const matchedCpfs = new Set<string>();
-
           queriesResults.forEach(({ data, convenio }) => {
             if (data && data.length > 0) {
               (data as Record<string, unknown>[]).forEach((row) => {
-                if (row && row.cpf && !matchedCpfs.has(row.cpf as string)) {
+                if (row && row.cpf && !foundCpfSet.has(row.cpf as string) && !matchedCpfs.has(row.cpf as string)) {
                   matchedCpfs.add(row.cpf as string);
                   detectedConvenios.set(row.cpf as string, convenio);
                   tempBcrData.push(row);
@@ -728,32 +752,9 @@ export default function CampaignsPage() {
               });
             }
           });
-          bcrData = tempBcrData;
-        } else {
-          const isGovSp = targetTable === 'base_consulta_governo_sp';
-          const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
-          const isGovMa = targetTable === 'base_consulta_governo_ma';
-          const isGovRr = targetTable === 'base_consulta_governo_rr';
-          const columnsToSelect = isGovPi
-            ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio"
-            : isGovRr
-              ? "cpf, nome, data_de_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao"
-              : isGovSp
-                ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5"
-                : isPrefSp
-                  ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5"
-                  : isGovMa
-                    ? "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf"
-                    : isSantoAndre
-                      ? "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao"
-                      : "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo";
-
-          const { data, error: bcrError } = await withRetry(() =>
-            supabase.from(targetTable).select(columnsToSelect).in('cpf', cpfs)
-          );
-          if (bcrError) throw bcrError;
-          bcrData = data || [];
         }
+
+        bcrData = tempBcrData;
 
         const memberConvenioMap = new Map<string, string>(
           memberBatch.map((m: { cliente_cpf: string | null; convenio?: string | null }) => {

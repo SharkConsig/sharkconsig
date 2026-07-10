@@ -22,7 +22,9 @@ import {
   Briefcase,
   ArrowUpRight,
   ArrowDownRight,
-  Percent
+  Percent,
+  Download,
+  History
 } from "lucide-react"
 import { format } from "date-fns"
 import { cn, formatName } from "@/lib/utils"
@@ -190,7 +192,16 @@ export function AdminDashboard({
       setDashboardPeriod('mes')
     }
   }, [startDate, endDate, setStartDate, setEndDate])
-  const [activeTab, setActiveTab] = React.useState<'propostas' | 'chamados' | 'financeiro'>('propostas')
+  const [activeTab, setActiveTab] = React.useState<'propostas' | 'chamados' | 'propostas_comerciais' | 'financeiro'>('propostas')
+  const [proposalsStats, setProposalsStats] = React.useState<{
+    total: number;
+    countReducao: number;
+    countNovoFormato: number;
+    countQuitacao: number;
+    recentProposals: any[];
+  } | null>(null)
+  const [isProposalsStatsLoading, setIsProposalsStatsLoading] = React.useState(false)
+  const [selectedProposalCard, setSelectedProposalCard] = React.useState<'total' | 'reducao' | 'quitacao' | 'novo_formato'>('reducao')
   const [analysisTab, setAnalysisTab] = React.useState<'produtos' | 'convenios' | 'bancos' | 'comercial'>('produtos')
   const [rankingMetric, setRankingMetric] = React.useState<'producao' | 'receita' | 'crescimento'>('producao')
   const [expandedSupervisorIds, setExpandedSupervisorIds] = React.useState<Record<string, boolean>>({})
@@ -373,6 +384,95 @@ export function AdminDashboard({
       fetchFinancialData()
     }
   }, [activeTab, fetchFinancialData])
+
+  const fetchProposalsStats = React.useCallback(async () => {
+    setIsProposalsStatsLoading(true)
+    try {
+      const [r1, r2, r3] = await Promise.all([
+        supabase
+          .from('historico_proposta_comercial')
+          .select('*'),
+        supabase
+          .from('historico_proposta_comercial_novo_formato')
+          .select('*'),
+        supabase
+          .from('historico_proposta_comercial_quitacao_contrato')
+          .select('*')
+      ])
+
+      const countReducao = r1.data?.length || 0
+      const countNovoFormato = r2.data?.length || 0
+      const countQuitacao = r3.data?.length || 0
+      const total = countReducao + countNovoFormato + countQuitacao
+
+      let combined: any[] = []
+      if (r1.data) {
+        combined = combined.concat(r1.data.map((item: any) => ({
+          ...item,
+          isNovoFormato: false,
+          isQuitacao: false
+        })))
+      }
+      if (r2.data) {
+        combined = combined.concat(r2.data.map((item: any) => ({
+          ...item,
+          isNovoFormato: true,
+          isQuitacao: false
+        })))
+      }
+      if (r3.data) {
+        combined = combined.concat(r3.data.map((item: any) => ({
+          ...item,
+          isNovoFormato: false,
+          isQuitacao: true
+        })))
+      }
+
+      combined.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
+        return dateB - dateA
+      })
+
+      setProposalsStats({
+        total,
+        countReducao,
+        countNovoFormato,
+        countQuitacao,
+        recentProposals: combined
+      })
+    } catch (error) {
+      console.error("Erro ao buscar estatísticas de propostas comerciais:", error)
+      toast.error("Erro ao buscar estatísticas de propostas comerciais.")
+    } finally {
+      setIsProposalsStatsLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (activeTab === 'propostas_comerciais') {
+      fetchProposalsStats()
+    }
+  }, [activeTab, fetchProposalsStats])
+
+  const handleDownloadProposal = React.useCallback((proposal: any) => {
+    if (!proposal.arquivo_url) {
+      toast.error("Arquivo da proposta não encontrado.")
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = proposal.arquivo_url;
+    const extension = proposal.tipo_arquivo?.toLowerCase() === "pdf" ? "pdf" : "jpg";
+    const safeName = (proposal.cliente_nome || "Cliente").trim().replace(/\s+/g, "_");
+    let strategyName = "proposta_reducao"
+    if (proposal.isQuitacao) {
+      strategyName = "proposta_quitacao"
+    } else if (proposal.isNovoFormato) {
+      strategyName = "proposta_novo_formato"
+    }
+    link.download = `${strategyName}_${safeName}.${extension}`;
+    link.click();
+  }, [])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getCommissionPercentage = React.useCallback((proposal: any) => {
@@ -1509,6 +1609,18 @@ export function AdminDashboard({
             CHAMADOS
           </button>
           <button
+            onClick={() => setActiveTab('propostas_comerciais')}
+            className={cn(
+              "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+              activeTab === 'propostas_comerciais' 
+                ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                : "text-slate-400 hover:text-slate-600"
+            )}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            PROPOSTAS COMERCIAIS
+          </button>
+          <button
             onClick={() => setActiveTab('financeiro')}
             className={cn(
               "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
@@ -2379,6 +2491,353 @@ export function AdminDashboard({
           </div>
         </motion.div>
       )}
+
+      {activeTab === 'propostas_comerciais' && (() => {
+        const filteredProposals = proposalsStats?.recentProposals ? (() => {
+          if (selectedProposalCard === 'total') return [];
+          if (selectedProposalCard === 'reducao') {
+            return proposalsStats.recentProposals.filter(p => !p.isNovoFormato && !p.isQuitacao);
+          }
+          if (selectedProposalCard === 'quitacao') {
+            return proposalsStats.recentProposals.filter(p => p.isQuitacao);
+          }
+          if (selectedProposalCard === 'novo_formato') {
+            return proposalsStats.recentProposals.filter(p => p.isNovoFormato);
+          }
+          return [];
+        })() : [];
+
+        return (
+          <motion.div
+            key="propostas_comerciais"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            {isProposalsStatsLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                <Loader2 className="w-10 h-10 animate-spin text-[#1C2643]" />
+                <p className="text-xs font-bold text-slate-400 mt-4 uppercase tracking-widest">
+                  Carregando Propostas Comerciais...
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Proposals Cards - Clickable filters */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div
+                    onClick={() => setSelectedProposalCard('total')}
+                    className={cn(
+                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none",
+                      selectedProposalCard === 'total'
+                        ? "bg-white border-[#1C2643] ring-2 ring-[#1C2643]/10 shadow-md scale-[1.02]"
+                        : "bg-white border-slate-100 hover:border-[#1C2643]/30 hover:shadow-sm"
+                    )}
+                  >
+                    <p className="text-[10px] font-black text-[#1C2643] uppercase tracking-[0.2em] mb-1">Total Enviadas</p>
+                    <p className="text-3xl font-black text-[#1C2643] tracking-tighter">{proposalsStats?.total || 0}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tighter">100%</span>
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">Acumulado</p>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setSelectedProposalCard('reducao')}
+                    className={cn(
+                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none",
+                      selectedProposalCard === 'reducao'
+                        ? "bg-emerald-50/70 border-emerald-500 ring-2 ring-emerald-500/10 shadow-md scale-[1.02]"
+                        : "bg-white border-slate-100 hover:border-emerald-300 hover:shadow-sm"
+                    )}
+                  >
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-1">Redução de Parcela</p>
+                    <p className="text-3xl font-black text-emerald-600 tracking-tighter">{proposalsStats?.countReducao || 0}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] font-black text-emerald-600 uppercase tracking-tighter">
+                        {proposalsStats?.total ? Math.round((proposalsStats.countReducao / proposalsStats.total) * 100) : 0}%
+                      </span>
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setSelectedProposalCard('quitacao')}
+                    className={cn(
+                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none",
+                      selectedProposalCard === 'quitacao'
+                        ? "bg-amber-50/70 border-amber-500 ring-2 ring-amber-500/10 shadow-md scale-[1.02]"
+                        : "bg-white border-slate-100 hover:border-amber-300 hover:shadow-sm"
+                    )}
+                  >
+                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-[0.2em] mb-1">Quitação de Contrato</p>
+                    <p className="text-3xl font-black text-amber-600 tracking-tighter">{proposalsStats?.countQuitacao || 0}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] font-black text-amber-600 uppercase tracking-tighter">
+                        {proposalsStats?.total ? Math.round((proposalsStats.countQuitacao / proposalsStats.total) * 100) : 0}%
+                      </span>
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setSelectedProposalCard('novo_formato')}
+                    className={cn(
+                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none",
+                      selectedProposalCard === 'novo_formato'
+                        ? "bg-yellow-50/70 border-yellow-500 ring-2 ring-yellow-500/10 shadow-md scale-[1.02]"
+                        : "bg-white border-slate-100 hover:border-yellow-300 hover:shadow-sm"
+                    )}
+                  >
+                    <p className="text-[10px] font-black text-yellow-600 uppercase tracking-[0.2em] mb-1">Novo Formato</p>
+                    <p className="text-3xl font-black text-yellow-600 tracking-tighter">{proposalsStats?.countNovoFormato || 0}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] font-black text-yellow-600 uppercase tracking-tighter">
+                        {proposalsStats?.total ? Math.round((proposalsStats.countNovoFormato / proposalsStats.total) * 100) : 0}%
+                      </span>
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Proposals History List */}
+                <div className="mt-8 space-y-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">
+                        HISTÓRICO DE PROPOSTAS COMERCIAIS
+                      </h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                        {selectedProposalCard === 'total' 
+                          ? "Selecione uma estratégia acima para visualizar o histórico" 
+                          : `Visualizando histórico da estratégia: ${
+                              selectedProposalCard === 'reducao' ? "Redução de Parcela" :
+                              selectedProposalCard === 'quitacao' ? "Quitação de Contrato" : "Novo Formato"
+                            }`
+                        }
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedProposalCard === 'total' ? (
+                    <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-dashed border-slate-200">
+                      <FileSpreadsheet className="w-12 h-12 text-slate-300 mb-3" />
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center">
+                        Selecione uma das estratégias acima para visualizar o histórico de propostas
+                      </p>
+                    </div>
+                  ) : filteredProposals.length > 0 ? (
+                    <div className="flex flex-col gap-4">
+                      {filteredProposals.map((item: any, idx: number) => {
+                        const formattedDate = item.created_at ? format(new Date(item.created_at), "dd/MM/yyyy 'às' HH:mm") : "--"
+                        
+                        if (selectedProposalCard === 'quitacao') {
+                          return (
+                            <div 
+                              key={item.id || idx} 
+                              className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
+                            >
+                              <div className="flex items-center gap-3 min-w-[200px]">
+                                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
+                                  <History className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
+                                  <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
+                                    {item.user_nome || item.user_email || "Não informado"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col min-w-[150px]">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
+                                <span className="text-[10px] font-black text-[#1C2643] bg-amber-50 border border-amber-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                                  QUITAÇÃO DE CONTRATO
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Saldo para Quitação</span>
+                                <span className="text-sm font-black text-[#c44a4a] font-mono leading-none">
+                                  {item.saldo_quitacao ? formatCurrency(item.saldo_quitacao) : "--"}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Economia Total</span>
+                                <span className="text-sm font-black text-emerald-600 font-mono leading-none">
+                                  {(() => {
+                                    const prazo = parseInt(item.prazo_restante) || 96
+                                    const pAtual = parseFloat(item.parcela_atual) || 0
+                                    const pNova = parseFloat(item.nova_parcela) || 0
+                                    return formatCurrency(Math.max(0, (pAtual - pNova) * prazo))
+                                  })()}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Redução Mensal</span>
+                                <span className="text-sm font-black text-emerald-600 font-mono leading-none">
+                                  {item.reducao_mensal ? formatCurrency(item.reducao_mensal) : "--"}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+                                <span className="text-xs font-bold text-slate-500 font-mono leading-none">
+                                  {formattedDate}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center">
+                                <button
+                                  onClick={() => handleDownloadProposal(item)}
+                                  className="h-9 px-4 text-xs font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  JPG
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        } else if (selectedProposalCard === 'novo_formato') {
+                          return (
+                            <div 
+                              key={item.id || idx} 
+                              className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
+                            >
+                              <div className="flex items-center gap-3 min-w-[200px]">
+                                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
+                                  <History className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
+                                  <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
+                                    {item.user_nome || item.user_email || "Não informado"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col min-w-[150px]">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
+                                <span className="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                                  NOVO FORMATO
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Antigo</span>
+                                <span className="text-sm font-bold text-slate-500 font-mono leading-none">
+                                  {item.valor_liberado ? formatCurrency(item.valor_liberado * 0.70) : "--"}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Atual</span>
+                                <span className="text-sm font-black text-yellow-600 font-mono leading-none">
+                                  {item.valor_liberado ? formatCurrency(item.valor_liberado) : "--"}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+                                <span className="text-xs font-bold text-slate-500 font-mono leading-none">
+                                  {formattedDate}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center">
+                                <button
+                                  onClick={() => handleDownloadProposal(item)}
+                                  className="h-9 px-4 text-xs font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  JPG
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        } else {
+                          // Redução de Parcela
+                          return (
+                            <div 
+                              key={item.id || idx} 
+                              className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
+                            >
+                              <div className="flex items-center gap-3 min-w-[200px]">
+                                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
+                                  <History className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
+                                  <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
+                                    {item.user_nome || item.user_email || "Não informado"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col min-w-[150px]">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
+                                <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                                  REDUÇÃO DE PARCELA
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Liberado</span>
+                                <span className="text-sm font-black text-emerald-600 font-mono leading-none">
+                                  {item.valor_liberado ? formatCurrency(item.valor_liberado) : "--"}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Parcela Antiga ➔ Parcela Nova</span>
+                                <span className="text-sm font-bold text-slate-700 leading-none">
+                                  <span className="text-slate-800">{formatCurrency(item.total_parcela_atual || 0)}</span> ➔ <span className="text-emerald-600 font-black">{formatCurrency(item.total_parcela_nova || 0)}</span>
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Diferença nas Parcelas</span>
+                                <span className="text-sm font-black text-emerald-600 font-mono leading-none">
+                                  {formatCurrency((item.total_parcela_nova || 0) - (item.total_parcela_atual || 0))}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+                                <span className="text-xs font-bold text-slate-500 font-mono leading-none">
+                                  {formattedDate}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center">
+                                <button
+                                  onClick={() => handleDownloadProposal(item)}
+                                  className="h-9 px-4 text-xs font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  JPG
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        }
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-12 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                        Nenhuma proposta encontrada para esta estratégia
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </motion.div>
+        )
+      })()}
 
       {activeTab === 'financeiro' && (
         <motion.div
