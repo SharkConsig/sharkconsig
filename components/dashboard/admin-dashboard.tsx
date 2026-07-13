@@ -208,6 +208,7 @@ export function AdminDashboard({
     totalNovoFormatoValor: number;
   } | null>(null)
   const [isProposalsStatsLoading, setIsProposalsStatsLoading] = React.useState(false)
+  const proposalsCacheRef = React.useRef<Record<string, { data: any; timestamp: number }>>({})
   const [selectedProposalCard, setSelectedProposalCard] = React.useState<'total' | 'reducao' | 'quitacao' | 'novo_formato'>('total')
   const [proposalsPage, setProposalsPage] = React.useState(1)
   const proposalsPageSize = 15
@@ -399,7 +400,22 @@ export function AdminDashboard({
   }, [activeTab, fetchFinancialData])
 
   const fetchProposalsStats = React.useCallback(async () => {
-    setIsProposalsStatsLoading(true)
+    const cacheKey = `${selectedProposalCard}_${proposalsPage}_${startDate || ""}_${endDate || ""}`;
+    const cached = proposalsCacheRef.current[cacheKey];
+    
+    // Se temos dados em cache, exibe instantaneamente
+    if (cached) {
+      setProposalsStats(cached.data);
+      // Se foi atualizado nos últimos 15 segundos, não precisamos fazer nova requisição (deduping)
+      if (Date.now() - cached.timestamp < 15000) {
+        setIsProposalsStatsLoading(false);
+        return;
+      }
+      // Se já passou o tempo, revalidamos em segundo plano sem mostrar o esqueleto visual de carregamento
+    } else {
+      setIsProposalsStatsLoading(true);
+    }
+
     try {
       let countReducao = 0
       let countNovoFormato = 0
@@ -582,7 +598,7 @@ export function AdminDashboard({
         }
       }
 
-      setProposalsStats({
+      const newStats = {
         total,
         countReducao,
         countNovoFormato,
@@ -591,7 +607,15 @@ export function AdminDashboard({
         totalReducaoValor,
         totalQuitacaoValor,
         totalNovoFormatoValor
-      })
+      };
+
+      // Atualiza o cache em memória
+      proposalsCacheRef.current[cacheKey] = {
+        data: newStats,
+        timestamp: Date.now()
+      };
+
+      setProposalsStats(newStats)
     } catch (error) {
       console.error("Erro ao buscar estatísticas de propostas comerciais:", error)
       toast.error("Erro ao buscar estatísticas de propostas comerciais.")
