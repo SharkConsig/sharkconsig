@@ -130,12 +130,13 @@ interface AdminDashboardProps {
   isLoading: boolean
   remainingBusinessDays: number
   headerContent: { greeting: string, phrase: string }
-  stats: AdminStats
+  stats?: AdminStats | null
   startDate: string
   endDate: string
   setStartDate: (d: string) => void
   setEndDate: (d: string) => void
   estagioRankingGroup?: RankingItem | null
+  onlyPropostasComerciais?: boolean
 }
 
 export function AdminDashboard({ 
@@ -148,26 +149,27 @@ export function AdminDashboard({
   endDate,
   setStartDate,
   setEndDate,
-  estagioRankingGroup
+  estagioRankingGroup,
+  onlyPropostasComerciais = false
 }: AdminDashboardProps) {
   const {
-    monthlyGoal,
-    monthlyProduced,
-    annualGoal,
-    annualProduced,
-    dailyProduced,
-    inProcessValue,
-    inProcessCount,
-    pendingActionsValue,
-    createdTodayValue,
-    createdTodayCount,
-    createdWeekValue,
-    createdWeekCount,
-    createdMonthValue,
-    createdMonthCount,
-    brokerRankings,
+    monthlyGoal = 0,
+    monthlyProduced = 0,
+    annualGoal = 0,
+    annualProduced = 0,
+    dailyProduced = 0,
+    inProcessValue = 0,
+    inProcessCount = 0,
+    pendingActionsValue = 0,
+    createdTodayValue = 0,
+    createdTodayCount = 0,
+    createdWeekValue = 0,
+    createdWeekCount = 0,
+    createdMonthValue = 0,
+    createdMonthCount = 0,
+    brokerRankings = [],
     ticketStats
-  } = stats
+  } = stats || {}
 
   const [tempStartDate, setTempStartDate] = React.useState(startDate)
   const [tempEndDate, setTempEndDate] = React.useState(endDate)
@@ -192,7 +194,9 @@ export function AdminDashboard({
       setDashboardPeriod('mes')
     }
   }, [startDate, endDate, setStartDate, setEndDate])
-  const [activeTab, setActiveTab] = React.useState<'propostas' | 'chamados' | 'propostas_comerciais' | 'financeiro'>('propostas')
+  const [activeTab, setActiveTab] = React.useState<'propostas' | 'chamados' | 'propostas_comerciais' | 'financeiro'>(
+    onlyPropostasComerciais ? 'propostas_comerciais' : 'propostas'
+  )
   const [proposalsStats, setProposalsStats] = React.useState<{
     total: number;
     countReducao: number;
@@ -1693,96 +1697,98 @@ export function AdminDashboard({
   return (
     <div className="space-y-8">
       {/* 1. Linha da saudação e o prazo para bater a meta */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-        <motion.div 
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-        >
-          <h1 className="text-4xl font-black text-[#1C2643] tracking-tighter">
-            {headerContent.greeting}, {perfil?.nome?.split(' ')[0] || 'Admin'}!
-          </h1>
-          <p className="text-[12px] font-bold text-[#718198] uppercase tracking-[0.25em] mt-2 flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-            {headerContent.phrase}
-          </p>
-        </motion.div>
-        
-        <motion.div 
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-5 self-start md:self-center relative group"
-        >
-          <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-amber-100">
-             <Clock className="w-7 h-7 text-amber-500" />
-          </div>
-          <div className="relative z-10">
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Prazo Para Bater a Meta</p>
-             <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-[#1C2643]">{remainingBusinessDays.toString().padStart(2, '0')}</span>
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dias Restantes</span>
-             </div>
-             <p className="text-[11px] font-medium text-slate-500 mt-1 max-w-[200px] leading-tight">
-                <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta.</span> Faltam apenas {remainingBusinessDays} dias úteis.
-             </p>
-          </div>
-        </motion.div>
-      </div>
+      {!onlyPropostasComerciais && (
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+          >
+            <h1 className="text-4xl font-black text-[#1C2643] tracking-tighter">
+              {headerContent.greeting}, {perfil?.nome?.split(' ')[0] || 'Admin'}!
+            </h1>
+            <p className="text-[12px] font-bold text-[#718198] uppercase tracking-[0.25em] mt-2 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+              {headerContent.phrase}
+            </p>
+          </motion.div>
+          
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-5 self-start md:self-center relative group"
+          >
+            <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-amber-100">
+               <Clock className="w-7 h-7 text-amber-500" />
+            </div>
+            <div className="relative z-10">
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Prazo Para Bater a Meta</p>
+               <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-[#1C2643]">{remainingBusinessDays.toString().padStart(2, '0')}</span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dias Restantes</span>
+               </div>
+               <p className="text-[11px] font-medium text-slate-500 mt-1 max-w-[200px] leading-tight">
+                  <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta.</span> Faltam apenas {remainingBusinessDays} dias úteis.
+               </p>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* TABS SELECTION */}
-      <div className="flex flex-col gap-4 mb-8">
-        <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl">
-          <button
-            onClick={() => setActiveTab('propostas')}
-            className={cn(
-              "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
-              activeTab === 'propostas' 
-                ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
-                : "text-slate-400 hover:text-slate-600"
-            )}
-          >
-            <BarChart3 className="w-4 h-4" />
-            METAS E PRODUÇÃO
-          </button>
-          <button
-            onClick={() => setActiveTab('chamados')}
-            className={cn(
-              "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
-              activeTab === 'chamados' 
-                ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
-                : "text-slate-400 hover:text-slate-600"
-            )}
-          >
-            <MessageSquare className="w-4 h-4" />
-            CHAMADOS
-          </button>
-          {/* 
-          <button
-            onClick={() => setActiveTab('propostas_comerciais')}
-            className={cn(
-              "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
-              activeTab === 'propostas_comerciais' 
-                ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
-                : "text-slate-400 hover:text-slate-600"
-            )}
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            PROPOSTAS COMERCIAIS
-          </button>
-          */}
-          <button
-            onClick={() => setActiveTab('financeiro')}
-            className={cn(
-              "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
-              activeTab === 'financeiro' 
-                ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
-                : "text-slate-400 hover:text-slate-600"
-            )}
-          >
-            <TrendingUp className="w-4 h-4" />
-            FINANCEIRO E ESTRATÉGICO
-          </button>
+      {!onlyPropostasComerciais && (
+        <div className="flex flex-col gap-4 mb-8">
+          <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl">
+            <button
+              onClick={() => setActiveTab('propostas')}
+              className={cn(
+                "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                activeTab === 'propostas' 
+                  ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                  : "text-slate-400 hover:text-slate-600"
+              )}
+            >
+              <BarChart3 className="w-4 h-4" />
+              METAS E PRODUÇÃO
+            </button>
+            <button
+              onClick={() => setActiveTab('chamados')}
+              className={cn(
+                "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                activeTab === 'chamados' 
+                  ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                  : "text-slate-400 hover:text-slate-600"
+              )}
+            >
+              <MessageSquare className="w-4 h-4" />
+              CHAMADOS
+            </button>
+            <button
+              onClick={() => setActiveTab('propostas_comerciais')}
+              className={cn(
+                "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                activeTab === 'propostas_comerciais' 
+                  ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                  : "text-slate-400 hover:text-slate-600"
+              )}
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              PROPOSTAS COMERCIAIS
+            </button>
+            <button
+              onClick={() => setActiveTab('financeiro')}
+              className={cn(
+                "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                activeTab === 'financeiro' 
+                  ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                  : "text-slate-400 hover:text-slate-600"
+              )}
+            >
+              <TrendingUp className="w-4 h-4" />
+              FINANCEIRO E ESTRATÉGICO
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {activeTab === 'propostas' && (
         <motion.div 

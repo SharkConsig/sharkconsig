@@ -30,6 +30,7 @@ import {
   Check,
   Star,
   ClipboardCheck,
+  FileSpreadsheet,
   X
 } from "lucide-react"
 
@@ -447,7 +448,59 @@ export default function DashboardPage() {
   const [endDate, setEndDate] = useState<string>("")
   const [tempStartDate, setTempStartDate] = useState<string>("")
   const [tempEndDate, setTempEndDate] = useState<string>("")
-  const [activeTab, setActiveTab] = useState<'propostas' | 'chamados'>('propostas')
+  const [activeTab, setActiveTab] = useState<'propostas' | 'chamados' | 'propostas_comerciais'>('propostas')
+  const [dashboardPeriod, setDashboardPeriod] = useState<'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado'>('mes')
+
+  const handleDashboardPeriodChange = (period: 'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado') => {
+    setDashboardPeriod(period)
+    const now = new Date()
+    
+    if (period === 'dia') {
+      const todayStr = format(now, "yyyy-MM-dd")
+      setStartDate(todayStr)
+      setEndDate(todayStr)
+      setTempStartDate(todayStr)
+      setTempEndDate(todayStr)
+    } else if (period === 'semana') {
+      const dayOfWeek = now.getDay()
+      const diffToMonday = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)
+      const monday = new Date(now.setDate(diffToMonday))
+      const monStr = format(monday, "yyyy-MM-dd")
+      const todayStr = format(new Date(), "yyyy-MM-dd")
+      setStartDate(monStr)
+      setEndDate(todayStr)
+      setTempStartDate(monStr)
+      setTempEndDate(todayStr)
+    } else if (period === 'mes') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      const firstStr = format(firstDay, "yyyy-MM-dd")
+      const lastStr = format(lastDay, "yyyy-MM-dd")
+      setStartDate(firstStr)
+      setEndDate(lastStr)
+      setTempStartDate(firstStr)
+      setTempEndDate(lastStr)
+    } else if (period === 'trimestre') {
+      const quarterMonth = Math.floor(now.getMonth() / 3) * 3
+      const firstDay = new Date(now.getFullYear(), quarterMonth, 1)
+      const lastDay = new Date(now.getFullYear(), quarterMonth + 3, 0)
+      const firstStr = format(firstDay, "yyyy-MM-dd")
+      const lastStr = format(lastDay, "yyyy-MM-dd")
+      setStartDate(firstStr)
+      setEndDate(lastStr)
+      setTempStartDate(firstStr)
+      setTempEndDate(lastStr)
+    } else if (period === 'ano') {
+      const firstDay = new Date(now.getFullYear(), 0, 1)
+      const lastDay = new Date(now.getFullYear(), 11, 31)
+      const firstStr = format(firstDay, "yyyy-MM-dd")
+      const lastStr = format(lastDay, "yyyy-MM-dd")
+      setStartDate(firstStr)
+      setEndDate(lastStr)
+      setTempStartDate(firstStr)
+      setTempEndDate(lastStr)
+    }
+  }
   const [teamPendingInconsistencyCount, setTeamPendingInconsistencyCount] = useState(0)
   const [opInProcessValue, setOpInProcessValue] = useState(0)
   const [opInProcessCount, setOpInProcessCount] = useState(0)
@@ -1987,6 +2040,35 @@ export default function DashboardPage() {
               )}
             </div>
 
+            {isSupervisor && (
+              <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 gap-1.5 self-start mb-8 w-fit">
+                <button
+                  onClick={() => setActiveTab('propostas')}
+                  className={cn(
+                    "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                    activeTab === 'propostas' 
+                      ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                      : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  METAS E PRODUÇÃO
+                </button>
+                <button
+                  onClick={() => setActiveTab('propostas_comerciais')}
+                  className={cn(
+                    "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                    activeTab === 'propostas_comerciais' 
+                      ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                      : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  PROPOSTAS COMERCIAIS
+                </button>
+              </div>
+            )}
+
             {activeTab === 'propostas' ? (
               isEstagio ? (
                 <motion.div 
@@ -2279,6 +2361,65 @@ export default function DashboardPage() {
                   animate={{ opacity: 1, y: 0 }}
                   className={cn("transition-opacity duration-500", isLoading ? "opacity-50 pointer-events-none" : "opacity-100")}
                 >
+                  {isSupervisor && (
+                    <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all mb-6">
+                      <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+                        <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+                          {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
+                            <button
+                              key={period}
+                              onClick={() => handleDashboardPeriodChange(period)}
+                              className={cn(
+                                "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                                dashboardPeriod === period
+                                  ? "bg-white text-[#1C2643] shadow-sm font-extrabold"
+                                  : "text-slate-500 hover:text-slate-700"
+                              )}
+                            >
+                              {period === 'mes' ? 'Mês' : period === 'trimestre' ? 'Trimestre' : period}
+                            </button>
+                          ))}
+                        </div>
+
+                        {dashboardPeriod === 'personalizado' && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mt-1 self-end"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+                              <input 
+                                type="date" 
+                                value={tempStartDate}
+                                onChange={(e) => setTempStartDate(e.target.value)}
+                                className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+                              <input 
+                                type="date" 
+                                value={tempEndDate}
+                                onChange={(e) => setTempEndDate(e.target.value)}
+                                className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                              />
+                            </div>
+                            <button
+                              onClick={() => {
+                                setStartDate(tempStartDate);
+                                setEndDate(tempEndDate);
+                              }}
+                              className="px-2.5 py-1 bg-[#1C2643] text-white text-[9px] font-black rounded-md hover:bg-[#1C2643]/90 transition-all active:scale-95 cursor-pointer"
+                            >
+                              FILTRAR
+                            </button>
+                          </motion.div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className={cn(
                     "grid grid-cols-1 gap-4",
                     isSupervisor ? "lg:grid-cols-12" : "sm:grid-cols-2 lg:grid-cols-4"
@@ -2367,78 +2508,58 @@ export default function DashboardPage() {
                 ? "lg:col-span-4 lg:row-span-1 md:grid-cols-2 lg:grid-cols-1"
                 : (isSupervisor ? "lg:col-span-4 lg:row-span-1 md:grid-cols-2 lg:grid-cols-1" : "col-span-1 sm:col-span-2 lg:col-span-1")
             )}>
-              {isSupervisor && (
+              {isSupervisor ? (
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05 }}>
-                  <DashboardCard className="shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3.5 !p-[18px] sm:!p-5 !rounded-[24px] bg-white border border-slate-200">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
-                        <Calendar className="w-4 h-4 text-amber-500 fill-amber-500" />
-                      </div>
-                      <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-widest">Filtrar por Período</p>
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 bg-[#1C2643] text-white border-[#1C2643] !p-[18px] sm:!p-5 !rounded-[24px]">
+                    <div className="flex flex-col min-w-0 overflow-hidden">
+                       <div className="flex items-center gap-1.5 mb-1.5">
+                         <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+                         <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest leading-tight">
+                           CONTRATOS DIGITADOS
+                         </p>
+                       </div>
+                       <div className="mt-1.5 space-y-2.5">
+                         <div>
+                           <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
+                           <div className="flex items-baseline gap-1.5">
+                             <p className="text-xl sm:text-2xl font-black text-amber-400 tracking-tighter leading-none">
+                               {formatCurrency(teamDailyCreatedValue)}
+                             </p>
+                             <span className="text-[9px] font-bold text-white/60 uppercase">{teamDailyCreatedCount} CONTRATOS</span>
+                           </div>
+                         </div>
+                         <div>
+                           <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
+                           <div className="flex items-baseline gap-1.5">
+                             <p className="text-lg font-black text-white tracking-tighter leading-none">
+                               {formatCurrency(teamWeeklyCreatedValue)}
+                             </p>
+                             <span className="text-[9px] font-bold text-white/60 uppercase">{teamWeeklyCreatedCount} CONTRATOS</span>
+                           </div>
+                         </div>
+                         <div>
+                           <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
+                           <div className="flex items-baseline gap-1.5">
+                             <p className="text-[14px] font-black text-white tracking-tighter leading-none">
+                               {formatCurrency(teamMonthlyCreatedValue)}
+                             </p>
+                             <span className="text-[9px] font-bold text-white/60 uppercase">{teamMonthlyCreatedCount} CONTRATOS</span>
+                           </div>
+                         </div>
+                       </div>
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Início</span>
-                        <input 
-                          type="date" 
-                          value={tempStartDate}
-                          onChange={(e) => setTempStartDate(e.target.value)}
-                          className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Fim</span>
-                        <input 
-                          type="date" 
-                          value={tempEndDate}
-                          onChange={(e) => setTempEndDate(e.target.value)}
-                          className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-1.5 mt-1">
-                      <button 
-                        onClick={() => {
-                          setStartDate(tempStartDate);
-                          setEndDate(tempEndDate);
-                        }}
-                        disabled={!tempStartDate && !tempEndDate}
-                        className="px-2.5 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center h-8"
-                      >
-                        FILTRAR
-                      </button>
-                      <button 
-                        onClick={() => {
-                          const todayStr = format(new Date(), "yyyy-MM-dd");
-                          setTempStartDate(todayStr);
-                          setTempEndDate(todayStr);
-                          setStartDate(todayStr);
-                          setEndDate(todayStr);
-                        }}
-                        className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
-                      >
-                        HOJE
-                      </button>
-                      <button 
-                        onClick={() => {
-                          const now = new Date();
-                          const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
-                          const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
-                          setTempStartDate(firstDay);
-                          setTempEndDate(lastDay);
-                          setStartDate(firstDay);
-                          setEndDate(lastDay);
-                        }}
-                        className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8"
-                      >
-                        MÊS
-                      </button>
+                    <div className="mt-auto pt-2.5 border-t border-white/5">
+                       <div className="flex items-center gap-1.5">
+                         <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                         <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
+                           Atualizado em Tempo Real
+                         </p>
+                       </div>
                     </div>
                   </DashboardCard>
                 </motion.div>
-              )}
+              ) : null}
+
               {!isSupervisor && (
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
                   <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 !p-[18px] sm:!p-5 !rounded-[24px]">
@@ -2473,82 +2594,132 @@ export default function DashboardPage() {
                 </motion.div>
               )}
 
-              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
-                <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 bg-[#1C2643] text-white border-[#1C2643] !p-[18px] sm:!p-5 !rounded-[24px]">
-                  <div className="flex flex-col min-w-0 overflow-hidden">
-                     <div className="flex items-center gap-1.5 mb-1.5">
-                       {(isSupervisor || isOperational) ? (
-                         <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
-                       ) : (
-                         <Gift className="w-3.5 h-3.5 text-amber-400" />
-                       )}
-                       <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest leading-tight">
-                         {(isSupervisor || isOperational) ? "CONTRATOS DIGITADOS" : "PRÊMIO ALCANÇADO ATÉ AGORA:"}
-                       </p>
+              {isSupervisor ? (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+                  <div className="bg-white rounded-[24px] p-5 border border-slate-200 shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 h-full min-h-[290px] justify-between">
+                     <div className="flex items-center gap-2.5 mb-1.5">
+                        <div className="w-8 h-8 bg-[#1C2643] rounded-lg flex items-center justify-center">
+                           <Target className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                           <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
+                             ACESSAR CAMPANHA
+                           </p>
+                        </div>
                      </div>
-                     <div className="mt-1.5 space-y-2.5">
-                       {(isSupervisor || isOperational) ? (
-                         <>
-                           <div>
-                             <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
-                             <div className="flex items-baseline gap-1.5">
-                               <p className="text-xl sm:text-2xl font-black text-amber-400 tracking-tighter leading-none">
-                                 {formatCurrency(teamDailyCreatedValue)}
-                               </p>
-                               <span className="text-[9px] font-bold text-white/60 uppercase">{teamDailyCreatedCount} CONTRATOS</span>
-                             </div>
-                           </div>
-                           <div>
-                             <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
-                             <div className="flex items-baseline gap-1.5">
-                               <p className="text-lg font-black text-white tracking-tighter leading-none">
-                                 {formatCurrency(teamWeeklyCreatedValue)}
-                               </p>
-                               <span className="text-[9px] font-bold text-white/60 uppercase">{teamWeeklyCreatedCount} CONTRATOS</span>
-                             </div>
-                           </div>
-                           <div>
-                             <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
-                             <div className="flex items-baseline gap-1.5">
-                               <p className="text-[14px] font-black text-white tracking-tighter leading-none">
-                                 {formatCurrency(teamMonthlyCreatedValue)}
-                               </p>
-                               <span className="text-[9px] font-bold text-white/60 uppercase">{teamMonthlyCreatedCount} CONTRATOS</span>
-                             </div>
-                           </div>
-                         </>
-                       ) : (
-                         <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[38px] font-black text-amber-400 tracking-tighter mt-1 break-words leading-none">
-                           {formatCurrency(currentPrize)}
-                         </p>
-                       )}
+                     <div className="space-y-2.5 flex-1 flex flex-col justify-center">
+                        {dashboardCampaigns.length > 0 ? (
+                          dashboardCampaigns.map((campaign) => (
+                            <div 
+                              key={campaign.id} 
+                              onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
+                              className="flex items-center justify-between p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200 hover:border-primary/30 hover:bg-white transition-all cursor-pointer group"
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-primary transition-colors">
+                                  {campaign.nome}
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                                  {campaign.filtros?.convenio || 'Geral'}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[9.5px] font-black text-[#1C2643]">
+                                  {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
+                                </p>
+                                <p className="text-[8px] font-bold text-slate-400">
+                                  {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-6 opacity-40">
+                            <Target className="w-6.5 h-6.5 mb-1.5" />
+                            <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                          </div>
+                        )}
                      </div>
                   </div>
-                  <div className="mt-auto pt-2.5 border-t border-white/5">
-                     {(isSupervisor || isOperational) ? (
-                       <div className="flex items-center gap-1.5">
-                         <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                         <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
-                           Atualizado em Tempo Real
+                </motion.div>
+              ) : (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 bg-[#1C2643] text-white border-[#1C2643] !p-[18px] sm:!p-5 !rounded-[24px]">
+                    <div className="flex flex-col min-w-0 overflow-hidden">
+                       <div className="flex items-center gap-1.5 mb-1.5">
+                         {isOperational ? (
+                           <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+                         ) : (
+                           <Gift className="w-3.5 h-3.5 text-amber-400" />
+                         )}
+                         <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest leading-tight">
+                           {isOperational ? "CONTRATOS DIGITADOS" : "PRÊMIO ALCANÇADO ATÉ AGORA:"}
                          </p>
                        </div>
-                     ) : nextPrizeTier ? (
-                       <>
-                         <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
-                           Próximo Prêmio: {formatCurrency(nextPrizeTier.prize)}
+                       <div className="mt-1.5 space-y-2.5">
+                         {isOperational ? (
+                           <>
+                             <div>
+                               <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
+                               <div className="flex items-baseline gap-1.5">
+                                 <p className="text-xl sm:text-2xl font-black text-amber-400 tracking-tighter leading-none">
+                                   {formatCurrency(teamDailyCreatedValue)}
+                                 </p>
+                                 <span className="text-[9px] font-bold text-white/60 uppercase">{teamDailyCreatedCount} CONTRATOS</span>
+                               </div>
+                             </div>
+                             <div>
+                               <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
+                               <div className="flex items-baseline gap-1.5">
+                                 <p className="text-lg font-black text-white tracking-tighter leading-none">
+                                   {formatCurrency(teamWeeklyCreatedValue)}
+                                 </p>
+                                 <span className="text-[9px] font-bold text-white/60 uppercase">{teamWeeklyCreatedCount} CONTRATOS</span>
+                               </div>
+                             </div>
+                             <div>
+                               <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
+                               <div className="flex items-baseline gap-1.5">
+                                 <p className="text-[14px] font-black text-white tracking-tighter leading-none">
+                                   {formatCurrency(teamMonthlyCreatedValue)}
+                                 </p>
+                                 <span className="text-[9px] font-bold text-white/60 uppercase">{teamMonthlyCreatedCount} CONTRATOS</span>
+                               </div>
+                             </div>
+                           </>
+                         ) : (
+                           <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[38px] font-black text-amber-400 tracking-tighter mt-1 break-words leading-none">
+                             {formatCurrency(currentPrize)}
+                           </p>
+                         )}
+                       </div>
+                    </div>
+                    <div className="mt-auto pt-2.5 border-t border-white/5">
+                       {isOperational ? (
+                         <div className="flex items-center gap-1.5">
+                           <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                           <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
+                             Atualizado em Tempo Real
+                           </p>
+                         </div>
+                       ) : nextPrizeTier ? (
+                         <>
+                           <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
+                             Próximo Prêmio: {formatCurrency(nextPrizeTier.prize)}
+                           </p>
+                           <p className="text-[7px] font-bold text-white/30 uppercase tracking-widest mt-0.5 shrink-0">
+                             Faltam {formatCurrency(nextPrizeTier.goal - monthlyProduced)} em produção
+                           </p>
+                         </>
+                       ) : (
+                         <p className="text-[8px] font-bold text-amber-400 uppercase tracking-widest leading-tight">
+                           VOCÊ ATINGIU O TOPO DAS PREMIAÇÕES!
                          </p>
-                         <p className="text-[7px] font-bold text-white/30 uppercase tracking-widest mt-0.5 shrink-0">
-                           Faltam {formatCurrency(nextPrizeTier.goal - monthlyProduced)} em produção
-                         </p>
-                       </>
-                     ) : (
-                       <p className="text-[8px] font-bold text-amber-400 uppercase tracking-widest leading-tight">
-                         VOCÊ ATINGIU O TOPO DAS PREMIAÇÕES!
-                       </p>
-                     )}
-                  </div>
-                </DashboardCard>
-              </motion.div>
+                       )}
+                    </div>
+                  </DashboardCard>
+                </motion.div>
+              )}
 
               {!isSupervisor && (
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
@@ -2728,10 +2899,7 @@ export default function DashboardPage() {
                   : (isSupervisor ? "lg:col-span-12" : "col-span-1 sm:col-span-2 lg:col-span-2")
               )}
             >
-              <div className={cn(
-                "grid grid-cols-1 gap-4 h-full",
-                isSupervisor ? "md:grid-cols-3" : "md:grid-cols-2"
-              )}>
+              <div className="grid grid-cols-1 gap-4 h-full md:grid-cols-2">
                  {/* Meta de Hoje */}
                  {isSupervisor && (
                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
@@ -2815,73 +2983,75 @@ export default function DashboardPage() {
                          ) : (
                            <div className="flex flex-col items-center justify-center py-8 opacity-30">
                              <CheckCircle2 className="w-6.5 h-6.5 mb-1.5" />
-                             <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhum pagamento registrado</p>
-                           </div>
-                         )}
-                      </div>
-                    )}
-                 </div>
-
-                   {/* ACESSAR CAMPANHA (Anterior Mapa de oportunidades) */}
-                  <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm space-y-3">
-                     <div className="flex items-center gap-2.5 mb-1.5">
-                        <div className="w-8 h-8 bg-[#1C2643] rounded-lg flex items-center justify-center">
-                           <Target className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                           <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
-                             {isOperational ? "CONTRATOS EM ANDAMENTO (OPERACIONAL)" : "ACESSAR CAMPANHA"}
-                           </p>
-                        </div>
-                     </div>
-                     {isOperational ? (
-                       <div className="flex flex-col justify-center py-6 gap-1.5">
-                         <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest text-center">Valor Total Operacional</p>
-                         <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#1C2643] tracking-tighter text-center leading-none">
-                           {formatCurrency(opInProcessValue)}
-                         </p>
-                         <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col items-center gap-1.5">
-                           <span className="text-[11.5px] font-bold text-[#1C2643]">
-                             {opInProcessCount} {opInProcessCount === 1 ? 'Contrato' : 'Contratos'}
-                           </span>
-                         </div>
-                       </div>
-                     ) : (
-                       <div className="space-y-2.5">
-                          {dashboardCampaigns.length > 0 ? (
-                            dashboardCampaigns.map((campaign) => (
-                              <div 
-                                key={campaign.id} 
-                                onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
-                                className="flex items-center justify-between p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200 hover:border-primary/30 hover:bg-white transition-all cursor-pointer group"
-                              >
-                                <div className="flex flex-col">
-                                  <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-primary transition-colors">
-                                    {campaign.nome}
-                                  </span>
-                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
-                                    {campaign.filtros?.convenio || 'Geral'}
-                                  </span>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-[9.5px] font-black text-[#1C2643]">
-                                    {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
-                                  </p>
-                                  <p className="text-[8px] font-bold text-slate-400">
-                                    {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
-                                  </p>
-                                </div>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="flex flex-col items-center justify-center py-6 opacity-40">
-                              <Target className="w-6.5 h-6.5 mb-1.5" />
-                              <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                              <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhum pagamento registrado</p>
                             </div>
                           )}
                        </div>
                      )}
                   </div>
+
+                   {/* ACESSAR CAMPANHA (Anterior Mapa de oportunidades) */}
+                   {!isSupervisor && (
+                    <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm space-y-3">
+                       <div className="flex items-center gap-2.5 mb-1.5">
+                          <div className="w-8 h-8 bg-[#1C2643] rounded-lg flex items-center justify-center">
+                             <Target className="w-5 h-5 text-white" />
+                          </div>
+                          <div>
+                             <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
+                               {isOperational ? "CONTRATOS EM ANDAMENTO (OPERACIONAL)" : "ACESSAR CAMPANHA"}
+                             </p>
+                          </div>
+                       </div>
+                       {isOperational ? (
+                         <div className="flex flex-col justify-center py-6 gap-1.5">
+                           <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest text-center">Valor Total Operacional</p>
+                           <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#1C2643] tracking-tighter text-center leading-none">
+                             {formatCurrency(opInProcessValue)}
+                           </p>
+                           <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col items-center gap-1.5">
+                             <span className="text-[11.5px] font-bold text-[#1C2643]">
+                               {opInProcessCount} {opInProcessCount === 1 ? 'Contrato' : 'Contratos'}
+                             </span>
+                           </div>
+                         </div>
+                       ) : (
+                         <div className="space-y-2.5">
+                            {dashboardCampaigns.length > 0 ? (
+                              dashboardCampaigns.map((campaign) => (
+                                <div 
+                                  key={campaign.id} 
+                                  onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
+                                  className="flex items-center justify-between p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200 hover:border-primary/30 hover:bg-white transition-all cursor-pointer group"
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-primary transition-colors">
+                                      {campaign.nome}
+                                    </span>
+                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                                      {campaign.filtros?.convenio || 'Geral'}
+                                    </span>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-[9.5px] font-black text-[#1C2643]">
+                                      {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
+                                    </p>
+                                    <p className="text-[8px] font-bold text-slate-400">
+                                      {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="flex flex-col items-center justify-center py-6 opacity-40">
+                                <Target className="w-6.5 h-6.5 mb-1.5" />
+                                <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                              </div>
+                            )}
+                         </div>
+                       )}
+                    </div>
+                   )}
               </div>
             </motion.div>
 
@@ -3362,7 +3532,21 @@ export default function DashboardPage() {
             )}
             </div>
           </motion.div>
-        )) : (
+        )) : activeTab === 'propostas_comerciais' && isSupervisor ? (
+          <AdminDashboard 
+            perfil={perfil} 
+            isLoading={isLoading} 
+            remainingBusinessDays={remainingBusinessDays} 
+            headerContent={headerContent} 
+            stats={adminStats}
+            startDate={startDate}
+            endDate={endDate}
+            setStartDate={setStartDate}
+            setEndDate={setEndDate}
+            estagioRankingGroup={estagioRankingGroup}
+            onlyPropostasComerciais={true}
+          />
+        ) : (
           isAdmin && activeTab === 'chamados' && (
             <motion.div 
               key="chamados"
