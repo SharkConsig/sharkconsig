@@ -508,18 +508,50 @@ export default function CampanhaAtendimentoPage() {
           }
         })
 
-        // 1. Obter todos os CPFs já tabulados (atendidos) nesta campanha para filtrá-los em tempo real na listagem
+        // 1. Obter todos os CPFs já tabulados (atendidos) ou reservados nesta campanha para filtrá-los em tempo real na listagem
         const { data: attendedRows, error: attendedErr } = await withRetry(() =>
           supabase
             .from('campanha_atendimentos')
-            .select('cliente_cpf')
+            .select('cliente_cpf, tabulacao, created_at, corretor_id')
             .eq('campanha_id', camp.id)
             .neq('cliente_cpf', '00000000000')
         )
         if (attendedErr) {
           console.warn("Erro ao buscar atendimentos existentes:", attendedErr)
         }
-        const attendedCpfs = new Set((attendedRows || []).map(r => r.cliente_cpf ? r.cliente_cpf.replace(/\D/g, "").padStart(11, '0') : ''))
+
+        const attendedCpfs = new Set<string>()
+        const reservedCpfs = new Set<string>()
+        const nowMs = Date.now()
+
+        if (attendedRows) {
+          const finalTabulatedCpfs = new Set<string>()
+          const activeReservations = new Map<string, { timestamp: number; corretorId: string }>()
+
+          attendedRows.forEach(r => {
+            if (!r.cliente_cpf) return
+            const cleanCpf = r.cliente_cpf.replace(/\D/g, "").padStart(11, '0')
+            if (r.tabulacao === 'RESERVADO') {
+              const resTime = r.created_at ? new Date(r.created_at).getTime() : 0
+              if (resTime > tenMinutesAgoMs) {
+                const existing = activeReservations.get(cleanCpf)
+                if (!existing || resTime > existing.timestamp) {
+                  activeReservations.set(cleanCpf, { timestamp: resTime, corretorId: r.corretor_id })
+                }
+              }
+            } else if (r.tabulacao && r.tabulacao !== 'ENTROU' && r.tabulacao !== 'SAIU') {
+              finalTabulatedCpfs.add(cleanCpf)
+            }
+          })
+
+          finalTabulatedCpfs.forEach(cpf => attendedCpfs.add(cpf))
+
+          activeReservations.forEach((val, cpf) => {
+            if (!finalTabulatedCpfs.has(cpf) && val.corretorId !== userId) {
+              reservedCpfs.add(cpf)
+            }
+          })
+        }
 
         // 2. Obter todos os vínculos (claims) ativos de outros corretores
         // Fallback backward-compatible db fetch for campanha_vinculos (wrapped in try/catch to suppress failures)
@@ -554,6 +586,9 @@ export default function CampanhaAtendimentoPage() {
             claimedCpfs.add(val.cliente_cpf.replace(/\D/g, "").padStart(11, '0'))
           }
         })
+
+        // Add robust append-only reservations
+        reservedCpfs.forEach(cpf => claimedCpfs.add(cpf))
 
         // 3. Obter todos os membros cadastrados na campanha_membros da campanha ordenados pela fila (paginado em loops para superar o limite padrão de 1000 do Supabase)
         let allMembers: { cliente_cpf: string | null; convenio?: string | null }[] = [];
@@ -717,6 +752,19 @@ export default function CampanhaAtendimentoPage() {
             })
           } catch (insertErr) {
             console.warn("Could not record initial lead claimed row in campanha_vinculos:", insertErr)
+          }
+
+          // C. Robust append-only reservation in campanha_atendimentos to prevent race conditions on JSONB columns
+          try {
+            await supabase.from('campanha_atendimentos').insert({
+              campanha_id: camp.id,
+              corretor_id: userId,
+              cliente_cpf: data.cpf,
+              tabulacao: 'RESERVADO'
+            })
+            console.log("Successfully recorded robust append-only reservation in campanha_atendimentos!");
+          } catch (resErr) {
+            console.error("Could not record robust append-only reservation in campanha_atendimentos:", resErr)
           }
         }
       }
