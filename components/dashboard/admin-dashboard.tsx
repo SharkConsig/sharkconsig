@@ -2519,6 +2519,10 @@ export function AdminDashboard({
                 </span>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
               </div>
+              <div className="mt-2.5 pt-2 border-t border-dashed border-[#FE9A00]/20">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                <p className="text-sm font-black text-[#FE9A00] tracking-tight">{formatCurrency(ticketStats?.abertoValue || 0)}</p>
+              </div>
             </DashboardCard>
 
             <DashboardCard className="p-6 bg-[#FF6A03]/5 border-[#FF6A03]/20 shadow-sm">
@@ -2529,6 +2533,10 @@ export function AdminDashboard({
                   {ticketStats?.total ? Math.round((ticketStats.aguardandoOperacional / ticketStats.total) * 100) : 0}%
                 </span>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-dashed border-[#FF6A03]/20">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                <p className="text-sm font-black text-[#FF6A03] tracking-tight">{formatCurrency(ticketStats?.aguardandoOperacionalValue || 0)}</p>
               </div>
             </DashboardCard>
 
@@ -2541,6 +2549,10 @@ export function AdminDashboard({
                 </span>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
               </div>
+              <div className="mt-2.5 pt-2 border-t border-dashed border-[#06BADC]/20">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                <p className="text-sm font-black text-[#06BADC] tracking-tight">{formatCurrency(ticketStats?.inNegotiationValue || 0)}</p>
+              </div>
             </DashboardCard>
 
             <DashboardCard className="p-6 bg-[#10b981]/5 border-[#10b981]/20 shadow-sm">
@@ -2551,6 +2563,10 @@ export function AdminDashboard({
                   {ticketStats?.total ? Math.round((ticketStats.approved / ticketStats.total) * 100) : 0}%
                 </span>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-dashed border-[#10b981]/20">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                <p className="text-sm font-black text-[#10b981] tracking-tight">{formatCurrency(ticketStats?.approvedValue || 0)}</p>
               </div>
             </DashboardCard>
             
@@ -2563,6 +2579,10 @@ export function AdminDashboard({
                 </span>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
               </div>
+              <div className="mt-2.5 pt-2 border-t border-dashed border-[#ef4444]/20">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                <p className="text-sm font-black text-[#ef4444] tracking-tight">{formatCurrency(ticketStats?.notApprovedValue || 0)}</p>
+              </div>
             </DashboardCard>
 
             <DashboardCard className="p-6 bg-slate-50/30 border-slate-200 shadow-sm">
@@ -2573,6 +2593,10 @@ export function AdminDashboard({
                   100%
                 </span>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">Acumulado</p>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-dashed border-slate-200">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                <p className="text-sm font-black text-slate-600 tracking-tight">{formatCurrency(ticketStats?.totalValue || 0)}</p>
               </div>
             </DashboardCard>
           </div>
