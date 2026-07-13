@@ -205,6 +205,12 @@ export function AdminDashboard({
   } | null>(null)
   const [isProposalsStatsLoading, setIsProposalsStatsLoading] = React.useState(false)
   const [selectedProposalCard, setSelectedProposalCard] = React.useState<'total' | 'reducao' | 'quitacao' | 'novo_formato'>('total')
+  const [proposalsPage, setProposalsPage] = React.useState(1)
+  const proposalsPageSize = 15
+
+  React.useEffect(() => {
+    setProposalsPage(1)
+  }, [selectedProposalCard, startDate, endDate])
   const [analysisTab, setAnalysisTab] = React.useState<'produtos' | 'convenios' | 'bancos' | 'comercial'>('produtos')
   const [rankingMetric, setRankingMetric] = React.useState<'producao' | 'receita' | 'crescimento'>('producao')
   const [expandedSupervisorIds, setExpandedSupervisorIds] = React.useState<Record<string, boolean>>({})
@@ -391,87 +397,186 @@ export function AdminDashboard({
   const fetchProposalsStats = React.useCallback(async () => {
     setIsProposalsStatsLoading(true)
     try {
-      // 1. Buscar contagens exatas de forma ultra-rápida (head: true, payload zero de linhas)
-      const [c1, c2, c3] = await Promise.all([
-        supabase.from('historico_proposta_comercial').select('*', { count: 'exact', head: true }),
-        supabase.from('historico_proposta_comercial_novo_formato').select('*', { count: 'exact', head: true }),
-        supabase.from('historico_proposta_comercial_quitacao_contrato').select('*', { count: 'exact', head: true })
-      ])
+      let countReducao = 0
+      let countNovoFormato = 0
+      let countQuitacao = 0
+      let totalReducaoValor = 0
+      let totalNovoFormatoValor = 0
+      let totalQuitacaoValor = 0
 
-      const countReducao = c1.count || 0
-      const countNovoFormato = c2.count || 0
-      const countQuitacao = c3.count || 0
+      // Se temos período, não usamos a RPC padrão pois ela traz o acumulado total sem filtro de data.
+      // Em vez disso, fazemos a agregação das somas e counts de forma leve.
+      if (startDate && endDate) {
+        const [q1, q2, q3] = await Promise.all([
+          supabase.from('historico_proposta_comercial')
+            .select('valor_liberado')
+            .gte('created_at', startDate + 'T00:00:00')
+            .lte('created_at', endDate + 'T23:59:59'),
+          supabase.from('historico_proposta_comercial_novo_formato')
+            .select('valor_liberado')
+            .gte('created_at', startDate + 'T00:00:00')
+            .lte('created_at', endDate + 'T23:59:59'),
+          supabase.from('historico_proposta_comercial_quitacao_contrato')
+            .select('saldo_quitacao')
+            .gte('created_at', startDate + 'T00:00:00')
+            .lte('created_at', endDate + 'T23:59:59')
+        ])
+
+        countReducao = q1.data?.length || 0
+        countNovoFormato = q2.data?.length || 0
+        countQuitacao = q3.data?.length || 0
+
+        totalReducaoValor = q1.data?.reduce((sum, item) => sum + (Number(item.valor_liberado) || 0), 0) || 0
+        totalNovoFormatoValor = q2.data?.reduce((sum, item) => sum + (Number(item.valor_liberado) || 0), 0) || 0
+        totalQuitacaoValor = q3.data?.reduce((sum, item) => sum + (Number(item.saldo_quitacao) || 0), 0) || 0
+      } else {
+        // Sem filtro de período, tentamos usar a RPC de alta performance
+        const { data: rpcData, error: rpcError } = await supabase.rpc('get_proposals_stats')
+
+        if (!rpcError && rpcData) {
+          countReducao = parseInt(rpcData.countReducao) || 0
+          countNovoFormato = parseInt(rpcData.countNovoFormato) || 0
+          countQuitacao = parseInt(rpcData.countQuitacao) || 0
+          totalReducaoValor = parseFloat(rpcData.totalReducaoValor) || 0
+          totalNovoFormatoValor = parseFloat(rpcData.totalNovoFormatoValor) || 0
+          totalQuitacaoValor = parseFloat(rpcData.totalQuitacaoValor) || 0
+        } else {
+          console.warn("RPC get_proposals_stats falhou ou não existe, usando fallback leve:", rpcError)
+          // Fallback ultra-rápido: Apenas counts exatos (head: true, peso zero no DB)
+          const [c1, c2, c3] = await Promise.all([
+            supabase.from('historico_proposta_comercial').select('*', { count: 'exact', head: true }),
+            supabase.from('historico_proposta_comercial_novo_formato').select('*', { count: 'exact', head: true }),
+            supabase.from('historico_proposta_comercial_quitacao_contrato').select('*', { count: 'exact', head: true })
+          ])
+          countReducao = c1.count || 0
+          countNovoFormato = c2.count || 0
+          countQuitacao = c3.count || 0
+        }
+      }
+
       const total = countReducao + countNovoFormato + countQuitacao
 
-      // 2. Buscar apenas as colunas numéricas de valor para somar os totais acumulados de forma leve
-      const [v1, v2, v3] = await Promise.all([
-        supabase.from('historico_proposta_comercial').select('valor_liberado'),
-        supabase.from('historico_proposta_comercial_novo_formato').select('valor_liberado'),
-        supabase.from('historico_proposta_comercial_quitacao_contrato').select('saldo_quitacao')
-      ])
+      let combined: any[] = []
 
-      const totalReducaoValor = (v1.data || []).reduce((acc: number, item: any) => {
-        const val = parseFloat(item.valor_liberado)
-        return acc + (isNaN(val) ? 0 : val)
-      }, 0)
+      // 2. Buscar dados dependendo do card selecionado e da página (PAGINAÇÃO INTELIGENTE NO DB)
+      if (selectedProposalCard === 'total') {
+        // Para a visão total (ranking de colaboradores), buscamos todos os registros com colunas mínimas para precisão total
+        let query1 = supabase
+          .from('historico_proposta_comercial')
+          .select('user_nome, user_email, valor_liberado, created_at')
+        let query2 = supabase
+          .from('historico_proposta_comercial_novo_formato')
+          .select('user_nome, user_email, valor_liberado, created_at')
+        let query3 = supabase
+          .from('historico_proposta_comercial_quitacao_contrato')
+          .select('user_nome, user_email, saldo_quitacao, created_at')
 
-      const totalNovoFormatoValor = (v2.data || []).reduce((acc: number, item: any) => {
-        const val = parseFloat(item.valor_liberado)
-        return acc + (isNaN(val) ? 0 : val)
-      }, 0)
+        if (startDate && endDate) {
+          query1 = query1.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
+          query2 = query2.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
+          query3 = query3.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
+        }
 
-      const totalQuitacaoValor = (v3.data || []).reduce((acc: number, item: any) => {
-        const val = parseFloat(item.saldo_quitacao)
-        return acc + (isNaN(val) ? 0 : val)
-      }, 0)
+        const [r1, r2, r3] = await Promise.all([query1, query2, query3])
 
-      // 3. Buscar detalhes completos apenas das últimas 200 propostas de cada tipo para o histórico do painel
-      const [r1, r2, r3] = await Promise.all([
-        supabase
+        if (r1.data) {
+          combined = combined.concat(r1.data.map((item: any) => ({
+            ...item,
+            isNovoFormato: false,
+            isQuitacao: false
+          })))
+        }
+        if (r2.data) {
+          combined = combined.concat(r2.data.map((item: any) => ({
+            ...item,
+            isNovoFormato: true,
+            isQuitacao: false
+          })))
+        }
+        if (r3.data) {
+          combined = combined.concat(r3.data.map((item: any) => ({
+            ...item,
+            isNovoFormato: false,
+            isQuitacao: true
+          })))
+        }
+
+        combined.sort((a, b) => {
+          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
+          return dateB - dateA
+        })
+      } else if (selectedProposalCard === 'reducao') {
+        // Paginação real: Busca apenas os registros correspondentes da página atual do banco
+        const start = (proposalsPage - 1) * proposalsPageSize
+        const end = start + proposalsPageSize - 1
+
+        let query = supabase
           .from('historico_proposta_comercial')
           .select('id, cliente_nome, user_nome, user_email, total_parcela_atual, total_parcela_nova, valor_liberado, created_at, arquivo_url, tipo_arquivo')
           .order('created_at', { ascending: false })
-          .limit(200),
-        supabase
-          .from('historico_proposta_comercial_novo_formato')
-          .select('id, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo')
-          .order('created_at', { ascending: false })
-          .limit(200),
-        supabase
+          .range(start, end)
+
+        if (startDate && endDate) {
+          query = query.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
+        }
+
+        const { data } = await query
+
+        if (data) {
+          combined = data.map((item: any) => ({
+            ...item,
+            isNovoFormato: false,
+            isQuitacao: false
+          }))
+        }
+      } else if (selectedProposalCard === 'quitacao') {
+        const start = (proposalsPage - 1) * proposalsPageSize
+        const end = start + proposalsPageSize - 1
+
+        let query = supabase
           .from('historico_proposta_comercial_quitacao_contrato')
           .select('id, cliente_nome, user_nome, user_email, saldo_quitacao, parcela_atual, prazo_restante, nova_parcela, reducao_mensal, created_at, arquivo_url, tipo_arquivo')
           .order('created_at', { ascending: false })
-          .limit(200)
-      ])
+          .range(start, end)
 
-      let combined: any[] = []
-      if (r1.data) {
-        combined = combined.concat(r1.data.map((item: any) => ({
-          ...item,
-          isNovoFormato: false,
-          isQuitacao: false
-        })))
-      }
-      if (r2.data) {
-        combined = combined.concat(r2.data.map((item: any) => ({
-          ...item,
-          isNovoFormato: true,
-          isQuitacao: false
-        })))
-      }
-      if (r3.data) {
-        combined = combined.concat(r3.data.map((item: any) => ({
-          ...item,
-          isNovoFormato: false,
-          isQuitacao: true
-        })))
-      }
+        if (startDate && endDate) {
+          query = query.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
+        }
 
-      combined.sort((a, b) => {
-        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
-        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
-        return dateB - dateA
-      })
+        const { data } = await query
+
+        if (data) {
+          combined = data.map((item: any) => ({
+            ...item,
+            isNovoFormato: false,
+            isQuitacao: true
+          }))
+        }
+      } else if (selectedProposalCard === 'novo_formato') {
+        const start = (proposalsPage - 1) * proposalsPageSize
+        const end = start + proposalsPageSize - 1
+
+        let query = supabase
+          .from('historico_proposta_comercial_novo_formato')
+          .select('id, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo')
+          .order('created_at', { ascending: false })
+          .range(start, end)
+
+        if (startDate && endDate) {
+          query = query.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
+        }
+
+        const { data } = await query
+
+        if (data) {
+          combined = data.map((item: any) => ({
+            ...item,
+            isNovoFormato: true,
+            isQuitacao: false
+          }))
+        }
+      }
 
       setProposalsStats({
         total,
@@ -489,7 +594,7 @@ export function AdminDashboard({
     } finally {
       setIsProposalsStatsLoading(false)
     }
-  }, [])
+  }, [selectedProposalCard, proposalsPage, startDate, endDate])
 
   React.useEffect(() => {
     if (activeTab === 'propostas_comerciais') {
@@ -1650,7 +1755,7 @@ export function AdminDashboard({
             <MessageSquare className="w-4 h-4" />
             CHAMADOS
           </button>
-          {/* Aba Propostas Comerciais desativada temporariamente para otimização de performance no Supabase
+          {/* 
           <button
             onClick={() => setActiveTab('propostas_comerciais')}
             className={cn(
@@ -2558,6 +2663,61 @@ export function AdminDashboard({
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
+            {/* Sticky Period Selector with same styling as finance tab */}
+            <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all">
+              <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+                <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+                  {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
+                    <button
+                      key={period}
+                      onClick={() => handleDashboardPeriodChange(period)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                        dashboardPeriod === period
+                          ? "bg-white text-[#1C2643] shadow-sm font-extrabold"
+                          : "text-slate-500 hover:text-slate-700"
+                      )}
+                    >
+                      {period === 'mes' ? 'Mês' : period === 'trimestre' ? 'Trimestre' : period}
+                    </button>
+                  ))}
+                </div>
+
+                {dashboardPeriod === 'personalizado' && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mt-1 self-end"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+                      <input 
+                        type="date" 
+                        value={tempStartDate}
+                        onChange={(e) => setTempStartDate(e.target.value)}
+                        className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+                      <input 
+                        type="date" 
+                        value={tempEndDate}
+                        onChange={(e) => setTempEndDate(e.target.value)}
+                        className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                      />
+                    </div>
+                    <button
+                      onClick={applyDashboardPersonalizedFilter}
+                      className="px-2.5 py-1 bg-[#1C2643] text-white text-[9px] font-black rounded-md hover:bg-[#1C2643]/90 transition-all active:scale-95"
+                    >
+                      FILTRAR
+                    </button>
+                  </motion.div>
+                )}
+              </div>
+            </div>
+
             {isProposalsStatsLoading ? (
               <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-slate-100 shadow-sm">
                 <Loader2 className="w-10 h-10 animate-spin text-[#1C2643]" />
@@ -3054,6 +3214,49 @@ export function AdminDashboard({
                       </p>
                     </div>
                   )}
+
+                  {selectedProposalCard !== 'total' && (() => {
+                    const count = selectedProposalCard === 'reducao' ? (proposalsStats?.countReducao || 0) :
+                                  selectedProposalCard === 'quitacao' ? (proposalsStats?.countQuitacao || 0) :
+                                  selectedProposalCard === 'novo_formato' ? (proposalsStats?.countNovoFormato || 0) : 0;
+                    const totalPages = Math.ceil(count / proposalsPageSize);
+
+                    if (totalPages <= 1) return null;
+
+                    return (
+                      <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-6 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                          Página {proposalsPage} de {totalPages} ({count} propostas)
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            disabled={proposalsPage === 1}
+                            onClick={() => setProposalsPage(prev => Math.max(1, prev - 1))}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all select-none border flex items-center gap-1 cursor-pointer",
+                              proposalsPage === 1
+                                ? "bg-slate-50 text-slate-300 border-slate-100 pointer-events-none"
+                                : "bg-white hover:bg-slate-50 text-[#1C2643] border-slate-200"
+                            )}
+                          >
+                            Anterior
+                          </button>
+                          <button
+                            disabled={proposalsPage >= totalPages}
+                            onClick={() => setProposalsPage(prev => Math.min(totalPages, prev + 1))}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all select-none border flex items-center gap-1 cursor-pointer",
+                              proposalsPage >= totalPages
+                                ? "bg-slate-50 text-[#1C2643]/30 border-slate-100 pointer-events-none"
+                                : "bg-white hover:bg-slate-50 text-[#1C2643] border-slate-200"
+                            )}
+                          >
+                            Próxima
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </>
             )}

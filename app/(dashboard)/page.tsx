@@ -519,9 +519,9 @@ export default function DashboardPage() {
       startOfMonth.setHours(0, 0, 0, 0)
       startOfMonth.setDate(1)
 
-      // Custom range for Supervisor and Admin and Operational and Recursos Humanos
-      const customStart = (isSupervisor || isAdmin || isOperational || isRecursosHumanos) && startDate ? new Date(startDate + 'T00:00:00') : null
-      const customEnd = (isSupervisor || isAdmin || isOperational || isRecursosHumanos) && endDate ? new Date(endDate + 'T23:59:59') : null
+      // Custom range for Supervisor and Admin and Operational and Recursos Humanos and Estagio
+      const customStart = (isSupervisor || isAdmin || isOperational || isRecursosHumanos || isEstagio) && startDate ? new Date(startDate + 'T00:00:00') : null
+      const customEnd = (isSupervisor || isAdmin || isOperational || isRecursosHumanos || isEstagio) && endDate ? new Date(endDate + 'T23:59:59') : null
 
       const startOfWeek = new Date()
       startOfWeek.setHours(0, 0, 0, 0)
@@ -708,7 +708,7 @@ export default function DashboardPage() {
           const { data: internProposals, error: internPropsError } = await withRetry(() =>
             supabase
               .from("propostas")
-              .select("id, status, valor_producao, estagiario_colaborador_id, nome_cliente, banco, convenio, tipo_operacao")
+              .select("id, status, valor_producao, estagiario_colaborador_id, nome_cliente, banco, convenio, tipo_operacao, created_at, updated_at, data_pago_cliente")
               .eq("estagiario_colaborador_id", perfil?.id)
           )
 
@@ -718,7 +718,18 @@ export default function DashboardPage() {
             const matchedProps: InternProposalDetail[] = []
 
             internProposals.forEach(p => {
-              if (p.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA" || p.status === "PÓS-VENDA REALIZADA") {
+              const updatedDate = new Date(p.updated_at)
+              const effectivePaymentDate = p.data_pago_cliente ? new Date(p.data_pago_cliente) : updatedDate
+
+              let isPaidInRange = true
+              if (customStart || customEnd) {
+                if (customStart && effectivePaymentDate < customStart) isPaidInRange = false
+                if (customEnd && effectivePaymentDate > customEnd) isPaidInRange = false
+              } else {
+                isPaidInRange = effectivePaymentDate >= startOfMonth
+              }
+
+              if ((p.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA" || p.status === "PÓS-VENDA REALIZADA") && isPaidInRange) {
                 paidCount++
                 const moneyVal = parseCurrency(p.valor_producao)
                 if (!isNaN(moneyVal)) {
@@ -737,14 +748,17 @@ export default function DashboardPage() {
             setInternPaidProposals([])
           }
 
-          // Fetch only approved tickets/chamados in the current month in exercise
+          const ticketsStart = customStart || targetMonthStart
+          const ticketsEnd = customEnd || targetMonthEnd
+
+          // Fetch only approved tickets/chamados in the period
           const { data: monthTickets, error: monthTicketsError } = await withRetry(() =>
             supabase
               .from("chamados")
               .select("status, created_at, user_id")
               .eq("user_id", perfil?.id)
-              .gte("created_at", targetMonthStart.toISOString())
-              .lte("created_at", targetMonthEnd.toISOString())
+              .gte("created_at", ticketsStart.toISOString())
+              .lte("created_at", ticketsEnd.toISOString())
           )
 
           let approvedCount = 0
@@ -1696,6 +1710,11 @@ export default function DashboardPage() {
       supabase.removeChannel(channel)
     }
   }, [perfil?.id, fetchDashboardData])
+  
+  useEffect(() => {
+    if (startDate) setTempStartDate(startDate)
+    if (endDate) setTempEndDate(endDate)
+  }, [startDate, endDate])
 
   useEffect(() => {
     if (banners.length <= 1) {
@@ -2033,8 +2052,8 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Seu Atendimento em Destaque Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-100 pt-8 mt-4 animate-fade-in">
-                    <div>
+                  <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 border-t border-slate-100 pt-8 mt-4 animate-fade-in">
+                    <div className="flex-1">
                       <h3 className="text-xl font-extrabold text-[#1C2643] tracking-tight">
                         Seu Atendimento em Destaque
                       </h3>
@@ -2042,9 +2061,76 @@ export default function DashboardPage() {
                         Acompanhe sua contribuição na jornada de atendimento e o seu desenvolvimento ao longo do período.
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-full px-3.5 py-1.5 self-start sm:self-center">
-                      <span className="w-2 h-2 bg-[#00C896] rounded-full animate-pulse shrink-0" />
-                      <span className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider">Período atual</span>
+                    
+                    <div className="w-full xl:w-auto shrink-0">
+                      <DashboardCard className="shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3.5 !p-[18px] sm:!p-5 !rounded-[24px] bg-white border border-slate-200 w-full xl:min-w-[340px]">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+                            <Calendar className="w-4 h-4 text-amber-500 fill-amber-500" />
+                          </div>
+                          <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-widest">Filtrar por Período</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Início</span>
+                            <input 
+                              type="date" 
+                              value={tempStartDate}
+                              onChange={(e) => setTempStartDate(e.target.value)}
+                              className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                            />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Fim</span>
+                            <input 
+                              type="date" 
+                              value={tempEndDate}
+                              onChange={(e) => setTempEndDate(e.target.value)}
+                              className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-1.5 mt-1">
+                          <button 
+                            onClick={() => {
+                              setStartDate(tempStartDate);
+                              setEndDate(tempEndDate);
+                            }}
+                            disabled={!tempStartDate && !tempEndDate}
+                            className="px-2.5 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center h-8 cursor-pointer"
+                          >
+                            FILTRAR
+                          </button>
+                          <button 
+                            onClick={() => {
+                              const todayStr = format(new Date(), "yyyy-MM-dd");
+                              setTempStartDate(todayStr);
+                              setTempEndDate(todayStr);
+                              setStartDate(todayStr);
+                              setEndDate(todayStr);
+                            }}
+                            className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8 cursor-pointer"
+                          >
+                            HOJE
+                          </button>
+                          <button 
+                            onClick={() => {
+                              const now = new Date();
+                              const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+                              const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+                              setTempStartDate(firstDay);
+                              setTempEndDate(lastDay);
+                              setStartDate(firstDay);
+                              setEndDate(lastDay);
+                            }}
+                            className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8 cursor-pointer"
+                          >
+                            MÊS
+                          </button>
+                        </div>
+                      </DashboardCard>
                     </div>
                   </div>
 
