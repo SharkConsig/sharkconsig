@@ -91,7 +91,22 @@ const APROVADOS_LABELS = [
   "PREF SAO PAULO - NOVO APROVADO",
   "PREF SAO PAULO - CARTÃO CONSIGNADO APROVADO",
   "GOV PR - NOVO APROVADO",
-  "GOV PR - BENEFICIO APROVADO"
+  "GOV PR - BENEFICIO APROVADO",
+  "PREF SANTO ANDRE - NOVO APROVADO",
+  "PREF SANTO ANDRE - CARTAO APROVADO",
+  "GOV PI - CARTÃO BENEFICIO APROVADO",
+  "GOV PI - CARTÃO CONSIGNADO APROVADO",
+  "GOV RR - CARTÃO CONSIGNADO APROVADO",
+  "GOV SP - CARTÃO CONSIGNADO APROVADO",
+  "GOV RJ - SAQUE APROVADO",
+  "GOV MG - NOVO APROVADO",
+  "PREF CONTAGEM - CARTAO APROVADO",
+  "PREF CONTAGEM - NOVO APROVADO",
+  "GOV PI - NOVO APROVADO",
+  "GOV MA - CARTÃO BENEFICIO APROVADO",
+  "GOV MA - CARTÃO CONSIGNADO APROVADO",
+  "GOV MA - NOVO APROVADO",
+  "CLIENTE APROVADO - PORTABILIDADE"
 ]
 
 const NAO_APROVADOS_LABELS = [
@@ -106,6 +121,11 @@ const NAO_APROVADOS_LABELS = [
   "COMPRA DE DIVIDA CARTÃO - NÃO APROVADO",
   "PREF SAO PAULO - NÃO APROVADO",
   "GOV PR - NOVO NÃO ARPROVADO"
+]
+
+const NEGOCIACAO_LABELS = [
+  "EM NEGOCIAÇÃO",
+  "PROPOSTA ENVIADA"
 ]
 
 const parseDescriptionMetadata = (desc: string) => {
@@ -670,6 +690,12 @@ export default function TicketsPage() {
             const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
             return ticketStatusUpper === u || ticketStatusUpper === ua
           })
+        } else if (selectedStatus === "EM NEGOCIAÇÃO / PROPOSTA ENVIADA") {
+          matchesStatus = NEGOCIACAO_LABELS.some(label => {
+            const u = label.toUpperCase()
+            const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+            return ticketStatusUpper === u || ticketStatusUpper === ua
+          })
         } else if (selectedStatus === "ABERTO") {
           matchesStatus = ticketStatusUpper === "ABERTO" || ticketStatusUpper === "ABERTOS"
         } else if (selectedStatus === "AGUARDANDO OPERACIONAL") {
@@ -727,6 +753,17 @@ export default function TicketsPage() {
         const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
         return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
       }, 0)
+    } else if (card.label === "EM NEGOCIAÇÃO / PROPOSTA ENVIADA") {
+      count = NEGOCIACAO_LABELS.reduce((acc, label) => {
+        const u = label.toUpperCase()
+        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+        return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
+      }, 0)
+      totalValor = NEGOCIACAO_LABELS.reduce((acc, label) => {
+        const u = label.toUpperCase()
+        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+        return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
+      }, 0)
     } else if (card.label === "TODOS") {
       count = baseFilteredTickets.length
       totalValor = baseFilteredTickets.reduce((acc, t) => {
@@ -744,7 +781,7 @@ export default function TicketsPage() {
       setSelectedSecondaryStatus(null)
     } else {
       setSelectedStatus(status)
-      if (status !== "APROVADOS" && status !== "NÃO APROVADOS") {
+      if (status !== "APROVADOS" && status !== "NÃO APROVADOS" && status !== "EM NEGOCIAÇÃO / PROPOSTA ENVIADA") {
         setSelectedSecondaryStatus(null)
       }
     }
@@ -761,7 +798,13 @@ export default function TicketsPage() {
   }
 
   const secondaryCards = useMemo(() => {
-    const labels = selectedStatus === "APROVADOS" ? APROVADOS_LABELS : (selectedStatus === "NÃO APROVADOS" ? NAO_APROVADOS_LABELS : [])
+    const labels = selectedStatus === "APROVADOS" 
+      ? APROVADOS_LABELS 
+      : selectedStatus === "NÃO APROVADOS" 
+        ? NAO_APROVADOS_LABELS 
+        : selectedStatus === "EM NEGOCIAÇÃO / PROPOSTA ENVIADA"
+          ? NEGOCIACAO_LABELS
+          : []
     
     return labels.map(label => {
       const u = label.toUpperCase()
@@ -1272,10 +1315,10 @@ export default function TicketsPage() {
           ))}
         </div>
 
-        {/* Secondary Status Cards (Only visible if APROVADOS or NÃO APROVADOS is selected) */}
+        {/* Secondary Status Cards (Only visible if APROVADOS or NÃO APROVADOS or EM NEGOCIAÇÃO / PROPOSTA ENVIADA is selected) */}
         <div className={cn(
           "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 transition-all duration-300 overflow-hidden",
-          (selectedStatus === "APROVADOS" || selectedStatus === "NÃO APROVADOS") ? "max-h-[800px] opacity-100 pt-2" : "max-h-0 opacity-0 pointer-events-none"
+          (selectedStatus === "APROVADOS" || selectedStatus === "NÃO APROVADOS" || selectedStatus === "EM NEGOCIAÇÃO / PROPOSTA ENVIADA") ? "max-h-[800px] opacity-100 pt-2" : "max-h-0 opacity-0 pointer-events-none"
         )}>
           {secondaryCards.map((card) => (
             <button 
