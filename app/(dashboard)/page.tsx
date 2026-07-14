@@ -3598,7 +3598,64 @@ export default function DashboardPage() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-6"
             >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+              <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all mb-6">
+                <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+                  <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+                    {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
+                      <button
+                        key={period}
+                        onClick={() => handleDashboardPeriodChange(period)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                          dashboardPeriod === period
+                            ? "bg-white text-[#1C2643] shadow-sm font-extrabold"
+                            : "text-slate-500 hover:text-slate-700"
+                        )}
+                      >
+                        {period === 'mes' ? 'Mês' : period === 'trimestre' ? 'Trimestre' : period}
+                      </button>
+                    ))}
+                  </div>
+
+                  {dashboardPeriod === 'personalizado' && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mt-1 self-end"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+                        <input 
+                          type="date" 
+                          value={tempStartDate}
+                          onChange={(e) => setTempStartDate(e.target.value)}
+                          className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+                        <input 
+                          type="date" 
+                          value={tempEndDate}
+                          onChange={(e) => setTempEndDate(e.target.value)}
+                          className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          setStartDate(tempStartDate);
+                          setEndDate(tempEndDate);
+                        }}
+                        className="px-2.5 py-1 bg-[#1C2643] text-white text-[9px] font-black rounded-md hover:bg-[#1C2643]/90 transition-all active:scale-95 cursor-pointer"
+                      >
+                        FILTRAR
+                      </button>
+                    </motion.div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
               <DashboardCard className="p-6 bg-[#FE9A00]/5 border-[#FE9A00]/20 shadow-sm">
                 <p className="text-[10px] font-black text-[#FE9A00] uppercase tracking-[0.2em] mb-1">Aberto</p>
                 <p className="text-3xl font-black text-[#FE9A00] tracking-tighter">{ticketStats?.aberto || 0}</p>

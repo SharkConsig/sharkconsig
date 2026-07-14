@@ -31,6 +31,7 @@ import {
 import { format } from "date-fns"
 import { cn, formatName } from "@/lib/utils"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
@@ -154,6 +155,7 @@ export function AdminDashboard({
   estagioRankingGroup,
   onlyPropostasComerciais = false
 }: AdminDashboardProps) {
+  const router = useRouter()
   const {
     monthlyGoal = 0,
     monthlyProduced = 0,
@@ -215,12 +217,88 @@ export function AdminDashboard({
   const [proposalsPage, setProposalsPage] = React.useState(1)
   const proposalsPageSize = 15
 
+  const [loadedGroupDetails, setLoadedGroupDetails] = React.useState<Record<string, { items: any[]; loading: boolean }>>({})
+
   React.useEffect(() => {
     setProposalsPage(1)
+    setExpandedProposalGroups({})
+    setLoadedGroupDetails({})
   }, [selectedProposalCard, startDate, endDate])
   const [analysisTab, setAnalysisTab] = React.useState<'produtos' | 'convenios' | 'bancos' | 'comercial'>('produtos')
   const [rankingMetric, setRankingMetric] = React.useState<'producao' | 'receita' | 'crescimento'>('producao')
   const [expandedSupervisorIds, setExpandedSupervisorIds] = React.useState<Record<string, boolean>>({})
+  const [expandedProposalGroups, setExpandedProposalGroups] = React.useState<Record<string, boolean>>({})
+
+  const handleToggleGroup = async (colabName: string, originalItems: any[]) => {
+    const isExpanded = !!expandedProposalGroups[colabName];
+    const nextExpanded = !isExpanded;
+    
+    setExpandedProposalGroups(prev => ({
+      ...prev,
+      [colabName]: nextExpanded
+    }));
+
+    if (nextExpanded && !loadedGroupDetails[colabName]) {
+      setLoadedGroupDetails(prev => ({
+        ...prev,
+        [colabName]: { items: [], loading: true }
+      }));
+
+      try {
+        let table = '';
+        let selectStr = '';
+        if (selectedProposalCard === 'reducao') {
+          table = 'historico_proposta_comercial';
+          selectStr = 'id, cliente_cpf, cliente_nome, user_nome, user_email, total_parcela_atual, total_parcela_nova, valor_liberado, created_at, arquivo_url, tipo_arquivo';
+        } else if (selectedProposalCard === 'quitacao') {
+          table = 'historico_proposta_comercial_quitacao_contrato';
+          selectStr = 'id, cliente_cpf, cliente_nome, user_nome, user_email, saldo_quitacao, parcela_atual, prazo_restante, nova_parcela, reducao_mensal, valor_liberado, created_at, arquivo_url, tipo_arquivo';
+        } else if (selectedProposalCard === 'novo_formato') {
+          table = 'historico_proposta_comercial_novo_formato';
+          selectStr = 'id, cliente_cpf, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo';
+        }
+
+        if (table) {
+          const ids = originalItems.map(item => item.id).filter(Boolean);
+          if (ids.length > 0) {
+            const { data, error } = await supabase
+              .from(table)
+              .select(selectStr)
+              .in('id', ids);
+
+            if (!error && data) {
+              const mapped = data.map(item => ({
+                ...item,
+                isNovoFormato: selectedProposalCard === 'novo_formato',
+                isQuitacao: selectedProposalCard === 'quitacao'
+              }));
+              mapped.sort((a, b) => {
+                const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                return dateB - dateA;
+              });
+
+              setLoadedGroupDetails(prev => ({
+                ...prev,
+                [colabName]: { items: mapped, loading: false }
+              }));
+              return;
+            } else if (error) {
+              console.error("Erro ao buscar detalhes da proposta:", error);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao buscar detalhes da proposta:", err);
+      }
+
+      // Fallback
+      setLoadedGroupDetails(prev => ({
+        ...prev,
+        [colabName]: { items: originalItems, loading: false }
+      }));
+    }
+  };
 
   // Date states for the financial panel - defaults to current month (mês em exercício)
   const [financialPeriod, setFinancialPeriod] = React.useState<'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado'>('mes')
@@ -529,15 +607,10 @@ export function AdminDashboard({
           return dateB - dateA
         })
       } else if (selectedProposalCard === 'reducao') {
-        // Paginação real: Busca apenas os registros correspondentes da página atual do banco
-        const start = (proposalsPage - 1) * proposalsPageSize
-        const end = start + proposalsPageSize - 1
-
         let query = supabase
           .from('historico_proposta_comercial')
-          .select('id, cliente_nome, user_nome, user_email, total_parcela_atual, total_parcela_nova, valor_liberado, created_at, arquivo_url, tipo_arquivo')
+          .select('id, user_nome, user_email, valor_liberado, created_at')
           .order('created_at', { ascending: false })
-          .range(start, end)
 
         if (startDate && endDate) {
           query = query.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
@@ -553,14 +626,10 @@ export function AdminDashboard({
           }))
         }
       } else if (selectedProposalCard === 'quitacao') {
-        const start = (proposalsPage - 1) * proposalsPageSize
-        const end = start + proposalsPageSize - 1
-
         let query = supabase
           .from('historico_proposta_comercial_quitacao_contrato')
-          .select('id, cliente_nome, user_nome, user_email, saldo_quitacao, parcela_atual, prazo_restante, nova_parcela, reducao_mensal, created_at, arquivo_url, tipo_arquivo')
+          .select('id, user_nome, user_email, saldo_quitacao, created_at')
           .order('created_at', { ascending: false })
-          .range(start, end)
 
         if (startDate && endDate) {
           query = query.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
@@ -576,14 +645,10 @@ export function AdminDashboard({
           }))
         }
       } else if (selectedProposalCard === 'novo_formato') {
-        const start = (proposalsPage - 1) * proposalsPageSize
-        const end = start + proposalsPageSize - 1
-
         let query = supabase
           .from('historico_proposta_comercial_novo_formato')
-          .select('id, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo')
+          .select('id, user_nome, user_email, valor_liberado, created_at')
           .order('created_at', { ascending: false })
-          .range(start, end)
 
         if (startDate && endDate) {
           query = query.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
@@ -3529,255 +3594,348 @@ export function AdminDashboard({
                         </table>
                       </div>
                     );
-                  })() : filteredProposals.length > 0 ? (
-                    <div className="flex flex-col gap-4">
-                      {filteredProposals.map((item: any, idx: number) => {
-                        const formattedDate = item.created_at ? format(new Date(item.created_at), "dd/MM/yyyy 'às' HH:mm") : "--"
-                        
-                        if (selectedProposalCard === 'quitacao') {
-                          return (
-                            <div 
-                              key={item.id || idx} 
-                              className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
-                            >
-                              <div className="flex items-center gap-3 min-w-[200px]">
-                                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                                  <History className="w-4 h-4" />
-                                </div>
-                                <div>
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
-                                  <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
-                                    {item.user_nome || item.user_email || "Não informado"}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-col min-w-[150px]">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
-                                <span className="text-[10px] font-black text-[#1C2643] bg-amber-50 border border-amber-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
-                                  QUITAÇÃO DE CONTRATO
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Saldo para Quitação</span>
-                                <span className="text-sm font-black text-[#c44a4a] font-mono leading-none">
-                                  {item.saldo_quitacao ? formatCurrency(item.saldo_quitacao) : "--"}
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Economia Total</span>
-                                <span className="text-sm font-black text-emerald-600 font-mono leading-none">
-                                  {(() => {
-                                    const prazo = parseInt(item.prazo_restante) || 96
-                                    const pAtual = parseFloat(item.parcela_atual) || 0
-                                    const pNova = parseFloat(item.nova_parcela) || 0
-                                    return formatCurrency(Math.max(0, (pAtual - pNova) * prazo))
-                                  })()}
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Redução Mensal</span>
-                                <span className="text-sm font-black text-emerald-600 font-mono leading-none">
-                                  {item.reducao_mensal ? formatCurrency(item.reducao_mensal) : "--"}
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
-                                <span className="text-xs font-bold text-slate-500 font-mono leading-none">
-                                  {formattedDate}
-                                </span>
-                              </div>
-
-                              <div className="flex items-center">
-                                <button
-                                  onClick={() => handleDownloadProposal(item)}
-                                  className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer"
-                                >
-                                  <Download className="w-3 h-3" />
-                                  JPG
-                                </button>
-                              </div>
-                            </div>
-                          )
-                        } else if (selectedProposalCard === 'novo_formato') {
-                          return (
-                            <div 
-                              key={item.id || idx} 
-                              className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
-                            >
-                              <div className="flex items-center gap-3 min-w-[200px]">
-                                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                                  <History className="w-4 h-4" />
-                                </div>
-                                <div>
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
-                                  <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
-                                    {item.user_nome || item.user_email || "Não informado"}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-col min-w-[150px]">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
-                                <span className="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
-                                  NOVO FORMATO
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Antigo</span>
-                                <span className="text-sm font-bold text-slate-500 font-mono leading-none">
-                                  {item.valor_liberado ? formatCurrency(item.valor_liberado * 0.70) : "--"}
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Atual</span>
-                                <span className="text-sm font-black text-yellow-600 font-mono leading-none">
-                                  {item.valor_liberado ? formatCurrency(item.valor_liberado) : "--"}
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
-                                <span className="text-xs font-bold text-slate-500 font-mono leading-none">
-                                  {formattedDate}
-                                </span>
-                              </div>
-
-                              <div className="flex items-center">
-                                <button
-                                  onClick={() => handleDownloadProposal(item)}
-                                  className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer"
-                                >
-                                  <Download className="w-3 h-3" />
-                                  JPG
-                                </button>
-                              </div>
-                            </div>
-                          )
-                        } else {
-                          // Redução de Parcela
-                          return (
-                            <div 
-                              key={item.id || idx} 
-                              className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
-                            >
-                              <div className="flex items-center gap-3 min-w-[200px]">
-                                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                                  <History className="w-4 h-4" />
-                                </div>
-                                <div>
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
-                                  <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
-                                    {item.user_nome || item.user_email || "Não informado"}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-col min-w-[150px]">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
-                                <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
-                                  REDUÇÃO DE PARCELA
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Liberado</span>
-                                <span className="text-sm font-black text-emerald-600 font-mono leading-none">
-                                  {item.valor_liberado ? formatCurrency(item.valor_liberado) : "--"}
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Parcela Antiga ➔ Parcela Nova</span>
-                                <span className="text-sm font-bold text-slate-700 leading-none">
-                                  <span className="text-slate-800">{formatCurrency(item.total_parcela_atual || 0)}</span> ➔ <span className="text-emerald-600 font-black">{formatCurrency(item.total_parcela_nova || 0)}</span>
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Diferença nas Parcelas</span>
-                                <span className="text-sm font-black text-emerald-600 font-mono leading-none">
-                                  {formatCurrency((item.total_parcela_nova || 0) - (item.total_parcela_atual || 0))}
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
-                                <span className="text-xs font-bold text-slate-500 font-mono leading-none">
-                                  {formattedDate}
-                                </span>
-                              </div>
-
-                              <div className="flex items-center">
-                                <button
-                                  onClick={() => handleDownloadProposal(item)}
-                                  className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer"
-                                >
-                                  <Download className="w-3 h-3" />
-                                  JPG
-                                </button>
-                              </div>
-                            </div>
-                          )
+                  })() : filteredProposals.length > 0 ? (() => {
+                    // Group proposals by collaborator
+                    const groupedProposals = (() => {
+                      const groups: Record<string, any[]> = {};
+                      filteredProposals.forEach(item => {
+                        const rawName = (item.user_nome || item.user_email || "Não informado").trim();
+                        const key = rawName.toUpperCase();
+                        if (!groups[key]) {
+                          groups[key] = [];
                         }
-                      })}
-                    </div>
-                  ) : (
+                        groups[key].push(item);
+                      });
+                      return Object.entries(groups).map(([key, items]) => {
+                        const sortedItems = [...items].sort((a, b) => {
+                          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                          return dateB - dateA;
+                        });
+                        
+                        let sum = 0;
+                        if (selectedProposalCard === 'quitacao') {
+                          sum = sortedItems.reduce((acc, curr) => acc + (parseFloat(curr.saldo_quitacao) || 0), 0);
+                        } else {
+                          sum = sortedItems.reduce((acc, curr) => acc + (parseFloat(curr.valor_liberado) || 0), 0);
+                        }
+
+                        const colaborador = sortedItems[0]?.user_nome || sortedItems[0]?.user_email || "Não informado";
+
+                        return {
+                          colaborador,
+                          sum,
+                          items: sortedItems,
+                          latestDate: sortedItems[0]?.created_at
+                        };
+                      });
+                    })();
+
+                    return (
+                      <div className="flex flex-col gap-6">
+                        {groupedProposals.map((group, gIdx) => {
+                          const { colaborador, sum, items, latestDate } = group;
+                          const isExpanded = !!expandedProposalGroups[colaborador];
+                          const loaded = loadedGroupDetails[colaborador] || { items: [], loading: false };
+                          
+                          return (
+                            <div key={colaborador || gIdx} className="space-y-4">
+                              {/* Parent Row (Accordion Header) */}
+                              <div 
+                                onClick={() => handleToggleGroup(colaborador, items)}
+                                className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 hover:shadow-md transition-all shadow-sm cursor-pointer select-none"
+                              >
+                                <div className="flex items-center gap-3 min-w-[200px]">
+                                  <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
+                                    <Users className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
+                                    <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
+                                      {colaborador}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-slate-400 mt-1 block leading-none">
+                                      {items.length} {items.length === 1 ? 'proposta' : 'propostas'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col min-w-[150px]">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
+                                  {selectedProposalCard === 'quitacao' ? (
+                                    <span className="text-[10px] font-black text-[#1C2643] bg-amber-50 border border-amber-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                                      QUITAÇÃO DE CONTRATO
+                                    </span>
+                                  ) : selectedProposalCard === 'novo_formato' ? (
+                                    <span className="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                                      NOVO FORMATO
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                                      REDUÇÃO DE PARCELA
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-col">
+                                  {selectedProposalCard === 'quitacao' ? (
+                                    <>
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Soma dos Saldos para Quitação</span>
+                                      <span className="text-sm font-black text-[#c44a4a] font-mono leading-none">
+                                        {formatCurrency(sum)}
+                                      </span>
+                                    </>
+                                  ) : selectedProposalCard === 'novo_formato' ? (
+                                    <>
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Soma dos Valores Atuais</span>
+                                      <span className="text-sm font-black text-yellow-600 font-mono leading-none">
+                                        {formatCurrency(sum)}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Soma do Total Liberado</span>
+                                      <span className="text-sm font-black text-emerald-600 font-mono leading-none">
+                                        {formatCurrency(sum)}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-col">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+                                  <span className="text-xs font-bold text-slate-500 font-mono leading-none">
+                                    {latestDate ? format(new Date(latestDate), "dd/MM/yyyy 'às' HH:mm") : "--"}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-50 transition-all">
+                                  {isExpanded ? (
+                                    <ChevronUp className="w-4 h-4 text-slate-500" />
+                                  ) : (
+                                    <ChevronDown className="w-4 h-4 text-slate-500" />
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Expanded Child Proposals */}
+                              {isExpanded && (
+                                <div className="pl-6 border-l-2 border-slate-200/60 ml-4 space-y-4 pt-2 pb-2">
+                                  {loaded.loading ? (
+                                    <div className="flex items-center justify-center py-6">
+                                      <Loader2 className="w-5 h-5 animate-spin text-[#1C2643]" />
+                                      <span className="text-xs font-semibold text-slate-400 ml-2">Carregando detalhes...</span>
+                                    </div>
+                                  ) : loaded.items.length === 0 ? (
+                                    <div className="text-xs text-slate-400 font-bold py-2">
+                                      Nenhuma proposta carregada.
+                                    </div>
+                                  ) : (
+                                    loaded.items.map((item: any, idx: number) => {
+                                      const formattedDate = item.created_at ? format(new Date(item.created_at), "dd/MM/yyyy 'às' HH:mm") : "--"
+                                      
+                                      if (selectedProposalCard === 'quitacao') {
+                                        return (
+                                          <div 
+                                            key={item.id || idx} 
+                                            className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
+                                          >
+                                            <div className="flex items-center gap-3 min-w-[200px]">
+                                              <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-[#1C2643]">
+                                                <History className="w-4 h-4" />
+                                              </div>
+                                              <div>
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Cliente</span>
+                                                <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
+                                                  {item.cliente_nome || "Não informado"}
+                                                </span>
+                                                <span className="text-[10px] font-bold text-slate-400 mt-1 block leading-none font-mono">
+                                                  {item.cliente_cpf ? item.cliente_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="flex flex-col min-w-[150px]">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
+                                              <span className="text-[10px] font-black text-[#1C2643] bg-amber-50 border border-amber-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                                                QUITAÇÃO DE CONTRATO
+                                              </span>
+                                            </div>
+
+                                            <div className="flex flex-col">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Saldo para Quitação</span>
+                                              <span className="text-sm font-black text-[#c44a4a] font-mono leading-none">
+                                                {item.saldo_quitacao ? formatCurrency(item.saldo_quitacao) : "--"}
+                                              </span>
+                                            </div>
+
+                                            <div className="flex flex-col">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Redução Mensal</span>
+                                              <span className="text-sm font-black text-emerald-600 font-mono leading-none">
+                                                {item.reducao_mensal ? formatCurrency(item.reducao_mensal) : "--"}
+                                              </span>
+                                            </div>
+
+                                            <div className="flex flex-col">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+                                              <span className="text-xs font-bold text-slate-500 font-mono leading-none">
+                                                {formattedDate}
+                                              </span>
+                                            </div>
+
+                                            <div className="flex items-center">
+                                              <button
+                                                onClick={() => {
+                                                  if (item.cliente_cpf) {
+                                                    router.push(`/pesquisa?cpf=${item.cliente_cpf}`)
+                                                  } else {
+                                                    toast.error("CPF do cliente não encontrado para esta proposta.")
+                                                  }
+                                                }}
+                                                className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap"
+                                              >
+                                                <ArrowRight className="w-3 h-3" />
+                                                ACESSAR CLIENTE
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )
+                                      } else if (selectedProposalCard === 'novo_formato') {
+                                        return (
+                                          <div 
+                                            key={item.id || idx} 
+                                            className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
+                                          >
+                                            <div className="flex items-center gap-3 min-w-[200px]">
+                                              <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-[#1C2643]">
+                                                <History className="w-4 h-4" />
+                                              </div>
+                                              <div>
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Cliente</span>
+                                                <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
+                                                  {item.cliente_nome || "Não informado"}
+                                                </span>
+                                                <span className="text-[10px] font-bold text-slate-400 mt-1 block leading-none font-mono">
+                                                  {item.cliente_cpf ? item.cliente_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="flex flex-col min-w-[150px]">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
+                                              <span className="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                                                NOVO FORMATO
+                                              </span>
+                                            </div>
+
+                                            <div className="flex flex-col">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Atual</span>
+                                              <span className="text-sm font-black text-yellow-600 font-mono leading-none">
+                                                {item.valor_liberado ? formatCurrency(item.valor_liberado) : "--"}
+                                              </span>
+                                            </div>
+
+                                            <div className="flex flex-col">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+                                              <span className="text-xs font-bold text-slate-500 font-mono leading-none">
+                                                {formattedDate}
+                                              </span>
+                                            </div>
+
+                                            <div className="flex items-center">
+                                              <button
+                                                onClick={() => {
+                                                  if (item.cliente_cpf) {
+                                                    router.push(`/pesquisa?cpf=${item.cliente_cpf}`)
+                                                  } else {
+                                                    toast.error("CPF do cliente não encontrado para esta proposta.")
+                                                  }
+                                                }}
+                                                className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap"
+                                              >
+                                                <ArrowRight className="w-3 h-3" />
+                                                ACESSAR CLIENTE
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )
+                                      } else {
+                                        // Redução de Parcela
+                                        return (
+                                          <div 
+                                            key={item.id || idx} 
+                                            className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
+                                          >
+                                            <div className="flex items-center gap-3 min-w-[200px]">
+                                              <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-[#1C2643]">
+                                                <History className="w-4 h-4" />
+                                              </div>
+                                              <div>
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Cliente</span>
+                                                <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
+                                                  {item.cliente_nome || "Não informado"}
+                                                </span>
+                                                <span className="text-[10px] font-bold text-slate-400 mt-1 block leading-none font-mono">
+                                                  {item.cliente_cpf ? item.cliente_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="flex flex-col min-w-[150px]">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
+                                              <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                                                REDUÇÃO DE PARCELA
+                                              </span>
+                                            </div>
+
+                                            <div className="flex flex-col">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Liberado</span>
+                                              <span className="text-sm font-black text-emerald-600 font-mono leading-none">
+                                                {item.valor_liberado ? formatCurrency(item.valor_liberado) : "--"}
+                                              </span>
+                                            </div>
+
+                                            <div className="flex flex-col">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+                                              <span className="text-xs font-bold text-slate-500 font-mono leading-none">
+                                                {formattedDate}
+                                              </span>
+                                            </div>
+
+                                            <div className="flex items-center">
+                                              <button
+                                                onClick={() => {
+                                                  if (item.cliente_cpf) {
+                                                    router.push(`/pesquisa?cpf=${item.cliente_cpf}`)
+                                                  } else {
+                                                    toast.error("CPF do cliente não encontrado para esta proposta.")
+                                                  }
+                                                }}
+                                                className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap"
+                                              >
+                                                <ArrowRight className="w-3 h-3" />
+                                                ACESSAR CLIENTE
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )
+                                      }
+                                    })
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })() : (
                     <div className="flex flex-col items-center justify-center py-12 bg-white rounded-2xl border border-slate-100 shadow-sm">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                         Nenhuma proposta encontrada para esta estratégia
                       </p>
                     </div>
                   )}
-
-                  {selectedProposalCard !== 'total' && (() => {
-                    const count = selectedProposalCard === 'reducao' ? (proposalsStats?.countReducao || 0) :
-                                  selectedProposalCard === 'quitacao' ? (proposalsStats?.countQuitacao || 0) :
-                                  selectedProposalCard === 'novo_formato' ? (proposalsStats?.countNovoFormato || 0) : 0;
-                    const totalPages = Math.ceil(count / proposalsPageSize);
-
-                    if (totalPages <= 1) return null;
-
-                    return (
-                      <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-6 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                          Página {proposalsPage} de {totalPages} ({count} propostas)
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            disabled={proposalsPage === 1}
-                            onClick={() => setProposalsPage(prev => Math.max(1, prev - 1))}
-                            className={cn(
-                              "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all select-none border flex items-center gap-1 cursor-pointer",
-                              proposalsPage === 1
-                                ? "bg-slate-50 text-slate-300 border-slate-100 pointer-events-none"
-                                : "bg-white hover:bg-slate-50 text-[#1C2643] border-slate-200"
-                            )}
-                          >
-                            Anterior
-                          </button>
-                          <button
-                            disabled={proposalsPage >= totalPages}
-                            onClick={() => setProposalsPage(prev => Math.min(totalPages, prev + 1))}
-                            className={cn(
-                              "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all select-none border flex items-center gap-1 cursor-pointer",
-                              proposalsPage >= totalPages
-                                ? "bg-slate-50 text-[#1C2643]/30 border-slate-100 pointer-events-none"
-                                : "bg-white hover:bg-slate-50 text-[#1C2643] border-slate-200"
-                            )}
-                          >
-                            Próxima
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })()}
                 </div>
               </>
             )}

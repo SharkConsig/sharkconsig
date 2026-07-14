@@ -27,6 +27,37 @@ import { toPng, toJpeg } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { supabase } from "@/lib/supabase";
 
+const parseCleanFloat = (val: string | number | null | undefined): number | null => {
+  if (val === null || val === undefined) return null;
+  if (typeof val === "number") return val;
+  const str = String(val).trim();
+  if (!str) return null;
+  
+  // Remove "R$", spaces, and other non-numeric symbols except dots, commas, minus, and digits
+  let cleaned = str.replace(/[^0-9.,-]/g, "").trim();
+  if (!cleaned) return null;
+  
+  if (cleaned.includes(",")) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  } else {
+    const dotIndex = cleaned.indexOf(".");
+    if (dotIndex !== -1) {
+      const parts = cleaned.split(".");
+      if (parts.length > 2) {
+        cleaned = cleaned.replace(/\./g, "");
+      } else {
+        const decimalPart = parts[1];
+        if (decimalPart.length === 3) {
+          cleaned = cleaned.replace(/\./g, "");
+        }
+      }
+    }
+  }
+  
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? null : parsed;
+};
+
 interface Contract {
   id?: string;
   tipo: string;
@@ -672,11 +703,11 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               user_nome: nomeConsultor || perfil?.nome || "",
               user_email: activeUser?.email || perfil?.email || "",
               telefone_consultor: telefoneConsultor,
-              valor_liberado: parseFloat(valorLiberado) || 0,
+              valor_liberado: parseCleanFloat(valorLiberado) || 0,
               nome_card_esquerdo: tituloCardEsquerdo,
               prazo_real_esquerdo: parseInt(prazoEfetivoRotativo) || 0,
               taxa_real_esquerdo: parseFloat(taxaEfetivaRotativo.replace(",", ".")) || 0,
-              margem_esquerda: parseFloat(String(margemPrincipalVal || 0)) || 0,
+              margem_esquerda: parseCleanFloat(margemPrincipalVal) || 0,
               prazo_real_direito: parseInt(prazoEfetivoNovo) || 0,
               taxa_real_direito: parseFloat(taxaEfetivaNovo.replace(",", ".")) || 0,
               meses_a_menos: parseInt(mesesAMenos) || 0,
@@ -707,14 +738,14 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               user_nome: nomeConsultor || perfil?.nome || "",
               user_email: activeUser?.email || perfil?.email || "",
               telefone_consultor: telefoneConsultor,
-              valor_liberado: quitacaoMostrarTroco ? (parseFloat(quitacaoValorLiberado) || null) : null,
+              valor_liberado: quitacaoMostrarTroco ? (parseCleanFloat(quitacaoValorLiberado) || null) : null,
               banco_atual: quitacaoBancoAtual,
-              saldo_quitacao: parseFloat(quitacaoSaldoQuitacao) || null,
-              parcela_atual: parseFloat(quitacaoParcelaAtual) || null,
+              saldo_quitacao: parseCleanFloat(quitacaoSaldoQuitacao) || null,
+              parcela_atual: parseCleanFloat(quitacaoParcelaAtual) || null,
               prazo_restante: quitacaoPrazoRestante,
-              nova_parcela: parseFloat(quitacaoNovaParcela) || null,
-              reducao_mensal: Math.max(0, (parseFloat(quitacaoParcelaAtual) || 0) - (parseFloat(quitacaoNovaParcela) || 0)),
-              margem_voltou_folha: parseFloat(quitacaoMargemVolta) || null,
+              nova_parcela: parseCleanFloat(quitacaoNovaParcela) || null,
+              reducao_mensal: Math.max(0, (parseCleanFloat(quitacaoParcelaAtual) || 0) - (parseCleanFloat(quitacaoNovaParcela) || 0)),
+              margem_voltou_folha: parseCleanFloat(quitacaoMargemVolta) || null,
               banco_autorizacao: bancoAutorizacao,
               mostrar_troco: quitacaoMostrarTroco,
               validade_proposta: parseInt(validadeDias) || 5,
@@ -735,10 +766,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               telefone_consultor: telefoneConsultor,
               contratos_considerados: contractsConsidered,
               contratos_excluidos: contractsExcluded,
-              percentual_reducao: parseFloat(porcentagemReducao) || 13.78,
+              percentual_reducao: parseCleanFloat(porcentagemReducao) || 13.78,
               total_parcela_atual: currentTotal,
               total_parcela_nova: newTotal,
-              valor_liberado: parseFloat(valorLiberado) || null,
+              valor_liberado: parseCleanFloat(valorLiberado) || null,
               arquivo_url: finalDataUrl,
               tipo_arquivo: format.toUpperCase()
             });

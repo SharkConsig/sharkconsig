@@ -147,6 +147,37 @@ const parseValorToNumber = (valStr: string) => {
   return isNaN(num) ? 0 : num;
 };
 
+const parseCleanFloat = (val: string | number | null | undefined): number | null => {
+  if (val === null || val === undefined) return null;
+  if (typeof val === "number") return val;
+  const str = String(val).trim();
+  if (!str) return null;
+  
+  // Remove "R$", spaces, and other non-numeric symbols except dots, commas, minus, and digits
+  let cleaned = str.replace(/[^0-9.,-]/g, "").trim();
+  if (!cleaned) return null;
+  
+  if (cleaned.includes(",")) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  } else {
+    const dotIndex = cleaned.indexOf(".");
+    if (dotIndex !== -1) {
+      const parts = cleaned.split(".");
+      if (parts.length > 2) {
+        cleaned = cleaned.replace(/\./g, "");
+      } else {
+        const decimalPart = parts[1];
+        if (decimalPart.length === 3) {
+          cleaned = cleaned.replace(/\./g, "");
+        }
+      }
+    }
+  }
+  
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? null : parsed;
+};
+
 const getValorOperacaoDeAbertura = (ticket: any) => {
   const desc = ticket.descricao || ticket.description || ticket.content || "";
   const meta = parseDescriptionMetadata(desc);
@@ -651,8 +682,10 @@ export default function TicketsPage() {
       if (filterMargemMin || filterMargemMax) {
         const opData = getValorOperacaoDeAbertura(ticket)
         const opVal = parseValorToNumber(opData.valor)
-        if (filterMargemMin && opVal < parseFloat(filterMargemMin)) return false
-        if (filterMargemMax && opVal > parseFloat(filterMargemMax)) return false
+        const minVal = parseCleanFloat(filterMargemMin)
+        const maxVal = parseCleanFloat(filterMargemMax)
+        if (minVal !== null && opVal < minVal) return false
+        if (maxVal !== null && opVal > maxVal) return false
       }
       
       return true
@@ -926,13 +959,14 @@ export default function TicketsPage() {
         { header: 'Cliente', key: 'cliente', width: 30 },
         { header: 'CPF', key: 'cpf', width: 20 },
         { header: 'Telefone', key: 'telefone', width: 20 },
-        { header: 'Margem', key: 'margem', width: 15 },
+        { header: 'Valor Operação', key: 'valor_operacao', width: 20 },
         { header: 'Equipe', key: 'equipe', width: 20 },
         { header: 'Data', key: 'data', width: 20 },
       ]
 
       // Add rows
       filteredTickets.forEach(ticket => {
+        const opData = getValorOperacaoDeAbertura(ticket)
         worksheet.addRow({
           id: ticket.id,
           status: ticket.status_chamados?.nome || ticket.status,
@@ -941,7 +975,7 @@ export default function TicketsPage() {
           cliente: ticket.cliente_nome,
           cpf: ticket.cliente_cpf,
           telefone: ticket.cliente_telefone,
-          margem: ticket.margem,
+          valor_operacao: opData.valor,
           equipe: ticket.equipe,
           data: format(new Date(ticket.created_at), "dd/MM/yyyy HH:mm:ss"),
         })
@@ -1251,14 +1285,14 @@ export default function TicketsPage() {
                   <div className="flex items-center gap-2">
                     <Input 
                       placeholder="Min" 
-                      type="number"
+                      type="text"
                       className="h-[38px] bg-slate-50/50 border-slate-100 text-[11px]"
                       value={filterMargemMin}
                       onChange={(e) => setFilterMargemMin(e.target.value)}
                     />
                     <Input 
                       placeholder="Max" 
-                      type="number"
+                      type="text"
                       className="h-[38px] bg-slate-50/50 border-slate-100 text-[11px]"
                       value={filterMargemMax}
                       onChange={(e) => setFilterMargemMax(e.target.value)}
