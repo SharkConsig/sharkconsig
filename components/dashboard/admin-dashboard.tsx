@@ -24,7 +24,9 @@ import {
   ArrowDownRight,
   Percent,
   Download,
-  History
+  History,
+  AlertTriangle,
+  ShieldCheck
 } from "lucide-react"
 import { format } from "date-fns"
 import { cn, formatName } from "@/lib/utils"
@@ -99,9 +101,9 @@ interface TicketStats {
   aguardandoOperacional: number
   byStatus: { name: string; value: number; color: string }[]
   byMainStatus: { name: string; value: number; color: string }[]
-  byOrigin: { name: string; value: number }[]
-  byConvenio: { name: string; value: number }[]
-  byBroker: { id: string; name: string; supervisor: string; value: number; approved: number; negotiation: number }[]
+  byOrigin: { name: string; value: number; totalValue?: number; approved?: number }[]
+  byConvenio: { name: string; value: number; totalValue?: number; approved?: number }[]
+  byBroker: { id: string; name: string; supervisor: string; value: number; approved: number; negotiation: number; totalValue?: number }[]
 }
 
 interface AdminStats {
@@ -1761,7 +1763,7 @@ export function AdminDashboard({
       {/* TABS SELECTION */}
       {!onlyPropostasComerciais && (
         <div className="flex flex-col gap-4 mb-8">
-          <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl">
+          <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl border border-slate-200/50">
             <button
               onClick={() => setActiveTab('propostas')}
               className={cn(
@@ -2616,7 +2618,9 @@ export function AdminDashboard({
                     <div key={idx} className="space-y-1">
                       <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
                         <span className="text-slate-500">{rank.name}</span>
-                        <span className="text-slate-700">{rank.value} ({percentage}%)</span>
+                        <span className="text-slate-700">
+                          {rank.value} ({percentage}%) <span className="text-orange-600 ml-2">{formatCurrency(rank.totalValue || 0)}</span>
+                        </span>
                       </div>
                       <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                         <motion.div 
@@ -2647,7 +2651,9 @@ export function AdminDashboard({
                   <div key={idx} className="space-y-1">
                     <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
                       <span className="text-slate-500">{item.name}</span>
-                      <span className="text-slate-700">{item.value} ({percentage}%)</span>
+                      <span className="text-slate-700">
+                        {item.value} ({percentage}%) <span className="text-[#1C2643] ml-2">{formatCurrency(item.totalValue || 0)}</span>
+                      </span>
                     </div>
                     <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                       <motion.div 
@@ -2676,7 +2682,9 @@ export function AdminDashboard({
                     <div key={idx} className="space-y-1">
                       <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
                         <span className="text-slate-500">{item.name}</span>
-                        <span className="text-slate-700">{item.value} ({percentage}%)</span>
+                        <span className="text-slate-700">
+                          {item.value} ({percentage}%) <span className="text-blue-600 ml-2">{formatCurrency(item.totalValue || 0)}</span>
+                        </span>
                       </div>
                       <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                         <motion.div 
@@ -2692,6 +2700,465 @@ export function AdminDashboard({
               </div>
             </DashboardCard>
           </div>
+
+          {/* DIAGNÓSTICO FINANCEIRO E ESTRATÉGICO FOR TICKETS */}
+          {ticketStats && ticketStats.total > 0 && (() => {
+            const totalValue = ticketStats.totalValue || 0;
+            const totalCount = ticketStats.total || 0;
+
+            // 1. Maior Potencial de Geração de Receita
+            const sortedBrokersByPotential = [...(ticketStats.byBroker || [])].sort((a, b) => (b.totalValue || 0) - (a.totalValue || 0));
+            const sortedOriginsByPotential = [...(ticketStats.byOrigin || [])].sort((a, b) => (b.totalValue || 0) - (a.totalValue || 0));
+            const sortedConveniosByPotential = [...(ticketStats.byConvenio || [])].sort((a, b) => (b.totalValue || 0) - (a.totalValue || 0));
+
+            const topBrokerPotential = sortedBrokersByPotential[0] || null;
+            const topOriginPotential = sortedOriginsByPotential[0] || null;
+            const topConvenioPotential = sortedConveniosByPotential[0] || null;
+
+            interface DiagnosticItem {
+              name: string;
+              value: number;
+              totalValue?: number;
+              approved?: number;
+            }
+
+            // 2. Produz bastante, mas tem baixo potencial (high count, low average value)
+            const getLowYieldItem = (items: DiagnosticItem[]) => {
+              if (!items || items.length === 0) return null;
+              const validItems = items.filter(item => item.value > 0);
+              if (validItems.length === 0) return null;
+              const avgCount = validItems.reduce((acc, curr) => acc + curr.value, 0) / validItems.length;
+              let thresholdItems = validItems.filter(item => item.value >= avgCount);
+              if (thresholdItems.length === 0) {
+                thresholdItems = validItems;
+              }
+              return [...thresholdItems].sort((a, b) => {
+                const avgA = (a.totalValue || 0) / a.value;
+                const avgB = (b.totalValue || 0) / b.value;
+                return avgA - avgB;
+              })[0] || null;
+            };
+
+            const lowYieldBroker = getLowYieldItem(ticketStats.byBroker as DiagnosticItem[] || []);
+            const lowYieldOrigin = getLowYieldItem(ticketStats.byOrigin as DiagnosticItem[] || []);
+            const lowYieldConvenio = getLowYieldItem(ticketStats.byConvenio as DiagnosticItem[] || []);
+
+            // 3. Melhor Retorno (highest conversion rate approved / value)
+            const getBestReturnItem = (items: DiagnosticItem[]) => {
+              if (!items || items.length === 0) return null;
+              const validItems = items.filter(item => item.value > 0);
+              if (validItems.length === 0) return null;
+              const avgCount = validItems.reduce((acc, curr) => acc + curr.value, 0) / validItems.length;
+              let thresholdItems = validItems.filter(item => item.value >= avgCount);
+              if (thresholdItems.length === 0) {
+                thresholdItems = validItems;
+              }
+              return [...thresholdItems].sort((a, b) => {
+                const rateA = (a.approved || 0) / a.value;
+                const rateB = (b.approved || 0) / b.value;
+                return rateB - rateA;
+              })[0] || null;
+            };
+
+            const bestReturnBroker = getBestReturnItem(ticketStats.byBroker as DiagnosticItem[] || []);
+            const bestReturnOrigin = getBestReturnItem(ticketStats.byOrigin as DiagnosticItem[] || []);
+            const bestReturnConvenio = getBestReturnItem(ticketStats.byConvenio as DiagnosticItem[] || []);
+
+            // 4. Sustentação (highest total potential value totalValue)
+            const sustainingBroker = sortedBrokersByPotential[0] || null;
+            const sustainingOrigin = sortedOriginsByPotential[0] || null;
+            const sustainingConvenio = sortedConveniosByPotential[0] || null;
+
+            // 5. Em destaque (highest approved count)
+            const sortedBrokersByApproved = [...(ticketStats.byBroker || [])].sort((a, b) => (b.approved || 0) - (a.approved || 0));
+            const sortedOriginsByApproved = [...(ticketStats.byOrigin || [])].sort((a, b) => (b.approved || 0) - (a.approved || 0));
+            const sortedConveniosByApproved = [...(ticketStats.byConvenio || [])].sort((a, b) => (b.approved || 0) - (a.approved || 0));
+
+            const topApprovedBroker = sortedBrokersByApproved[0] || null;
+            const topApprovedOrigin = sortedOriginsByApproved[0] || null;
+            const topApprovedConvenio = sortedConveniosByApproved[0] || null;
+
+            // 6. Dependência (any single > 40% of totalValue)
+            const brokerShare = sustainingBroker && totalValue > 0 ? ((sustainingBroker.totalValue || 0) / totalValue) * 100 : 0;
+            const originShare = sustainingOrigin && totalValue > 0 ? ((sustainingOrigin.totalValue || 0) / totalValue) * 100 : 0;
+            const convenioShare = sustainingConvenio && totalValue > 0 ? ((sustainingConvenio.totalValue || 0) / totalValue) * 100 : 0;
+
+            let concentrationRisk = null;
+            if (brokerShare > 40) {
+              concentrationRisk = { type: "Corretor", name: sustainingBroker.name, share: brokerShare };
+            } else if (originShare > 40) {
+              concentrationRisk = { type: "Origem", name: sustainingOrigin.name, share: originShare };
+            } else if (convenioShare > 40) {
+              concentrationRisk = { type: "Convênio", name: sustainingConvenio.name, share: convenioShare };
+            }
+
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+                className="mt-8 pt-8 border-t border-slate-100 space-y-6"
+              >
+                <div>
+                  <h3 className="text-lg font-black text-[#1C2643] tracking-tight mt-1 uppercase">DIAGNÓSTICO FINANCEIRO E ESTRATÉGICO</h3>
+                  <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">
+                    Análise de viabilidade, eficiência e dependência dos chamados no período selecionado
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">
+                  {/* CARD 1: MAIOR POTENCIAL */}
+                  <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                        <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                          Maior Receita Potencial
+                        </span>
+                        <Trophy className="w-4 h-4 text-amber-500" />
+                      </div>
+                      
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                        Quem gera maior potencial de receita?
+                      </h4>
+
+                      <div className="space-y-4">
+                        {topBrokerPotential && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Corretor</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {topBrokerPotential.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              Potencial de <span className="text-amber-500 font-extrabold">{formatCurrency(topBrokerPotential.totalValue || 0)}</span>
+                            </p>
+                          </div>
+                        )}
+
+                        {topOriginPotential && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Origem</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {topOriginPotential.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              Potencial de <span className="text-amber-500 font-extrabold">{formatCurrency(topOriginPotential.totalValue || 0)}</span>
+                            </p>
+                          </div>
+                        )}
+
+                        {topConvenioPotential && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Convênio</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {topConvenioPotential.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              Potencial de <span className="text-amber-500 font-extrabold">{formatCurrency(topConvenioPotential.totalValue || 0)}</span>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CARD 2: BAIXO POTENCIAL / ALTA PRODUÇÃO */}
+                  <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                        <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                          Baixo Potencial Médio
+                        </span>
+                        <Percent className="w-4 h-4 text-orange-500" />
+                      </div>
+                      
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                        Produz bastante, mas com baixo ticket médio?
+                      </h4>
+
+                      <div className="space-y-4">
+                        {lowYieldBroker && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Corretor</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {lowYieldBroker.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              {lowYieldBroker.value} chamados • Médio: <span className="text-orange-600 font-extrabold">{formatCurrency((lowYieldBroker.totalValue || 0) / lowYieldBroker.value)}</span>
+                            </p>
+                          </div>
+                        )}
+
+                        {lowYieldOrigin && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Origem</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {lowYieldOrigin.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              {lowYieldOrigin.value} chamados • Médio: <span className="text-orange-600 font-extrabold">{formatCurrency((lowYieldOrigin.totalValue || 0) / lowYieldOrigin.value)}</span>
+                            </p>
+                          </div>
+                        )}
+
+                        {lowYieldConvenio && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Convênio</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {lowYieldConvenio.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              {lowYieldConvenio.value} chamados • Médio: <span className="text-orange-600 font-extrabold">{formatCurrency((lowYieldConvenio.totalValue || 0) / lowYieldConvenio.value)}</span>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CARD 3: MELHOR RETORNO */}
+                  <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                          Melhor Conversão
+                        </span>
+                        <Zap className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                        Qual tem melhor taxa de retorno/conversão?
+                      </h4>
+
+                      <div className="space-y-4">
+                        {bestReturnBroker && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Corretor</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {bestReturnBroker.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              Retorno de <span className="text-emerald-600 font-extrabold">{((bestReturnBroker.approved || 0) / bestReturnBroker.value * 100).toFixed(1)}%</span> ({bestReturnBroker.approved || 0}/{bestReturnBroker.value})
+                            </p>
+                          </div>
+                        )}
+
+                        {bestReturnOrigin && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Origem</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {bestReturnOrigin.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              Retorno de <span className="text-emerald-600 font-extrabold">{((bestReturnOrigin.approved || 0) / bestReturnOrigin.value * 100).toFixed(1)}%</span> ({bestReturnOrigin.approved || 0}/{bestReturnOrigin.value})
+                            </p>
+                          </div>
+                        )}
+
+                        {bestReturnConvenio && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Convênio</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {bestReturnConvenio.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              Retorno de <span className="text-emerald-600 font-extrabold">{((bestReturnConvenio.approved || 0) / bestReturnConvenio.value * 100).toFixed(1)}%</span> ({bestReturnConvenio.approved || 0}/{bestReturnConvenio.value})
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CARD 4: SUSTENTAÇÃO */}
+                  <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                        <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                          Sustentação
+                        </span>
+                        <Briefcase className="w-4 h-4 text-indigo-600" />
+                      </div>
+                      
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                        Quem sustenta o volume operacional?
+                      </h4>
+
+                      <div className="space-y-4">
+                        {sustainingBroker && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Corretor</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {sustainingBroker.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              {sustainingBroker.value} chamados • <span className="text-indigo-600 font-extrabold">{brokerShare.toFixed(1)}%</span> do volume potencial
+                            </p>
+                          </div>
+                        )}
+
+                        {sustainingOrigin && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Origem</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {sustainingOrigin.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              {sustainingOrigin.value} chamados • <span className="text-indigo-600 font-extrabold">{originShare.toFixed(1)}%</span> do volume potencial
+                            </p>
+                          </div>
+                        )}
+
+                        {sustainingConvenio && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Convênio</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {sustainingConvenio.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              {sustainingConvenio.value} chamados • <span className="text-indigo-600 font-extrabold">{convenioShare.toFixed(1)}%</span> do volume potencial
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CARD 5: DESTAQUE */}
+                  <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                        <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                          Destaque Absoluto
+                        </span>
+                        <TrendingUp className="w-4 h-4 text-blue-600" />
+                      </div>
+                      
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                        Quem está com maior volume de propostas geradas?
+                      </h4>
+
+                      <div className="space-y-4">
+                        {topApprovedBroker && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Corretor</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {topApprovedBroker.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              Converteu <span className="text-emerald-600 font-extrabold">{topApprovedBroker.approved || 0}</span> chamados em propostas
+                            </p>
+                          </div>
+                        )}
+
+                        {topApprovedOrigin && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Origem</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {topApprovedOrigin.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              Converteu <span className="text-emerald-600 font-extrabold">{topApprovedOrigin.approved || 0}</span> chamados em propostas
+                            </p>
+                          </div>
+                        )}
+
+                        {topApprovedConvenio && (
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase">Convênio</p>
+                            <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                              {topApprovedConvenio.name}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400">
+                              Converteu <span className="text-emerald-600 font-extrabold">{topApprovedConvenio.approved || 0}</span> chamados em propostas
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CARD 6: DEPENDÊNCIA */}
+                  <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                        <span className={cn(
+                          "text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider",
+                          concentrationRisk 
+                            ? "bg-amber-50 text-amber-600 border border-amber-100" 
+                            : "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                        )}>
+                          {concentrationRisk ? "Atenção Operacional" : "Operação Saudável"}
+                        </span>
+                        {concentrationRisk ? (
+                          <AlertTriangle className="w-4 h-4 text-amber-500" />
+                        ) : (
+                          <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                        )}
+                      </div>
+                      
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                        A empresa está dependendo demais de Corretor, Origem ou Convênio?
+                      </h4>
+
+                      <p className="text-xs font-bold text-slate-500 leading-relaxed mb-4">
+                        {concentrationRisk ? (
+                          <>
+                            Detectamos que o {concentrationRisk.type.toLowerCase()} <span className="text-amber-600 font-extrabold uppercase">{concentrationRisk.name}</span> representa <span className="text-[#1C2643] font-extrabold">{concentrationRisk.share.toFixed(1)}%</span> da receita operacional dos chamados. Recomenda-se diversificar canais para atenuar o risco.
+                          </>
+                        ) : (
+                          "Excelente! A distribuição dos chamados está saudável e equilibrada entre corretores, origens e convênios. Nenhuma entidade individual representa mais de 40% do potencial financeiro total da empresa."
+                        )}
+                      </p>
+
+                      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100/50">
+                        <div className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider mb-2.5">
+                          Distribuição de Riscos (% do Potencial Total)
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase mb-0.5">
+                              <span className="truncate max-w-[150px]">Corretor ({sustainingBroker?.name || 'N/A'})</span>
+                              <span>{brokerShare.toFixed(1)}%</span>
+                            </div>
+                            <div className="w-full bg-slate-200/50 h-1 rounded-full overflow-hidden">
+                              <div 
+                                className={cn("h-full rounded-full", brokerShare > 40 ? "bg-amber-500" : "bg-indigo-600")}
+                                style={{ width: `${Math.min(100, brokerShare)}%` }}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase mb-0.5">
+                              <span className="truncate max-w-[150px]">Origem ({sustainingOrigin?.name || 'N/A'})</span>
+                              <span>{originShare.toFixed(1)}%</span>
+                            </div>
+                            <div className="w-full bg-slate-200/50 h-1 rounded-full overflow-hidden">
+                              <div 
+                                className={cn("h-full rounded-full", originShare > 40 ? "bg-amber-500" : "bg-indigo-600")}
+                                style={{ width: `${Math.min(100, originShare)}%` }}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase mb-0.5">
+                              <span className="truncate max-w-[150px]">Convênio ({sustainingConvenio?.name || 'N/A'})</span>
+                              <span>{convenioShare.toFixed(1)}%</span>
+                            </div>
+                            <div className="w-full bg-slate-200/50 h-1 rounded-full overflow-hidden">
+                              <div 
+                                className={cn("h-full rounded-full", convenioShare > 40 ? "bg-amber-500" : "bg-indigo-600")}
+                                style={{ width: `${Math.min(100, convenioShare)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )
+          })()}
         </motion.div>
       )}
 
