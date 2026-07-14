@@ -647,11 +647,12 @@ export default function TicketsPage() {
       if (filterConvenios.length > 0 && !filterConvenios.includes(normalizeConvenioName(ticket.convenio) as string)) return false
       if (filterEquipes.length > 0 && !filterEquipes.includes(ticket.equipe)) return false
 
-      // Filtro de Margem
+      // Filtro de Valor Operação
       if (filterMargemMin || filterMargemMax) {
-        const margem = ticket.margem || 0
-        if (filterMargemMin && margem < parseFloat(filterMargemMin)) return false
-        if (filterMargemMax && margem > parseFloat(filterMargemMax)) return false
+        const opData = getValorOperacaoDeAbertura(ticket)
+        const opVal = parseValorToNumber(opData.valor)
+        if (filterMargemMin && opVal < parseFloat(filterMargemMin)) return false
+        if (filterMargemMax && opVal > parseFloat(filterMargemMax)) return false
       }
       
       return true
@@ -1246,7 +1247,7 @@ export default function TicketsPage() {
                 />
 
                 <div className="space-y-1.5">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Margem (Mín - Máx)</label>
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Operação (Mín - Máx)</label>
                   <div className="flex items-center gap-2">
                     <Input 
                       placeholder="Min" 
