@@ -141,7 +141,7 @@ const CONVENIOS = [
 
 export default function NewCampaignPage() {
   const router = useRouter()
-  const { user, canAccessAdminAreas, isLoading: authLoading } = useAuth()
+  const { user, canAccessAdminAreas, isOperational, isLoading: authLoading } = useAuth()
   const [activeConvenio, setActiveConvenio] = useState('siape')
   const [dynamicOptions, setDynamicOptions] = useState<{
     orgaos: string[];
@@ -258,10 +258,10 @@ export default function NewCampaignPage() {
   }, [fetchDynamicOptions])
 
   useEffect(() => {
-    if (!authLoading && !canAccessAdminAreas) {
+    if (!authLoading && !canAccessAdminAreas && !isOperational) {
       router.replace('/')
     }
-  }, [authLoading, canAccessAdminAreas, router])
+  }, [authLoading, canAccessAdminAreas, isOperational, router])
 
   const translateOrgao = (id: string) => {
     return ORGAOS_MAPPING[id as keyof typeof ORGAOS_MAPPING] || id

@@ -59,13 +59,13 @@ const allMenuItems = [
         name: "CRIAR CAMPANHA", 
         href: "/campanhas/nova", 
         icon: PlusCircle, 
-        roles: ["Administrador", "Desenvolvedor"] 
+        roles: ["Administrador", "Desenvolvedor", "Operacional"] 
       },
       { 
         name: "CAMPANHAS", 
         href: "/campanhas", 
         icon: Users, 
-        roles: ["Administrador", "Desenvolvedor"] 
+        roles: ["Administrador", "Desenvolvedor", "Operacional"] 
       },
       { 
         name: "ACESSAR CAMPANHA", 

@@ -900,7 +900,7 @@ export default function DashboardPage() {
           const queryStartDate = new Date(Math.min(...datesToCompare.map(d => d.getTime())))
           const queryStart = queryStartDate.toISOString()
           
-          teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte.${queryStart},created_at.gte.${queryStart}`)
+          teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte."${queryStart}",created_at.gte."${queryStart}"`)
         
         if (customEnd) {
           // If we have an end date, we should also limit the range if possible, 
@@ -1644,7 +1644,7 @@ export default function DashboardPage() {
             .from('propostas')
             .select('valor_producao, updated_at, data_pago_cliente')
             .in('status', paidStatuses)
-            .or(`updated_at.gte.${startOfYearISO},data_pago_cliente.gte.${startOfYearISO}`)
+            .or(`updated_at.gte."${startOfYearISO}",data_pago_cliente.gte."${startOfYearISO}"`)
           
           const annualProposals = await fetchAll(annualQuery)
 
@@ -1719,8 +1719,9 @@ export default function DashboardPage() {
             ticketStats: finalTicketStats
           })
         }
-      } catch (err) {
-        console.error("Error fetching admin dashboard stats:", err instanceof Error ? err.message : err)
+      } catch (err: any) {
+        const errMsg = err?.message || err?.details || (typeof err === 'object' ? JSON.stringify(err) : String(err))
+        console.error("Error fetching admin dashboard stats:", errMsg, err)
       }
 
       // Fetch today's interviews & ligações for Dashboard Card

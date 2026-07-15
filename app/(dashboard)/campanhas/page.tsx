@@ -38,6 +38,7 @@ import {
   Upload
 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import Papa from "papaparse"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { motion, AnimatePresence } from "motion/react"
@@ -178,7 +179,8 @@ interface User {
 }
 
 export default function CampaignsPage() {
-  const { user, canAccessAdminAreas, isLoading: authLoading } = useAuth()
+  const router = useRouter()
+  const { user, canAccessAdminAreas, isOperational, isLoading: authLoading } = useAuth()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -237,10 +239,16 @@ export default function CampaignsPage() {
   }, [])
 
   useEffect(() => {
-    if (!authLoading && canAccessAdminAreas) {
+    if (!authLoading && (canAccessAdminAreas || isOperational)) {
       fetchCampaigns()
     }
-  }, [authLoading, canAccessAdminAreas, fetchCampaigns])
+  }, [authLoading, canAccessAdminAreas, isOperational, fetchCampaigns])
+
+  useEffect(() => {
+    if (!authLoading && !canAccessAdminAreas && !isOperational) {
+      router.replace('/')
+    }
+  }, [authLoading, canAccessAdminAreas, isOperational, router])
 
   const [isExporting, setIsExporting] = useState<string | null>(null)
   const [exportProgress, setExportProgress] = useState(0)

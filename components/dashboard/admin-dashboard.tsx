@@ -3509,7 +3509,15 @@ export function AdminDashboard({
                     (proposalsStats?.recentProposals || []).forEach((p: any) => {
                       const key = p.user_id || (p.user_email || "sem-email").toLowerCase().trim();
                       const email = (p.user_email || "sem-email").toLowerCase().trim();
-                      const name = p.user_nome || p.user_email || "Não informado";
+                      
+                      // Resolve correct name using stats?.brokerRankings or perfil first, fallback to user_nome or email
+                      const broker = stats?.brokerRankings?.find(b => p.user_id && b.corretor_id === p.user_id);
+                      let name = p.user_nome || p.user_email || "Não informado";
+                      if (p.user_id && perfil?.id && p.user_id === perfil.id) {
+                        name = perfil.nome || name;
+                      } else if (broker && broker.name) {
+                        name = broker.name;
+                      }
                       
                       if (!userStatsMap[key]) {
                         userStatsMap[key] = {
@@ -3525,35 +3533,37 @@ export function AdminDashboard({
                           totalValue: 0
                         };
                       } else {
-                        // Se o nome no mapa for menos completo ou curto, e o nome desta proposta for mais completo, atualizamos
-                        if (p.user_nome && (!userStatsMap[key].name || userStatsMap[key].name === "Não informado" || userStatsMap[key].name.length < p.user_nome.length)) {
+                        // Se o nome no mapa não for verificado por perfil ou broker, atualizamos com uma opção melhor se houver
+                        const currentIsVerified = (p.user_id && perfil?.id && p.user_id === perfil.id && perfil.nome) || 
+                                                  (stats?.brokerRankings?.some(b => p.user_id && b.corretor_id === p.user_id && b.name));
+                        if (!currentIsVerified && p.user_nome && (!userStatsMap[key].name || userStatsMap[key].name === "Não informado" || userStatsMap[key].name.length < p.user_nome.length)) {
                           userStatsMap[key].name = p.user_nome;
                         }
                       }
                       
-                      const stats = userStatsMap[key];
+                      const userStatItem = userStatsMap[key];
                       
                       if (p.isQuitacao) {
                         const val = parseFloat(p.saldo_quitacao);
                         const validVal = isNaN(val) ? 0 : val;
-                        stats.quitacaoCount += 1;
-                        stats.quitacaoValue += validVal;
-                        stats.totalCount += 1;
-                        stats.totalValue += validVal;
+                        userStatItem.quitacaoCount += 1;
+                        userStatItem.quitacaoValue += validVal;
+                        userStatItem.totalCount += 1;
+                        userStatItem.totalValue += validVal;
                       } else if (p.isNovoFormato) {
                         const val = parseFloat(p.valor_liberado);
                         const validVal = isNaN(val) ? 0 : val;
-                        stats.novoFormatoCount += 1;
-                        stats.novoFormatoValue += validVal;
-                        stats.totalCount += 1;
-                        stats.totalValue += validVal;
+                        userStatItem.novoFormatoCount += 1;
+                        userStatItem.novoFormatoValue += validVal;
+                        userStatItem.totalCount += 1;
+                        userStatItem.totalValue += validVal;
                       } else {
                         const val = parseFloat(p.valor_liberado);
                         const validVal = isNaN(val) ? 0 : val;
-                        stats.reducaoCount += 1;
-                        stats.reducaoValue += validVal;
-                        stats.totalCount += 1;
-                        stats.totalValue += validVal;
+                        userStatItem.reducaoCount += 1;
+                        userStatItem.reducaoValue += validVal;
+                        userStatItem.totalCount += 1;
+                        userStatItem.totalValue += validVal;
                       }
                     });
 
@@ -3684,7 +3694,13 @@ export function AdminDashboard({
                         } else if (namedItem?.user_email && perfil?.email && namedItem.user_email.toLowerCase() === perfil.email.toLowerCase()) {
                           colaborador = perfil.nome || namedItem.user_nome || namedItem.user_email;
                         } else {
-                          colaborador = namedItem?.user_nome || namedItem?.user_email || "Não informado";
+                          // Search in broker rankings by user_id to get the correct name from the database profiles
+                          const broker = stats?.brokerRankings?.find(b => namedItem?.user_id && b.corretor_id === namedItem.user_id);
+                          if (broker && broker.name) {
+                            colaborador = broker.name;
+                          } else {
+                            colaborador = namedItem?.user_nome || namedItem?.user_email || "Não informado";
+                          }
                         }
 
                         return {
@@ -3722,7 +3738,7 @@ export function AdminDashboard({
                                     <Users className="w-4 h-4" />
                                   </div>
                                   <div>
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">USUÁRIO RESPONSÁVEL</span>
                                     <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
                                       {colaborador}
                                     </span>
