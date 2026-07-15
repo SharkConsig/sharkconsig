@@ -3643,7 +3643,13 @@ export function AdminDashboard({
                               {/* Parent Row (Accordion Header) */}
                               <div 
                                 onClick={() => handleToggleGroup(colaborador, items)}
-                                className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 hover:shadow-md transition-all shadow-sm cursor-pointer select-none"
+                                className={cn(
+                                  "p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-5 hover:shadow-md transition-all shadow-sm cursor-pointer select-none",
+                                  selectedProposalCard === 'reducao' ? "bg-emerald-50/70 border-emerald-500 hover:border-emerald-600" :
+                                  selectedProposalCard === 'quitacao' ? "bg-amber-50/70 border-amber-500 hover:border-amber-600" :
+                                  selectedProposalCard === 'novo_formato' ? "bg-yellow-50/70 border-yellow-500 hover:border-yellow-600" :
+                                  "bg-white border-slate-100 hover:border-[#162546]/20"
+                                )}
                               >
                                 <div className="flex items-center gap-3 min-w-[200px]">
                                   <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
@@ -3738,7 +3744,10 @@ export function AdminDashboard({
                                         return (
                                           <div 
                                             key={item.id || idx} 
-                                            className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
+                                            className={cn(
+                                              "p-5 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm",
+                                              idx % 2 === 0 ? "bg-slate-100" : "bg-white"
+                                            )}
                                           >
                                             <div className="flex items-center gap-3 min-w-[200px]">
                                               <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-[#1C2643]">
@@ -3804,7 +3813,10 @@ export function AdminDashboard({
                                         return (
                                           <div 
                                             key={item.id || idx} 
-                                            className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
+                                            className={cn(
+                                              "p-5 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm",
+                                              idx % 2 === 0 ? "bg-slate-100" : "bg-white"
+                                            )}
                                           >
                                             <div className="flex items-center gap-3 min-w-[200px]">
                                               <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-[#1C2643]">
@@ -3864,7 +3876,10 @@ export function AdminDashboard({
                                         return (
                                           <div 
                                             key={item.id || idx} 
-                                            className="p-5 rounded-2xl border border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm"
+                                            className={cn(
+                                              "p-5 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm",
+                                              idx % 2 === 0 ? "bg-slate-100" : "bg-white"
+                                            )}
                                           >
                                             <div className="flex items-center gap-3 min-w-[200px]">
                                               <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-[#1C2643]">
