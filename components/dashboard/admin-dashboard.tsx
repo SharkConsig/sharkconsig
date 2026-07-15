@@ -26,7 +26,8 @@ import {
   Download,
   History,
   AlertTriangle,
-  ShieldCheck
+  ShieldCheck,
+  Trash2
 } from "lucide-react"
 import { format } from "date-fns"
 import { cn, formatName } from "@/lib/utils"
@@ -249,13 +250,13 @@ export function AdminDashboard({
         let selectStr = '';
         if (selectedProposalCard === 'reducao') {
           table = 'historico_proposta_comercial';
-          selectStr = 'id, cliente_cpf, cliente_nome, user_nome, user_email, total_parcela_atual, total_parcela_nova, valor_liberado, created_at, arquivo_url, tipo_arquivo';
+          selectStr = 'id, user_id, cliente_cpf, cliente_nome, user_nome, user_email, total_parcela_atual, total_parcela_nova, valor_liberado, created_at, arquivo_url, tipo_arquivo';
         } else if (selectedProposalCard === 'quitacao') {
           table = 'historico_proposta_comercial_quitacao_contrato';
-          selectStr = 'id, cliente_cpf, cliente_nome, user_nome, user_email, saldo_quitacao, parcela_atual, prazo_restante, nova_parcela, reducao_mensal, valor_liberado, created_at, arquivo_url, tipo_arquivo';
+          selectStr = 'id, user_id, cliente_cpf, cliente_nome, user_nome, user_email, saldo_quitacao, parcela_atual, prazo_restante, nova_parcela, reducao_mensal, valor_liberado, created_at, arquivo_url, tipo_arquivo';
         } else if (selectedProposalCard === 'novo_formato') {
           table = 'historico_proposta_comercial_novo_formato';
-          selectStr = 'id, cliente_cpf, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo';
+          selectStr = 'id, user_id, cliente_cpf, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo';
         }
 
         if (table) {
@@ -563,13 +564,13 @@ export function AdminDashboard({
         // Para a visão total (ranking de colaboradores), buscamos todos os registros com colunas mínimas para precisão total
         let query1 = supabase
           .from('historico_proposta_comercial')
-          .select('user_nome, user_email, valor_liberado, created_at')
+          .select('user_id, user_nome, user_email, valor_liberado, created_at')
         let query2 = supabase
           .from('historico_proposta_comercial_novo_formato')
-          .select('user_nome, user_email, valor_liberado, created_at')
+          .select('user_id, user_nome, user_email, valor_liberado, created_at')
         let query3 = supabase
           .from('historico_proposta_comercial_quitacao_contrato')
-          .select('user_nome, user_email, saldo_quitacao, created_at')
+          .select('user_id, user_nome, user_email, saldo_quitacao, created_at')
 
         if (startDate && endDate) {
           query1 = query1.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
@@ -609,7 +610,7 @@ export function AdminDashboard({
       } else if (selectedProposalCard === 'reducao') {
         let query = supabase
           .from('historico_proposta_comercial')
-          .select('id, user_nome, user_email, valor_liberado, created_at')
+          .select('id, user_id, user_nome, user_email, valor_liberado, created_at')
           .order('created_at', { ascending: false })
 
         if (startDate && endDate) {
@@ -628,7 +629,7 @@ export function AdminDashboard({
       } else if (selectedProposalCard === 'quitacao') {
         let query = supabase
           .from('historico_proposta_comercial_quitacao_contrato')
-          .select('id, user_nome, user_email, saldo_quitacao, created_at')
+          .select('id, user_id, user_nome, user_email, saldo_quitacao, created_at')
           .order('created_at', { ascending: false })
 
         if (startDate && endDate) {
@@ -647,7 +648,7 @@ export function AdminDashboard({
       } else if (selectedProposalCard === 'novo_formato') {
         let query = supabase
           .from('historico_proposta_comercial_novo_formato')
-          .select('id, user_nome, user_email, valor_liberado, created_at')
+          .select('id, user_id, user_nome, user_email, valor_liberado, created_at')
           .order('created_at', { ascending: false })
 
         if (startDate && endDate) {
@@ -715,6 +716,44 @@ export function AdminDashboard({
     link.download = `${strategyName}_${safeName}.${extension}`;
     link.click();
   }, [])
+
+  const handleDeleteProposal = React.useCallback(async (proposal: any) => {
+    if (!proposal?.id) {
+      toast.error("ID da proposta não encontrado.");
+      return;
+    }
+
+    const confirmDelete = window.confirm(`Deseja realmente excluir a proposta de ${proposal.cliente_nome || "Cliente"}? Esta ação não pode ser desfeita.`);
+    if (!confirmDelete) return;
+
+    try {
+      const table = proposal.isQuitacao || selectedProposalCard === 'quitacao'
+        ? 'historico_proposta_comercial_quitacao_contrato'
+        : (proposal.isNovoFormato || selectedProposalCard === 'novo_formato'
+          ? 'historico_proposta_comercial_novo_formato'
+          : 'historico_proposta_comercial');
+
+      const { error } = await supabase
+        .from(table)
+        .delete()
+        .eq('id', proposal.id);
+
+      if (error) throw error;
+
+      toast.success("Proposta excluída com sucesso!");
+
+      // Limpa cache e estados de expansão local para recarregar
+      proposalsCacheRef.current = {};
+      setLoadedGroupDetails({});
+      setExpandedProposalGroups({});
+      
+      // Recarrega estatísticas e lista de propostas
+      await fetchProposalsStats();
+    } catch (err: any) {
+      console.error("Erro ao excluir proposta:", err);
+      toast.error("Erro ao excluir a proposta comercial do banco de dados.");
+    }
+  }, [selectedProposalCard, fetchProposalsStats]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getCommissionPercentage = React.useCallback((proposal: any) => {
@@ -3325,12 +3364,24 @@ export function AdminDashboard({
                     )}
                   >
                     <div>
-                      <p className="text-[10px] font-black text-[#1C2643] uppercase tracking-[0.2em] mb-1">Total Enviadas</p>
+                      <p className="text-[10px] font-black text-[#1C2643] uppercase tracking-[0.2em] mb-1">TOTAL PROPOSTAS</p>
                       <p className="text-3xl font-black text-[#1C2643] tracking-tighter">{proposalsStats?.total || 0}</p>
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tighter">100%</span>
-                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">Acumulado</p>
+                    <div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tighter">100%</span>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">Acumulado</p>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-slate-100/40">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Total Financeiro</span>
+                        <span className="text-sm font-black text-[#1C2643] font-mono leading-none">
+                          {formatCurrency(
+                            (proposalsStats?.totalReducaoValor || 0) +
+                            (proposalsStats?.totalQuitacaoValor || 0) +
+                            (proposalsStats?.totalNovoFormatoValor || 0)
+                          )}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -3595,18 +3646,17 @@ export function AdminDashboard({
                       </div>
                     );
                   })() : filteredProposals.length > 0 ? (() => {
-                    // Group proposals by collaborator
+                    // Group proposals by collaborator based strictly on user_id (the logged-in user who generated them)
                     const groupedProposals = (() => {
                       const groups: Record<string, any[]> = {};
                       filteredProposals.forEach(item => {
-                        const rawName = (item.user_nome || item.user_email || "Não informado").trim();
-                        const key = rawName.toUpperCase();
+                        const key = item.user_id || "Não informado";
                         if (!groups[key]) {
                           groups[key] = [];
                         }
                         groups[key].push(item);
                       });
-                      return Object.entries(groups).map(([key, items]) => {
+                      return Object.entries(groups).map(([groupKey, items]) => {
                         const sortedItems = [...items].sort((a, b) => {
                           const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
                           const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -3620,9 +3670,19 @@ export function AdminDashboard({
                           sum = sortedItems.reduce((acc, curr) => acc + (parseFloat(curr.valor_liberado) || 0), 0);
                         }
 
-                        const colaborador = sortedItems[0]?.user_nome || sortedItems[0]?.user_email || "Não informado";
+                        // Determine collaborator display name
+                        const firstItem = sortedItems[0];
+                        let colaborador = "";
+                        if (firstItem?.user_id && perfil?.id && firstItem.user_id === perfil.id) {
+                          colaborador = perfil.nome || firstItem.user_nome || firstItem.user_email;
+                        } else if (firstItem?.user_email && perfil?.email && firstItem.user_email.toLowerCase() === perfil.email.toLowerCase()) {
+                          colaborador = perfil.nome || firstItem.user_nome || firstItem.user_email;
+                        } else {
+                          colaborador = firstItem?.user_nome || firstItem?.user_email || "Não informado";
+                        }
 
                         return {
+                          colaboradorKey: groupKey,
                           colaborador,
                           sum,
                           items: sortedItems,
@@ -3634,15 +3694,15 @@ export function AdminDashboard({
                     return (
                       <div className="flex flex-col gap-6">
                         {groupedProposals.map((group, gIdx) => {
-                          const { colaborador, sum, items, latestDate } = group;
-                          const isExpanded = !!expandedProposalGroups[colaborador];
-                          const loaded = loadedGroupDetails[colaborador] || { items: [], loading: false };
+                          const { colaboradorKey, colaborador, sum, items, latestDate } = group;
+                          const isExpanded = !!expandedProposalGroups[colaboradorKey];
+                          const loaded = loadedGroupDetails[colaboradorKey] || { items: [], loading: false };
                           
                           return (
-                            <div key={colaborador || gIdx} className="space-y-4">
+                            <div key={colaboradorKey || gIdx} className="space-y-4">
                               {/* Parent Row (Accordion Header) */}
                               <div 
-                                onClick={() => handleToggleGroup(colaborador, items)}
+                                onClick={() => handleToggleGroup(colaboradorKey, items)}
                                 className={cn(
                                   "p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-5 hover:shadow-md transition-all shadow-sm cursor-pointer select-none",
                                   selectedProposalCard === 'reducao' ? "bg-emerald-50/70 border-emerald-500 hover:border-emerald-600" :
@@ -3660,7 +3720,7 @@ export function AdminDashboard({
                                     <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
                                       {colaborador}
                                     </span>
-                                    <span className="text-[10px] font-bold text-slate-400 mt-1 block leading-none">
+                                    <span className="text-[12px] font-bold text-black/80 mt-1 block leading-none">
                                       {items.length} {items.length === 1 ? 'proposta' : 'propostas'}
                                     </span>
                                   </div>
@@ -3758,7 +3818,7 @@ export function AdminDashboard({
                                                 <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
                                                   {item.cliente_nome || "Não informado"}
                                                 </span>
-                                                <span className="text-[10px] font-bold text-slate-400 mt-1 block leading-none font-mono">
+                                                <span className="text-[12px] font-bold text-black/80 mt-1 block leading-none font-mono">
                                                   {item.cliente_cpf ? item.cliente_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
                                                 </span>
                                               </div>
@@ -3792,7 +3852,7 @@ export function AdminDashboard({
                                               </span>
                                             </div>
 
-                                            <div className="flex items-center">
+                                            <div className="flex items-center gap-2">
                                               <button
                                                 onClick={() => {
                                                   if (item.cliente_cpf) {
@@ -3805,6 +3865,13 @@ export function AdminDashboard({
                                               >
                                                 <ArrowRight className="w-3 h-3" />
                                                 ACESSAR CLIENTE
+                                              </button>
+                                              <button
+                                                onClick={() => handleDeleteProposal(item)}
+                                                className="h-7 w-7 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-all rounded-lg flex items-center justify-center cursor-pointer shadow-sm"
+                                                title="Excluir Proposta"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
                                               </button>
                                             </div>
                                           </div>
@@ -3827,7 +3894,7 @@ export function AdminDashboard({
                                                 <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
                                                   {item.cliente_nome || "Não informado"}
                                                 </span>
-                                                <span className="text-[10px] font-bold text-slate-400 mt-1 block leading-none font-mono">
+                                                <span className="text-[12px] font-bold text-black/80 mt-1 block leading-none font-mono">
                                                   {item.cliente_cpf ? item.cliente_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
                                                 </span>
                                               </div>
@@ -3854,7 +3921,7 @@ export function AdminDashboard({
                                               </span>
                                             </div>
 
-                                            <div className="flex items-center">
+                                            <div className="flex items-center gap-2">
                                               <button
                                                 onClick={() => {
                                                   if (item.cliente_cpf) {
@@ -3867,6 +3934,13 @@ export function AdminDashboard({
                                               >
                                                 <ArrowRight className="w-3 h-3" />
                                                 ACESSAR CLIENTE
+                                              </button>
+                                              <button
+                                                onClick={() => handleDeleteProposal(item)}
+                                                className="h-7 w-7 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-all rounded-lg flex items-center justify-center cursor-pointer shadow-sm"
+                                                title="Excluir Proposta"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
                                               </button>
                                             </div>
                                           </div>
@@ -3890,7 +3964,7 @@ export function AdminDashboard({
                                                 <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
                                                   {item.cliente_nome || "Não informado"}
                                                 </span>
-                                                <span className="text-[10px] font-bold text-slate-400 mt-1 block leading-none font-mono">
+                                                <span className="text-[12px] font-bold text-black/80 mt-1 block leading-none font-mono">
                                                   {item.cliente_cpf ? item.cliente_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
                                                 </span>
                                               </div>
@@ -3917,7 +3991,7 @@ export function AdminDashboard({
                                               </span>
                                             </div>
 
-                                            <div className="flex items-center">
+                                            <div className="flex items-center gap-2">
                                               <button
                                                 onClick={() => {
                                                   if (item.cliente_cpf) {
@@ -3930,6 +4004,13 @@ export function AdminDashboard({
                                               >
                                                 <ArrowRight className="w-3 h-3" />
                                                 ACESSAR CLIENTE
+                                              </button>
+                                              <button
+                                                onClick={() => handleDeleteProposal(item)}
+                                                className="h-7 w-7 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-all rounded-lg flex items-center justify-center cursor-pointer shadow-sm"
+                                                title="Excluir Proposta"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
                                               </button>
                                             </div>
                                           </div>

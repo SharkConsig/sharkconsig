@@ -124,16 +124,20 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const [quitacaoParcelaAtual, setQuitacaoParcelaAtual] = useState("");
   const [quitacaoPrazoRestante, setQuitacaoPrazoRestante] = useState("96x");
   const [quitacaoTotalAPagar, setQuitacaoTotalAPagar] = useState("");
+  const [quitacaoTaxaAtual, setQuitacaoTaxaAtual] = useState("");
   const [ocultarQuitacaoPrazoRestante, setOcultarQuitacaoPrazoRestante] = useState(false);
   const [ocultarQuitacaoTotalAPagar, setOcultarQuitacaoTotalAPagar] = useState(false);
   const [ocultarQuitacaoBancoAtual, setOcultarQuitacaoBancoAtual] = useState(false);
+  const [ocultarQuitacaoTaxaAtual, setOcultarQuitacaoTaxaAtual] = useState(false);
 
   const [quitacaoNovaParcela, setQuitacaoNovaParcela] = useState("");
   const [quitacaoMargemVolta, setQuitacaoMargemVolta] = useState("");
   const [quitacaoValorLiberado, setQuitacaoValorLiberado] = useState("");
   const [quitacaoEconomiaTotal, setQuitacaoEconomiaTotal] = useState("");
+  const [quitacaoNovaTaxa, setQuitacaoNovaTaxa] = useState("");
   const [ocultarQuitacaoTroco, setOcultarQuitacaoTroco] = useState(false);
   const [ocultarQuitacaoEconomiaTotal, setOcultarQuitacaoEconomiaTotal] = useState(false);
+  const [ocultarQuitacaoNovaTaxa, setOcultarQuitacaoNovaTaxa] = useState(false);
   const quitacaoMostrarTroco = !ocultarQuitacaoTroco;
 
   // Novo Formato states
@@ -402,6 +406,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           setQuitacaoValorLiberado("");
           setQuitacaoTotalAPagar("");
           setQuitacaoEconomiaTotal("");
+          setQuitacaoTaxaAtual("");
+          setQuitacaoNovaTaxa("");
           setIsManualQuitacaoTotalAPagar(false);
           setIsManualQuitacaoEconomiaTotal(false);
           setOcultarQuitacaoPrazoRestante(false);
@@ -409,6 +415,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           setOcultarQuitacaoBancoAtual(false);
           setOcultarQuitacaoTroco(false);
           setOcultarQuitacaoEconomiaTotal(false);
+          setOcultarQuitacaoTaxaAtual(false);
+          setOcultarQuitacaoNovaTaxa(false);
         } else {
           setContratos([{
             id: `loan-default-${Math.random()}`,
@@ -431,6 +439,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           setQuitacaoValorLiberado("");
           setQuitacaoTotalAPagar("");
           setQuitacaoEconomiaTotal("");
+          setQuitacaoTaxaAtual("");
+          setQuitacaoNovaTaxa("");
           setIsManualQuitacaoTotalAPagar(false);
           setIsManualQuitacaoEconomiaTotal(false);
           setOcultarQuitacaoPrazoRestante(false);
@@ -438,6 +448,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           setOcultarQuitacaoBancoAtual(false);
           setOcultarQuitacaoTroco(false);
           setOcultarQuitacaoEconomiaTotal(false);
+          setOcultarQuitacaoTaxaAtual(false);
+          setOcultarQuitacaoNovaTaxa(false);
         }
 
         // Reset step
@@ -1378,6 +1390,11 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                             Banco: <span className="font-black text-slate-700 uppercase block sm:inline">{quitacaoBancoAtual || "NÃO INFORMADO"}</span>
                           </p>
                         )}
+                        {!ocultarQuitacaoTaxaAtual && quitacaoTaxaAtual && (
+                          <p className="text-[13px] text-slate-500 font-bold leading-tight">
+                            Taxa Atual: <span className="font-black text-[#c44a4a] block sm:inline">{quitacaoTaxaAtual}% a.m.</span>
+                          </p>
+                        )}
                         <p className="text-[13px] text-slate-500 font-bold leading-tight">
                           Parcela Atual: <span className="font-black text-[#c44a4a] block sm:inline">{formatBRL(quitacaoParcelaAtual)}</span>
                         </p>
@@ -1427,6 +1444,11 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                         {!ocultarQuitacaoTroco && quitacaoValorLiberado && (
                           <p className="text-[13px] text-slate-300 font-bold leading-tight mt-1">
                             Troco: <span className="font-black text-[#F4C600] block sm:inline">{formatBRL(quitacaoValorLiberado)}</span>
+                          </p>
+                        )}
+                        {!ocultarQuitacaoNovaTaxa && quitacaoNovaTaxa && (
+                          <p className="text-[13px] text-slate-300 font-bold leading-tight">
+                            Nova Taxa: <span className="font-black text-[#F4C600] block sm:inline">{quitacaoNovaTaxa}% a.m.</span>
                           </p>
                         )}
                       </div>
@@ -1707,7 +1729,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="relative w-full max-w-5xl bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] overflow-hidden"
+          className="relative w-full max-w-7xl bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] overflow-hidden"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 bg-slate-50/50">
@@ -1812,7 +1834,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             {step === "form" && (
               <div className="space-y-8">
                 
-                <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full">
+                <div className="flex flex-col gap-6 max-w-6xl mx-auto w-full">
                     
                     {/* Section: Cliente */}
                     <div className="space-y-3 p-5 bg-slate-50/50 border border-slate-100 rounded-2xl">
@@ -2354,7 +2376,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                             <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Contratos Atuais</span>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                             {/* Banco Atual */}
                             <div className="space-y-1">
                               <div className="flex items-center justify-between">
@@ -2436,6 +2458,29 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               />
                             </div>
 
+                            {/* Taxa Atual */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Taxa Atual</label>
+                                <label className="flex items-center gap-1 cursor-pointer select-none">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={ocultarQuitacaoTaxaAtual}
+                                    onChange={(e) => setOcultarQuitacaoTaxaAtual(e.target.checked)}
+                                    className="rounded border-slate-300 text-red-600 focus:ring-red-500 w-3 h-3 cursor-pointer"
+                                  />
+                                  <span className="text-[8px] font-extrabold text-red-500 uppercase tracking-wider">Ocultar</span>
+                                </label>
+                              </div>
+                              <input 
+                                type="text"
+                                value={quitacaoTaxaAtual}
+                                onChange={(e) => setQuitacaoTaxaAtual(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                placeholder="Ex: 1,80"
+                              />
+                            </div>
+
                             {/* Total a Pagar */}
                             <div className="space-y-1">
                               <div className="flex items-center justify-between">
@@ -2485,7 +2530,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                             <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Após Estratégia</span>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                             {/* Nova Parcela */}
                             <div className="space-y-1">
                               <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nova Parcela</label>
@@ -2559,6 +2604,29 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                   placeholder="0,00"
                                 />
                               </div>
+                            </div>
+
+                            {/* Nova Taxa */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nova Taxa</label>
+                                <label className="flex items-center gap-1 cursor-pointer select-none">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={ocultarQuitacaoNovaTaxa}
+                                    onChange={(e) => setOcultarQuitacaoNovaTaxa(e.target.checked)}
+                                    className="rounded border-slate-300 text-red-600 focus:ring-red-500 w-3 h-3 cursor-pointer"
+                                  />
+                                  <span className="text-[8px] font-extrabold text-red-500 uppercase tracking-wider">Ocultar</span>
+                                </label>
+                              </div>
+                              <input 
+                                type="text"
+                                value={quitacaoNovaTaxa}
+                                onChange={(e) => setQuitacaoNovaTaxa(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                placeholder="Ex: 1,35"
+                              />
                             </div>
 
                             {/* Economia Total */}
