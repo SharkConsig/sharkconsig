@@ -1374,8 +1374,11 @@ export default function DashboardPage() {
           status_chamados:status_id (*)
         `)
         
-        // Filter by role
-        if (!isAdmin) {
+        // Filter by role - Show complete data (unfiltered) for Admin, Developer, Supervisor, Monitoramento, and Operacional
+        const userRole = perfil?.role?.toUpperCase() || "";
+        const showCompleteData = isAdmin || isDeveloper || userRole === 'SUPERVISOR' || userRole === 'MONITORAMENTO' || userRole === 'OPERACIONAL';
+
+        if (!showCompleteData) {
           if (isSupervisor) {
             // Get team members again to be sure or reuse teamIds if we were in that block
             const targetSupervisorId = perfil?.id
@@ -1620,8 +1623,11 @@ export default function DashboardPage() {
         
         setTicketStats(finalTicketStats)
 
-        // 4. Fetch Admin specific stats - Only if Admin or Developer or Recursos Humanos
-        if (isAdmin || isDeveloper || isRecursosHumanos) {
+        // 4. Fetch Admin specific stats - Only if Admin, Developer, Recursos Humanos, Supervisor, Monitoramento, or Operacional
+        const userRoleForStats = perfil?.role?.toUpperCase() || "";
+        const showCompleteStats = isAdmin || isDeveloper || isRecursosHumanos || userRoleForStats === 'SUPERVISOR' || userRoleForStats === 'MONITORAMENTO' || userRoleForStats === 'OPERACIONAL';
+
+        if (showCompleteStats) {
           const now = new Date()
           const targetYear = startDate 
             ? new Date(startDate + 'T00:00:00').getFullYear() 
@@ -2072,7 +2078,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {isSupervisor && perfil?.role !== 'Operacional' && (
+            {isSupervisor && (
               <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 gap-1.5 self-start mb-8 w-fit">
                 <button
                   onClick={() => setActiveTab('propostas')}
@@ -3576,7 +3582,7 @@ export default function DashboardPage() {
             )}
             </div>
           </motion.div>
-        )) : activeTab === 'propostas_comerciais' && isSupervisor && perfil?.role !== 'Operacional' ? (
+        )) : activeTab === 'propostas_comerciais' && isSupervisor ? (
           <AdminDashboard 
             perfil={perfil} 
             isLoading={isLoading} 
@@ -3591,7 +3597,7 @@ export default function DashboardPage() {
             onlyPropostasComerciais={true}
           />
         ) : (
-          (isAdmin || isSupervisor) && perfil?.role !== 'Operacional' && activeTab === 'chamados' && (
+          (isAdmin || isSupervisor) && activeTab === 'chamados' && (
             <motion.div 
               key="chamados"
               initial={{ opacity: 0, y: 10 }}
