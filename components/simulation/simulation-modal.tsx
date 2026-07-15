@@ -760,6 +760,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               margem_voltou_folha: parseCleanFloat(quitacaoMargemVolta) || null,
               banco_autorizacao: bancoAutorizacao,
               mostrar_troco: quitacaoMostrarTroco,
+              taxa_atual: parseCleanFloat(quitacaoTaxaAtual) || null,
+              nova_taxa: parseCleanFloat(quitacaoNovaTaxa) || null,
               validade_proposta: parseInt(validadeDias) || 5,
               documentos_necessarios: docsNecessarios,
               arquivo_url: finalDataUrl,

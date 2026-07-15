@@ -31,6 +31,10 @@ interface WarningRecord {
   quantidade: string
   suspensao: "Sim" | "Não" | ""
   pdfUrl?: string
+  suspensaoDate?: string
+  suspensaoInicio?: string
+  suspensaoFim?: string
+  suspensaoDias?: string
 }
 
 const initialRecords: WarningRecord[] = [
@@ -270,6 +274,17 @@ const toDMY = (val: string) => {
   return val
 }
 
+const calculateSuspensionDays = (startStr: string, endStr: string): string => {
+  if (!startStr || !endStr) return ""
+  const start = new Date(startStr)
+  const end = new Date(endStr)
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return ""
+  if (end < start) return "0"
+  const diffTime = end.getTime() - start.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+  return diffDays.toString()
+}
+
 const calculateTotal = (rec: WarningRecord) => {
   const v = parseInt(rec.verbalQtd || "0", 10) || 0
   const e = parseInt(rec.escritaQtd || "0", 10) || 0
@@ -301,6 +316,10 @@ const sanitizeRecord = (item: unknown): WarningRecord => {
     escritaQtd,
     quantidade: (typedItem.quantidade ?? "") as string,
     suspensao: (typedItem.suspensao || "") as "Sim" | "Não" | "",
+    suspensaoDate: (typedItem.suspensaoDate ?? typedItem.suspensao_date ?? typedItem.data_suspensao ?? "") as string,
+    suspensaoInicio: (typedItem.suspensaoInicio ?? typedItem.suspensao_inicio ?? "") as string,
+    suspensaoFim: (typedItem.suspensaoFim ?? typedItem.suspensao_fim ?? "") as string,
+    suspensaoDias: (typedItem.suspensaoDias ?? typedItem.suspensao_dias ?? "") as string,
     pdfUrl: (typedItem.pdfUrl ?? typedItem.pdf_url ?? "") as string
   }
   rec.quantidade = calculateTotal(rec)
@@ -315,10 +334,59 @@ export default function AdvertenciasPage() {
   const [newColabName, setNewColabName] = useState("")
   const [newVerbal, setNewVerbal] = useState(false)
   const [newEscrita, setNewEscrita] = useState(false)
+  const [newSuspensao, setNewSuspensao] = useState(false)
+  const [newSuspensaoInicio, setNewSuspensaoInicio] = useState("")
+  const [newSuspensaoFim, setNewSuspensaoFim] = useState("")
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
 
   const [expandedCollaborators, setExpandedCollaborators] = useState<Record<string, boolean>>({})
+
+  const handleUpdateMultipleFields = async (id: string, updates: Partial<WarningRecord>) => {
+    // 1. Instant local ui update
+    const updated = records.map(r => {
+      if (r.id === id) {
+        const nr = { ...r, ...updates }
+        nr.quantidade = calculateTotal(nr)
+        return nr
+      }
+      return r
+    })
+    setRecords(updated)
+    localStorage.setItem("hr_warning_records_v2", JSON.stringify(updated))
+
+    // 2. Sync online
+    if (isSupabaseConfigured) {
+      try {
+        const recordToSync = updated.find(r => r.id === id)
+        if (recordToSync) {
+          const dbUpdates: Record<string, any> = {
+            quantidade: recordToSync.quantidade
+          }
+          if (updates.collaboratorName !== undefined) dbUpdates.collaboratorName = recordToSync.collaboratorName
+          if (updates.verbalDate !== undefined) dbUpdates.verbalDate = recordToSync.verbalDate
+          if (updates.verbalQtd !== undefined) dbUpdates.verbalQtd = recordToSync.verbalQtd
+          if (updates.escritaDate !== undefined) dbUpdates.escritaDate = recordToSync.escritaDate
+          if (updates.escritaQtd !== undefined) dbUpdates.escritaQtd = recordToSync.escritaQtd
+          if (updates.suspensao !== undefined) dbUpdates.suspensao = recordToSync.suspensao
+          if (updates.suspensaoDate !== undefined) dbUpdates.suspensaoDate = recordToSync.suspensaoDate
+          if (updates.suspensaoInicio !== undefined) dbUpdates.suspensaoInicio = recordToSync.suspensaoInicio
+          if (updates.suspensaoFim !== undefined) dbUpdates.suspensaoFim = recordToSync.suspensaoFim
+          if (updates.suspensaoDias !== undefined) dbUpdates.suspensaoDias = recordToSync.suspensaoDias
+
+          const { error } = await supabase
+            .from('hr_advertencias')
+            .update(dbUpdates)
+            .eq('id', id)
+          if (error) {
+            console.error("Failed to update multiple fields on Supabase:", error.message)
+          }
+        }
+      } catch (err) {
+        console.error("Offline or error updating fields in Supabase:", err)
+      }
+    }
+  }
 
   const toggleExpand = (name: string) => {
     setExpandedCollaborators(prev => ({
@@ -399,7 +467,11 @@ export default function AdvertenciasPage() {
                 escritaDate: item.escritaDate,
                 escritaQtd: item.escritaQtd,
                 quantidade: item.quantidade,
-                suspensao: item.suspensao
+                suspensao: item.suspensao,
+                suspensaoDate: item.suspensaoDate || "",
+                suspensaoInicio: item.suspensaoInicio || "",
+                suspensaoFim: item.suspensaoFim || "",
+                suspensaoDias: item.suspensaoDias || ""
               }))
               
               const { error: insertErr } = await supabase.from('hr_advertencias').upsert(seedToSupa)
@@ -442,7 +514,11 @@ export default function AdvertenciasPage() {
       escritaDate: newEscrita ? todayStr : "",
       escritaQtd: newEscrita ? "1" : "",
       quantidade: "",
-      suspensao: "",
+      suspensao: newSuspensao ? "Sim" : "",
+      suspensaoDate: newSuspensao ? todayStr : "",
+      suspensaoInicio: newSuspensao && newSuspensaoInicio ? toDMY(newSuspensaoInicio) : "",
+      suspensaoFim: newSuspensao && newSuspensaoFim ? toDMY(newSuspensaoFim) : "",
+      suspensaoDias: newSuspensao ? calculateSuspensionDays(newSuspensaoInicio, newSuspensaoFim) : "",
       pdfUrl: ""
     }
     newRecord.quantidade = calculateTotal(newRecord)
@@ -454,6 +530,9 @@ export default function AdvertenciasPage() {
     setNewColabName("")
     setNewVerbal(false)
     setNewEscrita(false)
+    setNewSuspensao(false)
+    setNewSuspensaoInicio("")
+    setNewSuspensaoFim("")
 
     // 2. Sync online
     if (isSupabaseConfigured) {
@@ -556,6 +635,24 @@ export default function AdvertenciasPage() {
           } else if (val !== "Sim" && val !== "2º") {
             nr.escritaQtd = ""
           }
+        } else if (col === "suspensao") {
+          if (val === "Sim") {
+            if (!nr.suspensaoDate) {
+              const todayStr = new Date().toLocaleDateString('pt-BR')
+              nr.suspensaoDate = todayStr
+            }
+            if (!nr.suspensaoInicio) {
+              const todayStr = new Date().toLocaleDateString('pt-BR')
+              nr.suspensaoInicio = todayStr
+              nr.suspensaoFim = todayStr
+              nr.suspensaoDias = "1"
+            }
+          } else {
+            nr.suspensaoDate = ""
+            nr.suspensaoInicio = ""
+            nr.suspensaoFim = ""
+            nr.suspensaoDias = ""
+          }
         }
         nr.quantidade = calculateTotal(nr)
         return nr
@@ -571,13 +668,17 @@ export default function AdvertenciasPage() {
         const recordToSync = updated.find(r => r.id === id)
         if (recordToSync) {
           const { error } = await supabase
-            .from('hr_advertencias')
-            .update({ 
-              [col]: val,
-              verbalQtd: recordToSync.verbalQtd,
-              escritaQtd: recordToSync.escritaQtd,
-              quantidade: recordToSync.quantidade
-            })
+             .from('hr_advertencias')
+             .update({ 
+               [col]: val,
+               verbalQtd: recordToSync.verbalQtd,
+               escritaQtd: recordToSync.escritaQtd,
+               quantidade: recordToSync.quantidade,
+               suspensaoDate: recordToSync.suspensaoDate || "",
+               suspensaoInicio: recordToSync.suspensaoInicio || "",
+               suspensaoFim: recordToSync.suspensaoFim || "",
+               suspensaoDias: recordToSync.suspensaoDias || ""
+             })
             .eq('id', id)
           if (error) {
             console.error("Failed to update option on Supabase:", error.message)
@@ -751,7 +852,47 @@ export default function AdvertenciasPage() {
                       />
                       <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider group-hover:text-slate-700 transition-colors">ESCRITA</span>
                     </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={newSuspensao} 
+                        onChange={(e) => setNewSuspensao(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-300 text-[#171717] focus:ring-[#171717]/30 focus:ring-offset-0 cursor-pointer"
+                      />
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider group-hover:text-slate-700 transition-colors">SUSPENSÃO</span>
+                    </label>
                   </div>
+
+                  {newSuspensao && (
+                    <div className="flex flex-wrap items-center gap-4 mt-4 ml-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">Início da Suspensão</span>
+                        <input
+                          type="date"
+                          required={newSuspensao}
+                          value={newSuspensaoInicio}
+                          onChange={(e) => setNewSuspensaoInicio(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-300 w-[150px]"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">Fim da Suspensão</span>
+                        <input
+                          type="date"
+                          required={newSuspensao}
+                          value={newSuspensaoFim}
+                          onChange={(e) => setNewSuspensaoFim(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-300 w-[150px]"
+                        />
+                      </div>
+                      {newSuspensaoInicio && newSuspensaoFim && (
+                        <div className="self-end pb-1.5 text-xs font-bold text-slate-500">
+                          Dias: <span className="text-slate-800">{calculateSuspensionDays(newSuspensaoInicio, newSuspensaoFim)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2 w-full shrink-0">
                   <Button 
@@ -761,6 +902,9 @@ export default function AdvertenciasPage() {
                       setNewColabName("")
                       setNewVerbal(false)
                       setNewEscrita(false)
+                      setNewSuspensao(false)
+                      setNewSuspensaoInicio("")
+                      setNewSuspensaoFim("")
                     }}
                     className="text-slate-500 hover:bg-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest flex-1 h-[38px] transition-colors"
                   >
@@ -818,6 +962,12 @@ export default function AdvertenciasPage() {
                     <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
                       Suspensão
                     </th>
+                    <th className="w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
+                      Data Suspensão
+                    </th>
+                    <th className="w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
+                      Quantidade de Dias
+                    </th>
                     <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">
                       Ações
                     </th>
@@ -826,7 +976,7 @@ export default function AdvertenciasPage() {
                 <tbody className="divide-y divide-slate-100">
                   {loadingTable ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={9} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-3">
                           <div className="w-8 h-8 border-4 border-[#171717] border-t-transparent rounded-full animate-spin" />
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Carregando dados das advertências...</p>
@@ -909,6 +1059,19 @@ export default function AdvertenciasPage() {
 
                               {/* Suspensão Summary */}
                               <td className="px-4 py-3.5 text-center">
+                                {groupRecords.filter(r => r.suspensao === "Sim").length > 0 && (
+                                  <span className="inline-flex items-center gap-1 bg-red-50 text-red-600 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border border-red-100/30">
+                                    {groupRecords.filter(r => r.suspensao === "Sim").length} Susp.
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Data Suspensão Summary */}
+                              <td className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold">
+                              </td>
+
+                              {/* Quantidade de Dias Summary */}
+                              <td className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold">
                               </td>
 
                               {/* Action Hint */}
@@ -986,6 +1149,82 @@ export default function AdvertenciasPage() {
                                   />
                                 </td>
 
+                                {/* Data Suspensão Cell */}
+                                <td className="px-4 py-3 text-center">
+                                  {rec.suspensao === "Sim" ? (
+                                    <input
+                                      type="date"
+                                      value={toYMD(rec.suspensaoDate || "")}
+                                      onChange={(e) => handleUpdateField(rec.id, "suspensaoDate", toDMY(e.target.value))}
+                                      className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none transition-all text-center"
+                                    />
+                                  ) : (
+                                    <span className="text-slate-300 text-xs font-semibold">-</span>
+                                  )}
+                                </td>
+
+                                {/* Quantidade de Dias Cell */}
+                                <td className="px-4 py-3 text-center relative group">
+                                  {rec.suspensao === "Sim" ? (
+                                    <div className="relative inline-block">
+                                      <input
+                                        type="text"
+                                        readOnly
+                                        value={rec.suspensaoDias || "0"}
+                                        className="w-[50px] bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1 text-xs font-black text-slate-700 outline-none transition-all text-center cursor-help"
+                                      />
+                                      {/* Hover tooltip allowing view & edit of start/end suspension dates */}
+                                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex group-focus-within:flex flex-col items-center z-50 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 p-3 w-[260px] animate-in fade-in slide-in-from-bottom-1 duration-150">
+                                        <p className="text-[9px] font-black tracking-wider text-slate-400 uppercase mb-2">Período de Suspensão</p>
+                                        <div className="flex items-center gap-2 w-full">
+                                          <div className="flex-1 flex flex-col items-start gap-0.5">
+                                            <span className="text-[8px] text-slate-400 font-bold uppercase">Início</span>
+                                            <input
+                                              type="date"
+                                              value={toYMD(rec.suspensaoInicio || "")}
+                                              onChange={(e) => {
+                                                const newStart = toDMY(e.target.value)
+                                                const ymdStart = e.target.value
+                                                const ymdEnd = toYMD(rec.suspensaoFim || "")
+                                                const days = ymdStart && ymdEnd ? calculateSuspensionDays(ymdStart, ymdEnd) : "0"
+                                                
+                                                handleUpdateMultipleFields(rec.id, {
+                                                  suspensaoInicio: newStart,
+                                                  suspensaoDias: days
+                                                })
+                                              }}
+                                              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-slate-500 text-center"
+                                            />
+                                          </div>
+                                          <span className="text-slate-500 text-xs self-end pb-2">a</span>
+                                          <div className="flex-1 flex flex-col items-start gap-0.5">
+                                            <span className="text-[8px] text-slate-400 font-bold uppercase">Fim</span>
+                                            <input
+                                              type="date"
+                                              value={toYMD(rec.suspensaoFim || "")}
+                                              onChange={(e) => {
+                                                const newEnd = toDMY(e.target.value)
+                                                const ymdStart = toYMD(rec.suspensaoInicio || "")
+                                                const ymdEnd = e.target.value
+                                                const days = ymdStart && ymdEnd ? calculateSuspensionDays(ymdStart, ymdEnd) : "0"
+                                                
+                                                handleUpdateMultipleFields(rec.id, {
+                                                  suspensaoFim: newEnd,
+                                                  suspensaoDias: days
+                                                })
+                                              }}
+                                              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-slate-500 text-center"
+                                            />
+                                          </div>
+                                        </div>
+                                        <div className="w-2.5 h-2.5 bg-slate-900 rotate-45 -mb-4.5 mt-2 border-r border-b border-slate-700" />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-300 text-xs font-semibold">-</span>
+                                  )}
+                                </td>
+
                                 {/* Actions Column */}
                                 <td className="px-4 py-3 text-center">
                                   <div className="flex items-center gap-2 justify-center">
@@ -1041,7 +1280,7 @@ export default function AdvertenciasPage() {
                   )}
                   {!loadingTable && filteredRecords.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={9} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <FileText className="w-10 h-10 text-slate-350 animate-bounce" />
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Lista de advertências vazia ou sem resultados</p>

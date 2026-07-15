@@ -963,6 +963,7 @@ export default function EntrevistasPage() {
                     <option value="Estágio">Estágio</option>
                     <option value="Não estudam">Não estudam</option>
                     <option value="PJ">PJ</option>
+                    <option value="Home office">Home office</option>
                   </select>
                 </div>
               </div>
@@ -1407,5 +1408,6 @@ const areaOptions = [
   { value: "Operacional", label: "Operacional", bg: "bg-[#e0f2fe] hover:bg-[#e0f2fe]/90", border: "border-[#bae6fd]", text: "text-[#0369a1]", arrowColor: "text-[#0369a1]" },
   { value: "Estágio", label: "Estágio", bg: "bg-[#15803d] hover:bg-[#166534]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
   { value: "Não estudam", label: "Não estudam", bg: "bg-[#205361] hover:bg-[#1f4a56]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
-  { value: "PJ", label: "PJ", bg: "bg-[#334155] hover:bg-[#1e293b]", border: "border-transparent", text: "text-white", arrowColor: "text-white" }
+  { value: "PJ", label: "PJ", bg: "bg-[#334155] hover:bg-[#1e293b]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
+  { value: "Home office", label: "Home office", bg: "bg-[#e0e7ff] hover:bg-[#e0e7ff]/90", border: "border-[#c7d2fe]", text: "text-[#4338ca]", arrowColor: "text-[#4338ca]" }
 ]

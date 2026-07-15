@@ -253,7 +253,7 @@ export function AdminDashboard({
           selectStr = 'id, user_id, cliente_cpf, cliente_nome, user_nome, user_email, total_parcela_atual, total_parcela_nova, valor_liberado, created_at, arquivo_url, tipo_arquivo';
         } else if (selectedProposalCard === 'quitacao') {
           table = 'historico_proposta_comercial_quitacao_contrato';
-          selectStr = 'id, user_id, cliente_cpf, cliente_nome, user_nome, user_email, saldo_quitacao, parcela_atual, prazo_restante, nova_parcela, reducao_mensal, valor_liberado, created_at, arquivo_url, tipo_arquivo';
+          selectStr = 'id, user_id, cliente_cpf, cliente_nome, user_nome, user_email, saldo_quitacao, parcela_atual, prazo_restante, nova_parcela, reducao_mensal, valor_liberado, taxa_atual, nova_taxa, created_at, arquivo_url, tipo_arquivo';
         } else if (selectedProposalCard === 'novo_formato') {
           table = 'historico_proposta_comercial_novo_formato';
           selectStr = 'id, user_id, cliente_cpf, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo';
@@ -3507,11 +3507,12 @@ export function AdminDashboard({
                     }> = {};
 
                     (proposalsStats?.recentProposals || []).forEach((p: any) => {
+                      const key = p.user_id || (p.user_email || "sem-email").toLowerCase().trim();
                       const email = (p.user_email || "sem-email").toLowerCase().trim();
                       const name = p.user_nome || p.user_email || "Não informado";
                       
-                      if (!userStatsMap[email]) {
-                        userStatsMap[email] = {
+                      if (!userStatsMap[key]) {
+                        userStatsMap[key] = {
                           name: name,
                           email: email,
                           reducaoCount: 0,
@@ -3523,9 +3524,14 @@ export function AdminDashboard({
                           totalCount: 0,
                           totalValue: 0
                         };
+                      } else {
+                        // Se o nome no mapa for menos completo ou curto, e o nome desta proposta for mais completo, atualizamos
+                        if (p.user_nome && (!userStatsMap[key].name || userStatsMap[key].name === "Não informado" || userStatsMap[key].name.length < p.user_nome.length)) {
+                          userStatsMap[key].name = p.user_nome;
+                        }
                       }
                       
-                      const stats = userStatsMap[email];
+                      const stats = userStatsMap[key];
                       
                       if (p.isQuitacao) {
                         const val = parseFloat(p.saldo_quitacao);
@@ -3650,7 +3656,7 @@ export function AdminDashboard({
                     const groupedProposals = (() => {
                       const groups: Record<string, any[]> = {};
                       filteredProposals.forEach(item => {
-                        const key = item.user_id || "Não informado";
+                        const key = item.user_id || item.user_email || "Não informado";
                         if (!groups[key]) {
                           groups[key] = [];
                         }
@@ -3671,14 +3677,14 @@ export function AdminDashboard({
                         }
 
                         // Determine collaborator display name
-                        const firstItem = sortedItems[0];
+                        const namedItem = sortedItems.find(it => it.user_nome && it.user_nome !== "Não informado") || sortedItems[0];
                         let colaborador = "";
-                        if (firstItem?.user_id && perfil?.id && firstItem.user_id === perfil.id) {
-                          colaborador = perfil.nome || firstItem.user_nome || firstItem.user_email;
-                        } else if (firstItem?.user_email && perfil?.email && firstItem.user_email.toLowerCase() === perfil.email.toLowerCase()) {
-                          colaborador = perfil.nome || firstItem.user_nome || firstItem.user_email;
+                        if (namedItem?.user_id && perfil?.id && namedItem.user_id === perfil.id) {
+                          colaborador = perfil.nome || namedItem.user_nome || namedItem.user_email;
+                        } else if (namedItem?.user_email && perfil?.email && namedItem.user_email.toLowerCase() === perfil.email.toLowerCase()) {
+                          colaborador = perfil.nome || namedItem.user_nome || namedItem.user_email;
                         } else {
-                          colaborador = firstItem?.user_nome || firstItem?.user_email || "Não informado";
+                          colaborador = namedItem?.user_nome || namedItem?.user_email || "Não informado";
                         }
 
                         return {
