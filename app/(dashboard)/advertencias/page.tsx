@@ -274,6 +274,14 @@ const toDMY = (val: string) => {
   return val
 }
 
+const normalizeName = (name: string): string => {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+}
+
 const calculateSuspensionDays = (startStr: string, endStr: string): string => {
   if (!startStr || !endStr) return ""
   const start = new Date(startStr)
@@ -341,6 +349,7 @@ export default function AdvertenciasPage() {
   const [uploadingId, setUploadingId] = useState<string | null>(null)
 
   const [expandedCollaborators, setExpandedCollaborators] = useState<Record<string, boolean>>({})
+  const [activeCollaborators, setActiveCollaborators] = useState<{ id: string; name: string }[]>([])
 
   const handleUpdateMultipleFields = async (id: string, updates: Partial<WarningRecord>) => {
     // 1. Instant local ui update
@@ -394,6 +403,25 @@ export default function AdvertenciasPage() {
       [name]: !prev[name]
     }))
   }
+
+  useEffect(() => {
+    async function loadActiveCollaborators() {
+      if (!isSupabaseConfigured) return
+      try {
+        const { data, error } = await supabase
+          .from('hr_colaboradores')
+          .select('id, nome')
+          .eq('status', 'Ativo')
+          .order('nome', { ascending: true })
+        if (data && !error) {
+          setActiveCollaborators(data.map(item => ({ id: String(item.id || ""), name: String(item.nome || "") })))
+        }
+      } catch (err) {
+        console.error("Error loading active collaborators:", err)
+      }
+    }
+    loadActiveCollaborators()
+  }, [])
 
   // Load and hydrate database
   useEffect(() => {
@@ -503,10 +531,24 @@ export default function AdvertenciasPage() {
     }
 
     const todayStr = new Date().toLocaleDateString('pt-BR')
+    const normalizedNewName = newColabName.trim()
 
+    // Match exact casing from active collaborators or previous warning records to ensure perfect grouping
+    let matchedName = normalizedNewName
+    const foundActive = activeCollaborators.find(c => normalizeName(c.name) === normalizeName(normalizedNewName))
+    if (foundActive) {
+      matchedName = foundActive.name
+    } else {
+      const foundExisting = records.find(r => r.collaboratorName && normalizeName(r.collaboratorName) === normalizeName(normalizedNewName))
+      if (foundExisting) {
+        matchedName = foundExisting.collaboratorName.trim()
+      }
+    }
+
+    // Creating new record if the collaborator doesn't exist yet
     const newRecord: WarningRecord = {
       id: Date.now().toString(),
-      collaboratorName: newColabName.trim(),
+      collaboratorName: matchedName,
       verbal: newVerbal ? "Sim" : "",
       verbalDate: newVerbal ? todayStr : "",
       verbalQtd: newVerbal ? "1" : "",
@@ -527,6 +569,13 @@ export default function AdvertenciasPage() {
     const updated = [newRecord, ...records]
     setRecords(updated)
     localStorage.setItem("hr_warning_records_v2", JSON.stringify(updated))
+
+    // Automatically expand this collaborator's accordion so they can see the new warning alongside existing ones
+    setExpandedCollaborators(prev => ({
+      ...prev,
+      [matchedName]: true
+    }))
+
     setNewColabName("")
     setNewVerbal(false)
     setNewEscrita(false)
@@ -827,11 +876,23 @@ export default function AdvertenciasPage() {
                   <input 
                     type="text" 
                     required
+                    list={newColabName.trim().length > 0 ? "colaboradores-list" : undefined}
                     placeholder="Ex: Ana Clara Silva" 
                     value={newColabName} 
                     onChange={(e) => setNewColabName(e.target.value)}
                     className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
                   />
+                  <datalist id="colaboradores-list">
+                    {activeCollaborators
+                      .filter(colab => 
+                        newColabName.trim().length > 0 &&
+                        normalizeName(colab.name).includes(normalizeName(newColabName))
+                      )
+                      .map((colab) => (
+                        <option key={colab.id} value={colab.name} />
+                      ))
+                    }
+                  </datalist>
                   <div className="flex items-center gap-6 mt-3 ml-1 select-none">
                     <label className="flex items-center gap-2 cursor-pointer group">
                       <input 
@@ -990,7 +1051,10 @@ export default function AdvertenciasPage() {
                       const collaboratorOrder: string[] = []
 
                       filteredRecords.forEach((rec) => {
-                        const name = (rec.collaboratorName || "Sem nome").trim()
+                        const rawName = (rec.collaboratorName || "Sem nome").trim()
+                        // Find if there is an existing group key that matches case-insensitively and accent-insensitively
+                        const existingKey = collaboratorOrder.find(k => normalizeName(k) === normalizeName(rawName))
+                        const name = existingKey || rawName
                         if (!groups[name]) {
                           groups[name] = []
                           collaboratorOrder.push(name)
