@@ -573,7 +573,7 @@ export default function TicketsPage() {
           if (response.ok) {
             const allUsers = await response.json()
             const subordinates = allUsers
-              .filter((u: { supervisor_id: string }) => u.supervisor_id === user.id)
+              .filter((u: { supervisor_id: string; padrinho_id?: string }) => u.supervisor_id === user.id || u.padrinho_id === user.id)
               .map((u: { id: string }) => u.id)
             
             query = query.in('user_id', [...subordinates, user.id])

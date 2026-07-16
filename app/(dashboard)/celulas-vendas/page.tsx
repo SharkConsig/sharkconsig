@@ -69,9 +69,12 @@ export default function CelulasVendasPage() {
     fetchUsers()
   }, [])
 
-  // Filter Closers (Corretores)
+  // Filter Closers (Corretores e Supervisores)
   const closers = useMemo(() => {
-    return users.filter(u => u.funcao?.toLowerCase() === 'corretor' && u.status === 'ATIVO')
+    return users.filter(u => 
+      (u.funcao?.toLowerCase() === 'corretor' || u.funcao?.toLowerCase() === 'supervisor') && 
+      u.status === 'ATIVO'
+    )
   }, [users])
 
   // Filter SDRs (Estagiários)
