@@ -18,7 +18,8 @@ import {
   Loader2,
   RefreshCw,
   Check,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Send
 } from "lucide-react"
 import { cn, withRetry } from "@/lib/utils"
 import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
@@ -407,6 +408,55 @@ export default function TicketsPage() {
     setIsClientModalOpen(true)
   }, [])
 
+  const handleSendToCorretor = async (ticket: Ticket) => {
+    try {
+      if (!perfil?.padrinho_id) {
+        toast.error("Você não tem um corretor padrinho vinculado.")
+        return
+      }
+      
+      const currentMeta = parseDescriptionMetadata(ticket.descricao || "") || {}
+      const updatedMeta = {
+        ...currentMeta,
+        enviado_para_corretor: true,
+        corretor_id: perfil.padrinho_id,
+        corretor_nome: perfil.padrinho_nome,
+        estagiario_id: perfil.id,
+        estagiario_nome: perfil.nome
+      }
+      
+      const cleanedDesc = (ticket.descricao || "").replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "").trim();
+      const newDescription = cleanedDesc + `\n\n<!-- TICKET_METADATA: ${JSON.stringify(updatedMeta)} -->`;
+      
+      const { error } = await supabase
+        .from('chamados')
+        .update({ descricao: newDescription })
+        .eq('id', ticket.id)
+        
+      if (error) {
+        console.error("Erro ao enviar para corretor:", error)
+        toast.error("Erro ao enviar chamado para o corretor")
+      } else {
+        toast.success(`Chamado enviado para o corretor ${perfil.padrinho_nome}!`)
+        fetchTickets(true)
+      }
+    } catch (err) {
+      console.error("Erro ao enviar para o corretor:", err)
+      toast.error("Ocorreu um erro ao enviar para o corretor")
+    }
+  }
+
+  const isTicketAprovadoOrProposta = (ticket: Ticket) => {
+    const statusUpper = (ticket.status_chamados?.nome || ticket.status || "").trim().toUpperCase()
+    const isProposta = statusUpper === "PROPOSTA ENVIADA"
+    const isAprovado = APROVADOS_LABELS.some(label => {
+      const u = label.toUpperCase()
+      const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+      return statusUpper === u || statusUpper === ua
+    })
+    return isProposta || isAprovado
+  }
+
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem('expanded_ticket_id')
@@ -486,8 +536,31 @@ export default function TicketsPage() {
       }
 
       // Aplicar filtros de permissão baseados na Role
-      if (perfil.role === 'Corretor' || perfil.role === 'Estágio' || perfil.role === 'Processo Seletivo' || perfil.role === 'PROCESSO SELETIVO') {
+      if (perfil.role === 'Estágio' || perfil.role === 'Estagio' || perfil.role === 'Processo Seletivo' || perfil.role === 'PROCESSO SELETIVO') {
         query = query.eq('user_id', user.id)
+      } else if (perfil.role === 'Corretor') {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          
+          const response = await fetch("/api/usuarios", { signal: controller.signal })
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            const allUsers = await response.json()
+            const myEstagiarios = allUsers
+              .filter((u: { padrinho_id: string }) => u.padrinho_id === user.id)
+              .map((u: { id: string }) => u.id)
+            
+            query = query.in('user_id', [user.id, ...myEstagiarios])
+          } else {
+            console.warn("API de usuários retornou status:", response.status)
+            query = query.eq('user_id', user.id)
+          }
+        } catch (err) {
+          console.error("Erro ao buscar estagiários do padrinho:", err)
+          query = query.eq('user_id', user.id)
+        }
       } else if (perfil.role === 'Supervisor') {
         try {
           // Usar cache ou timeout para evitar Failed to fetch
@@ -642,6 +715,14 @@ export default function TicketsPage() {
   // Base tickets filtered by search and advanced filters
   const baseFilteredTickets = useMemo(() => {
     return tickets.filter(ticket => {
+      // Se for Corretor e o chamado for de um estagiário, só mostra se tiver sido enviado para ele
+      if (perfil?.role === 'Corretor' && ticket.user_id !== user?.id) {
+        const meta = parseDescriptionMetadata(ticket.descricao || "")
+        if (!meta || !meta.enviado_para_corretor || meta.corretor_id !== user?.id) {
+          return false
+        }
+      }
+
       // Basic text search
       const searchLower = searchTerm.toLowerCase()
       const searchDigits = searchTerm.replace(/\D/g, "")
@@ -1530,6 +1611,17 @@ export default function TicketsPage() {
                               >
                                 {ticket.status_chamados?.nome || ticket.status}
                               </span>
+                              {(() => {
+                                const meta = parseDescriptionMetadata(ticket.descricao || "")
+                                if (meta?.enviado_para_corretor === true && ticket.user_id !== user?.id) {
+                                  return (
+                                    <Badge variant="outline" className="text-[9px] bg-indigo-50 text-indigo-700 border-indigo-200 font-bold px-1.5 py-0.5 rounded mt-1">
+                                      Estagiário: {meta.estagiario_nome || "Não informado"}
+                                    </Badge>
+                                  )
+                                }
+                                return null
+                              })()}
                               {ticketApoioStates[ticket.id] && ticketApoioStates[ticket.id] !== 'none' && (
                                 <>
                                   {ticketApoioStates[ticket.id] === 'pediu' && (
@@ -1618,6 +1710,41 @@ export default function TicketsPage() {
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
+                              {isUserEstagio && isTicketAprovadoOrProposta(ticket) && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className={cn(
+                                    "h-8 w-8 rounded-full transition-all cursor-pointer",
+                                    (() => {
+                                      const meta = parseDescriptionMetadata(ticket.descricao || "")
+                                      return meta?.enviado_para_corretor 
+                                        ? "text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50" 
+                                        : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                                    })()
+                                  )}
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    const meta = parseDescriptionMetadata(ticket.descricao || "")
+                                    if (meta?.enviado_para_corretor) {
+                                      toast.success(`Este chamado já foi enviado para o corretor ${meta.corretor_nome || 'padrinho'}`)
+                                      return
+                                    }
+                                    await handleSendToCorretor(ticket)
+                                  }}
+                                  title={(() => {
+                                    const meta = parseDescriptionMetadata(ticket.descricao || "")
+                                    return meta?.enviado_para_corretor 
+                                      ? `Enviado para o Corretor (${meta.corretor_nome})` 
+                                      : "Enviar para o Corretor Padrinho"
+                                  })()}
+                                >
+                                  {(() => {
+                                    const meta = parseDescriptionMetadata(ticket.descricao || "")
+                                    return meta?.enviado_para_corretor ? <Check className="w-4 h-4" /> : <Send className="w-4 h-4" />
+                                  })()}
+                                </Button>
+                              )}
                               {!isUserEstagio && (
                                 <Button 
                                   variant="ghost" 

@@ -271,9 +271,15 @@ function NewProposalForm() {
               ? ['corretor', 'estágio', 'estagio', 'supervisor', 'processo seletivo']
               : ['estágio', 'estagio'];
             const filtered = data
-              .filter((u: { id: string; nome: string; funcao?: string; status?: string }) => {
+              .filter((u: { id: string; nome: string; funcao?: string; status?: string; padrinho_id?: string }) => {
                 const funcao = (u.funcao || '').toLowerCase();
                 const status = (u.status || '').toUpperCase();
+                
+                // If user is a Corretor, they can only collaborate with Estagiários assigned to them (padrinho)
+                if (isCorretor && perfil?.id) {
+                  return targetRoles.includes(funcao) && status === 'ATIVO' && u.padrinho_id === perfil.id;
+                }
+                
                 return targetRoles.includes(funcao) && status === 'ATIVO';
               })
               .map((u: { id: string; nome: string }) => ({ id: u.id, nome: u.nome }))
@@ -285,7 +291,7 @@ function NewProposalForm() {
       }
     }
     loadEstagiarios()
-  }, [perfil?.role])
+  }, [perfil?.role, perfil?.id, isCorretor])
 
   useEffect(() => {
     async function loadTicketAttachments() {
@@ -1286,13 +1292,15 @@ function NewProposalForm() {
 
       <Card className="card-shadow border border-slate-200 bg-white">
         <CardContent className="p-10 space-y-16">
-          {/* Campo atribuição para Supervisor ou Monitoramento */}
-          {(perfil?.role === 'Supervisor' || isMonitoramento) && (
+          {/* Campo atribuição para Supervisor ou Monitoramento ou Corretor */}
+          {(perfil?.role === 'Supervisor' || isMonitoramento || isCorretor) && (
             <div className="p-5 bg-amber-50/30 border border-amber-100 rounded-xl space-y-2 max-w-md">
               <label className="text-[10px] font-bold text-amber-900 uppercase tracking-widest block">
                 {isMonitoramento 
                   ? "Atribuir Digitação para Colaborador (Opcional)" 
-                  : "Atribuir Colaboração com Estagiário (Opcional)"}
+                  : isCorretor
+                    ? "Atribuir Colaboração com Estagiário da sua Célula (Opcional)"
+                    : "Atribuir Colaboração com Estagiário (Opcional)"}
               </label>
               <select
                 value={formData.estagiario_colaborador_id}

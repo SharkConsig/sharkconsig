@@ -21,6 +21,8 @@ interface Perfil {
   supervisor_id?: string
   supervisor_nome?: string
   regime_contratacao?: string
+  padrinho_id?: string
+  padrinho_nome?: string
 }
 
 interface AuthContextType {
@@ -113,7 +115,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               foto_proposta_url: freshUser.foto_proposta_url,
               supervisor_id: freshUser.supervisor_id,
               supervisor_nome: freshUser.supervisor_nome,
-              regime_contratacao: freshUser.regime_contratacao || ""
+              regime_contratacao: freshUser.regime_contratacao || "",
+              padrinho_id: freshUser.padrinho_id || "",
+              padrinho_nome: freshUser.padrinho_nome || ""
             })
             return
           }
@@ -135,7 +139,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           foto_proposta_url: metadata.foto_proposta_url,
           supervisor_id: metadata.supervisor_id,
           supervisor_nome: metadata.supervisor_nome,
-          regime_contratacao: metadata.regime_contratacao || ""
+          regime_contratacao: metadata.regime_contratacao || "",
+          padrinho_id: metadata.padrinho_id || "",
+          padrinho_nome: metadata.padrinho_nome || ""
         })
       }
     } catch (e) {
@@ -164,7 +170,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             foto_proposta_url: metadata.foto_proposta_url,
             supervisor_id: metadata.supervisor_id,
             supervisor_nome: metadata.supervisor_nome,
-            regime_contratacao: metadata.regime_contratacao || ""
+            regime_contratacao: metadata.regime_contratacao || "",
+            padrinho_id: metadata.padrinho_id || "",
+            padrinho_nome: metadata.padrinho_nome || ""
           })
           // Busca dados atualizados do servidor para evitar cache local obsoleto do metadata do auth
           refreshPerfil()

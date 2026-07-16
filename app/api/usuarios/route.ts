@@ -39,7 +39,9 @@ export async function GET(request: Request) {
         avatar_url: metadata.avatar_url || `https://picsum.photos/seed/${metadata.username || user.id}/200/200`,
         foto_campanha_url: metadata.foto_campanha_url || '',
         foto_proposta_url: metadata.foto_proposta_url || '',
-        status: (metadata.status || 'ATIVO').toUpperCase()
+        status: (metadata.status || 'ATIVO').toUpperCase(),
+        padrinho_id: metadata.padrinho_id || '',
+        padrinho_nome: metadata.padrinho_nome || ''
       })
     }
 
@@ -78,6 +80,8 @@ export async function GET(request: Request) {
         foto_campanha_url: metadata.foto_campanha_url || '',
         foto_proposta_url: metadata.foto_proposta_url || '',
         status: (metadata.status || 'ATIVO').toUpperCase(),
+        padrinho_id: metadata.padrinho_id || '',
+        padrinho_nome: metadata.padrinho_nome || '',
         created_at: user.created_at,
         last_sign_in_at: user.last_sign_in_at
       }
@@ -138,7 +142,7 @@ export async function PUT(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
     const body = await request.json()
-    const { id, email, password, nome_completo, username, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome, status } = body
+    const { id, email, password, nome_completo, username, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome, status, padrinho_id, padrinho_nome } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 })
@@ -162,6 +166,8 @@ export async function PUT(request: Request) {
     if (status) metadata.status = status.toUpperCase()
     if (supervisor_id !== undefined) metadata.supervisor_id = supervisor_id
     if (supervisor_nome !== undefined) metadata.supervisor_nome = supervisor_nome
+    if (padrinho_id !== undefined) metadata.padrinho_id = padrinho_id
+    if (padrinho_nome !== undefined) metadata.padrinho_nome = padrinho_nome
     if (avatar_url !== undefined) {
       metadata.avatar_url = avatar_url?.startsWith('data:image') 
         ? `https://picsum.photos/seed/${username || id}/200/200` 

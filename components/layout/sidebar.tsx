@@ -76,6 +76,17 @@ const allMenuItems = [
     ]
   },
   {
+    title: "CÉLULAS DE VENDAS",
+    items: [
+      { 
+        name: "CÉLULAS DE VENDAS", 
+        href: "/celulas-vendas", 
+        icon: Users, 
+        roles: ["Administrador", "Desenvolvedor"] 
+      }
+    ]
+  },
+  {
     title: "CHAMADOS",
     items: [
       { 
