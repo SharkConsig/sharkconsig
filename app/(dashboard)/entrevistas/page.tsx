@@ -931,6 +931,7 @@ export default function EntrevistasPage() {
                     <option value="Não atendeu">Não atendeu</option>
                     <option value="Desistiu">Desistiu</option>
                     <option value="Rep. formulário">Rep. formulário</option>
+                    <option value="N Resp. Form.">N Resp. Form.</option>
                     <option value="Outra oportunidade">Outra oportunidade</option>
                     <option value="Não veio para o teste">Não veio para o teste</option>
                     <option value="Remarcar">Remarcar</option>
@@ -1391,6 +1392,7 @@ const faseOptions = [
   { value: "Não atendeu", label: "Não atendeu", bg: "bg-[#ffedd5] hover:bg-[#ffedd5]/90", border: "border-[#fed7aa]", text: "text-[#c2410c]", arrowColor: "text-[#c2410c]" },
   { value: "Desistiu", label: "Desistiu", bg: "bg-[#e0f2fe] hover:bg-[#e0f2fe]/90", border: "border-[#bae6fd]", text: "text-[#0369a1]", arrowColor: "text-[#0369a1]" },
   { value: "Rep. formulário", label: "Rep. formulário", bg: "bg-[#f1f5f9] hover:bg-[#cbd5e1]/50", border: "border-[#cbd5e1]", text: "text-[#475569]", arrowColor: "text-[#475569]" },
+  { value: "N Resp. Form.", label: "N Resp. Form.", bg: "bg-[#f8fafc] hover:bg-[#f1f5f9]", border: "border-[#e2e8f0]", text: "text-[#64748b]", arrowColor: "text-[#64748b]" },
   { value: "Outra oportunidade", label: "Outra oportunidade", bg: "bg-[#5c1c1c] hover:bg-[#521c1c]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
   { value: "Não veio para o teste", label: "Não veio para o teste", bg: "bg-[#205361] hover:bg-[#1f4a56]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
   { value: "Remarcar", label: "Remarcar", bg: "bg-[#f1f5f9] hover:bg-[#e2e8f0]", border: "border-[#cbd5e1]", text: "text-[#475569]", arrowColor: "text-[#475569]" }
