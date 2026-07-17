@@ -1164,7 +1164,7 @@ export default function DistribuicaoCampanhaPage() {
                                                 ? (new Date().getTime() - new Date(brokerStats.last_active).getTime()) < 15 * 60 * 1000
                                                 : false;
 
-                                              const tabulacoesEntries = Object.entries(brokerStats.tabulacoes);
+                                              const tabulacoesEntries = Object.entries(brokerStats.tabulacoes || {}).filter(([tab]) => tab.toUpperCase() !== 'RESERVADO');
                                                const _isBrokerPresentUnused = false; // sessao 
                                                  // ? (!!sessao.entrou && !sessao.saiu) 
                                                  // : isBrokerActive;
