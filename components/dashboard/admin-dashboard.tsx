@@ -106,6 +106,11 @@ interface TicketStats {
   byOrigin: { name: string; value: number; totalValue?: number; approved?: number }[]
   byConvenio: { name: string; value: number; totalValue?: number; approved?: number }[]
   byBroker: { id: string; name: string; supervisor: string; value: number; approved: number; negotiation: number; totalValue?: number }[]
+  partnershipStats?: {
+    totalCount: number;
+    totalValue: number;
+    groups: any[];
+  }
 }
 
 interface AdminStats {
@@ -2740,6 +2745,91 @@ export function AdminDashboard({
               </div>
             </DashboardCard>
           </div>
+        </div>
+
+        {/* Card de Parceria Estagiário/Corretor (Células de Vendas) */}
+        <div className="mt-6">
+          <DashboardCard className="p-8 bg-white border-slate-100 h-auto flex flex-col">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em] flex items-center gap-2">
+                  <Users className="w-5 h-5 text-[#1C2643]" />
+                  Célula de Vendas (Parceria Estagiário/Corretor)
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Métricas de chamados encaminhados e desempenho de cada parceria</p>
+              </div>
+              {ticketStats?.partnershipStats && (
+                <div className="flex items-center gap-4 bg-indigo-50/50 border border-indigo-100/30 rounded-xl px-4 py-2 shrink-0">
+                  <div className="text-right">
+                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">CHAMADOS</p>
+                    <p className="text-base font-black text-indigo-600">{ticketStats.partnershipStats.totalCount}</p>
+                  </div>
+                  <div className="h-6 w-px bg-indigo-100" />
+                  <div className="text-right">
+                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">VALOR TOTAL</p>
+                    <p className="text-base font-black text-indigo-600">
+                      {formatCurrency(ticketStats.partnershipStats.totalValue)}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {!ticketStats?.partnershipStats || ticketStats.partnershipStats.groups.length === 0 ? (
+              <div className="py-8 text-center">
+                <p className="text-[11.5px] font-semibold text-slate-400">Nenhum chamado encaminhado ou em parceria encontrado no filtro atual.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-6">
+                {ticketStats.partnershipStats.groups.map((group: any) => (
+                  <div key={group.corretorName} className="bg-slate-50/70 border border-slate-100/80 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-200/80 transition-all">
+                    <div>
+                      {/* Corretor Header */}
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                        <div>
+                          <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider">CORRETOR/SUPERVISOR</span>
+                          <h4 className="text-[12.5px] font-black text-slate-700 leading-tight truncate max-w-[180px]" title={group.corretorName}>
+                            {group.corretorName}
+                          </h4>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-100 text-indigo-700">
+                            {group.totalCount} {group.totalCount === 1 ? 'chamado' : 'chamados'}
+                          </span>
+                          <p className="text-[10.5px] font-black text-slate-800 mt-0.5">
+                            {formatCurrency(group.totalValue)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Estagiários List */}
+                      <div className="space-y-2 mt-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Membros da Célula</span>
+                        {Object.entries(group.estagiarios).map(([estagiarioName, stats]: [string, any]) => (
+                          <div key={estagiarioName} className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-100">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                              <span className="text-[11px] font-semibold text-slate-600 truncate max-w-[150px]" title={estagiarioName}>
+                                {estagiarioName}
+                              </span>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="text-[10px] font-bold text-slate-500 mr-2">
+                                {stats.count} un
+                              </span>
+                              <span className="text-[11px] font-extrabold text-slate-700">
+                                {formatCurrency(stats.value)}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </DashboardCard>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">

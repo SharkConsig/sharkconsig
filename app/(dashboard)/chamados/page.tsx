@@ -390,6 +390,9 @@ export default function TicketsPage() {
   const [filterEquipes, setFilterEquipes] = useState<string[]>([])
   const [filterMargemMin, setFilterMargemMin] = useState("")
   const [filterMargemMax, setFilterMargemMax] = useState("")
+  const [filterEncaminhados, setFilterEncaminhados] = useState("Todos")
+  const [filterEstagiarioForwarded, setFilterEstagiarioForwarded] = useState<string[]>([])
+  const [filterCorretorForwarded, setFilterCorretorForwarded] = useState<string[]>([])
   const [showFilters, setShowFilters] = useState(false)
   const [isClientModalOpen, setIsClientModalOpen] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState("")
@@ -712,6 +715,22 @@ export default function TicketsPage() {
   }, [tickets])
   const uniqueEquipes = useMemo(() => Array.from(new Set(tickets.map(t => t.equipe).filter(Boolean))).sort() as string[], [tickets])
 
+  const uniqueEstagiariosForwarded = useMemo(() => {
+    const names = tickets.map(t => {
+      const meta = parseDescriptionMetadata(t.descricao || "")
+      return meta?.estagiario_nome
+    }).filter(Boolean) as string[]
+    return Array.from(new Set(names)).sort()
+  }, [tickets])
+
+  const uniqueCorretoresForwarded = useMemo(() => {
+    const names = tickets.map(t => {
+      const meta = parseDescriptionMetadata(t.descricao || "")
+      return meta?.corretor_nome
+    }).filter(Boolean) as string[]
+    return Array.from(new Set(names)).sort()
+  }, [tickets])
+
   // Base tickets filtered by search and advanced filters
   const baseFilteredTickets = useMemo(() => {
     return tickets.filter(ticket => {
@@ -759,6 +778,21 @@ export default function TicketsPage() {
       if (filterConvenios.length > 0 && !filterConvenios.includes(normalizeConvenioName(ticket.convenio) as string)) return false
       if (filterEquipes.length > 0 && !filterEquipes.includes(ticket.equipe)) return false
 
+      // Filtro de Encaminhamento
+      const meta = parseDescriptionMetadata(ticket.descricao || "")
+      const isEncaminhado = !!meta?.enviado_para_corretor
+
+      if (filterEncaminhados === "Sim" && !isEncaminhado) return false
+      if (filterEncaminhados === "Não" && isEncaminhado) return false
+
+      if (filterEstagiarioForwarded.length > 0) {
+        if (!meta?.estagiario_nome || !filterEstagiarioForwarded.includes(meta.estagiario_nome)) return false
+      }
+
+      if (filterCorretorForwarded.length > 0) {
+        if (!meta?.corretor_nome || !filterCorretorForwarded.includes(meta.corretor_nome)) return false
+      }
+
       // Filtro de Valor Operação
       if (filterMargemMin || filterMargemMax) {
         const opData = getValorOperacaoDeAbertura(ticket)
@@ -771,7 +805,57 @@ export default function TicketsPage() {
       
       return true
     })
-  }, [tickets, searchTerm, filterCorretores, filterStatusList, filterOrigens, filterCliente, filterConvenios, filterEquipes, filterMargemMin, filterMargemMax])
+  }, [tickets, searchTerm, filterCorretores, filterStatusList, filterOrigens, filterCliente, filterConvenios, filterEquipes, filterMargemMin, filterMargemMax, filterEncaminhados, filterEstagiarioForwarded, filterCorretorForwarded])
+
+  const partnershipStats = useMemo(() => {
+    const forwardedTickets = baseFilteredTickets.filter(t => {
+      const meta = parseDescriptionMetadata(t.descricao || "");
+      return !!meta?.enviado_para_corretor;
+    });
+
+    const totalCount = forwardedTickets.length;
+    const totalValue = forwardedTickets.reduce((acc, t) => {
+      return acc + parseValorToNumber(getValorOperacaoDeAbertura(t).valor);
+    }, 0);
+
+    const groups: Record<string, {
+      corretorName: string;
+      estagiarios: Record<string, { count: number; value: number }>;
+      totalCount: number;
+      totalValue: number;
+    }> = {};
+
+    forwardedTickets.forEach(t => {
+      const meta = parseDescriptionMetadata(t.descricao || "");
+      const corretorName = meta?.corretor_nome || "Não Identificado";
+      const estagiarioName = meta?.estagiario_nome || "Não Identificado";
+      const value = parseValorToNumber(getValorOperacaoDeAbertura(t).valor);
+
+      if (!groups[corretorName]) {
+        groups[corretorName] = {
+          corretorName,
+          estagiarios: {},
+          totalCount: 0,
+          totalValue: 0,
+        };
+      }
+
+      groups[corretorName].totalCount += 1;
+      groups[corretorName].totalValue += value;
+
+      if (!groups[corretorName].estagiarios[estagiarioName]) {
+        groups[corretorName].estagiarios[estagiarioName] = { count: 0, value: 0 };
+      }
+      groups[corretorName].estagiarios[estagiarioName].count += 1;
+      groups[corretorName].estagiarios[estagiarioName].value += value;
+    });
+
+    return {
+      totalCount,
+      totalValue,
+      groups: Object.values(groups).sort((a, b) => b.totalValue - a.totalValue),
+    };
+  }, [baseFilteredTickets]);
 
   const counts = useMemo(() => {
     const res: Record<string, number> = {}
@@ -932,7 +1016,7 @@ export default function TicketsPage() {
   // Reset page on search or date filter or advanced filters
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, startDate, endDate, filterCorretores, filterStatusList, filterOrigens, filterCliente, filterConvenios, filterEquipes, filterMargemMin, filterMargemMax])
+  }, [searchTerm, startDate, endDate, filterCorretores, filterStatusList, filterOrigens, filterCliente, filterConvenios, filterEquipes, filterMargemMin, filterMargemMax, filterEncaminhados, filterEstagiarioForwarded, filterCorretorForwarded])
 
   const totalPages = Math.ceil(filteredTickets.length / itemsPerPage)
   const paginatedTickets = filteredTickets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
@@ -1381,6 +1465,47 @@ export default function TicketsPage() {
                   </div>
                 </div>
 
+                <div className="hidden lg:block" />
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Encaminhado?</label>
+                  <select
+                    value={filterEncaminhados}
+                    onChange={(e) => setFilterEncaminhados(e.target.value)}
+                    className="w-full h-[38px] rounded-lg border border-slate-100 bg-slate-50/50 px-3 text-[11px] font-medium text-slate-700 outline-none focus:border-indigo-400 transition-colors"
+                  >
+                    <option value="Todos">Todos</option>
+                    <option value="Sim">Sim</option>
+                    <option value="Não">Não</option>
+                  </select>
+                </div>
+
+                {(isAdmin || isSupervisor || isOperational || isDeveloper) && (
+                  <>
+                    <MultiSelect 
+                      label="Encaminhado por (Estagiário)"
+                      options={uniqueEstagiariosForwarded}
+                      selected={filterEstagiarioForwarded}
+                      onToggle={(val) => {
+                        setFilterEstagiarioForwarded(prev => 
+                          prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                        )
+                      }}
+                    />
+
+                    <MultiSelect 
+                      label="Encaminhado para (Corretor)"
+                      options={uniqueCorretoresForwarded}
+                      selected={filterCorretorForwarded}
+                      onToggle={(val) => {
+                        setFilterCorretorForwarded(prev => 
+                          prev.includes(val) ? prev.filter(i => i !== val) : [...prev, val]
+                        )
+                      }}
+                    />
+                  </>
+                )}
+
                 <div className="flex items-end pb-0.5">
                   <Button 
                     variant="ghost" 
@@ -1393,6 +1518,9 @@ export default function TicketsPage() {
                       setFilterEquipes([]);
                       setFilterMargemMin(""); 
                       setFilterMargemMax("");
+                      setFilterEncaminhados("Todos");
+                      setFilterEstagiarioForwarded([]);
+                      setFilterCorretorForwarded([]);
                     }}
                     className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500"
                   >
@@ -1430,6 +1558,89 @@ export default function TicketsPage() {
             </button>
           ))}
         </div>
+
+        {/* Card de Parceria Estagiário/Corretor (Células de Vendas) */}
+        <Card className="card-shadow border border-slate-200 overflow-hidden bg-white rounded-2xl">
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+                  Parceria Estagiário & Corretor (Células de Vendas)
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Métricas de chamados encaminhados e desempenho de cada parceria</p>
+              </div>
+              <div className="flex items-center gap-4 bg-indigo-5/50 border border-indigo-100/30 rounded-xl px-4 py-2 shrink-0">
+                <div className="text-right">
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">CHAMADOS</p>
+                  <p className="text-base font-black text-indigo-600">{partnershipStats.totalCount}</p>
+                </div>
+                <div className="h-6 w-px bg-indigo-100" />
+                <div className="text-right">
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">VALOR TOTAL</p>
+                  <p className="text-base font-black text-indigo-600">
+                    {partnershipStats.totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {partnershipStats.groups.length === 0 ? (
+              <div className="py-8 text-center">
+                <p className="text-[11.5px] font-semibold text-slate-400">Nenhum chamado encaminhado ou em parceria encontrado no filtro atual.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-6">
+                {partnershipStats.groups.map((group) => (
+                  <div key={group.corretorName} className="bg-slate-50/70 border border-slate-100/80 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-200/80 transition-all">
+                    <div>
+                      {/* Corretor Header */}
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                        <div>
+                          <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider">CORRETOR/SUPERVISOR</span>
+                          <h4 className="text-[12.5px] font-black text-slate-700 leading-tight truncate max-w-[180px]" title={group.corretorName}>
+                            {group.corretorName}
+                          </h4>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-100 text-indigo-700">
+                            {group.totalCount} {group.totalCount === 1 ? 'chamado' : 'chamados'}
+                          </span>
+                          <p className="text-[10.5px] font-black text-slate-800 mt-0.5">
+                            {group.totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Estagiários List */}
+                      <div className="space-y-2 mt-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Membros da Célula</span>
+                        {Object.entries(group.estagiarios).map(([estagiarioName, stats]) => (
+                          <div key={estagiarioName} className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-100">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                              <span className="text-[11px] font-semibold text-slate-600 truncate max-w-[150px]" title={estagiarioName}>
+                                {estagiarioName}
+                              </span>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="text-[10px] font-bold text-slate-500 mr-2">
+                                {stats.count} un
+                              </span>
+                              <span className="text-[11px] font-extrabold text-slate-700">
+                                {stats.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Secondary Status Cards (Only visible if APROVADOS or NÃO APROVADOS or EM NEGOCIAÇÃO / PROPOSTA ENVIADA is selected) */}
         <div className={cn(
