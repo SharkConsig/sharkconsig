@@ -119,6 +119,44 @@ const safeFloat = (val: unknown): number => {
   return isNaN(parsed) ? 0 : parsed;
 };
 
+interface FinanceMetadata {
+  received?: boolean
+  receivedDate?: string
+}
+
+const METADATA_PREFIX = "[FINANCE_METADATA_V1:"
+const METADATA_SUFFIX = "]"
+
+const parseProposalNotesAndMetadata = (observacoes: string | undefined): { notes: string; metadata: FinanceMetadata } => {
+  if (!observacoes) {
+    return { notes: "", metadata: {} }
+  }
+  const startIndex = observacoes.indexOf(METADATA_PREFIX)
+  if (startIndex === -1) {
+    return { notes: observacoes, metadata: {} }
+  }
+  const endIndex = observacoes.indexOf(METADATA_SUFFIX, startIndex)
+  if (endIndex === -1) {
+    return { notes: observacoes, metadata: {} }
+  }
+  
+  const notes = (observacoes.substring(0, startIndex) + observacoes.substring(endIndex + METADATA_SUFFIX.length)).trim()
+  const metadataStr = observacoes.substring(startIndex + METADATA_PREFIX.length, endIndex)
+  try {
+    const metadata = JSON.parse(metadataStr)
+    return { notes, metadata }
+  } catch (e) {
+    console.error("Failed to parse finance metadata", e)
+    return { notes: observacoes, metadata: {} }
+  }
+}
+
+const buildProposalNotesAndMetadata = (notes: string, metadata: FinanceMetadata): string => {
+  const cleanNotes = (notes || "").trim()
+  const metadataStr = JSON.stringify(metadata)
+  return `${cleanNotes}\n\n${METADATA_PREFIX}${metadataStr}${METADATA_SUFFIX}`.trim()
+}
+
 interface EditableAmountCellProps {
   initialValue: number
   onSave: (value: number) => void
@@ -438,29 +476,69 @@ export default function ContasAReceberPage() {
     }
   }, [])
 
-  const toggleReceivedStatus = (idLead: string) => {
-    setReceivedProposalIds(prev => {
-      const isNowReceived = !prev[idLead]
-      const updated = { ...prev, [idLead]: isNowReceived }
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("receber_pago_status_ids", JSON.stringify(updated))
+  const toggleReceivedStatus = async (idLead: string) => {
+    const isNowReceived = !receivedProposalIds[idLead]
+    const receivedDate = isNowReceived ? new Date().toISOString() : undefined
+
+    // 1. Update UI state immediately
+    setReceivedProposalIds(prev => ({ ...prev, [idLead]: isNowReceived }))
+    setReceivedProposalDates(prev => {
+      const updated = { ...prev }
+      if (isNowReceived) {
+        updated[idLead] = receivedDate!
+      } else {
+        delete updated[idLead]
       }
-
-      setReceivedProposalDates(prevDates => {
-        const updatedDates = { ...prevDates }
-        if (isNowReceived) {
-          updatedDates[idLead] = new Date().toISOString()
-        } else {
-          delete updatedDates[idLead]
-        }
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("receber_pago_dates", JSON.stringify(updatedDates))
-        }
-        return updatedDates
-      })
-
       return updated
     })
+
+    // 2. Persist to localStorage as secondary backup
+    if (typeof window !== "undefined") {
+      const storedIds = window.localStorage.getItem("receber_pago_status_ids")
+      const parsedIds = storedIds ? JSON.parse(storedIds) : {}
+      parsedIds[idLead] = isNowReceived
+      window.localStorage.setItem("receber_pago_status_ids", JSON.stringify(parsedIds))
+
+      const storedDates = window.localStorage.getItem("receber_pago_dates")
+      const parsedDates = storedDates ? JSON.parse(storedDates) : {}
+      if (isNowReceived) {
+        parsedDates[idLead] = receivedDate
+      } else {
+        delete parsedDates[idLead]
+      }
+      window.localStorage.setItem("receber_pago_dates", JSON.stringify(parsedDates))
+    }
+
+    // 3. Persist to database inside `observacoes` of the proposal
+    try {
+      const proposal = proposals.find(p => p.id_lead === idLead)
+      const currentObs = proposal?.observacoes || ""
+      const { notes } = parseProposalNotesAndMetadata(currentObs)
+      
+      const newObs = buildProposalNotesAndMetadata(notes, {
+        received: isNowReceived,
+        receivedDate: receivedDate
+      })
+
+      const { error } = await supabase
+        .from("propostas")
+        .update({
+          observacoes: newObs,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id_lead", idLead)
+
+      if (error) {
+        console.error("Erro ao salvar status de recebimento no banco:", error.message)
+        toast.error("Erro ao sincronizar recebimento com o servidor.")
+      } else {
+        // Update proposal in state
+        setProposals(prev => prev.map(p => p.id_lead === idLead ? { ...p, observacoes: newObs } : p))
+        toast.success(isNowReceived ? "Marcado como recebido!" : "Marcado como a receber!")
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar recebimento:", err)
+    }
   }
 
   const handleCommissionPercentChange = async (idLead: string, value: number | undefined) => {
@@ -900,6 +978,23 @@ export default function ContasAReceberPage() {
         console.warn("Erro ao buscar usuários para mapeamento do Financeiro:", err)
       }
 
+      // Read localStorage directly to ensure we have the absolute latest and correct data for sync
+      let localReceivedIds: Record<string, boolean> = {}
+      let localReceivedDates: Record<string, string> = {}
+      if (typeof window !== "undefined") {
+        try {
+          const stored = window.localStorage.getItem("receber_pago_status_ids")
+          if (stored) localReceivedIds = JSON.parse(stored)
+          const storedDates = window.localStorage.getItem("receber_pago_dates")
+          if (storedDates) localReceivedDates = JSON.parse(storedDates)
+        } catch (e) {
+          console.error("Erro ao carregar local storage para sincronização:", e)
+        }
+      }
+
+      const finalReceivedIds: Record<string, boolean> = {}
+      const finalReceivedDates: Record<string, string> = {}
+
       const formattedData = data.map((p: Proposal) => {
         const userDetails = p.corretor_id ? usersMap.get(p.corretor_id) : null
         
@@ -908,13 +1003,60 @@ export default function ContasAReceberPage() {
           finalEquipe = userDetails?.equipe || "-"
         }
 
+        const { notes, metadata } = parseProposalNotesAndMetadata(p.observacoes)
+        let updatedObs = p.observacoes
+
+        if (metadata.received !== undefined) {
+          // Database metadata exists! Use it.
+          finalReceivedIds[p.id_lead] = !!metadata.received
+          if (metadata.receivedDate) {
+            finalReceivedDates[p.id_lead] = metadata.receivedDate
+          }
+        } else {
+          // Database metadata does NOT exist for this proposal.
+          // Let's check if this machine's localStorage has it marked as received.
+          const isLocalReceived = !!localReceivedIds[p.id_lead]
+          if (isLocalReceived) {
+            // Yes! Local machine has it registered as received.
+            // Let's construct metadata from local storage data and queue a sync to the database!
+            const localDate = localReceivedDates[p.id_lead] || new Date().toISOString()
+            const newObs = buildProposalNotesAndMetadata(p.observacoes || "", {
+              received: true,
+              receivedDate: localDate
+            })
+            
+            // Sync to database in the background
+            supabase
+              .from("propostas")
+              .update({
+                observacoes: newObs,
+                updated_at: new Date().toISOString()
+              })
+              .eq("id_lead", p.id_lead)
+              .then(({ error }) => {
+                if (error) {
+                  console.error(`Erro ao sincronizar proposta ${p.id_lead}:`, error.message)
+                } else {
+                  console.log(`Proposta ${p.id_lead} sincronizada com sucesso no banco de dados!`)
+                }
+              })
+
+            finalReceivedIds[p.id_lead] = true
+            finalReceivedDates[p.id_lead] = localDate
+            updatedObs = newObs
+          }
+        }
+
         return {
           ...p,
+          observacoes: updatedObs,
           nome_corretor: p.corretor || userDetails?.nome || "-",
           equipe: finalEquipe
         }
       })
 
+      setReceivedProposalIds(finalReceivedIds)
+      setReceivedProposalDates(finalReceivedDates)
       setProposals(formattedData)
     } catch (err) {
       console.error("Erro geral contas a receber:", err)
@@ -990,10 +1132,13 @@ export default function ContasAReceberPage() {
   const saveProposalNotes = async (proposal: Proposal) => {
     setIsNotesSaving(true)
     try {
+      const { metadata } = parseProposalNotesAndMetadata(proposal.observacoes)
+      const mergedObs = buildProposalNotesAndMetadata(tempNotes, metadata)
+
       const { error } = await supabase
         .from("propostas")
         .update({
-          observacoes: tempNotes,
+          observacoes: mergedObs,
           updated_at: new Date().toISOString()
         })
         .eq("id_lead", proposal.id_lead)
@@ -1001,9 +1146,9 @@ export default function ContasAReceberPage() {
       if (error) throw error
 
       toast.success("Notas atualizadas no sistema!")
-      setProposals(prev => prev.map(p => p.id_lead === proposal.id_lead ? { ...p, observacoes: tempNotes } : p))
+      setProposals(prev => prev.map(p => p.id_lead === proposal.id_lead ? { ...p, observacoes: mergedObs } : p))
       if (selectedProposalDetail?.id_lead === proposal.id_lead) {
-        setSelectedProposalDetail(prev => prev ? { ...prev, observacoes: tempNotes } : null)
+        setSelectedProposalDetail(prev => prev ? { ...prev, observacoes: mergedObs } : null)
       }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
@@ -1662,7 +1807,8 @@ export default function ContasAReceberPage() {
                                setSelectedProposalDetail(null)
                              } else {
                                setSelectedProposalDetail(proposal)
-                               setTempNotes(proposal.observacoes || "")
+                               const { notes } = parseProposalNotesAndMetadata(proposal.observacoes)
+                               setTempNotes(notes)
                              }
                            }}
                         >
