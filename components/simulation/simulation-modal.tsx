@@ -159,7 +159,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const [bancoAutorizacao, setBancoAutorizacao] = useState("Portal");
 
   // Validade state
-  const [validadeDias, setValidadeDias] = useState("3");
+  const [validadeDias, setValidadeDias] = useState("");
 
   // Options states
   const [tituloCardEsquerdo, setTituloCardEsquerdo] = useState<"FORMATO ROTATIVO" | "FORMATO ANTIGO">("FORMATO ROTATIVO");
@@ -723,7 +723,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               prazo_real_direito: parseInt(prazoEfetivoNovo) || 0,
               taxa_real_direito: parseFloat(taxaEfetivaNovo.replace(",", ".")) || 0,
               meses_a_menos: parseInt(mesesAMenos) || 0,
-              validade_proposta: parseInt(validadeDias) || 0,
+              validade_proposta: isNaN(parseInt(validadeDias)) ? 0 : parseInt(validadeDias),
               documentos_necessarios: docsNecessarios,
               banco: bancoAutorizacao,
               arquivo_url: finalDataUrl,
@@ -762,7 +762,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               mostrar_troco: quitacaoMostrarTroco,
               taxa_atual: parseCleanFloat(quitacaoTaxaAtual) || null,
               nova_taxa: parseCleanFloat(quitacaoNovaTaxa) || null,
-              validade_proposta: parseInt(validadeDias) || 5,
+              validade_proposta: isNaN(parseInt(validadeDias)) ? 0 : parseInt(validadeDias),
               documentos_necessarios: docsNecessarios,
               arquivo_url: finalDataUrl,
               tipo_arquivo: format.toUpperCase()
@@ -851,7 +851,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
     const orgaoInfo = getOrgaoLabelAndValue();
 
     const expirationDate = (() => {
-      const days = parseInt(validadeDias) || 5;
+      const parsedDays = parseInt(validadeDias);
+      const days = isNaN(parsedDays) ? 0 : parsedDays;
       const date = new Date();
       let addedDays = 0;
       while (addedDays < days) {
@@ -862,6 +863,14 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         }
       }
       return date.toLocaleDateString("pt-BR");
+    })();
+
+    const validityLabel = (() => {
+      const parsedDays = parseInt(validadeDias);
+      if (isNaN(parsedDays) || parsedDays === 0) {
+        return "somente hoje";
+      }
+      return `${validadeDias} ${parsedDays === 1 ? "dia útil" : "dias úteis"} a partir de hoje`;
     })();
 
     const totalParcelaAtual = contratos.reduce((acc, c) => acc + (parseFloat(c.parcelaAtual) || 0), 0);
@@ -1361,7 +1370,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               <div className="pt-1.5">
                 <div className="bg-[#162546] text-[#F4C600] text-[9.5px] font-black uppercase tracking-widest py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
                   <span>VALIDADE DA PROPOSTA:</span>
-                  <span>Até {expirationDate} ({validadeDias} dias úteis a partir de hoje)</span>
+                  <span>Até {expirationDate} ({validityLabel})</span>
                 </div>
               </div>
             </div>
@@ -1553,7 +1562,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                 <div className="pt-1">
                   <div className="bg-[#162546] text-[#F4C600] text-[9.5px] font-black uppercase tracking-widest py-2 px-4 rounded-xl flex justify-between items-center shadow-sm">
                     <span>VALIDADE DA PROPOSTA:</span>
-                    <span>Até {expirationDate} ({validadeDias} dias úteis a partir de hoje)</span>
+                    <span>Até {expirationDate} ({validityLabel})</span>
                   </div>
                 </div>
 
