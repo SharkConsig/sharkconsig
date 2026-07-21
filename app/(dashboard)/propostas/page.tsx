@@ -568,15 +568,6 @@ export default function ProposalsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
-  const totalValorProducao = useMemo(() => {
-    return proposals
-      .filter(p => {
-        const s = (p.status || "").toUpperCase();
-        return s !== "CANCELADO" && s !== "CANCELADOS";
-      })
-      .reduce((acc, p) => acc + (Number(p.valor_producao) || 0), 0)
-  }, [proposals])
-
   const filteredProposals = proposals.filter((proposal: Proposal) => {
     const cleanSearch = searchTerm.toLowerCase().replace(/\D/g, "")
     const cleanCpf = (proposal.cliente_cpf || "").replace(/\D/g, "")
@@ -642,6 +633,10 @@ export default function ProposalsPage() {
     // Ordem padrão (mais antigos primeiro) para CONTRATOS (Digitação) e EM ANDAMENTO
     return timeA - timeB
   })
+
+  const totalValorProducao = useMemo(() => {
+    return filteredProposals.reduce((acc, p) => acc + (Number(p.valor_producao) || 0), 0)
+  }, [filteredProposals])
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredProposals.length / itemsPerPage)
