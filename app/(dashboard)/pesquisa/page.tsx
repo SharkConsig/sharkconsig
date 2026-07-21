@@ -108,7 +108,7 @@ interface ClientData {
 }
 
 interface ConvenioProfile {
-  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms';
+  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho';
   client: ClientData;
   registrations: Registration[];
 }
@@ -124,7 +124,7 @@ export default function SearchClientPage() {
   const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false)
   
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
@@ -543,7 +543,7 @@ export default function SearchClientPage() {
   };
 
   const fetchRegistrationsForType = async (
-    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms',
+    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho',
     clientData: ClientData
   ): Promise<Registration[]> => {
     const ensureArray = (val: unknown): Record<string, unknown>[] => {
@@ -782,11 +782,59 @@ export default function SearchClientPage() {
           instituidores: []
         }
       }) as unknown as Registration[]
+    } else if (type === 'prefeitura_natal') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('prefeitura_natal_identificacoes').select('*, prefeitura_natal_lotacoes(*)').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => {
+        const lotacoes = ensureArray(r.prefeitura_natal_lotacoes)
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          vinculo: r.vinculo as string | null,
+          salario: 0,
+          orgao: lotacoes[0]?.orgao as string | null,
+          uf: 'RN',
+          prefeitura_natal_lotacoes: lotacoes,
+          instituidores: lotacoes.map((l) => ({
+            id: l.id as string,
+            nome: null,
+            itens_credito: []
+          }))
+        }
+      }) as unknown as Registration[]
+    } else if (type === 'prefeitura_porto_velho') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('prefeitura_porto_velho_identificacoes').select('*, prefeitura_porto_velho_lotacoes(*)').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => {
+        const lotacoes = ensureArray(r.prefeitura_porto_velho_lotacoes)
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          vinculo: r.vinculo as string | null,
+          salario: 0,
+          orgao: lotacoes[0]?.orgao as string | null,
+          uf: 'RO',
+          prefeitura_porto_velho_lotacoes: lotacoes,
+          instituidores: lotacoes.map((l) => ({
+            id: l.id as string,
+            nome: null,
+            itens_credito: []
+          }))
+        }
+      }) as unknown as Registration[]
     }
     return []
   }
 
-  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | null) => {
+  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | null) => {
     const tableMap = {
       siape: 'clientes',
       governo_sp: 'governo_sp_clientes',
@@ -798,7 +846,9 @@ export default function SearchClientPage() {
       prefeitura_santo_andre: 'prefeitura_santo_andre_clientes',
       prefeitura_contagem: 'prefeitura_contagem_clientes',
       governo_mg: 'governo_mg_clientes',
-      governo_ms: 'governo_ms_clientes'
+      governo_ms: 'governo_ms_clientes',
+      prefeitura_natal: 'prefeitura_natal_clientes',
+      prefeitura_porto_velho: 'prefeitura_porto_velho_clientes'
     }
 
     const foundProfiles: ConvenioProfile[] = []
@@ -818,9 +868,9 @@ export default function SearchClientPage() {
             telefone_2: (data.telefone_2 || data.telefone_recado) as string | null,
             telefone_3: data.telefone_3 as string | null,
           }
-          const regs = await fetchRegistrationsForType(type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms', clientObj)
+          const regs = await fetchRegistrationsForType(type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho', clientObj)
           return {
-            type: type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms',
+            type: type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho',
             client: clientObj,
             registrations: regs
           }
@@ -907,6 +957,8 @@ export default function SearchClientPage() {
         { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
         { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
         { name: 'base_consulta_governo_ms', convenio: 'governo_ms' },
+        { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal' },
+        { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho' },
       ];
 
       const results = await Promise.all(
@@ -930,7 +982,7 @@ export default function SearchClientPage() {
 
       const quickData = results.find(r => r !== null) || null;
 
-      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | null = null
+      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | null = null
       let resolvedCpf = cleanCPF
 
       if (quickData) {
@@ -947,6 +999,8 @@ export default function SearchClientPage() {
         else if (source === 'prefeitura_contagem') preferredType = 'prefeitura_contagem'
         else if (source === 'governo_mg') preferredType = 'governo_mg'
         else if (source === 'governo_ms') preferredType = 'governo_ms'
+        else if (source === 'prefeitura_natal') preferredType = 'prefeitura_natal'
+        else if (source === 'prefeitura_porto_velho') preferredType = 'prefeitura_porto_velho'
       }
 
       await loadProfilesForCpf(resolvedCpf, preferredType)
@@ -1062,6 +1116,8 @@ export default function SearchClientPage() {
         { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
         { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
         { name: 'base_consulta_governo_ms', convenio: 'governo_ms' },
+        { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal' },
+        { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho' },
       ];
 
       const results = await Promise.all(
@@ -1085,7 +1141,7 @@ export default function SearchClientPage() {
 
       const quickData = results.find(r => r !== null) || null;
 
-      const targetConvenio = quickData?.convenio as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | undefined
+      const targetConvenio = quickData?.convenio as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | undefined
       const finalCpf = quickData?.cpf || cleanCPF
       
       const isActuallyAPhone = digits.length >= 8 && digits.length <= 13
@@ -1107,11 +1163,12 @@ export default function SearchClientPage() {
         prefeitura_santo_andre: 'prefeitura_santo_andre_clientes',
         prefeitura_contagem: 'prefeitura_contagem_clientes',
         governo_mg: 'governo_mg_clientes',
-        governo_ms: 'governo_ms_clientes'
+        governo_ms: 'governo_ms_clientes',
+        prefeitura_natal: 'prefeitura_natal_clientes'
       }
 
       let foundCpf: string | null = null
-      let foundType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | null = null
+      let foundType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | null = null
 
       for (const [type, table] of Object.entries(tableMap)) {
         const query = supabase.from(table).select('cpf')
@@ -1298,7 +1355,9 @@ export default function SearchClientPage() {
                       p.type === 'prefeitura_santo_andre' ? 'PREFEITURA SANTO ANDRÉ' :
                       p.type === 'prefeitura_contagem' ? 'PREFEITURA CONTAGEM' :
                       p.type === 'governo_mg' ? 'GOVERNO MINAS GERAIS' : 
-                      p.type === 'governo_ms' ? 'GOVERNO MATO GROSSO DO SUL' : String(p.type).toUpperCase();
+                      p.type === 'governo_ms' ? 'GOVERNO MATO GROSSO DO SUL' : 
+                      p.type === 'prefeitura_natal' ? 'PREFEITURA DE NATAL' :
+                      p.type === 'prefeitura_porto_velho' ? 'PREFEITURA DE PORTO VELHO' : String(p.type).toUpperCase();
                     
                     return (
                       <button
@@ -3095,6 +3154,354 @@ export default function SearchClientPage() {
                                     tel3: unmaskPhone(client.telefone_3),
                                     origem: "pesquisa",
                                     convenio: "GOVERNO MATO GROSSO DO SUL"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {clientType === 'prefeitura_natal' && registrations.length > 0 && (() => {
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-natal-${reg.id}-${idx}`}
+                        type="button"
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
+                  {registrations[activeRegIndex] && (() => {
+                    const reg = registrations[activeRegIndex];
+                    const lotacao = reg.prefeitura_natal_lotacoes?.[0] || {};
+                    
+                    return (
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                        <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-sky-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (PREFEITURA DE NATAL)</h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[13px] font-bold text-slate-900">{reg.matricula}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.vinculo || "NÃO INFORMADO"}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{lotacao.orgao || "NÃO INFORMADO"}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {/* Margem Empréstimo Consignado */}
+                            <div className={cn(
+                              "p-5 border rounded-2xl space-y-3",
+                              (lotacao.margem_emprestimo_consignado || 0) > 0 ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                            )}>
+                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_emprestimo_consignado || 0) > 0 ? "text-blue-600" : "text-red-600 truncate")}>
+                                MARGEM EMPRÉSTIMO CONSIGNADO
+                              </p>
+                              <div className="flex flex-col">
+                                <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", (lotacao.margem_emprestimo_consignado || 0) > 0 ? "text-blue-700" : "text-red-700 font-bold")}>
+                                  {formatCurrency(lotacao.margem_emprestimo_consignado)}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className={cn("w-2 h-2 rounded-full", (lotacao.margem_emprestimo_consignado || 0) > 0 ? "bg-blue-500" : "bg-red-500")}></div>
+                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_emprestimo_consignado || 0) > 0 ? "text-blue-600" : "text-red-600")}>
+                                    {(lotacao.margem_emprestimo_consignado || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Margem Cartão Consignado */}
+                            <div className={cn(
+                              "p-5 border rounded-2xl space-y-3",
+                              (lotacao.margem_cartao_consignado || 0) > 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                            )}>
+                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_cartao_consignado || 0) > 0 ? "text-emerald-600" : "text-red-600 truncate")}>
+                                MARGEM CARTÃO CONSIGNADO
+                              </p>
+                              <div className="flex flex-col">
+                                <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", (lotacao.margem_cartao_consignado || 0) > 0 ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                  {formatCurrency(lotacao.margem_cartao_consignado)}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className={cn("w-2 h-2 rounded-full", (lotacao.margem_cartao_consignado || 0) > 0 ? "bg-emerald-500" : "bg-red-500")}></div>
+                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_cartao_consignado || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
+                                    {(lotacao.margem_cartao_consignado || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Margem Cartão Benefício */}
+                            <div className={cn(
+                              "p-5 border rounded-2xl space-y-3",
+                              (lotacao.margem_cartao_beneficio || 0) > 0 ? "bg-purple-50 border-purple-100" : "bg-red-50 border-red-100"
+                            )}>
+                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_cartao_beneficio || 0) > 0 ? "text-purple-600" : "text-red-600 truncate")}>
+                                MARGEM CARTÃO BENEFÍCIO
+                              </p>
+                              <div className="flex flex-col">
+                                <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", (lotacao.margem_cartao_beneficio || 0) > 0 ? "text-purple-700" : "text-red-700 font-bold")}>
+                                  {formatCurrency(lotacao.margem_cartao_beneficio)}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className={cn("w-2 h-2 rounded-full", (lotacao.margem_cartao_beneficio || 0) > 0 ? "bg-purple-500" : "bg-red-500")}></div>
+                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_cartao_beneficio || 0) > 0 ? "text-purple-600" : "text-red-600")}>
+                                    {(lotacao.margem_cartao_beneficio || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
+
+                          {/* Footer Buttons for PREFEITURA DE NATAL */}
+                          <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
+                            <Button 
+                              onClick={() => {
+                                const rawCpf = client.cpf || "";
+                                const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: formattedCpf,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  margem: formatCurrency(lotacao.margem_emprestimo_consignado),
+                                  liquida5: formatCurrency(lotacao.margem_cartao_consignado),
+                                  beneficio5: formatCurrency(lotacao.margem_cartao_beneficio),
+                                  convenio: "PREFEITURA DE NATAL",
+                                  matricula: reg.matricula || ""
+                                });
+                                router.push(`/chamados/novo?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Abrir Chamado
+                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "PREFEITURA DE NATAL"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {clientType === 'prefeitura_porto_velho' && registrations.length > 0 && (() => {
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-porto-velho-${reg.id}-${idx}`}
+                        type="button"
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
+                  {registrations[activeRegIndex] && (() => {
+                    const reg = registrations[activeRegIndex];
+                    const lotacao = reg.prefeitura_porto_velho_lotacoes?.[0] || {};
+                    
+                    return (
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                        <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-emerald-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (PREFEITURA DE PORTO VELHO)</h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[13px] font-bold text-slate-900">{reg.matricula}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.vinculo || "NÃO INFORMADO"}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{lotacao.orgao || "NÃO INFORMADO"}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* Margem Empréstimo */}
+                            <div className={cn(
+                              "p-5 border rounded-2xl space-y-3",
+                              (lotacao.margem_emprestimo || 0) > 0 ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                            )}>
+                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_emprestimo || 0) > 0 ? "text-blue-600" : "text-red-600 truncate")}>
+                                MARGEM EMPRÉSTIMO
+                              </p>
+                              <div className="flex flex-col">
+                                <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", (lotacao.margem_emprestimo || 0) > 0 ? "text-blue-700" : "text-red-700 font-bold")}>
+                                  {formatCurrency(lotacao.margem_emprestimo)}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className={cn("w-2 h-2 rounded-full", (lotacao.margem_emprestimo || 0) > 0 ? "bg-blue-500" : "bg-red-500")}></div>
+                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_emprestimo || 0) > 0 ? "text-blue-600" : "text-red-600")}>
+                                    {(lotacao.margem_emprestimo || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Margem Cartão Consignado */}
+                            <div className={cn(
+                              "p-5 border rounded-2xl space-y-3",
+                              (lotacao.margem_cartao_consignado || 0) > 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                            )}>
+                              <p className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_cartao_consignado || 0) > 0 ? "text-emerald-600" : "text-red-600 truncate")}>
+                                MARGEM CARTÃO CONSIGNADO
+                              </p>
+                              <div className="flex flex-col">
+                                <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", (lotacao.margem_cartao_consignado || 0) > 0 ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                  {formatCurrency(lotacao.margem_cartao_consignado)}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className={cn("w-2 h-2 rounded-full", (lotacao.margem_cartao_consignado || 0) > 0 ? "bg-emerald-500" : "bg-red-500")}></div>
+                                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", (lotacao.margem_cartao_consignado || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
+                                    {(lotacao.margem_cartao_consignado || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
+
+                          {/* Footer Buttons for PREFEITURA DE PORTO VELHO */}
+                          <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
+                            <Button 
+                              onClick={() => {
+                                const rawCpf = client.cpf || "";
+                                const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: formattedCpf,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  margem: formatCurrency(lotacao.margem_emprestimo),
+                                  liquida5: formatCurrency(lotacao.margem_cartao_consignado),
+                                  convenio: "PREFEITURA DE PORTO VELHO",
+                                  matricula: reg.matricula || ""
+                                });
+                                router.push(`/chamados/novo?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Abrir Chamado
+                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "PREFEITURA DE PORTO VELHO"
                                   });
                                   router.push(`/propostas/nova?${params.toString()}`);
                                 }}

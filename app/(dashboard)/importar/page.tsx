@@ -79,6 +79,12 @@ const getRequiredHeadersKeysForType = (type: string): string[][] => {
   if (type === "GOVERNO_MS") {
     return [["cpf"], ["nome"], ["matricula"], ["orgao"]];
   }
+  if (type === "PREFEITURA_NATAL") {
+    return [["cpf"], ["nome"], ["matricula"], ["orgao"]];
+  }
+  if (type === "PREFEITURA_PORTO_VELHO") {
+    return [["cpf"], ["nome"], ["matricula"], ["vinculo"]];
+  }
   return [];
 };
 
@@ -113,6 +119,8 @@ export default function ImportBatchPage() {
   const [totalBasePrefContagem, setTotalBasePrefContagem] = useState(0);
   const [totalBaseGovMG, setTotalBaseGovMG] = useState(0);
   const [totalBaseGovMS, setTotalBaseGovMS] = useState(0);
+  const [totalBasePrefNatal, setTotalBasePrefNatal] = useState(0);
+  const [totalBasePrefPortoVelho, setTotalBasePrefPortoVelho] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
   
   // Pagination State
@@ -179,7 +187,7 @@ export default function ImportBatchPage() {
       console.log("Estado da Sessão (fetchTotalBase):", `Logado como ${session.user.email}`);
       console.log("Token JWT (Tamanho):", session.access_token.length);
 
-      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes, govRJRes, prefSaRes, prefContagemRes, govMGRes, govMSRes] = await Promise.all([
+      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes, govRJRes, prefSaRes, prefContagemRes, govMGRes, govMSRes, prefNatalRes, prefPortoVelhoRes] = await Promise.all([
         withRetry(async () => {
           return await supabase
             .from('clientes')
@@ -234,6 +242,16 @@ export default function ImportBatchPage() {
           return await supabase
             .from('governo_ms_clientes')
             .select('*', { count: 'exact', head: true });
+        }),
+        withRetry(async () => {
+          return await supabase
+            .from('prefeitura_natal_clientes')
+            .select('*', { count: 'exact', head: true });
+        }),
+        withRetry(async () => {
+          return await supabase
+            .from('prefeitura_porto_velho_clientes')
+            .select('*', { count: 'exact', head: true });
         })
       ]);
       
@@ -270,6 +288,12 @@ export default function ImportBatchPage() {
       if (govMSRes.error) {
         console.warn("Aviso Supabase (Total GOV MS):", govMSRes.error.message);
       }
+      if (prefNatalRes.error) {
+        console.warn("Aviso Supabase (Total PREF NATAL):", prefNatalRes.error.message);
+      }
+      if (prefPortoVelhoRes.error) {
+        console.warn("Aviso Supabase (Total PREF PORTO VELHO):", prefPortoVelhoRes.error.message);
+      }
 
       setTotalBaseSiape(siapeRes.count || 0);
       setTotalBaseGovSP(govSPRes.count || 0);
@@ -282,6 +306,8 @@ export default function ImportBatchPage() {
       setTotalBasePrefContagem(prefContagemRes.count || 0);
       setTotalBaseGovMG(govMGRes.count || 0);
       setTotalBaseGovMS(govMSRes.count || 0);
+      setTotalBasePrefNatal(prefNatalRes.count || 0);
+      setTotalBasePrefPortoVelho(prefPortoVelhoRes.count || 0);
     } catch (err: unknown) {
       const error = err as Error;
       console.warn("Aviso inesperado ao buscar total da base:", error?.message || error);
@@ -2328,6 +2354,325 @@ export default function ImportBatchPage() {
     if (identErr) throw new Error(`Erro ao salvar matrículas MS: ${identErr?.message}`);
   };
 
+  const processPrefeituraNatalChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
+    const normalizedRows = results.map(row => {
+      const normRow = normalizeRowKeys(row);
+      return {
+        cpf: normalizeCPF(normRow.cpf || ""),
+        nome: normalizeText(normRow.nome || ""),
+        data_nascimento: normalizeDate(normRow.data_nascimento || normRow.data_de_nascimento || ""),
+        matricula: normalizeText(normRow.matricula || normRow.numero_matricula || ""),
+        vinculo: normalizeText(normRow.vinculo || ""),
+        telefone_1: normalizePhone(normRow.telefone_1 || normRow.telefone || ""),
+        telefone_2: normalizePhone(normRow.telefone_2 || ""),
+        telefone_3: normalizePhone(normRow.telefone_3 || ""),
+        orgao: normalizeText(normRow.orgao || normRow.orgao_nome || ""),
+        margem_emprestimo_consignado: normalizeMoney(normRow.margem_emprestimo_consignado || normRow.margem_emprestimo || ""),
+        margem_cartao_consignado: normalizeMoney(normRow.margem_cartao_consignado || normRow.margem_cartao || ""),
+        margem_cartao_beneficio: normalizeMoney(normRow.margem_cartao_beneficio || "")
+      };
+    }).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_natal_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
+
+    const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
+      const v = String(val).trim();
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
+    };
+
+    const clientMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
+      const existingInMap = clientMap.get(row.cpf);
+
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const clientRows = Array.from(clientMap.values());
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      return await supabase.from('prefeitura_natal_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Prefeitura de Natal: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_natal_identificacoes', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula}`, i]));
+
+    const identMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId || !row.matricula) return;
+
+      const key = `${clientId}_${row.matricula}`;
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
+      const currentInMap = identMap.get(key);
+
+      const vinculo = !shouldPreserve(row.vinculo) ? row.vinculo : (currentInMap?.vinculo || dbIdent?.vinculo || null);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        matricula: row.matricula,
+        vinculo,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const identRows = Array.from(identMap.values());
+    const { data: identsData, error: identErr } = await withRetry(async () => {
+      return await supabase.from('prefeitura_natal_identificacoes')
+        .upsert(identRows, { onConflict: 'cliente_id, matricula' })
+        .select('id, cliente_id, matricula');
+    });
+
+    if (identErr || !identsData) throw new Error(`Erro ao salvar identificações Prefeitura de Natal: ${identErr?.message}`);
+
+    const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, matricula: string}) => [`${id.cliente_id}_${id.matricula}`, id.id]));
+
+    const identIds = Array.from(keyToIdentId.values());
+    const existingLotacoesRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_natal_lotacoes', 'identificacao_id', identIds);
+    const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
+
+    const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
+      if (!identId) return;
+
+      const existingLot = existingLotacoesMap.get(identId);
+      const currentInMap = lotacoesToUpsertMap.get(identId);
+
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || existingLot?.orgao || null);
+      const margem_emprestimo_consignado = row.margem_emprestimo_consignado !== undefined ? row.margem_emprestimo_consignado : (currentInMap?.margem_emprestimo_consignado ?? existingLot?.margem_emprestimo_consignado ?? null);
+      const margem_cartao_consignado = row.margem_cartao_consignado !== undefined ? row.margem_cartao_consignado : (currentInMap?.margem_cartao_consignado ?? existingLot?.margem_cartao_consignado ?? null);
+      const margem_cartao_beneficio = row.margem_cartao_beneficio !== undefined ? row.margem_cartao_beneficio : (currentInMap?.margem_cartao_beneficio ?? existingLot?.margem_cartao_beneficio ?? null);
+
+      lotacoesToUpsertMap.set(identId, {
+        identificacao_id: identId,
+        orgao,
+        margem_emprestimo_consignado,
+        margem_cartao_consignado,
+        margem_cartao_beneficio,
+        lote_id: loteId,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const lotacaoRows = Array.from(lotacoesToUpsertMap.values());
+
+    if (lotacaoRows.length > 0) {
+      try {
+        await deleteInBatches('prefeitura_natal_lotacoes', 'identificacao_id', identIds);
+      } catch (delErr) {
+        console.warn("Erro ao limpar lotações antigas Prefeitura de Natal:", delErr);
+      }
+      
+      const { error: lotErr } = await withRetry(async () => {
+        return await supabase.from('prefeitura_natal_lotacoes')
+          .insert(lotacaoRows);
+      });
+
+      if (lotErr) throw new Error(`Erro ao salvar lotações Prefeitura de Natal: ${lotErr?.message}`);
+    }
+  };
+
+  const processPrefeituraPortoVelhoChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
+    const normalizedRows = results.map(row => {
+      const normRow = normalizeRowKeys(row);
+      return {
+        cpf: normalizeCPF(normRow.cpf || ""),
+        nome: normalizeText(normRow.nome || ""),
+        data_nascimento: normalizeDate(normRow.data_nascimento || normRow.data_de_nascimento || ""),
+        matricula: normalizeText(normRow.matricula || normRow.numero_matricula || ""),
+        vinculo: normalizeText(normRow.vinculo || ""),
+        telefone_1: normalizePhone(normRow.telefone_1 || normRow.telefone || ""),
+        telefone_2: normalizePhone(normRow.telefone_2 || ""),
+        telefone_3: normalizePhone(normRow.telefone_3 || ""),
+        orgao: normalizeText(normRow.convenio || normRow.orgao || ""),
+        margem_emprestimo: normalizeMoney(normRow.margem_emprestimo || normRow.margem_emprestimo_consignado || ""),
+        margem_cartao_consignado: normalizeMoney(normRow.margem_cartao_consignado || normRow.margem_cartao || "")
+      };
+    }).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_porto_velho_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
+
+    const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
+      const v = String(val).trim();
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
+    };
+
+    const clientMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
+      const existingInMap = clientMap.get(row.cpf);
+
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const clientRows = Array.from(clientMap.values());
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      return await supabase.from('prefeitura_porto_velho_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Prefeitura Porto Velho: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_porto_velho_identificacoes', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula}`, i]));
+
+    const identMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId || !row.matricula) return;
+
+      const key = `${clientId}_${row.matricula}`;
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
+      const currentInMap = identMap.get(key);
+
+      const vinculo = !shouldPreserve(row.vinculo) ? row.vinculo : (currentInMap?.vinculo || dbIdent?.vinculo || null);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        matricula: row.matricula,
+        vinculo,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const identRows = Array.from(identMap.values());
+    const { data: identsData, error: identErr } = await withRetry(async () => {
+      return await supabase.from('prefeitura_porto_velho_identificacoes')
+        .upsert(identRows, { onConflict: 'cliente_id, matricula' })
+        .select('id, cliente_id, matricula');
+    });
+
+    if (identErr || !identsData) throw new Error(`Erro ao salvar identificações Prefeitura Porto Velho: ${identErr?.message}`);
+
+    const keyToIdentId = new Map<string, string>(identsData.map((id: {id: string, cliente_id: string, matricula: string}) => [`${id.cliente_id}_${id.matricula}`, id.id]));
+
+    const identIds = Array.from(keyToIdentId.values());
+    const existingLotacoesRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_porto_velho_lotacoes', 'identificacao_id', identIds);
+    const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
+
+    const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
+      if (!identId) return;
+
+      const existingLot = existingLotacoesMap.get(identId);
+      const currentInMap = lotacoesToUpsertMap.get(identId);
+
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || existingLot?.orgao || null);
+      const margem_emprestimo = row.margem_emprestimo !== undefined ? row.margem_emprestimo : (currentInMap?.margem_emprestimo ?? existingLot?.margem_emprestimo ?? null);
+      const margem_cartao_consignado = row.margem_cartao_consignado !== undefined ? row.margem_cartao_consignado : (currentInMap?.margem_cartao_consignado ?? existingLot?.margem_cartao_consignado ?? null);
+
+      lotacoesToUpsertMap.set(identId, {
+        identificacao_id: identId,
+        orgao,
+        margem_emprestimo,
+        margem_cartao_consignado,
+        lote_id: loteId,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const lotacaoRows = Array.from(lotacoesToUpsertMap.values());
+
+    if (lotacaoRows.length > 0) {
+      try {
+        await deleteInBatches('prefeitura_porto_velho_lotacoes', 'identificacao_id', identIds);
+      } catch (delErr) {
+        console.warn("Erro ao limpar lotações antigas Prefeitura Porto Velho:", delErr);
+      }
+      
+      const { error: lotErr } = await withRetry(async () => {
+        return await supabase.from('prefeitura_porto_velho_lotacoes')
+          .insert(lotacaoRows);
+      });
+
+      if (lotErr) throw new Error(`Erro ao salvar lotações Prefeitura Porto Velho: ${lotErr?.message}`);
+    }
+  };
+
   const handleStartImport = async () => {
     console.log("Botão 'Iniciar Importação' clicado");
     setImportError(null);
@@ -2481,6 +2826,10 @@ export default function ImportBatchPage() {
                 await processGovernoMgChunk(results.data, currentBatch.id);
               } else if (type === "GOVERNO_MS") {
                 await processGovernoMsChunk(results.data, currentBatch.id);
+              } else if (type === "PREFEITURA_NATAL") {
+                await processPrefeituraNatalChunk(results.data, currentBatch.id);
+              } else if (type === "PREFEITURA_PORTO_VELHO") {
+                await processPrefeituraPortoVelhoChunk(results.data, currentBatch.id);
               }
             });
             
@@ -2558,6 +2907,10 @@ export default function ImportBatchPage() {
               rpcFunctionName = 'refresh_base_consulta_governo_mg';
             } else if (type === 'GOVERNO_MS') {
               rpcFunctionName = 'refresh_base_consulta_governo_ms';
+            } else if (type === 'PREFEITURA_NATAL') {
+              rpcFunctionName = 'refresh_base_consulta_prefeitura_natal';
+            } else if (type === 'PREFEITURA_PORTO_VELHO') {
+              rpcFunctionName = 'refresh_base_consulta_prefeitura_porto_velho';
             }
 
             console.log(`Disparando atualização rápida da tabela correspondente: ${rpcFunctionName}`);
@@ -2624,7 +2977,7 @@ export default function ImportBatchPage() {
     ));
   };
 
-  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms') => {
+  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho') => {
     let headers = "";
     let filename = "";
 
@@ -2664,6 +3017,12 @@ export default function ImportBatchPage() {
     } else if (type === 'governo_ms') {
       headers = "cpf,nome,matricula,orgao,telefone_1,telefone_2,telefone_3";
       filename = "modelo_governo_ms.csv";
+    } else if (type === 'prefeitura_natal') {
+      headers = "cpf,nome,matricula,vinculo,data_nascimento,orgao,margem_emprestimo_consignado,margem_cartao_consignado,margem_cartao_beneficio,telefone_1,telefone_2,telefone_3";
+      filename = "modelo_prefeitura_natal.csv";
+    } else if (type === 'prefeitura_porto_velho') {
+      headers = "cpf,nome,matricula,vinculo,data_nascimento,telefone_1,telefone_2,convenio,margem_emprestimo,margem_cartao_consignado";
+      filename = "modelo_prefeitura_porto_velho.csv";
     }
     
     const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
@@ -2708,6 +3067,8 @@ export default function ImportBatchPage() {
                     <option value="PREFEITURA_CONTAGEM">PREFEITURA CONTAGEM</option>
                     <option value="GOVERNO_MG">GOVERNO MINAS GERAIS</option>
                     <option value="GOVERNO_MS">GOVERNO MATO GROSSO DO SUL</option>
+                    <option value="PREFEITURA_NATAL">PREFEITURA DE NATAL</option>
+                    <option value="PREFEITURA_PORTO_VELHO">PREFEITURA PORTO VELHO</option>
                   </select>
                   <Input 
                     value={description}
@@ -2900,6 +3261,26 @@ export default function ImportBatchPage() {
                         <p className="text-[10px] text-slate-400">Base Governo de Mato Grosso do Sul</p>
                       </div>
                     </button>
+                    <button 
+                      onClick={() => downloadCSV('prefeitura_natal')}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
+                    >
+                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-slate-700">MODELO PREFEITURA DE NATAL</p>
+                        <p className="text-[10px] text-slate-400">Base Prefeitura de Natal</p>
+                      </div>
+                    </button>
+                    <button 
+                      onClick={() => downloadCSV('prefeitura_porto_velho')}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
+                    >
+                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-slate-700">MODELO PREFEITURA DE PORTO VELHO</p>
+                        <p className="text-[10px] text-slate-400">Base Prefeitura de Porto Velho</p>
+                      </div>
+                    </button>
                   </div>
                 </div>
 
@@ -2955,7 +3336,7 @@ export default function ImportBatchPage() {
                     </button>
                   </div>
                   <p className="text-[14px] font-black text-slate-900 tracking-tighter">
-                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0) + (totalBaseGovRJ || 0) + (totalBasePrefSa || 0) + (totalBasePrefContagem || 0) + (totalBaseGovMG || 0) + (totalBaseGovMS || 0)).toLocaleString('pt-BR')}
+                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0) + (totalBaseGovRJ || 0) + (totalBasePrefSa || 0) + (totalBasePrefContagem || 0) + (totalBaseGovMG || 0) + (totalBaseGovMS || 0) + (totalBasePrefNatal || 0) + (totalBasePrefPortoVelho || 0)).toLocaleString('pt-BR')}
                   </p>
                 </div>
 
@@ -3082,6 +3463,28 @@ export default function ImportBatchPage() {
                         {totalBaseGovMS.toLocaleString('pt-BR')}
                       </p>
                     </div>
+
+                    {/* PREFEITURA NATAL */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">PREF NATAL</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-sky-600 transition-colors">
+                        {totalBasePrefNatal.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+
+                    {/* PREFEITURA PORTO VELHO */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-violet-500" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">PREF PORTO VELHO</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-violet-600 transition-colors">
+                        {totalBasePrefPortoVelho.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3137,9 +3540,11 @@ export default function ImportBatchPage() {
                             batch.tipo === "PREFEITURA_SANTO_ANDRE" ? "bg-violet-600" : 
                             batch.tipo === "PREFEITURA_CONTAGEM" ? "bg-rose-600" : 
                             batch.tipo === "GOVERNO_MG" ? "bg-amber-600" : 
-                            batch.tipo === "GOVERNO_MS" ? "bg-teal-600" : "bg-cyan-600"
+                            batch.tipo === "GOVERNO_MS" ? "bg-teal-600" : 
+                            batch.tipo === "PREFEITURA_NATAL" ? "bg-sky-600" :
+                            batch.tipo === "PREFEITURA_PORTO_VELHO" ? "bg-violet-600" : "bg-cyan-600"
                           )}>
-                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo === "PREFEITURA_SP" ? "PREFEITURA SP" : batch.tipo === "GOVERNO_PI" ? "GOVERNO PI" : batch.tipo === "GOVERNO_MA" ? "GOVERNO MA" : batch.tipo === "GOVERNO_RR" ? "GOV RR" : batch.tipo === "GOVERNO_RJ" ? "GOV RJ" : batch.tipo === "PREFEITURA_SANTO_ANDRE" ? "PREF STO ANDRÉ" : batch.tipo === "PREFEITURA_CONTAGEM" ? "PREF CONTAGEM" : batch.tipo === "GOVERNO_MG" ? "GOV MG" : batch.tipo === "GOVERNO_MS" ? "GOV MS" : batch.tipo}
+                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo === "PREFEITURA_SP" ? "PREFEITURA SP" : batch.tipo === "GOVERNO_PI" ? "GOVERNO PI" : batch.tipo === "GOVERNO_MA" ? "GOVERNO MA" : batch.tipo === "GOVERNO_RR" ? "GOV RR" : batch.tipo === "GOVERNO_RJ" ? "GOV RJ" : batch.tipo === "PREFEITURA_SANTO_ANDRE" ? "PREF STO ANDRÉ" : batch.tipo === "PREFEITURA_CONTAGEM" ? "PREF CONTAGEM" : batch.tipo === "GOVERNO_MG" ? "GOV MG" : batch.tipo === "GOVERNO_MS" ? "GOV MS" : batch.tipo === "PREFEITURA_NATAL" ? "PREF NATAL" : batch.tipo === "PREFEITURA_PORTO_VELHO" ? "PREF PORTO VELHO" : batch.tipo}
                           </span>
                           <span className="text-[12px] font-semibold text-slate-600 uppercase">{batch.descricao}</span>
                         </div>

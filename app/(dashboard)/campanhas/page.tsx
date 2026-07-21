@@ -584,6 +584,8 @@ export default function CampaignsPage() {
         'governo_ma': 'base_consulta_governo_ma',
         'governo_rr': 'base_consulta_governo_rr',
         'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
+        'prefeitura_natal': 'base_consulta_prefeitura_natal',
+        'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
       };
 
       if (convenioKey && TABLE_MAP[convenioKey]) {
@@ -600,6 +602,10 @@ export default function CampaignsPage() {
         targetTable = 'base_consulta_governo_rr';
       } else if (campaignName.includes('SANTO ANDRÉ') || campaignName.includes('SANTO ANDRE') || campaignName.includes('PREFEITURA SANTO ANDRE') || campaignName.includes('PREF SANTO ANDRE')) {
         targetTable = 'base_consulta_prefeitura_santo_andre';
+      } else if (campaignName.includes('NATAL')) {
+        targetTable = 'base_consulta_prefeitura_natal';
+      } else if (campaignName.includes('PORTO VELHO')) {
+        targetTable = 'base_consulta_prefeitura_porto_velho';
       }
 
       const isGovPi = targetTable === 'base_consulta_governo_pi';
@@ -608,6 +614,8 @@ export default function CampaignsPage() {
       const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
       const isGovMa = targetTable === 'base_consulta_governo_ma';
       const isSantoAndre = targetTable === 'base_consulta_prefeitura_santo_andre';
+      const isPrefNatal = targetTable === 'base_consulta_prefeitura_natal';
+      const isPrefPortoVelho = targetTable === 'base_consulta_prefeitura_porto_velho';
       const isMultiConvenio = (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect');
 
       const headersArray = ["CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3"];
@@ -623,6 +631,10 @@ export default function CampaignsPage() {
         headersArray.push("MARGEM 35%", "BRUTA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO LÍQUIDA 5%");
       } else if (isSantoAndre) {
         headersArray.push("MARGEM BRUTA CARTÃO", "MARGEM LÍQUIDA CARTÃO");
+      } else if (isPrefNatal) {
+        headersArray.push("VÍNCULO", "ÓRGÃO", "MARGEM EMPRÉSTIMO CONSIGNADO", "MARGEM CARTÃO CONSIGNADO", "MARGEM CARTÃO BENEFÍCIO");
+      } else if (isPrefPortoVelho) {
+        headersArray.push("VÍNCULO", "ÓRGÃO", "MARGEM EMPRÉSTIMO", "MARGEM CARTÃO CONSIGNADO");
       } else if (isMultiConvenio) {
         headersArray.push(
           "CONVÊNIO",
@@ -707,6 +719,8 @@ export default function CampaignsPage() {
           { name: 'base_consulta_governo_mg', convenio: 'governo_mg', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
           { name: 'base_consulta_governo_rj', convenio: 'governo_rj', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
           { name: 'base_consulta_governo_ms', convenio: 'governo_ms', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo_consignado, margem_cartao_consignado, margem_cartao_beneficio" },
+          { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo, margem_cartao_consignado" },
         ];
 
         // 1. Buscar primeiro na tabela preferencial da campanha (targetTable)
@@ -843,6 +857,33 @@ export default function CampaignsPage() {
               (row as any).margem_bruta_cartao ?? "",
               (row as any).margem_liquida_cartao ?? ""
             ];
+          } else if (isPrefNatal) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).vinculo || "",
+              (row as any).orgao || "",
+              (row as any).margem_emprestimo_consignado ?? "",
+              (row as any).margem_cartao_consignado ?? "",
+              (row as any).margem_cartao_beneficio ?? ""
+            ];
+          } else if (isPrefPortoVelho) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).vinculo || "",
+              (row as any).orgao || "",
+              (row as any).margem_emprestimo ?? "",
+              (row as any).margem_cartao_consignado ?? ""
+            ];
           } else if (isPrefSp) {
             csvFields = [
               row.cpf,
@@ -926,6 +967,22 @@ export default function CampaignsPage() {
                 "PREFEITURA SANTO ANDRÉ",
                 "", "", "", "",
                 (row as any).margem_liquida_cartao ?? "", "", "", ""
+              ];
+            } else if (conv === "prefeitura_natal") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "PREFEITURA DE NATAL",
+                "", (row as any).margem_emprestimo_consignado ?? "", "", "",
+                (row as any).margem_cartao_consignado ?? "", "", "", (row as any).margem_cartao_beneficio ?? ""
+              ];
+            } else if (conv === "prefeitura_porto_velho") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "PREFEITURA PORTO VELHO",
+                "", (row as any).margem_emprestimo ?? "", "", "",
+                (row as any).margem_cartao_consignado ?? "", "", "", ""
               ];
             } else {
               csvFields = [

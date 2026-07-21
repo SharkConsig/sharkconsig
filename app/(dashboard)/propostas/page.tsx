@@ -200,7 +200,7 @@ function MultiSelect({
 }
 
 export default function ProposalsPage() {
-  const { perfil, isCorretor, isAdmin, isDeveloper, isOperational, isSupervisor, isEstagio } = useAuth()
+  const { perfil, isCorretor, isAdmin, isDeveloper, isOperational, isSupervisor, isEstagio, isMonitoramento } = useAuth()
   const router = useRouter()
   const { isCollapsed } = useSidebar()
 
@@ -567,6 +567,15 @@ export default function ProposalsPage() {
 
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
+
+  const totalValorProducao = useMemo(() => {
+    return proposals
+      .filter(p => {
+        const s = (p.status || "").toUpperCase();
+        return s !== "CANCELADO" && s !== "CANCELADOS";
+      })
+      .reduce((acc, p) => acc + (Number(p.valor_producao) || 0), 0)
+  }, [proposals])
 
   const filteredProposals = proposals.filter((proposal: Proposal) => {
     const cleanSearch = searchTerm.toLowerCase().replace(/\D/g, "")
@@ -1034,9 +1043,18 @@ export default function ProposalsPage() {
           )}
         </div>
 
-        {/* Export Button Row - For Operacional, Admin, Developer and Supervisor */}
-        {(isAdmin || isOperational || isDeveloper || isSupervisor) && (
-          <div className="flex justify-end pt-4">
+        {/* Export Button & Total Produção Row */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-4">
+          {/* Total Produção on the left */}
+          <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-100 px-4 py-2 rounded-lg shadow-sm">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Total Produção:</span>
+            <span className="text-[14px] font-black font-sans">
+              R$ {totalValorProducao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+
+          {/* Export Button on the right */}
+          {(isAdmin || isOperational || isDeveloper || isSupervisor) && (
             <Button
               variant="outline"
               size="sm"
@@ -1046,8 +1064,8 @@ export default function ProposalsPage() {
               <FileSpreadsheet className="w-5 h-5" />
               EXPORTAR EXCEL
             </Button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Table */}
         <Card className="card-shadow border border-slate-200 overflow-hidden">

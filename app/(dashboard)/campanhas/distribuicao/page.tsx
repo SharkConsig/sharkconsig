@@ -138,7 +138,9 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
     'base_consulta_governo_rj',
     'base_consulta_prefeitura_santo_andre',
     'base_consulta_prefeitura_contagem',
-    'base_consulta_governo_mg'
+    'base_consulta_governo_mg',
+    'base_consulta_prefeitura_natal',
+    'base_consulta_prefeitura_porto_velho'
   ];
 
   const results: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
@@ -271,6 +273,8 @@ export default function DistribuicaoCampanhaPage() {
         'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
         'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
         'governo_mg': 'base_consulta_governo_mg',
+        'prefeitura_natal': 'base_consulta_prefeitura_natal',
+        'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -294,6 +298,10 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_prefeitura_contagem';
       } else if (cNameUpper.includes('GOVERNO MG') || cNameUpper.includes('MG')) {
         targetTable = 'base_consulta_governo_mg';
+      } else if (cNameUpper.includes('NATAL')) {
+        targetTable = 'base_consulta_prefeitura_natal';
+      } else if (cNameUpper.includes('PORTO VELHO')) {
+        targetTable = 'base_consulta_prefeitura_porto_velho';
       }
 
       let clientsBatchList: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
@@ -475,6 +483,8 @@ export default function DistribuicaoCampanhaPage() {
         'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
         'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
         'governo_mg': 'base_consulta_governo_mg',
+        'prefeitura_natal': 'base_consulta_prefeitura_natal',
+        'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -498,6 +508,10 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_prefeitura_contagem';
       } else if (cNameUpper.includes('GOVERNO MG') || cNameUpper.includes('MG')) {
         targetTable = 'base_consulta_governo_mg';
+      } else if (cNameUpper.includes('NATAL')) {
+        targetTable = 'base_consulta_prefeitura_natal';
+      } else if (cNameUpper.includes('PORTO VELHO')) {
+        targetTable = 'base_consulta_prefeitura_porto_velho';
       }
 
       let clientDetails: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];

@@ -89,6 +89,8 @@ const TABLE_MAP: Record<string, string> = {
   'governo_ma': 'base_consulta_governo_ma',
   'governo_rr': 'base_consulta_governo_rr',
   'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
+  'prefeitura_natal': 'base_consulta_prefeitura_natal',
+  'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
 };
 
 const TABLE_COLUMNS: Record<string, string[]> = {
@@ -126,6 +128,14 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   'base_consulta_prefeitura_santo_andre': [
     'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
     'matricula', 'orgao', 'vinculo', 'margem_bruta_cartao', 'margem_liquida_cartao'
+  ],
+  'base_consulta_prefeitura_natal': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'matricula', 'vinculo', 'orgao', 'margem_emprestimo_consignado', 'margem_cartao_consignado', 'margem_cartao_beneficio'
+  ],
+  'base_consulta_prefeitura_porto_velho': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'matricula', 'vinculo', 'orgao', 'margem_emprestimo', 'margem_cartao_consignado'
   ]
 };
 
@@ -137,6 +147,8 @@ const CONVENIOS = [
   { id: 'governo_ma', label: 'GOVERNO MARANHÃO' },
   { id: 'governo_rr', label: 'GOVERNO RORAIMA' },
   { id: 'prefeitura_santo_andre', label: 'PREFEITURA SANTO ANDRÉ' },
+  { id: 'prefeitura_natal', label: 'PREFEITURA DE NATAL' },
+  { id: 'prefeitura_porto_velho', label: 'PREFEITURA PORTO VELHO' },
 ];
 
 export default function NewCampaignPage() {
@@ -211,6 +223,21 @@ export default function NewCampaignPage() {
       } else if (activeConvenio === 'governo_rr') {
         orgaos = [];
         situacoes = [];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: vinculosData } = await supabase
+          .from(tableName)
+          .select('vinculo')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(vinculosData?.map(i => i.vinculo).filter(Boolean) || [])).sort() as string[];
         regimes = [];
         ufs = [];
       } else {
@@ -319,7 +346,7 @@ export default function NewCampaignPage() {
       numbers['orgao'] = currentNumber++;
       numbers['situacao'] = currentNumber++;
       
-      if (activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp') {
+      if (activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'prefeitura_natal' && activeConvenio !== 'prefeitura_porto_velho') {
         numbers['regime'] = currentNumber++;
         numbers['uf'] = currentNumber++;
       }
@@ -327,7 +354,7 @@ export default function NewCampaignPage() {
 
     numbers['margem'] = currentNumber++;
 
-    if (activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp') {
+    if (activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'prefeitura_natal' && activeConvenio !== 'prefeitura_porto_velho') {
       numbers['saldo'] = currentNumber++;
       numbers['loans'] = currentNumber++;
     }
@@ -518,6 +545,10 @@ export default function NewCampaignPage() {
         q = q.not("margem_emprestimo", "is", null);
         if (mMinNum !== null) q = q.gte("margem_emprestimo", mMinNum);
         if (mMaxNum !== null) q = q.lte("margem_emprestimo", mMaxNum);
+      } else if (cols.includes('margem_emprestimo_consignado')) {
+        q = q.not("margem_emprestimo_consignado", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_emprestimo_consignado", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_emprestimo_consignado", mMaxNum);
       } else if (cols.includes('margem_bruta_cartao')) {
         q = q.not("margem_bruta_cartao", "is", null);
         if (mMinNum !== null) q = q.gte("margem_bruta_cartao", mMinNum);
@@ -1078,6 +1109,7 @@ export default function NewCampaignPage() {
             if (activeConvenio === 'governo_rr') return null;
             if (activeConvenio === 'governo_pi') return null;
             if (activeConvenio === 'prefeitura_santo_andre') return null;
+            if ((activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') && (section.id === "3" || section.id === "4")) return null;
             if (section.id === "4" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             if (section.id === "3" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             if (activeConvenio === 'governo_ma' && (section.id === "3" || section.id === "4")) return null;
@@ -1089,7 +1121,7 @@ export default function NewCampaignPage() {
             if (section.id === "1") {
               sectionTitle = `${cardNumbers['orgao']}. ÓRGÃO`;
             } else if (section.id === "2") {
-              sectionTitle = `${cardNumbers['situacao']}. ${activeConvenio === 'governo_pi' ? 'VÍNCULO' : 'SITUAÇÃO FUNCIONAL'}`;
+              sectionTitle = `${cardNumbers['situacao']}. ${(activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') ? 'VÍNCULO' : 'SITUAÇÃO FUNCIONAL'}`;
             } else if (section.id === "3") {
               sectionTitle = `${cardNumbers['regime']}. REGIME JURÍDICO`;
             } else if (section.id === "4") {
@@ -1215,11 +1247,11 @@ export default function NewCampaignPage() {
                       "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
                       (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
                     )}>
-                      {activeConvenio === 'governo_pi' 
+                      {activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_natal'
                         ? `${getCardNumbers()['margem']}. MARGEM DISPONÍVEL EMPRÉSTIMO` 
                         : activeConvenio === 'prefeitura_sp'
                           ? `${getCardNumbers()['margem']}. LÍQUIDA CONSIGNADO`
-                          : activeConvenio === 'governo_rr'
+                          : activeConvenio === 'governo_rr' || activeConvenio === 'prefeitura_porto_velho'
                             ? `${getCardNumbers()['margem']}. MARGEM EMPRÉSTIMO`
                             : `${getCardNumbers()['margem']}. MARGEM 35%`}
                     </h3>
@@ -1445,7 +1477,7 @@ export default function NewCampaignPage() {
           )}
 
           {/* 9. CARTÕES */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' ? (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_natal' && activeConvenio !== 'prefeitura_porto_velho' ? (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1784,7 +1816,7 @@ export default function NewCampaignPage() {
                 </div>
               </CardContent>
             </Card>
-          ) : (activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_santo_andre' || activeConvenio === 'governo_ma') ? (
+          ) : (activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_santo_andre' || activeConvenio === 'governo_ma' || activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') ? (
             /* MARGEM DOS CARTÕES (For Governo Piauí, Prefeitura Santo André, and Governo Maranhão) */
             <Card className={cn(
               "card-shadow transition-all duration-300",
@@ -1866,19 +1898,21 @@ export default function NewCampaignPage() {
                           />
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO BENEFÍCIO (MÍNIMA)</label>
-                        <div className="relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
-                          <Input 
-                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
-                            placeholder="Ex: 100,00" 
-                            inputMode="decimal"
-                            value={filters.cardBeneficioMin}
-                            onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
-                          />
+                      {activeConvenio !== 'prefeitura_porto_velho' && (
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO BENEFÍCIO (MÍNIMA)</label>
+                          <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                            <Input 
+                              className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                              placeholder="Ex: 100,00" 
+                              inputMode="decimal"
+                              value={filters.cardBeneficioMin}
+                              onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
+                            />
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </>
                   )}
                 </div>
