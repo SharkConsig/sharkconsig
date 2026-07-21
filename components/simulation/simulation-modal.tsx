@@ -1144,7 +1144,6 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             <div className="border-t border-slate-100 pt-4 flex justify-between items-start gap-6 mt-auto">
               <div className="flex-1 text-[7px] text-slate-400 font-bold leading-relaxed space-y-0.5 text-left uppercase tracking-tight">
                 <p>* As taxas de juros ofertadas pelas instituições bancárias levam em consideração as demais linhas de crédito disponívels ao cliente.</p>
-                <p>* Essa proposta é válida por 48 horas após o envio deste documento.</p>
                 <p>* CB é Cartão Benefício e CC é Cartão Consignado.</p>
                 <p>* Está ciente o beneficiário que a tomada de outro crédito fora dessa proposta ou ficar devedor em algum banco, afeta diretamente a possibilidade de entrega da oferta, taxas e prazo.</p>
               </div>
@@ -1715,7 +1714,6 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                 <p>* Estratégia de redução leva em consideração a taxa de juros confirmada pelo cliente.</p>
                 <p>* A taxa de juros final do contrato e a redução real do valor da parcela poderão sobre oscilações a critério das instituições bancárias.</p>
                 <p>* As taxas de juros ofertadas pelas instituições bancárias levam em consideração as demais lines de crédito disponívels ao cliente.</p>
-                <p>* Essa proposta é válida por 48 horas após o envio deste documento.</p>
                 <p>* CB é Cartão Benefício e CC é Cartão Consignado.</p>
                 <p>* Está ciente o beneficiário que a tomada de outro crédito fora dessa proposta ou ficar devedor em algum banco, afeta diretamente a possibilidade de entrega da oferta, taxas e prazo.</p>
               </>
