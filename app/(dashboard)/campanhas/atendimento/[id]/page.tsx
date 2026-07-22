@@ -430,6 +430,9 @@ export default function CampanhaAtendimentoPage() {
         'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
         'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
         'governo_mg': 'base_consulta_governo_mg',
+        'governo_ms': 'base_consulta_governo_ms',
+        'prefeitura_natal': 'base_consulta_prefeitura_natal',
+        'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
       }
 
       if (convenioKey && TABLE_MAP[convenioKey || '']) {
@@ -452,6 +455,12 @@ export default function CampanhaAtendimentoPage() {
         table = 'base_consulta_prefeitura_contagem'
       } else if (campaignName.includes("GOVERNO MG") || campaignName.includes("MINAS GERAIS")) {
         table = 'base_consulta_governo_mg'
+      } else if (campaignName.includes("GOVERNO MS") || campaignName.includes("MATO GROSSO DO SUL")) {
+        table = 'base_consulta_governo_ms'
+      } else if (campaignName.includes("NATAL") || campaignName.includes("PREFEITURA DE NATAL")) {
+        table = 'base_consulta_prefeitura_natal'
+      } else if (campaignName.includes("PORTO VELHO") || campaignName.includes("PREFEITURA PORTO VELHO")) {
+        table = 'base_consulta_prefeitura_porto_velho'
       }
       
       let data = null;
@@ -655,6 +664,8 @@ export default function CampanhaAtendimentoPage() {
               { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
               { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
               { name: 'base_consulta_governo_ms', convenio: 'governo_ms' },
+              { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal' },
+              { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho' },
             ];
 
             // 1. Determinar tabela preferencial de consulta
@@ -799,36 +810,41 @@ export default function CampanhaAtendimentoPage() {
           const isGovPi = table === 'base_consulta_governo_pi';
           const isGovRr = table === 'base_consulta_governo_rr';
           const isSantoAndre = table === 'base_consulta_prefeitura_santo_andre';
+          const isPrefNatal = table === 'base_consulta_prefeitura_natal';
+          const isPrefPortoVelho = table === 'base_consulta_prefeitura_porto_velho';
+
+          const mat = data.matricula || data.identificacao || data.numero_matricula || '---';
+          const vinc = data.vinculo || data.situacao_funcional || '---';
+          const m35 = data.margem_35 ?? data.margem_emprestimo_consignado ?? data.margem_emprestimo ?? data.margem_disponivel_emprestimo;
+          const mLiq5 = data.liquida_5 ?? data.margem_cartao_consignado ?? data.margem_cartao;
+          const mBenLiq5 = data.beneficio_liquida_5 ?? data.margem_cartao_beneficio;
+
           setRegistrations([{
             id: data.id || data.cpf,
-            numero_matricula: isSantoAndre
-              ? (data.matricula || '---')
-              : (isGovPi 
-                ? (data.matricula || '---') 
-                : (data.identificacao || data.numero_matricula || '---')),
-            situacao_funcional: isSantoAndre ? data.vinculo : (isGovPi ? data.vinculo : data.situacao_funcional),
+            numero_matricula: mat,
+            situacao_funcional: vinc,
             salario: data.salario || 0,
             orgao: data.orgao,
             regime_juridico: data.regime_juridico,
-            uf: isSantoAndre ? 'SP' : (isGovPi ? 'PI' : (isGovRr ? 'RR' : data.uf)),
-            matricula: (isSantoAndre || isGovPi) ? (data.matricula || '---') : undefined,
-            vinculo: isSantoAndre ? (data.vinculo || '---') : (isGovPi ? (data.vinculo || '---') : undefined),
-            margem_disponivel_emprestimo: isGovPi ? data.margem_disponivel_emprestimo : (isGovRr ? data.margem_emprestimo : undefined),
-            margem_cartao_consignado: isGovPi ? data.margem_cartao_consignado : (isGovRr ? data.margem_cartao : undefined),
-            margem_cartao_beneficio: isGovPi ? data.margem_cartao_beneficio : undefined,
-            margem_bruta_cartao: isSantoAndre ? data.margem_bruta_cartao : undefined,
-            margem_liquida_cartao: isSantoAndre ? data.margem_liquida_cartao : undefined,
+            uf: isSantoAndre ? 'SP' : (isGovPi ? 'PI' : (isGovRr ? 'RR' : (isPrefNatal ? 'RN' : (isPrefPortoVelho ? 'RO' : data.uf)))),
+            matricula: mat,
+            vinculo: vinc,
+            margem_disponivel_emprestimo: data.margem_disponivel_emprestimo ?? data.margem_emprestimo_consignado ?? data.margem_emprestimo,
+            margem_cartao_consignado: data.margem_cartao_consignado ?? data.margem_cartao,
+            margem_cartao_beneficio: data.margem_cartao_beneficio,
+            margem_bruta_cartao: data.margem_bruta_cartao,
+            margem_liquida_cartao: data.margem_liquida_cartao,
             instituidores: [{
                id: 'main',
-               nome: data.orgao || (isGovRr ? 'GOVERNO RR' : ''),
+               nome: data.orgao || (isGovRr ? 'GOVERNO RR' : (isPrefNatal ? 'PREFEITURA DE NATAL' : (isPrefPortoVelho ? 'PREFEITURA PORTO VELHO' : ''))),
                saldo_70: data.saldo_70,
-               margem_35: isGovRr ? data.margem_emprestimo : data.margem_35,
+               margem_35: m35,
                bruta_5: data.bruta_5,
                utilizada_5: data.utilizada_5,
-               liquida_5: isGovPi ? data.margem_cartao_consignado : (isGovRr ? data.margem_cartao : data.liquida_5),
+               liquida_5: mLiq5,
                beneficio_bruta_5: data.beneficio_bruta_5,
                beneficio_utilizada_5: data.beneficio_utilizada_5,
-               beneficio_liquida_5: isGovPi ? data.margem_cartao_beneficio : data.beneficio_liquida_5,
+               beneficio_liquida_5: mBenLiq5,
                itens_credito: []
             }]
           } as unknown as Registration])
@@ -1384,7 +1400,467 @@ export default function CampanhaAtendimentoPage() {
                 {activeReg && (
                   <Card className="card-shadow border border-slate-200 rounded-tl-none">
                     <CardContent className="p-8 space-y-12">
-                      {activeTable === 'base_consulta_prefeitura_santo_andre' ? (
+                      {activeTable === 'base_consulta_prefeitura_porto_velho' ? (
+                        <>
+                          {/* Prefeitura de Porto Velho */}
+                          <div className="space-y-8 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-emerald-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest font-sans tracking-tight">
+                                INFORMAÇÕES DA MATRÍCULA (PREFEITURA DE PORTO VELHO)
+                              </h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || activeReg.numero_matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.vinculo || activeReg.situacao_funcional || "NÃO INFORMADO"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "PREF. PORTO VELHO - RO"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                            {/* Margem Empréstimo */}
+                            {(() => {
+                              const valConsig = activeReg.margem_disponivel_emprestimo ?? (activeInst?.margem_35 || 0);
+                              const isConsigAvailable = valConsig > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isConsigAvailable ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
+                                    MARGEM EMPRÉSTIMO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isConsigAvailable ? "text-blue-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(valConsig)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
+                                        {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Margem Cartão Consignado */}
+                            {(() => {
+                              const valCard = activeReg.margem_cartao_consignado ?? (activeInst?.liquida_5 || 0);
+                              const isCardAvailable = valCard > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isCardAvailable ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600 truncate")}>
+                                    MARGEM CARTÃO CONSIGNADO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isCardAvailable ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(valCard)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isCardAvailable ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
+                                        {isCardAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </>
+                      ) : activeTable === 'base_consulta_prefeitura_natal' ? (
+                        <>
+                          {/* Prefeitura de Natal */}
+                          <div className="space-y-8 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-sky-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest font-sans tracking-tight">
+                                INFORMAÇÕES DA MATRÍCULA (PREFEITURA DE NATAL)
+                              </h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || activeReg.numero_matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.vinculo || activeReg.situacao_funcional || "NÃO INFORMADO"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "PREFEITURA DE NATAL"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+                            {/* Margem Empréstimo Consignado */}
+                            {(() => {
+                              const valConsig = activeReg.margem_disponivel_emprestimo ?? (activeInst?.margem_35 || 0);
+                              const isConsigAvailable = valConsig > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isConsigAvailable ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
+                                    MARGEM EMPRÉSTIMO CONSIGNADO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isConsigAvailable ? "text-blue-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(valConsig)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
+                                        {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Margem Cartão Consignado */}
+                            {(() => {
+                              const valCard = activeReg.margem_cartao_consignado ?? (activeInst?.liquida_5 || 0);
+                              const isCardAvailable = valCard > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isCardAvailable ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600 truncate")}>
+                                    MARGEM CARTÃO CONSIGNADO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isCardAvailable ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(valCard)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isCardAvailable ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
+                                        {isCardAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Margem Cartão Benefício */}
+                            {(() => {
+                              const valBenef = activeReg.margem_cartao_beneficio ?? (activeInst?.beneficio_liquida_5 || 0);
+                              const isBenefAvailable = valBenef > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isBenefAvailable ? "bg-purple-50 border-purple-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600 truncate")}>
+                                    MARGEM CARTÃO BENEFÍCIO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isBenefAvailable ? "text-purple-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(valBenef)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isBenefAvailable ? "bg-purple-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600")}>
+                                        {isBenefAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </>
+                      ) : activeTable === 'base_consulta_governo_ms' ? (
+                        <>
+                          {/* Governo MS */}
+                          <div className="space-y-8 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-teal-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest font-sans tracking-tight">
+                                INFORMAÇÕES DA MATRÍCULA (GOVERNO DO MATO GROSSO DO SUL)
+                              </h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-left">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || activeReg.numero_matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "GOVERNO MATO GROSSO DO SUL"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      ) : activeTable === 'base_consulta_governo_rr' ? (
+                        <>
+                          {/* Governo RR */}
+                          <div className="space-y-8 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-orange-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest font-sans tracking-tight">
+                                INFORMAÇÕES DA MATRÍCULA (GOVERNO RORAIMA)
+                              </h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || activeReg.numero_matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.vinculo || activeReg.situacao_funcional || "NÃO INFORMADO"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "GOVERNO RORAIMA"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                            {/* Margem Empréstimo */}
+                            {(() => {
+                              const valConsig = activeReg.margem_disponivel_emprestimo ?? (activeInst?.margem_35 || 0);
+                              const isConsigAvailable = valConsig > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isConsigAvailable ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
+                                    MARGEM EMPRÉSTIMO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isConsigAvailable ? "text-blue-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(valConsig)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
+                                        {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Margem Cartão */}
+                            {(() => {
+                              const valCard = activeReg.margem_cartao_consignado ?? (activeInst?.liquida_5 || 0);
+                              const isCardAvailable = valCard > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isCardAvailable ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600 truncate")}>
+                                    MARGEM CARTÃO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isCardAvailable ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(valCard)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isCardAvailable ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
+                                        {isCardAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </>
+                      ) : activeTable === 'base_consulta_prefeitura_contagem' ? (
+                        <>
+                          {/* Prefeitura de Contagem */}
+                          <div className="space-y-8 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-amber-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest font-sans tracking-tight">
+                                INFORMAÇÕES DA MATRÍCULA (PREFEITURA DE CONTAGEM)
+                              </h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || activeReg.numero_matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.vinculo || activeReg.situacao_funcional || "NÃO INFORMADO"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "PREFEITURA DE CONTAGEM"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                            {/* Margem Empréstimo */}
+                            {(() => {
+                              const valConsig = activeReg.margem_disponivel_emprestimo ?? (activeInst?.margem_35 || 0);
+                              const isConsigAvailable = valConsig > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isConsigAvailable ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
+                                    MARGEM EMPRÉSTIMO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isConsigAvailable ? "text-blue-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(valConsig)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
+                                        {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Margem Cartão */}
+                            {(() => {
+                              const valCard = activeReg.margem_cartao_consignado ?? (activeInst?.liquida_5 || 0);
+                              const isCardAvailable = valCard > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isCardAvailable ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600 truncate")}>
+                                    MARGEM CARTÃO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isCardAvailable ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(valCard)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isCardAvailable ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
+                                        {isCardAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </>
+                      ) : activeTable === 'base_consulta_governo_mg' ? (
+                        <>
+                          {/* Governo MG */}
+                          <div className="space-y-8 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-indigo-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest font-sans tracking-tight">
+                                INFORMAÇÕES DA MATRÍCULA (GOVERNO DE MINAS GERAIS)
+                              </h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || activeReg.numero_matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.vinculo || activeReg.situacao_funcional || "NÃO INFORMADO"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "GOVERNO MINAS GERAIS"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-4 mt-6">
+                            {/* Margem Empréstimo */}
+                            {(() => {
+                              const valConsig = activeReg.margem_disponivel_emprestimo ?? (activeInst?.margem_35 || 0);
+                              const isConsigAvailable = valConsig > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isConsigAvailable ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
+                                    MARGEM EMPRÉSTIMO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isConsigAvailable ? "text-blue-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(valConsig)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
+                                        {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </>
+                      ) : activeTable === 'base_consulta_prefeitura_santo_andre' ? (
                         <>
                           {/* Prefeitura de Santo André */}
                           <div className="space-y-10 text-left">
