@@ -2044,6 +2044,7 @@ export default function FinancialSettingsPage() {
                 className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 focus-visible:ring-primary/20 transition-all uppercase placeholder:text-slate-400/60"
               />
             </div>
+
             
             <div className="grid grid-cols-2 gap-4 pt-2">
               <div className="space-y-2 relative" ref={pickerTextoRef}>

@@ -2665,21 +2665,6 @@ export function AdminDashboard({
               </div>
             </DashboardCard>
 
-            <DashboardCard className="p-6 bg-[#06BADC]/5 border-[#06BADC]/20 shadow-sm">
-              <p className="text-[10px] font-black text-[#06BADC] uppercase tracking-[0.2em] mb-1">Em Negociação / Proposta Enviada</p>
-              <p className="text-3xl font-black text-[#06BADC] tracking-tighter">{ticketStats?.inNegotiation || 0}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[11px] font-black text-[#06BADC] uppercase tracking-tighter">
-                  {ticketStats?.total ? Math.round((ticketStats.inNegotiation / ticketStats.total) * 100) : 0}%
-                </span>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
-              </div>
-              <div className="mt-2.5 pt-2 border-t border-dashed border-[#06BADC]/20">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
-                <p className="text-sm font-black text-[#06BADC] tracking-tight">{formatCurrency(ticketStats?.inNegotiationValue || 0)}</p>
-              </div>
-            </DashboardCard>
-
             <DashboardCard className="p-6 bg-[#10b981]/5 border-[#10b981]/20 shadow-sm">
               <p className="text-[10px] font-black text-[#10b981] uppercase tracking-[0.2em] mb-1">Aprovado</p>
               <p className="text-3xl font-black text-[#10b981] tracking-tighter">{ticketStats?.approved || 0}</p>
@@ -2692,6 +2677,21 @@ export function AdminDashboard({
               <div className="mt-2.5 pt-2 border-t border-dashed border-[#10b981]/20">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
                 <p className="text-sm font-black text-[#10b981] tracking-tight">{formatCurrency(ticketStats?.approvedValue || 0)}</p>
+              </div>
+            </DashboardCard>
+
+            <DashboardCard className="p-6 bg-[#06BADC]/5 border-[#06BADC]/20 shadow-sm">
+              <p className="text-[10px] font-black text-[#06BADC] uppercase tracking-[0.2em] mb-1">Proposta Enviada / Em Negociação</p>
+              <p className="text-3xl font-black text-[#06BADC] tracking-tighter">{ticketStats?.inNegotiation || 0}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px] font-black text-[#06BADC] uppercase tracking-tighter">
+                  {ticketStats?.total ? Math.round((ticketStats.inNegotiation / ticketStats.total) * 100) : 0}%
+                </span>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-dashed border-[#06BADC]/20">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                <p className="text-sm font-black text-[#06BADC] tracking-tight">{formatCurrency(ticketStats?.inNegotiationValue || 0)}</p>
               </div>
             </DashboardCard>
             

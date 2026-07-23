@@ -50,6 +50,7 @@ import { toast } from "sonner"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { cn, withRetry } from "@/lib/utils"
+import { SLAConfigManager } from "@/components/sla/sla-config-manager"
 
 interface GenericConfig {
   id: string
@@ -201,6 +202,7 @@ export default function SettingsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   const [isStatusExpanded, setIsStatusExpanded] = useState(false)
+  const [isSlaExpanded, setIsSlaExpanded] = useState(false)
   const [isConvenioExpanded, setIsConvenioExpanded] = useState(false)
   const [isBancoExpanded, setIsBancoExpanded] = useState(false)
   const [isOperacaoExpanded, setIsOperacaoExpanded] = useState(false)
@@ -1483,6 +1485,42 @@ export default function SettingsPage() {
         <section className="space-y-6">
           <div 
             className="flex items-center justify-between cursor-pointer group select-none"
+            onClick={() => setIsSlaExpanded(!isSlaExpanded)}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
+                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                  MOTOR DE REGRAS DE SLA E GATILHOS DE COBRANÇA
+                  {isSlaExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />
+                  )}
+                </h2>
+              </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Definição de prazos em horas úteis, perguntas forçadas e escalonamento</p>
+            </div>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {isSlaExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className="overflow-hidden"
+              >
+                <SLAConfigManager />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+
+        <section className="space-y-6">
+          <div 
+            className="flex items-center justify-between cursor-pointer group select-none"
             onClick={() => setIsStatusExpanded(!isStatusExpanded)}
           >
             <div className="space-y-1">
@@ -2264,6 +2302,7 @@ export default function SettingsPage() {
                 className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 focus-visible:ring-primary/20 transition-all uppercase placeholder:text-slate-400/60"
               />
             </div>
+
             
             <div className="grid grid-cols-2 gap-4 pt-2">
               <div className="space-y-2 relative" ref={pickerTextoRef}>

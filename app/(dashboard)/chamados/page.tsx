@@ -40,8 +40,8 @@ import { Badge } from "@/components/ui/badge"
 const statusCardsList = [
   { label: "ABERTO", count: 0, color: "border-t-amber-500", textColor: "text-amber-600" },
   { label: "AGUARDANDO OPERACIONAL", count: 0, color: "border-t-orange-500", textColor: "text-orange-600" },
-  { label: "EM NEGOCIAÇÃO / PROPOSTA ENVIADA", count: 0, color: "border-t-cyan-500", textColor: "text-cyan-600" },
   { label: "APROVADOS", count: 0, color: "border-t-emerald-500", textColor: "text-emerald-600" },
+  { label: "PROPOSTA ENVIADA / EM NEGOCIAÇÃO", count: 0, color: "border-t-cyan-500", textColor: "text-cyan-600" },
   { label: "NÃO APROVADOS", count: 0, color: "border-t-rose-500", textColor: "text-rose-600" },
   { label: "TODOS", count: 0, color: "border-t-slate-800", textColor: "text-slate-900" },
 ]
@@ -87,7 +87,6 @@ const APROVADOS_LABELS = [
   "AUMENTO SIAPE - AGUARDANDO DIGITAÇÃO",
   "MARGEM 40% - APROVADO",
   "COMPRA DE DIVIDA CARTÃO - APROVADO",
-  "CLIENTE SEM INTERESSE",
   "PREF SAO PAULO - CARTÃO BENEFICIO APROVADO",
   "PREF SAO PAULO - NOVO APROVADO",
   "PREF SAO PAULO - CARTÃO CONSIGNADO APROVADO",
@@ -127,8 +126,10 @@ const NAO_APROVADOS_LABELS = [
 ]
 
 const NEGOCIACAO_LABELS = [
+  "PROPOSTA ENVIADA",
   "EM NEGOCIAÇÃO",
-  "PROPOSTA ENVIADA"
+  "CLIENTE SEM INTERESSE",
+  "CLIENTE SEM INTERAÇÃO"
 ]
 
 const parseDescriptionMetadata = (desc: string) => {
@@ -877,7 +878,11 @@ export default function TicketsPage() {
       if (selectedSecondaryStatus) {
         const u = selectedSecondaryStatus.toUpperCase()
         const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
-        matchesStatus = ticketStatusUpper === u || ticketStatusUpper === ua
+        if (u === "CLIENTE SEM INTERAÇÃO") {
+          matchesStatus = ticketStatusUpper === "CLIENTE SEM INTERAÇÃO" || ticketStatusUpper.includes("SEM INTERAÇÃO")
+        } else {
+          matchesStatus = ticketStatusUpper === u || ticketStatusUpper === ua
+        }
       } else if (selectedStatus && selectedStatus !== "TODOS") {
         if (selectedStatus === "APROVADOS") {
           matchesStatus = APROVADOS_LABELS.some(label => {
@@ -891,10 +896,13 @@ export default function TicketsPage() {
             const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
             return ticketStatusUpper === u || ticketStatusUpper === ua
           })
-        } else if (selectedStatus === "EM NEGOCIAÇÃO / PROPOSTA ENVIADA") {
+        } else if (selectedStatus === "PROPOSTA ENVIADA / EM NEGOCIAÇÃO") {
           matchesStatus = NEGOCIACAO_LABELS.some(label => {
             const u = label.toUpperCase()
             const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+            if (u === "CLIENTE SEM INTERAÇÃO") {
+              return ticketStatusUpper === "CLIENTE SEM INTERAÇÃO" || ticketStatusUpper.includes("SEM INTERAÇÃO")
+            }
             return ticketStatusUpper === u || ticketStatusUpper === ua
           })
         } else if (selectedStatus === "ABERTO") {
@@ -954,7 +962,7 @@ export default function TicketsPage() {
         const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
         return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
       }, 0)
-    } else if (card.label === "EM NEGOCIAÇÃO / PROPOSTA ENVIADA") {
+    } else if (card.label === "PROPOSTA ENVIADA / EM NEGOCIAÇÃO") {
       count = NEGOCIACAO_LABELS.reduce((acc, label) => {
         const u = label.toUpperCase()
         const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
@@ -972,6 +980,7 @@ export default function TicketsPage() {
         return acc + parseValorToNumber(opData.valor)
       }, 0)
     }
+
     return { ...card, count, totalValor }
   }), [counts, statusValues, baseFilteredTickets])
 
@@ -982,7 +991,7 @@ export default function TicketsPage() {
       setSelectedSecondaryStatus(null)
     } else {
       setSelectedStatus(status)
-      if (status !== "APROVADOS" && status !== "NÃO APROVADOS" && status !== "EM NEGOCIAÇÃO / PROPOSTA ENVIADA") {
+      if (status !== "APROVADOS" && status !== "NÃO APROVADOS" && status !== "PROPOSTA ENVIADA / EM NEGOCIAÇÃO") {
         setSelectedSecondaryStatus(null)
       }
     }
@@ -1003,14 +1012,17 @@ export default function TicketsPage() {
       ? APROVADOS_LABELS 
       : selectedStatus === "NÃO APROVADOS" 
         ? NAO_APROVADOS_LABELS 
-        : selectedStatus === "EM NEGOCIAÇÃO / PROPOSTA ENVIADA"
+        : selectedStatus === "PROPOSTA ENVIADA / EM NEGOCIAÇÃO"
           ? NEGOCIACAO_LABELS
           : []
     
     return labels.map(label => {
       const u = label.toUpperCase()
       const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
-      const count = (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
+      let count = (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
+      if (u === "CLIENTE SEM INTERAÇÃO") {
+        count += (counts["SEM INTERAÇÃO (PROPOSTA ENVIADA)"] || 0) + (counts["SEM INTERAÇÃO"] || 0)
+      }
       return { label, count, color: "text-slate-600" }
     })
   }, [counts, selectedStatus])
@@ -1275,7 +1287,7 @@ export default function TicketsPage() {
     if (s === 'ABERTO' || s === 'ABERTOS') legacyBg = "bg-amber-500"
     else if (s === 'AGUARDANDO OPERACIONAL') legacyBg = "bg-orange-500"
     else if (s === 'PROPOSTA CADASTRADA') legacyBg = "bg-blue-500"
-    else if (s === 'EM NEGOCIAÇÃO / PROPOSTA ENVIADA') legacyBg = "bg-cyan-500"
+    else if (s === 'EM NEGOCIAÇÃO / PROPOSTA ENVIADA' || s === 'PROPOSTA ENVIADA / EM NEGOCIAÇÃO') legacyBg = "bg-cyan-500"
     else if (s.includes('APROVADO') && !s.includes('NÃO')) legacyBg = "bg-emerald-500"
     else if (s.includes('NÃO APROVADO')) legacyBg = "bg-rose-500"
     
@@ -1561,10 +1573,10 @@ export default function TicketsPage() {
           ))}
         </div>
 
-        {/* Secondary Status Cards (Only visible if APROVADOS or NÃO APROVADOS or EM NEGOCIAÇÃO / PROPOSTA ENVIADA is selected) */}
+        {/* Secondary Status Cards (Only visible if APROVADOS or NÃO APROVADOS or PROPOSTA ENVIADA / EM NEGOCIAÇÃO is selected) */}
         <div className={cn(
           "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 transition-all duration-300 overflow-hidden",
-          (selectedStatus === "APROVADOS" || selectedStatus === "NÃO APROVADOS" || selectedStatus === "EM NEGOCIAÇÃO / PROPOSTA ENVIADA") ? "max-h-[800px] opacity-100 pt-2" : "max-h-0 opacity-0 pointer-events-none"
+          (selectedStatus === "APROVADOS" || selectedStatus === "NÃO APROVADOS" || selectedStatus === "PROPOSTA ENVIADA / EM NEGOCIAÇÃO") ? "max-h-[800px] opacity-100 pt-2" : "max-h-0 opacity-0 pointer-events-none"
         )}>
           {secondaryCards.map((card) => (
             <button 
@@ -1741,6 +1753,11 @@ export default function TicketsPage() {
                               >
                                 {ticket.status_chamados?.nome || ticket.status}
                               </span>
+                              {ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && (
+                                <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-tight shadow-sm flex items-center gap-1">
+                                  🚨 SLA {ticket.escalonamento_status === 'supervisao_administrador' || ticket.escalonamento_status === 'supervisao_gestao' ? 'Supervisor + Admin' : ticket.escalonamento_status === 'administrador' ? 'Administrador' : 'Supervisor'}
+                                </span>
+                              )}
                               {(() => {
                                 const meta = parseDescriptionMetadata(ticket.descricao || "")
                                 if (meta?.enviado_para_corretor === true && ticket.user_id !== user?.id) {
