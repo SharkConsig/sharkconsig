@@ -127,9 +127,9 @@ const NAO_APROVADOS_LABELS = [
 
 const NEGOCIACAO_LABELS = [
   "PROPOSTA ENVIADA",
+  "CLIENTE SEM INTERAÇÃO",
   "EM NEGOCIAÇÃO",
-  "CLIENTE SEM INTERESSE",
-  "CLIENTE SEM INTERAÇÃO"
+  "CLIENTE SEM INTERESSE"
 ]
 
 const parseDescriptionMetadata = (desc: string) => {

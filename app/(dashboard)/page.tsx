@@ -331,9 +331,9 @@ const parseValorToNumber = (valStr: string) => {
 
 const NEGOCIACAO_LABELS = [
   'PROPOSTA ENVIADA',
+  'CLIENTE SEM INTERAÇÃO',
   'EM NEGOCIAÇÃO',
-  'CLIENTE SEM INTERESSE',
-  'CLIENTE SEM INTERAÇÃO'
+  'CLIENTE SEM INTERESSE'
 ]
 
 interface AdminStats {
