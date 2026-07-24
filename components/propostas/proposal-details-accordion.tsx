@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X } from "lucide-react"
+import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X, Copy } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { FichaPropostaModal } from "./ficha-proposta-modal"
 import { FilePreviewModal } from "./file-preview-modal"
@@ -137,6 +137,12 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       'PAGAMENTO DEVOLVIDO'
     ].includes(proposal.status));
 
+  const isClonedProposal = Boolean(
+    proposal.observacoes?.includes("Clonado do ID") || 
+    proposal.observacoes?.includes("[Clonado")
+  )
+  const canEditHeaderSelection = canEditFields && isClonedProposal
+
   const canAttach = true;
 
   const canSave = (canEditFields || canAttach);
@@ -153,6 +159,93 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [usersMap, setUsersMap] = useState<Map<string, string>>(new Map())
   const [isSaving, setIsSaving] = useState(false)
+  const [isCloning, setIsCloning] = useState(false)
+
+  const handleCloneProposalInAccordion = async () => {
+    if (!proposal) return
+
+    setIsCloning(true)
+    const loadingToast = toast.loading("Clonando proposta cancelada...")
+    try {
+      // Gerar ID de lead amigável e curto (sequencial ou 6 dígitos)
+      let newIdLead = ""
+      try {
+        const [chamadosRes, propostasRes] = await Promise.all([
+          supabase.from('chamados').select('id').order('id', { ascending: false }).limit(20),
+          supabase.from('propostas').select('id_lead').order('id_lead', { ascending: false }).limit(20)
+        ])
+        let maxId = 0
+        if (!chamadosRes.error && chamadosRes.data) {
+          chamadosRes.data.forEach(item => {
+            const val = parseInt(item.id)
+            if (!isNaN(val) && val > 0 && val < 100000000) maxId = Math.max(maxId, val)
+          })
+        }
+        if (!propostasRes.error && propostasRes.data) {
+          propostasRes.data.forEach(item => {
+            const val = parseInt(item.id_lead)
+            if (!isNaN(val) && val > 0 && val < 100000000) maxId = Math.max(maxId, val)
+          })
+        }
+        newIdLead = maxId > 0 ? (maxId + 1).toString() : Math.floor(100000 + Math.random() * 900000).toString()
+      } catch (errId) {
+        newIdLead = Math.floor(100000 + Math.random() * 900000).toString()
+      }
+
+      const nowIso = new Date().toISOString()
+
+      const { id, nome_corretor, resposta_corretor, expanded, anexos, historico, ...proposalFields } = proposal as any
+
+      const cloneData = {
+        ...proposalFields,
+        id_lead: newIdLead,
+        status: "AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO",
+        created_at: nowIso,
+        updated_at: nowIso,
+        data_digitacao: null,
+        data_pago_cliente: null,
+        data_consulta: null,
+        ade: null,
+        obs_corretor: null,
+        obs_operacional: null,
+        observacoes: proposal.observacoes
+          ? `[Clonado do ID #${proposal.id_lead}]\n${proposal.observacoes}`
+          : `[Clonado do ID #${proposal.id_lead}]`
+      }
+
+      const { error } = await supabase.from('propostas').insert(cloneData)
+
+      if (error) {
+        console.error("Erro ao clonar proposta:", error.message || error.details || error.hint || JSON.stringify(error))
+        toast.error(`Erro ao clonar proposta: ${error.message || error.details || 'Falha ao salvar no banco.'}`, { id: loadingToast })
+        return
+      }
+
+      // Gravando histórico da clonagem
+      try {
+        await supabase.from('historico_propostas').insert({
+          proposta_id_lead: proposal.id_lead,
+          usuario_id: user?.id || '',
+          status_anterior: proposal.status,
+          status_novo: proposal.status,
+          observacoes: `Proposta clonada para o novo ID #${newIdLead}`,
+          descricao: `Proposta clonada gerando o novo ID #${newIdLead}`,
+          tipo: 'clonagem',
+          created_at: nowIso
+        })
+      } catch (histErr) {
+        console.warn("Erro ao salvar histórico de clonagem:", histErr)
+      }
+
+      toast.success("Proposta clonada com sucesso! A nova proposta já está em 'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO'.", { id: loadingToast, duration: 4000 })
+      if (_onRefresh) _onRefresh()
+    } catch (err: any) {
+      console.error("Erro inesperado ao clonar proposta:", err)
+      toast.error("Erro ao clonar proposta. Tente novamente.", { id: loadingToast })
+    } finally {
+      setIsCloning(false)
+    }
+  }
 
   
   const [dbProdutosConfigs, setDbProdutosConfigs] = useState<ProdutoConfig[]>([])
@@ -175,7 +268,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   const [coefSearchTerm, setCoefSearchTerm] = useState("")
   const coefDropdownRef = useRef<HTMLDivElement>(null)
 
-  const [selection] = useState({
+  const [selection, setSelection] = useState({
     convenio: proposal.convenio || "",
     banco: proposal.banco || "",
     operacao: proposal.tipo_operacao || ""
@@ -755,6 +848,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
 
       if (canEditFields) {
         Object.assign(updateData, {
+          convenio: selection.convenio,
+          banco: selection.banco,
+          tipo_operacao: selection.operacao,
           cliente_cpf: formData.cpf.replace(/\D/g, ""),
           nome_cliente: formData.nome,
           data_nascimento: formatDate(formData.nascimento),
@@ -901,6 +997,18 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               Anexos
             </Button>
 
+            {(proposal.status === "CANCELADO" || proposal.status?.toUpperCase().includes("CANCELAD")) && (
+              <Button 
+                onClick={handleCloneProposalInAccordion}
+                disabled={isCloning}
+                className="h-8 px-4 text-[10px] font-bold uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all flex items-center gap-1.5"
+                title="Clonar esta proposta cancelada"
+              >
+                {isCloning ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
+                CLONAR PROPOSTA
+              </Button>
+            )}
+
             {/* Botão Deletar removido a pedido do usuário */}
           </div>
 
@@ -1036,17 +1144,65 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           <div className="flex flex-wrap justify-center gap-2 md:gap-8 items-center bg-white py-4 px-8 rounded-2xl border border-slate-200 shadow-sm w-fit mx-auto mb-6 text-left">
             <div className="flex flex-col items-center md:items-start">
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
-              <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
+              {canEditHeaderSelection ? (
+                <select
+                  value={selection.convenio}
+                  onChange={(e) => setSelection(prev => ({ ...prev, convenio: e.target.value }))}
+                  className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
+                >
+                  <option value="">Selecione Convênio</option>
+                  {dbConvenios.map(c => (
+                    <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                  ))}
+                  {selection.convenio && !dbConvenios.some(c => c.nome === selection.convenio) && (
+                    <option value={selection.convenio}>{selection.convenio}</option>
+                  )}
+                </select>
+              ) : (
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio || "-"}</span>
+              )}
             </div>
             <div className="h-8 w-px bg-slate-100 hidden md:block" />
             <div className="flex flex-col items-center md:items-start">
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
-              <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
+              {canEditHeaderSelection ? (
+                <select
+                  value={selection.banco}
+                  onChange={(e) => setSelection(prev => ({ ...prev, banco: e.target.value }))}
+                  className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
+                >
+                  <option value="">Selecione o Banco</option>
+                  {dbBancos.map(b => (
+                    <option key={b.id || b.nome} value={b.nome}>{b.nome}</option>
+                  ))}
+                  {selection.banco && !dbBancos.some(b => b.nome === selection.banco) && (
+                    <option value={selection.banco}>{selection.banco}</option>
+                  )}
+                </select>
+              ) : (
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco || "-"}</span>
+              )}
             </div>
             <div className="h-8 w-px bg-slate-100 hidden md:block" />
             <div className="flex flex-col items-center md:items-start transition-all">
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
-              <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
+              {canEditHeaderSelection ? (
+                <select
+                  value={selection.operacao}
+                  onChange={(e) => setSelection(prev => ({ ...prev, operacao: e.target.value }))}
+                  className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[280px]"
+                >
+                  <option value="">Selecione a Operação</option>
+                  {dbOperacoes.map(o => (
+                    <option key={o.id || o.nome} value={o.nome}>{o.nome}</option>
+                  ))}
+                  {selection.operacao && !dbOperacoes.some(o => o.nome === selection.operacao) && (
+                    <option value={selection.operacao}>{selection.operacao}</option>
+                  )}
+                </select>
+              ) : (
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao || "-"}</span>
+              )}
             </div>
           </div>
 

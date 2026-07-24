@@ -22,7 +22,8 @@ import {
   UserPlus,
   RefreshCw,
   Eraser,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Copy
 } from "lucide-react"
 import {
   Popover,
@@ -223,6 +224,7 @@ export default function ProposalsPage() {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
   const [selectedProposalForStatus, setSelectedProposalForStatus] = useState<Proposal | null>(null)
   const [selectedProposalForTransfer, setSelectedProposalForTransfer] = useState<Proposal | null>(null)
+  const [isCloning, setIsCloning] = useState<string | null>(null)
 
   // Estados para filtros avançados
   const [showFilters, setShowFilters] = useState(false)
@@ -442,6 +444,94 @@ export default function ProposalsPage() {
     } catch (error: unknown) {
       console.error("Erro ao atualizar consulta:", error)
       toast.error("Erro ao atualizar consulta", { id: loadingToast })
+    }
+  }
+
+  const handleCloneProposal = async (proposal: Proposal) => {
+    if (!proposal) return
+
+    setIsCloning(proposal.id_lead)
+    const loadingToast = toast.loading("Clonando proposta cancelada...")
+
+    try {
+      // Gerar ID de lead amigável e curto (sequencial ou 6 dígitos)
+      let newIdLead = ""
+      try {
+        const [chamadosRes, propostasRes] = await Promise.all([
+          supabase.from('chamados').select('id').order('id', { ascending: false }).limit(20),
+          supabase.from('propostas').select('id_lead').order('id_lead', { ascending: false }).limit(20)
+        ])
+        let maxId = 0
+        if (!chamadosRes.error && chamadosRes.data) {
+          chamadosRes.data.forEach(item => {
+            const val = parseInt(item.id)
+            if (!isNaN(val) && val > 0 && val < 100000000) maxId = Math.max(maxId, val)
+          })
+        }
+        if (!propostasRes.error && propostasRes.data) {
+          propostasRes.data.forEach(item => {
+            const val = parseInt(item.id_lead)
+            if (!isNaN(val) && val > 0 && val < 100000000) maxId = Math.max(maxId, val)
+          })
+        }
+        newIdLead = maxId > 0 ? (maxId + 1).toString() : Math.floor(100000 + Math.random() * 900000).toString()
+      } catch (errId) {
+        newIdLead = Math.floor(100000 + Math.random() * 900000).toString()
+      }
+
+      const nowIso = new Date().toISOString()
+
+      // Omit primary key 'id' and computed UI/joined fields like 'nome_corretor'
+      const { id, nome_corretor, resposta_corretor, expanded, anexos, historico, ...proposalFields } = proposal as any
+
+      const cloneData = {
+        ...proposalFields,
+        id_lead: newIdLead,
+        status: "AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO",
+        created_at: nowIso,
+        updated_at: nowIso,
+        data_digitacao: null,
+        data_pago_cliente: null,
+        data_consulta: null,
+        ade: null,
+        obs_corretor: null,
+        obs_operacional: null,
+        observacoes: proposal.observacoes
+          ? `[Clonado do ID #${proposal.id_lead}]\n${proposal.observacoes}`
+          : `[Clonado do ID #${proposal.id_lead}]`
+      }
+
+      const { error } = await supabase.from('propostas').insert(cloneData)
+
+      if (error) {
+        console.error("Erro ao clonar proposta:", error.message || error.details || error.hint || JSON.stringify(error))
+        toast.error(`Erro ao clonar proposta: ${error.message || error.details || 'Falha ao salvar no banco.'}`, { id: loadingToast })
+        return
+      }
+
+      // Gravando histórico da clonagem
+      try {
+        await supabase.from('historico_propostas').insert({
+          proposta_id_lead: proposal.id_lead,
+          usuario_id: perfil?.id || '',
+          status_anterior: proposal.status,
+          status_novo: proposal.status,
+          observacoes: `Proposta clonada para o novo ID #${newIdLead}`,
+          descricao: `Proposta clonada gerando o novo ID #${newIdLead}`,
+          tipo: 'clonagem',
+          created_at: nowIso
+        })
+      } catch (histErr) {
+        console.warn("Erro ao salvar histórico de clonagem:", histErr)
+      }
+
+      toast.success("Proposta clonada com sucesso! A nova proposta já está em 'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO'.", { id: loadingToast, duration: 4000 })
+      fetchProposals()
+    } catch (err: any) {
+      console.error("Erro inesperado ao clonar proposta:", err)
+      toast.error("Erro inesperado ao clonar proposta.", { id: loadingToast })
+    } finally {
+      setIsCloning(null)
     }
   }
 
@@ -1227,6 +1317,25 @@ export default function ProposalsPage() {
                                   title="TRANSFERIR RESPONSÁVEL"
                                 >
                                   <UserPlus className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
+                              {(proposal.status === "CANCELADO" || proposal.status?.toUpperCase().includes("CANCELAD") || selectedStatus === "CANCELADOS") && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleCloneProposal(proposal)
+                                  }}
+                                  disabled={isCloning === proposal.id_lead}
+                                  className="w-7 h-7 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center justify-center shrink-0"
+                                  title="Clonar Proposta Cancelada"
+                                >
+                                  {isCloning === proposal.id_lead ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
                                 </Button>
                               )}
                             </div>
