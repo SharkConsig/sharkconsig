@@ -131,6 +131,60 @@ CREATE TABLE IF NOT EXISTS colaboradores (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 9. Tabela de Histórico de Proposta Comercial
+CREATE TABLE IF NOT EXISTS historico_proposta_comercial (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cliente_cpf VARCHAR(11) NOT NULL,
+    cliente_nome VARCHAR(255),
+    user_id UUID,
+    user_nome VARCHAR(255),
+    user_email VARCHAR(255),
+    telefone_consultor VARCHAR(50),
+    contratos_considerados JSONB DEFAULT '[]'::jsonb,
+    contratos_excluidos JSONB DEFAULT '[]'::jsonb,
+    percentual_reducao DECIMAL(10, 2),
+    total_parcela_atual DECIMAL(15, 2),
+    total_parcela_nova DECIMAL(15, 2),
+    arquivo_url TEXT,
+    tipo_arquivo VARCHAR(10),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 10. Tabela de Configuração de SLA
+CREATE TABLE IF NOT EXISTS sla_config (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    status_crm VARCHAR(100) UNIQUE NOT NULL,
+    prazo_horas_uteis NUMERIC(5,2) DEFAULT 1.0,
+    pergunta_forcada TEXT NOT NULL,
+    pergunta2_forcada TEXT DEFAULT NULL,
+    prazo2_horas NUMERIC(5,2) DEFAULT NULL,
+    faixa_valor_min_margem NUMERIC(15,2) DEFAULT 30000.00,
+    faixa_valor_min_cartao NUMERIC(15,2) DEFAULT 5000.00,
+    faixa3_min_margem NUMERIC(15,2) DEFAULT 50000.00,
+    faixa3_min_cartao NUMERIC(15,2) DEFAULT 10000.00,
+    prazo_faixa1_horas NUMERIC(5,2) DEFAULT NULL,
+    prazo_faixa2_horas NUMERIC(5,2) DEFAULT NULL,
+    prazo_faixa3_horas NUMERIC(5,2) DEFAULT NULL,
+    ativo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Garantir colunas adicionais para bancos existentes
+ALTER TABLE sla_config ADD COLUMN IF NOT EXISTS pergunta2_forcada TEXT DEFAULT NULL;
+ALTER TABLE sla_config ADD COLUMN IF NOT EXISTS prazo2_horas NUMERIC(5,2) DEFAULT NULL;
+ALTER TABLE sla_config ADD COLUMN IF NOT EXISTS faixa3_min_margem NUMERIC(15,2) DEFAULT 50000.00;
+ALTER TABLE sla_config ADD COLUMN IF NOT EXISTS faixa3_min_cartao NUMERIC(15,2) DEFAULT 10000.00;
+ALTER TABLE sla_config ADD COLUMN IF NOT EXISTS prazo_faixa1_horas NUMERIC(5,2) DEFAULT NULL;
+ALTER TABLE sla_config ADD COLUMN IF NOT EXISTS prazo_faixa2_horas NUMERIC(5,2) DEFAULT NULL;
+ALTER TABLE sla_config ADD COLUMN IF NOT EXISTS prazo_faixa3_horas NUMERIC(5,2) DEFAULT NULL;
+
+-- Remover colunas obsoletas/duplicadas se existirem no banco
+ALTER TABLE sla_config DROP COLUMN IF EXISTS faixa2_min_margem;
+ALTER TABLE sla_config DROP COLUMN IF EXISTS faixa2_min_cartao;
+ALTER TABLE sla_config DROP COLUMN IF EXISTS prazo_escalonamento_horas;
+ALTER TABLE sla_config DROP COLUMN IF EXISTS alvo_escalonamento;
+
 -- Habilitar RLS (Row Level Security)
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matriculas ENABLE ROW LEVEL SECURITY;
@@ -140,16 +194,20 @@ ALTER TABLE campanhas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lotes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chamados ENABLE ROW LEVEL SECURITY;
 ALTER TABLE colaboradores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE historico_proposta_comercial ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sla_config ENABLE ROW LEVEL SECURITY;
 
 -- Grant permissions explicitly
-GRANT ALL ON TABLE clientes TO authenticated, service_role;
-GRANT ALL ON TABLE matriculas TO authenticated, service_role;
-GRANT ALL ON TABLE instituidores TO authenticated, service_role;
-GRANT ALL ON TABLE itens_credito TO authenticated, service_role;
-GRANT ALL ON TABLE campanhas TO authenticated, service_role;
-GRANT ALL ON TABLE lotes TO authenticated, service_role;
-GRANT ALL ON TABLE chamados TO authenticated, service_role;
-GRANT ALL ON TABLE colaboradores TO authenticated, service_role;
+GRANT ALL ON TABLE clientes TO anon, authenticated, service_role;
+GRANT ALL ON TABLE matriculas TO anon, authenticated, service_role;
+GRANT ALL ON TABLE instituidores TO anon, authenticated, service_role;
+GRANT ALL ON TABLE itens_credito TO anon, authenticated, service_role;
+GRANT ALL ON TABLE campanhas TO anon, authenticated, service_role;
+GRANT ALL ON TABLE lotes TO anon, authenticated, service_role;
+GRANT ALL ON TABLE chamados TO anon, authenticated, service_role;
+GRANT ALL ON TABLE colaboradores TO anon, authenticated, service_role;
+GRANT ALL ON TABLE historico_proposta_comercial TO anon, authenticated, service_role;
+GRANT ALL ON TABLE sla_config TO anon, authenticated, service_role;
 
 -- Remover políticas antigas se existirem
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON clientes;
@@ -160,8 +218,10 @@ DROP POLICY IF EXISTS "Permitir tudo para todos" ON campanhas;
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON lotes;
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON chamados;
 DROP POLICY IF EXISTS "Permitir tudo para todos" ON colaboradores;
+DROP POLICY IF EXISTS "Permitir tudo para todos" ON historico_proposta_comercial;
+DROP POLICY IF EXISTS "Acesso total sla_config" ON sla_config;
 
--- Criar políticas para usuários autenticados (CRUD completo)
+-- Criar políticas para usuários autenticados e públicos/anon (CRUD completo)
 CREATE POLICY "Acesso total para autenticados" ON clientes FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total para autenticados" ON matriculas FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total para autenticados" ON instituidores FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -170,3 +230,5 @@ CREATE POLICY "Acesso total para autenticados" ON campanhas FOR ALL TO authentic
 CREATE POLICY "Acesso total para autenticados" ON lotes FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total para autenticados" ON chamados FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total para autenticados" ON colaboradores FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total para autenticados" ON historico_proposta_comercial FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total sla_config" ON sla_config FOR ALL TO public USING (true) WITH CHECK (true);
