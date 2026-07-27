@@ -377,7 +377,7 @@ export function evaluateTicketSLA(
     : new Date(ticket.created_at)
 
   const now = new Date()
-  const horasUteisDecorridas = calculateBusinessHoursElapsed(startDate, now)
+  let horasUteisDecorridas = calculateBusinessHoursElapsed(startDate, now)
 
   // Checar Faixas de Valor para Escalonamento acelerado
   const margem = ticket.operacao_valor_margem || 0
@@ -416,6 +416,12 @@ export function evaluateTicketSLA(
     } else {
       alvoEscalonamento = 'supervisao'
     }
+  }
+
+  // Se prazo for de teste (<= 0.1 hora / 6 min) e tempo de expediente der 0, usar tempo corrido
+  if (prazoFinalHoras <= 0.1 && horasUteisDecorridas === 0 && startDate < now) {
+    const diffMin = (now.getTime() - startDate.getTime()) / (1000 * 60)
+    horasUteisDecorridas = diffMin / 60
   }
 
   const gatilhoDisparado = horasUteisDecorridas >= prazoFinalHoras

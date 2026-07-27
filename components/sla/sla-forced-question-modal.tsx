@@ -32,7 +32,8 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
 
-  const isCorretorOrEstagiario = perfil?.role === 'CORRETOR' || perfil?.role === 'ESTAGIARIO' || perfil?.role === 'USER'
+  const roleUpper = (perfil?.role || '').trim().toUpperCase()
+  const isCorretorOrEstagiario = ['CORRETOR', 'ESTAGIO', 'ESTÁGIO', 'PROCESSO SELETIVO', 'USER'].includes(roleUpper)
 
   const fetchSLAData = useCallback(async () => {
     if (!user || !isCorretorOrEstagiario) return
@@ -53,7 +54,7 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
       let query = supabase
         .from('chamados')
         .select('*, status_chamados(*)')
-        .or(`corretor_id.eq.${user.id},user_id.eq.${user.id}`)
+        .eq('user_id', user.id)
         .not('status', 'ilike', '%CANCELADO%')
         .not('status', 'ilike', '%CONCLUÍDO%')
 
@@ -64,7 +65,12 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
         query = query.lte('created_at', endDate.toISOString())
       }
 
-      const { data: tickets } = await query
+      const { data: tickets, error: ticketsError } = await query
+
+      if (ticketsError) {
+        console.error('Erro ao buscar chamados para SLA:', ticketsError)
+        return
+      }
 
       if (!tickets) return
 
@@ -79,7 +85,7 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
           status: t.status_chamados?.nome || t.status,
           created_at: t.created_at,
           user_id: t.user_id,
-          corretor_id: t.corretor_id,
+          corretor_id: t.user_id,
           timestamp_ultima_mudanca_status: t.timestamp_ultima_mudanca_status || t.updated_at || t.created_at,
           pergunta_pendente: t.pergunta_pendente,
           timestamp_gatilho_disparado: t.timestamp_gatilho_disparado,
@@ -95,6 +101,16 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
 
         if (res.gatilhoDisparado && !res.sonecaAtiva) {
           userShouldBeLocked = true
+
+          // Sincronizar o escalonamento no banco para Administradores e Supervisores enxergarem na lista
+          const targetEscalonamento = res.escaladoGestao ? 'supervisao_gestao' : res.escaladoSupervisao ? 'supervisao' : 'nenhum'
+          if (t.escalonamento_status !== targetEscalonamento) {
+            supabase.from('chamados').update({
+              escalonamento_status: targetEscalonamento,
+              timestamp_escalonamento: new Date().toISOString()
+            }).eq('id', t.id).then()
+          }
+
           pending.push({
             ticket: ticketState,
             clienteNome: t.cliente_nome || t.nome || `Chamado #${t.id}`,
@@ -127,7 +143,7 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
 
   useEffect(() => {
     fetchSLAData()
-    const interval = setInterval(fetchSLAData, 60000) // Reavaliar a cada minuto
+    const interval = setInterval(fetchSLAData, 15000) // Reavaliar a cada 15 segundos
     return () => clearInterval(interval)
   }, [fetchSLAData])
 

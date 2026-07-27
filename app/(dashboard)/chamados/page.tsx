@@ -26,6 +26,7 @@ import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
 import { ClientDetailsModal } from "@/components/clients/client-details-modal"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
+import { evaluateTicketSLA, SLATicketState, getSLAGlobalSettings, isCollaboratorTargeted } from "@/lib/sla-engine"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import ExcelJS from 'exceljs'
@@ -666,6 +667,52 @@ export default function TicketsPage() {
         console.error("Erro ao carregar status de apoio dos chamados:", err)
       }
 
+      // Avaliar status de SLA para cada chamado em tempo real
+      try {
+        const { data: slaConfigs } = await supabase.from('sla_config').select('*').eq('ativo', true)
+        if (slaConfigs && slaConfigs.length > 0) {
+          const globalSettings = getSLAGlobalSettings(slaConfigs)
+          if (globalSettings.ativo) {
+            all = all.map(ticket => {
+              const isTargeted = isCollaboratorTargeted(ticket.user_id, globalSettings)
+              if (!isTargeted) return ticket
+
+              const ticketState: SLATicketState = {
+                id: ticket.id,
+                status: ticket.status_chamados?.nome || ticket.status,
+                created_at: ticket.created_at,
+                user_id: ticket.user_id,
+                corretor_id: ticket.user_id,
+                timestamp_ultima_mudanca_status: ticket.timestamp_ultima_mudanca_status || ticket.updated_at || ticket.created_at,
+                pergunta_pendente: ticket.pergunta_pendente,
+                timestamp_gatilho_disparado: ticket.timestamp_gatilho_disparado,
+                soneca_usada: ticket.soneca_usada,
+                timestamp_soneca: ticket.timestamp_soneca,
+                escalonamento_status: ticket.escalonamento_status,
+                timestamp_escalonamento: ticket.timestamp_escalonamento,
+                operacao_valor_margem: Number(ticket.valor_operacao || ticket.margem || 0),
+                operacao_valor_cartao: Number(ticket.valor_cartao || 0)
+              }
+
+              const res = evaluateTicketSLA(ticketState, slaConfigs, null)
+              let computedEscalonamento: 'nenhum' | 'supervisao' | 'administrador' | 'supervisao_administrador' | 'supervisao_gestao' = 'nenhum'
+              if (res.gatilhoDisparado && !res.sonecaAtiva) {
+                computedEscalonamento = res.escaladoGestao ? 'supervisao_gestao' : res.escaladoSupervisao ? 'supervisao' : 'nenhum'
+              }
+
+              if (computedEscalonamento !== 'nenhum' && ticket.escalonamento_status !== computedEscalonamento) {
+                // Atualizar no banco em background
+                supabase.from('chamados').update({ escalonamento_status: computedEscalonamento }).eq('id', ticket.id).then()
+                return { ...ticket, escalonamento_status: computedEscalonamento }
+              }
+              return ticket
+            })
+          }
+        }
+      } catch (slaErr) {
+        console.error("Erro ao avaliar SLA nos chamados:", slaErr)
+      }
+
       setTickets(all)
     } catch (error: unknown) {
       console.error("Erro ao carregar chamados:", error)
@@ -682,8 +729,11 @@ export default function TicketsPage() {
 
   useEffect(() => {
     if (user?.id && perfil?.id) {
-      // Carrega os chamados usando a nova lógica segura e paginada
       fetchTickets()
+      const interval = setInterval(() => {
+        fetchTickets(true)
+      }, 15000) // Sincronização em tempo real a cada 15 segundos
+      return () => clearInterval(interval)
     }
   }, [fetchTickets, user?.id, perfil?.id])
 

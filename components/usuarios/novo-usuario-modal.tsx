@@ -525,15 +525,17 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
 
                 {/* Senha de Acesso */}
                 <div className="space-y-1.5">
-                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Senha de Acesso</Label>
+                  <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">
+                    {usuario ? "Nova Senha (Opcional)" : "Senha de Acesso"}
+                  </Label>
                   <div className="relative">
                     <Input 
                       type={showPassword ? "text" : "password"}
                       value={formData.senha}
                       onChange={(e) => setFormData({ ...formData, senha: e.target.value })}
-                      placeholder="••••••••" 
+                      placeholder={usuario ? "Deixe em branco para manter a senha atual" : "••••••••"} 
                       className="h-[38px] bg-slate-50/50 border-slate-100 rounded-lg px-3 pr-10 text-[11px] font-bold text-slate-700 focus-visible:ring-1 focus-visible:ring-slate-200 transition-all"
-                      required
+                      required={!usuario}
                     />
                     <button
                       type="button"

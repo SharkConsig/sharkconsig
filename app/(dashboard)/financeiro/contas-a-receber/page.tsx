@@ -34,6 +34,11 @@ import {
   Edit2,
   MessageSquare
 } from "lucide-react"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { toast } from "react-hot-toast"
 import ExcelJS from "exceljs"
@@ -122,6 +127,7 @@ const safeFloat = (val: unknown): number => {
 interface FinanceMetadata {
   received?: boolean
   receivedDate?: string
+  paymentStatus?: "A_RECEBER" | "RECEBIDO" | "ESTORNADO"
 }
 
 const METADATA_PREFIX = "[FINANCE_METADATA_V1:"
@@ -443,12 +449,27 @@ export default function ContasAReceberPage() {
   const [commissionRate, setCommissionRate] = useState<number>(6) // Default 6% standard commission
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null)
   
+  const [paymentStatuses, setPaymentStatuses] = useState<Record<string, "A_RECEBER" | "RECEBIDO" | "ESTORNADO">>({})
   const [receivedProposalIds, setReceivedProposalIds] = useState<Record<string, boolean>>({})
   const [receivedProposalDates, setReceivedProposalDates] = useState<Record<string, string>>({})
   const [customCommissionPercents, setCustomCommissionPercents] = useState<Record<string, number>>({})
 
+  const getPaymentStatus = useCallback((idLead: string): "A_RECEBER" | "RECEBIDO" | "ESTORNADO" => {
+    if (paymentStatuses[idLead]) return paymentStatuses[idLead]
+    if (receivedProposalIds[idLead]) return "RECEBIDO"
+    return "A_RECEBER"
+  }, [paymentStatuses, receivedProposalIds])
+
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const storedStatuses = window.localStorage.getItem("receber_payment_statuses")
+      if (storedStatuses) {
+        try {
+          setPaymentStatuses(JSON.parse(storedStatuses))
+        } catch (e) {
+          console.error(e)
+        }
+      }
       const stored = window.localStorage.getItem("receber_pago_status_ids")
       if (stored) {
         try {
@@ -476,24 +497,36 @@ export default function ContasAReceberPage() {
     }
   }, [])
 
-  const toggleReceivedStatus = async (idLead: string) => {
-    const isNowReceived = !receivedProposalIds[idLead]
-    const receivedDate = isNowReceived ? new Date().toISOString() : undefined
+  const handlePaymentStatusChange = async (idLead: string, newStatus: "A_RECEBER" | "RECEBIDO" | "ESTORNADO") => {
+    const proposal = proposals.find(p => p.id_lead === idLead)
+    if (!proposal) return
+
+    const currentObs = proposal.observacoes || ""
+    const { notes, metadata } = parseProposalNotesAndMetadata(currentObs)
+
+    const isNowReceived = newStatus === "RECEBIDO"
+    const receivedDate = isNowReceived ? new Date().toISOString() : (newStatus === "A_RECEBER" ? undefined : metadata.receivedDate)
 
     // 1. Update UI state immediately
+    setPaymentStatuses(prev => ({ ...prev, [idLead]: newStatus }))
     setReceivedProposalIds(prev => ({ ...prev, [idLead]: isNowReceived }))
-    setReceivedProposalDates(prev => {
-      const updated = { ...prev }
-      if (isNowReceived) {
-        updated[idLead] = receivedDate!
-      } else {
+    if (isNowReceived) {
+      setReceivedProposalDates(prev => ({ ...prev, [idLead]: receivedDate! }))
+    } else if (newStatus === "A_RECEBER") {
+      setReceivedProposalDates(prev => {
+        const updated = { ...prev }
         delete updated[idLead]
-      }
-      return updated
-    })
+        return updated
+      })
+    }
 
     // 2. Persist to localStorage as secondary backup
     if (typeof window !== "undefined") {
+      const storedStatuses = window.localStorage.getItem("receber_payment_statuses")
+      const parsedStatuses = storedStatuses ? JSON.parse(storedStatuses) : {}
+      parsedStatuses[idLead] = newStatus
+      window.localStorage.setItem("receber_payment_statuses", JSON.stringify(parsedStatuses))
+
       const storedIds = window.localStorage.getItem("receber_pago_status_ids")
       const parsedIds = storedIds ? JSON.parse(storedIds) : {}
       parsedIds[idLead] = isNowReceived
@@ -511,34 +544,74 @@ export default function ContasAReceberPage() {
 
     // 3. Persist to database inside `observacoes` of the proposal
     try {
-      const proposal = proposals.find(p => p.id_lead === idLead)
-      const currentObs = proposal?.observacoes || ""
-      const { notes } = parseProposalNotesAndMetadata(currentObs)
-      
-      const newObs = buildProposalNotesAndMetadata(notes, {
-        received: isNowReceived,
-        receivedDate: receivedDate
-      })
+      let updatePayload: Record<string, unknown> = {}
+
+      if (newStatus === "ESTORNADO") {
+        const newMetadata: FinanceMetadata = {
+          ...metadata,
+          received: false,
+          paymentStatus: "ESTORNADO"
+        }
+        const newObs = buildProposalNotesAndMetadata(notes, newMetadata)
+
+        updatePayload = {
+          status: "CANCELADO",
+          observacoes: newObs,
+          updated_at: new Date().toISOString()
+        }
+      } else {
+        const targetStatus = proposal.status === "CANCELADO"
+          ? "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA"
+          : proposal.status
+
+        const newMetadata: FinanceMetadata = {
+          ...metadata,
+          received: isNowReceived,
+          receivedDate: receivedDate,
+          paymentStatus: newStatus
+        }
+        const newObs = buildProposalNotesAndMetadata(notes, newMetadata)
+
+        updatePayload = {
+          status: targetStatus,
+          observacoes: newObs,
+          updated_at: new Date().toISOString()
+        }
+      }
 
       const { error } = await supabase
         .from("propostas")
-        .update({
-          observacoes: newObs,
-          updated_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .eq("id_lead", idLead)
 
       if (error) {
         console.error("Erro ao salvar status de recebimento no banco:", error.message)
         toast.error("Erro ao sincronizar recebimento com o servidor.")
       } else {
-        // Update proposal in state
-        setProposals(prev => prev.map(p => p.id_lead === idLead ? { ...p, observacoes: newObs } : p))
-        toast.success(isNowReceived ? "Marcado como recebido!" : "Marcado como a receber!")
+        setProposals(prev => prev.map(p => p.id_lead === idLead ? {
+          ...p,
+          status: (updatePayload.status as string) || p.status,
+          observacoes: (updatePayload.observacoes as string) || p.observacoes
+        } : p))
+
+        if (newStatus === "ESTORNADO") {
+          toast.success("Pagamento estornado! Proposta alterada para CANCELADO.")
+        } else if (newStatus === "RECEBIDO") {
+          toast.success("Marcado como RECEBIDO!")
+        } else {
+          toast.success("Marcado como A RECEBER!")
+        }
       }
     } catch (err) {
       console.error("Erro ao atualizar recebimento:", err)
+      toast.error("Falha ao atualizar status do pagamento.")
     }
+  }
+
+  const toggleReceivedStatus = async (idLead: string) => {
+    const currentStatus = getPaymentStatus(idLead)
+    const nextStatus = currentStatus === "RECEBIDO" ? "A_RECEBER" : "RECEBIDO"
+    await handlePaymentStatusChange(idLead, nextStatus)
   }
 
   const handleCommissionPercentChange = async (idLead: string, value: number | undefined) => {
@@ -884,11 +957,11 @@ export default function ContasAReceberPage() {
   const fetchProposals = async () => {
     setIsLoading(true)
     try {
-      // Query proposals in 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA' and 'PÓS-VENDA REALIZADA'
+      // Query proposals in 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA', 'PAGAMENTO DEVOLVIDO' and 'CANCELADO'
       const { data, error } = await supabase
         .from("propostas")
         .select("*")
-        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA"])
+        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA", "PAGAMENTO DEVOLVIDO", "CANCELADO"])
         .order("updated_at", { ascending: false })
 
       if (error) {
@@ -981,80 +1054,95 @@ export default function ContasAReceberPage() {
       // Read localStorage directly to ensure we have the absolute latest and correct data for sync
       let localReceivedIds: Record<string, boolean> = {}
       let localReceivedDates: Record<string, string> = {}
+      let localPaymentStatuses: Record<string, "A_RECEBER" | "RECEBIDO" | "ESTORNADO"> = {}
       if (typeof window !== "undefined") {
         try {
           const stored = window.localStorage.getItem("receber_pago_status_ids")
           if (stored) localReceivedIds = JSON.parse(stored)
           const storedDates = window.localStorage.getItem("receber_pago_dates")
           if (storedDates) localReceivedDates = JSON.parse(storedDates)
+          const storedPS = window.localStorage.getItem("receber_payment_statuses")
+          if (storedPS) localPaymentStatuses = JSON.parse(storedPS)
         } catch (e) {
           console.error("Erro ao carregar local storage para sincronização:", e)
         }
       }
 
+      const finalPaymentStatuses: Record<string, "A_RECEBER" | "RECEBIDO" | "ESTORNADO"> = {}
       const finalReceivedIds: Record<string, boolean> = {}
       const finalReceivedDates: Record<string, string> = {}
 
-      const formattedData = data.map((p: Proposal) => {
-        const userDetails = p.corretor_id ? usersMap.get(p.corretor_id) : null
-        
-        let finalEquipe = p.equipe
-        if (!finalEquipe || finalEquipe === "-" || finalEquipe === "Não informado") {
-          finalEquipe = userDetails?.equipe || "-"
-        }
+      const formattedData = data
+        .filter((p: Proposal) => {
+          if (p.status === "CANCELADO") {
+            const { metadata } = parseProposalNotesAndMetadata(p.observacoes)
+            const isEstornado = metadata.paymentStatus === "ESTORNADO" || localPaymentStatuses[p.id_lead] === "ESTORNADO"
+            return isEstornado
+          }
+          return true
+        })
+        .map((p: Proposal) => {
+          const userDetails = p.corretor_id ? usersMap.get(p.corretor_id) : null
+          
+          let finalEquipe = p.equipe
+          if (!finalEquipe || finalEquipe === "-" || finalEquipe === "Não informado") {
+            finalEquipe = userDetails?.equipe || "-"
+          }
 
-        const { notes, metadata } = parseProposalNotesAndMetadata(p.observacoes)
-        let updatedObs = p.observacoes
+          const { notes, metadata } = parseProposalNotesAndMetadata(p.observacoes)
+          let updatedObs = p.observacoes
 
-        if (metadata.received !== undefined) {
-          // Database metadata exists! Use it.
-          finalReceivedIds[p.id_lead] = !!metadata.received
+          const effectiveStatus: "A_RECEBER" | "RECEBIDO" | "ESTORNADO" = 
+            metadata.paymentStatus || 
+            (metadata.received !== undefined ? (metadata.received ? "RECEBIDO" : "A_RECEBER") : undefined) ||
+            localPaymentStatuses[p.id_lead] ||
+            (localReceivedIds[p.id_lead] ? "RECEBIDO" : "A_RECEBER")
+
+          finalPaymentStatuses[p.id_lead] = effectiveStatus
+          finalReceivedIds[p.id_lead] = effectiveStatus === "RECEBIDO"
+
           if (metadata.receivedDate) {
             finalReceivedDates[p.id_lead] = metadata.receivedDate
+          } else if (localReceivedDates[p.id_lead]) {
+            finalReceivedDates[p.id_lead] = localReceivedDates[p.id_lead]
           }
-        } else {
-          // Database metadata does NOT exist for this proposal.
-          // Let's check if this machine's localStorage has it marked as received.
-          const isLocalReceived = !!localReceivedIds[p.id_lead]
-          if (isLocalReceived) {
-            // Yes! Local machine has it registered as received.
-            // Let's construct metadata from local storage data and queue a sync to the database!
-            const localDate = localReceivedDates[p.id_lead] || new Date().toISOString()
-            const newObs = buildProposalNotesAndMetadata(p.observacoes || "", {
-              received: true,
-              receivedDate: localDate
-            })
-            
-            // Sync to database in the background
-            supabase
-              .from("propostas")
-              .update({
-                observacoes: newObs,
-                updated_at: new Date().toISOString()
-              })
-              .eq("id_lead", p.id_lead)
-              .then(({ error }) => {
-                if (error) {
-                  console.error(`Erro ao sincronizar proposta ${p.id_lead}:`, error.message)
-                } else {
-                  console.log(`Proposta ${p.id_lead} sincronizada com sucesso no banco de dados!`)
-                }
-              })
 
-            finalReceivedIds[p.id_lead] = true
-            finalReceivedDates[p.id_lead] = localDate
-            updatedObs = newObs
+          if (!metadata.paymentStatus && metadata.received === undefined) {
+            const isLocalReceived = !!localReceivedIds[p.id_lead]
+            if (isLocalReceived) {
+              const localDate = localReceivedDates[p.id_lead] || new Date().toISOString()
+              const newObs = buildProposalNotesAndMetadata(p.observacoes || "", {
+                received: true,
+                paymentStatus: "RECEBIDO",
+                receivedDate: localDate
+              })
+              
+              supabase
+                .from("propostas")
+                .update({
+                  observacoes: newObs,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("id_lead", p.id_lead)
+                .then(({ error }) => {
+                  if (error) {
+                    console.error(`Erro ao sincronizar proposta ${p.id_lead}:`, error.message)
+                  }
+                })
+
+              updatedObs = newObs
+            }
           }
-        }
 
-        return {
-          ...p,
-          observacoes: updatedObs,
-          nome_corretor: p.corretor || userDetails?.nome || "-",
-          equipe: finalEquipe
-        }
-      })
+          return {
+            ...p,
+            observacoes: updatedObs,
+            nome_corretor: p.corretor || userDetails?.nome || "-",
+            equipe: finalEquipe
+          }
+        })
 
+      setPaymentStatuses(finalPaymentStatuses)
       setReceivedProposalIds(finalReceivedIds)
       setReceivedProposalDates(finalReceivedDates)
       setProposals(formattedData)
@@ -1224,12 +1312,13 @@ export default function ContasAReceberPage() {
       return true
     })()
 
-    // 1. FILTRAR POR 'A RECEBER/RECEBIDO'
+    // 1. FILTRAR POR 'A RECEBER/RECEBIDO/ESTORNADO'
     const matchesReceived = (() => {
-      const isReceived = !!receivedProposalIds[proposal.id_lead]
+      const currentStatus = getPaymentStatus(proposal.id_lead)
       if (receivedFilter === "TODOS") return true
-      if (receivedFilter === "A_RECEBER") return !isReceived
-      if (receivedFilter === "RECEBIDO") return isReceived
+      if (receivedFilter === "A_RECEBER") return currentStatus === "A_RECEBER"
+      if (receivedFilter === "RECEBIDO") return currentStatus === "RECEBIDO"
+      if (receivedFilter === "ESTORNADO") return currentStatus === "ESTORNADO"
       return true
     })()
 
@@ -1292,16 +1381,26 @@ export default function ContasAReceberPage() {
     return sum + (valOp * comPercentVal) / 100
   }, 0)
 
-  const receivedComissions = filteredProposals.reduce((sum, p) => {
-    if (!receivedProposalIds[p.id_lead]) return sum
+  const estornadoComissions = filteredProposals.reduce((sum, p) => {
+    if (getPaymentStatus(p.id_lead) !== "ESTORNADO") return sum
     const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
     const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
     return sum + (valOp * comPercentVal) / 100
   }, 0)
 
+  const rawReceivedComissions = filteredProposals.reduce((sum, p) => {
+    if (getPaymentStatus(p.id_lead) !== "RECEBIDO") return sum
+    const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
+    const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
+    const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
+    return sum + (valOp * comPercentVal) / 100
+  }, 0)
+
+  const receivedComissions = rawReceivedComissions - estornadoComissions
+
   const toReceiveComissions = filteredProposals.reduce((sum, p) => {
-    if (receivedProposalIds[p.id_lead]) return sum
+    if (getPaymentStatus(p.id_lead) !== "A_RECEBER") return sum
     const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
     const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
@@ -1408,7 +1507,7 @@ export default function ContasAReceberPage() {
       )}>
         
         {/* Dashboard Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 relative z-10">
           {/* Valor Total Recebível */}
           <Card id="card-total-operacoes" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
             <CardContent className="p-5">
@@ -1450,7 +1549,7 @@ export default function ContasAReceberPage() {
               </p>
               <div className="flex items-center gap-2">
                 <div className="bg-emerald-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
-                  {filteredProposals.filter(p => !!receivedProposalIds[p.id_lead]).length}
+                  {filteredProposals.filter(p => getPaymentStatus(p.id_lead) === "RECEBIDO").length}
                 </div>
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Pago(s)</span>
               </div>
@@ -1466,9 +1565,25 @@ export default function ContasAReceberPage() {
               </p>
               <div className="flex items-center gap-2">
                 <div className="bg-sky-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
-                  {filteredProposals.filter(p => !receivedProposalIds[p.id_lead]).length}
+                  {filteredProposals.filter(p => getPaymentStatus(p.id_lead) === "A_RECEBER").length}
                 </div>
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Pendente(s)</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Estorno */}
+          <Card id="card-comissoes-estorno" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
+            <CardContent className="p-5">
+              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">ESTORNO</p>
+              <p className="text-[17px] font-black text-amber-700 tracking-tight mb-3">
+                R$ {estornadoComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="bg-amber-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                  {filteredProposals.filter(p => getPaymentStatus(p.id_lead) === "ESTORNADO").length}
+                </div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Estornado(s)</span>
               </div>
             </CardContent>
           </Card>
@@ -1592,18 +1707,19 @@ export default function ContasAReceberPage() {
                 </select>
               </div>
 
-              {/* Filter by A RECEBER/RECEBIDO */}
+              {/* Filter by A RECEBER/RECEBIDO/ESTORNADO */}
               <div className="space-y-1.5">
-                <label className="text-[9px] font-bold text-[#171717]/60 uppercase tracking-widest ml-1 block">Filtrar por &apos;A RECEBER/RECEBIDO&apos;</label>
+                <label className="text-[9px] font-bold text-[#171717]/60 uppercase tracking-widest ml-1 block">Filtrar por Status do Pagamento</label>
                 <select
                   id="select-receber-payment-status"
                   value={receivedFilter}
                   onChange={(e) => setReceivedFilter(e.target.value)}
                   className="h-[38px] w-full text-[10px] border border-slate-200 rounded-lg bg-white px-3 focus:outline-none focus:ring-1 focus:ring-slate-400 font-semibold text-slate-700 transition-colors uppercase cursor-pointer"
                 >
-                  <option value="TODOS">TODOS (A RECEBER / RECEBIDO)</option>
+                  <option value="TODOS">TODOS (A RECEBER / RECEBIDO / ESTORNADO)</option>
                   <option value="A_RECEBER">A RECEBER</option>
                   <option value="RECEBIDO">RECEBIDO</option>
+                  <option value="ESTORNADO">ESTORNADO</option>
                 </select>
               </div>
 
@@ -1875,18 +1991,63 @@ export default function ContasAReceberPage() {
                             />
                           </td>
                           <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => toggleReceivedStatus(proposal.id_lead)}
-                              className={cn(
-                                "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer",
-                                receivedProposalIds[proposal.id_lead]
-                                  ? "bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100/50"
-                                  : "bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100/50"
-                              )}
-                            >
-                              {receivedProposalIds[proposal.id_lead] ? "RECEBIDO" : "A RECEBER"}
-                            </button>
+                            {(() => {
+                              const pStatus = getPaymentStatus(proposal.id_lead)
+                              return (
+                                <Popover>
+                                  <PopoverTrigger
+                                    className={cn(
+                                      "px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 mx-auto shadow-sm outline-none focus:ring-1 focus:ring-slate-300",
+                                      pStatus === "RECEBIDO" && "bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100/80",
+                                      pStatus === "A_RECEBER" && "bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100/80",
+                                      pStatus === "ESTORNADO" && "bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100/80"
+                                    )}
+                                  >
+                                    {pStatus === "RECEBIDO" && "RECEBIDO"}
+                                    {pStatus === "A_RECEBER" && "A RECEBER"}
+                                    {pStatus === "ESTORNADO" && "ESTORNADO"}
+                                    <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-40 p-1.5 bg-white border border-slate-200 rounded-xl shadow-lg z-50">
+                                    <div className="flex flex-col gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePaymentStatusChange(proposal.id_lead, "A_RECEBER")}
+                                        className={cn(
+                                          "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-between",
+                                          pStatus === "A_RECEBER" ? "bg-rose-50 text-rose-700" : "hover:bg-slate-50 text-slate-600"
+                                        )}
+                                      >
+                                        <span>A RECEBER</span>
+                                        {pStatus === "A_RECEBER" && <Check className="w-3 h-3 text-rose-600" />}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePaymentStatusChange(proposal.id_lead, "RECEBIDO")}
+                                        className={cn(
+                                          "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-between",
+                                          pStatus === "RECEBIDO" ? "bg-emerald-50 text-emerald-700" : "hover:bg-slate-50 text-slate-600"
+                                        )}
+                                      >
+                                        <span>RECEBIDO</span>
+                                        {pStatus === "RECEBIDO" && <Check className="w-3 h-3 text-emerald-600" />}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePaymentStatusChange(proposal.id_lead, "ESTORNADO")}
+                                        className={cn(
+                                          "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-between",
+                                          pStatus === "ESTORNADO" ? "bg-amber-50 text-amber-800" : "hover:bg-slate-50 text-slate-600"
+                                        )}
+                                      >
+                                        <span>ESTORNADO</span>
+                                        {pStatus === "ESTORNADO" && <Check className="w-3 h-3 text-amber-600" />}
+                                      </button>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              )
+                            })()}
                           </td>
                         </tr>
 
