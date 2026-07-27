@@ -138,6 +138,139 @@ export function encodePerguntaForcadaMeta(
   return base
 }
 
+export interface SLAGlobalSettings {
+  ativo: boolean
+  tipo_periodo: 'todos' | '7d' | '15d' | '30d' | '60d' | '90d' | 'a_partir_de' | 'intervalo'
+  data_inicio?: string
+  data_fim?: string
+  colaboradores?: string[]
+}
+
+export function isCollaboratorTargeted(colaboradorId: string | null | undefined, settings: SLAGlobalSettings): boolean {
+  if (!settings.colaboradores || settings.colaboradores.length === 0 || settings.colaboradores.includes('todos')) {
+    return true
+  }
+  if (!colaboradorId) return false
+  return settings.colaboradores.includes(colaboradorId)
+}
+
+export function getSLAGlobalSettings(configs: SLAConfig[]): SLAGlobalSettings {
+  let settings: SLAGlobalSettings = {
+    ativo: true,
+    tipo_periodo: '30d',
+    data_inicio: '',
+    data_fim: '',
+    colaboradores: []
+  }
+
+  if (configs && Array.isArray(configs)) {
+    const globalSetting = configs.find(c => c.status_crm?.trim().toUpperCase() === '__GLOBAL_SETTINGS__')
+    if (globalSetting) {
+      settings.ativo = globalSetting.ativo !== false
+      if (globalSetting.pergunta_forcada && globalSetting.pergunta_forcada.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(globalSetting.pergunta_forcada)
+          if (parsed.tipo_periodo) settings.tipo_periodo = parsed.tipo_periodo
+          if (parsed.data_inicio) settings.data_inicio = parsed.data_inicio
+          if (parsed.data_fim) settings.data_fim = parsed.data_fim
+          if (Array.isArray(parsed.colaboradores)) settings.colaboradores = parsed.colaboradores
+        } catch (e) {
+          // Ignora se não for JSON válido
+        }
+      }
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    const localActive = localStorage.getItem('sla_global_active')
+    if (localActive === 'false') settings.ativo = false
+    const localPeriod = localStorage.getItem('sla_global_period')
+    if (localPeriod) {
+      try {
+        const parsed = JSON.parse(localPeriod)
+        if (parsed.tipo_periodo) settings.tipo_periodo = parsed.tipo_periodo
+        if (parsed.data_inicio !== undefined) settings.data_inicio = parsed.data_inicio
+        if (parsed.data_fim !== undefined) settings.data_fim = parsed.data_fim
+        if (Array.isArray(parsed.colaboradores)) settings.colaboradores = parsed.colaboradores
+      } catch (e) {}
+    }
+  }
+
+  return settings
+}
+
+export function getSLACutoffDates(settings: SLAGlobalSettings): { startDate: Date | null, endDate: Date | null } {
+  const now = new Date()
+
+  switch (settings.tipo_periodo) {
+    case '7d': {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 7)
+      d.setHours(0, 0, 0, 0)
+      return { startDate: d, endDate: null }
+    }
+    case '15d': {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 15)
+      d.setHours(0, 0, 0, 0)
+      return { startDate: d, endDate: null }
+    }
+    case '30d': {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 30)
+      d.setHours(0, 0, 0, 0)
+      return { startDate: d, endDate: null }
+    }
+    case '60d': {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 60)
+      d.setHours(0, 0, 0, 0)
+      return { startDate: d, endDate: null }
+    }
+    case '90d': {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 90)
+      d.setHours(0, 0, 0, 0)
+      return { startDate: d, endDate: null }
+    }
+    case 'a_partir_de': {
+      if (settings.data_inicio) {
+        const d = new Date(`${settings.data_inicio}T00:00:00`)
+        return { startDate: isNaN(d.getTime()) ? null : d, endDate: null }
+      }
+      return { startDate: null, endDate: null }
+    }
+    case 'intervalo': {
+      let start: Date | null = null
+      let end: Date | null = null
+      if (settings.data_inicio) {
+        const d = new Date(`${settings.data_inicio}T00:00:00`)
+        if (!isNaN(d.getTime())) start = d
+      }
+      if (settings.data_fim) {
+        const d = new Date(`${settings.data_fim}T23:59:59`)
+        if (!isNaN(d.getTime())) end = d
+      }
+      return { startDate: start, endDate: end }
+    }
+    case 'todos':
+    default:
+      return { startDate: null, endDate: null }
+  }
+}
+
+export function isTicketInSLAPeriod(ticketDateISO: string, settings: SLAGlobalSettings): boolean {
+  if (!ticketDateISO) return false
+  const { startDate, endDate } = getSLACutoffDates(settings)
+  const ticketDate = new Date(ticketDateISO)
+  if (isNaN(ticketDate.getTime())) return false
+
+  if (startDate && ticketDate < startDate) return false
+  if (endDate && ticketDate > endDate) return false
+
+  return true
+}
+
 export function isSLAGlobalActive(configs: SLAConfig[]): boolean {
   if (configs && Array.isArray(configs)) {
     const globalSetting = configs.find(c => c.status_crm?.trim().toUpperCase() === '__GLOBAL_SETTINGS__')
@@ -167,7 +300,37 @@ export function evaluateTicketSLA(
   bloquearNovoLead: boolean
   horasAtraso: number
 } {
-  if (!isSLAGlobalActive(configs)) {
+  const globalSettings = getSLAGlobalSettings(configs)
+  if (!globalSettings.ativo) {
+    return {
+      perguntaForcada: null,
+      gatilhoDisparado: false,
+      podeAdiar: false,
+      sonecaAtiva: false,
+      tempoRestanteSonecaMinutos: 0,
+      escaladoSupervisao: false,
+      escaladoGestao: false,
+      bloquearNovoLead: false,
+      horasAtraso: 0
+    }
+  }
+
+  const ticketDateISO = ticket.timestamp_ultima_mudanca_status || ticket.created_at
+  if (!isTicketInSLAPeriod(ticketDateISO, globalSettings)) {
+    return {
+      perguntaForcada: null,
+      gatilhoDisparado: false,
+      podeAdiar: false,
+      sonecaAtiva: false,
+      tempoRestanteSonecaMinutos: 0,
+      escaladoSupervisao: false,
+      escaladoGestao: false,
+      bloquearNovoLead: false,
+      horasAtraso: 0
+    }
+  }
+
+  if (!isCollaboratorTargeted(ticket.corretor_id || ticket.user_id, globalSettings)) {
     return {
       perguntaForcada: null,
       gatilhoDisparado: false,

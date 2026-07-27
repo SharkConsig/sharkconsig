@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { evaluateTicketSLA, SLAConfig, SLATicketState } from '@/lib/sla-engine'
+import { evaluateTicketSLA, SLAConfig, SLATicketState, getSLAGlobalSettings, getSLACutoffDates, isTicketInSLAPeriod, isCollaboratorTargeted } from '@/lib/sla-engine'
 import { Clock, AlertTriangle, Send, Moon, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -43,13 +43,28 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
       if (!configs || configs.length === 0) return
       setSlaConfigs(configs)
 
-      // 2. Carregar Chamados do Corretor / Estagiário
-      const { data: tickets } = await supabase
+      const globalSettings = getSLAGlobalSettings(configs)
+      if (!globalSettings.ativo) return
+      if (!isCollaboratorTargeted(user.id, globalSettings)) return
+
+      const { startDate, endDate } = getSLACutoffDates(globalSettings)
+
+      // 2. Carregar Chamados do Corretor / Estagiário respeitando o filtro de período
+      let query = supabase
         .from('chamados')
         .select('*, status_chamados(*)')
         .or(`corretor_id.eq.${user.id},user_id.eq.${user.id}`)
         .not('status', 'ilike', '%CANCELADO%')
         .not('status', 'ilike', '%CONCLUÍDO%')
+
+      if (startDate) {
+        query = query.gte('created_at', startDate.toISOString())
+      }
+      if (endDate) {
+        query = query.lte('created_at', endDate.toISOString())
+      }
+
+      const { data: tickets } = await query
 
       if (!tickets) return
 

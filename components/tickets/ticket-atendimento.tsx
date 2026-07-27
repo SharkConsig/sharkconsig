@@ -154,6 +154,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   })
 
   const [isSavingMargins, setIsSavingMargins] = useState(false)
+  const [isMarginsCollapsed, setIsMarginsCollapsed] = useState(true)
 
   // Initialize and keep states updated
   useEffect(() => {
@@ -1141,21 +1142,43 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
       />
 
       {/* Painel de Margens e Coeficientes */}
-      <div className="bg-slate-50/50 rounded-xl border border-slate-100 p-4 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+      <div className={cn(
+        "bg-slate-50/50 rounded-xl border border-slate-100 transition-all shadow-2xs",
+        isMarginsCollapsed ? "p-3 space-y-0" : "p-4 space-y-4"
+      )}>
+        <div 
+          onClick={() => setIsMarginsCollapsed(!isMarginsCollapsed)}
+          className="flex items-center justify-between cursor-pointer group select-none"
+        >
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
-            <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Detalhamento de Margens e Operações</h3>
-          </div>
-          {ticket.convenio && (
-            <span className="px-2.5 py-1 bg-slate-100 rounded text-[9px] font-bold text-slate-600 uppercase">
-              {ticket.convenio}
+            <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-wider group-hover:text-primary transition-colors">
+              Detalhamento de Margens e Operações
+            </h3>
+            <span className="text-[9px] font-bold text-slate-500 bg-slate-200/70 hover:bg-slate-200 px-2 py-0.5 rounded-md uppercase ml-1 transition-colors">
+              {isMarginsCollapsed ? 'Expandir' : 'Recolher'}
             </span>
-          )}
+          </div>
+          <div className="flex items-center gap-2">
+            {ticket.convenio && (
+              <span className="px-2.5 py-1 bg-slate-100 rounded text-[9px] font-bold text-slate-600 uppercase">
+                {ticket.convenio}
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-slate-500 hover:text-slate-800"
+            >
+              <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", !isMarginsCollapsed && "rotate-180")} />
+            </Button>
+          </div>
         </div>
         
-        <div className="space-y-4">
-          {/* Margem principal / 35% */}
+        {!isMarginsCollapsed && (
+          <div className="space-y-4 pt-2 border-t border-slate-100 animate-in fade-in duration-200">
+            {/* Margem principal / 35% */}
           {getMarginLabel('margem') && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
               <div className="space-y-2">
@@ -1358,7 +1381,6 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
               </div>
             </div>
           )}
-        </div>
 
         {canEditMargins && (
           <div className="flex justify-end pt-2">
@@ -1381,6 +1403,8 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 </>
               )}
             </Button>
+          </div>
+        )}
           </div>
         )}
       </div>

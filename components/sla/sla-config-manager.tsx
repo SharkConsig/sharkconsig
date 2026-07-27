@@ -3,11 +3,19 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { SLAConfig, parsePerguntaForcadaMeta, encodePerguntaForcadaMeta } from '@/lib/sla-engine'
-import { Clock, Plus, Trash2, Edit2, Save, X, Check, Power } from 'lucide-react'
+import { Clock, Plus, Trash2, Edit2, Save, X, Check, Power, Calendar, Filter, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+
+interface ColaboradorItem {
+  id: string
+  nome: string
+  email: string
+  avatar_url?: string
+  funcao?: string
+}
 
 
 export function formatPrazo(horas?: number | null): string {
@@ -26,7 +34,54 @@ export function SLAConfigManager() {
   const [configs, setConfigs] = useState<SLAConfig[]>([])
   const [statusOptions, setStatusOptions] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isSlaGlobalActive, setIsSlaGlobalActive] = useState(true)
+  const [isSlaGlobalActive, setIsSlaGlobalActive] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('sla_global_active')
+      if (cached !== null) return cached === 'true'
+    }
+    return true
+  })
+  const [tipoPeriodo, setTipoPeriodo] = useState<'todos' | '7d' | '15d' | '30d' | '60d' | '90d' | 'a_partir_de' | 'intervalo'>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('sla_global_period')
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached)
+          if (parsed.tipo_periodo) return parsed.tipo_periodo
+        } catch (e) {}
+      }
+    }
+    return '30d'
+  })
+  const [dataInicio, setDataInicio] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('sla_global_period')
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached)
+          if (parsed.data_inicio) return parsed.data_inicio
+        } catch (e) {}
+      }
+    }
+    return ''
+  })
+  const [dataFim, setDataFim] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('sla_global_period')
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached)
+          if (parsed.data_fim) return parsed.data_fim
+        } catch (e) {}
+      }
+    }
+    return ''
+  })
+
+  // Collaborator selection state
+  const [colaboradoresList, setColaboradoresList] = useState<ColaboradorItem[]>([])
+  const [selectedColaboradorIds, setSelectedColaboradorIds] = useState<Record<string, boolean>>({})
+  const [searchColaborador, setSearchColaborador] = useState('')
 
   // Top Form State (Add New Rule)
   const [statusCrm, setStatusCrm] = useState('')
@@ -56,10 +111,37 @@ export function SLAConfigManager() {
   const fetchConfigsAndStatuses = useCallback(async () => {
     setIsLoading(true)
     try {
-      const [{ data: slaData, error: slaErr }, { data: statusData }] = await Promise.all([
+      const [{ data: slaData, error: slaErr }, { data: statusData }, usersRes] = await Promise.all([
         supabase.from('sla_config').select('*').order('created_at', { ascending: true }),
-        supabase.from('status_chamados').select('nome').eq('ativo', true)
+        supabase.from('status_chamados').select('nome').eq('ativo', true),
+        fetch('/api/usuarios').catch(() => null)
       ])
+
+      let loadedUsers: ColaboradorItem[] = []
+      if (usersRes && usersRes.ok) {
+        const uData = await usersRes.json()
+        if (Array.isArray(uData)) {
+          const allowedFuncoes = ['corretor', 'estágio', 'estagio', 'estagiário', 'estagiario', 'supervisor']
+          loadedUsers = uData
+            .filter((u: any) => {
+              // Apenas colaboradores ativos
+              const isAtivo = (u.status || 'ATIVO').trim().toUpperCase() === 'ATIVO'
+              if (!isAtivo) return false
+
+              const func = (u.funcao || 'Corretor').trim().toLowerCase()
+              const normFunc = func.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+              return allowedFuncoes.includes(func) || normFunc.includes('corretor') || normFunc.includes('estag') || normFunc.includes('supervisor')
+            })
+            .map((u: any) => ({
+              id: u.id,
+              nome: u.nome || u.email || 'Sem Nome',
+              email: u.email || '',
+              avatar_url: u.avatar_url,
+              funcao: u.funcao || 'Corretor'
+            }))
+          setColaboradoresList(loadedUsers)
+        }
+      }
 
       if (slaErr) {
         console.error('Erro ao buscar sla_config do Supabase:', slaErr)
@@ -68,13 +150,44 @@ export function SLAConfigManager() {
 
       if (slaData && slaData.length > 0) {
         const globalSetting = slaData.find(item => item.status_crm?.trim().toUpperCase() === '__GLOBAL_SETTINGS__')
+        let savedColabs: string[] = []
         if (globalSetting) {
           const globalActive = globalSetting.ativo !== false
           setIsSlaGlobalActive(globalActive)
+
+          if (globalSetting.pergunta_forcada && globalSetting.pergunta_forcada.trim().startsWith('{')) {
+            try {
+              const parsed = JSON.parse(globalSetting.pergunta_forcada)
+              if (parsed.tipo_periodo) setTipoPeriodo(parsed.tipo_periodo)
+              if (parsed.data_inicio) setDataInicio(parsed.data_inicio)
+              if (parsed.data_fim) setDataFim(parsed.data_fim)
+              if (Array.isArray(parsed.colaboradores)) savedColabs = parsed.colaboradores
+            } catch (e) {}
+          } else if (typeof window !== 'undefined') {
+            const localPeriod = localStorage.getItem('sla_global_period')
+            if (localPeriod) {
+              try {
+                const parsed = JSON.parse(localPeriod)
+                if (parsed.tipo_periodo) setTipoPeriodo(parsed.tipo_periodo)
+                if (parsed.data_inicio) setDataInicio(parsed.data_inicio)
+                if (parsed.data_fim) setDataFim(parsed.data_fim)
+                if (Array.isArray(parsed.colaboradores)) savedColabs = parsed.colaboradores
+              } catch (e) {}
+            }
+          }
+
           if (typeof window !== 'undefined') {
             localStorage.setItem('sla_global_active', String(globalActive))
           }
         }
+
+        const map: Record<string, boolean> = {}
+        if (savedColabs.length > 0 && !savedColabs.includes('todos')) {
+          savedColabs.forEach(id => { map[id] = true })
+        } else {
+          loadedUsers.forEach(u => { map[u.id] = true })
+        }
+        setSelectedColaboradorIds(map)
 
         const filteredSlaData = slaData.filter(item => item.status_crm?.trim().toUpperCase() !== '__GLOBAL_SETTINGS__')
 
@@ -120,13 +233,41 @@ export function SLAConfigManager() {
   }, [fetchConfigsAndStatuses])
 
   const toggleGlobalSLA = async (nextState: boolean) => {
+    await saveGlobalSettings(nextState, tipoPeriodo, dataInicio, dataFim, selectedColaboradorIds)
+  }
+
+  const saveGlobalSettings = async (
+    nextActive?: boolean,
+    nextTipoPeriodo?: string,
+    nextDataInicio?: string,
+    nextDataFim?: string,
+    nextColabsMap?: Record<string, boolean>
+  ) => {
     setIsSubmitting(true)
+    const active = nextActive !== undefined ? nextActive : isSlaGlobalActive
+    const pTipo = nextTipoPeriodo !== undefined ? nextTipoPeriodo : tipoPeriodo
+    const pInicio = nextDataInicio !== undefined ? nextDataInicio : dataInicio
+    const pFim = nextDataFim !== undefined ? nextDataFim : dataFim
+    const pColabMap = nextColabsMap !== undefined ? nextColabsMap : selectedColaboradorIds
+
+    const activeColabIds = Object.keys(pColabMap).filter(id => pColabMap[id])
+    const finalColabArray = (activeColabIds.length === colaboradoresList.length || colaboradoresList.length === 0)
+      ? ['todos']
+      : (activeColabIds.length === 0 ? ['none'] : activeColabIds)
+
+    const payloadMeta = JSON.stringify({
+      tipo_periodo: pTipo,
+      data_inicio: pInicio,
+      data_fim: pFim,
+      colaboradores: finalColabArray
+    })
+
     try {
       const payload = {
         status_crm: '__GLOBAL_SETTINGS__',
         prazo_horas_uteis: 0,
-        pergunta_forcada: 'Configuração Global do Motor de SLA',
-        ativo: nextState,
+        pergunta_forcada: payloadMeta,
+        ativo: active,
         updated_at: new Date().toISOString()
       }
       const { error } = await supabase.from('sla_config').upsert(payload, { onConflict: 'status_crm' })
@@ -136,23 +277,57 @@ export function SLAConfigManager() {
         return
       }
 
-      setIsSlaGlobalActive(nextState)
+      setIsSlaGlobalActive(active)
+      setTipoPeriodo(pTipo as any)
+      setDataInicio(pInicio)
+      setDataFim(pFim)
+      setSelectedColaboradorIds(pColabMap)
+
       if (typeof window !== 'undefined') {
-        localStorage.setItem('sla_global_active', String(nextState))
+        localStorage.setItem('sla_global_active', String(active))
+        localStorage.setItem('sla_global_period', payloadMeta)
       }
 
-      if (nextState) {
-        toast.success('Motor de SLA e Gatilhos de Cobrança ATIVADOS com sucesso!')
+      if (nextActive !== undefined && nextActive !== isSlaGlobalActive) {
+        if (nextActive) {
+          toast.success('Motor de SLA e Gatilhos de Cobrança ATIVADOS com sucesso!')
+        } else {
+          toast.warning('Motor de SLA e Gatilhos de Cobrança DESATIVADOS globalmente.')
+        }
       } else {
-        toast.warning('Motor de SLA e Gatilhos de Cobrança DESATIVADOS globalmente.')
+        toast.success('Configurações globais do SLA salvas com sucesso!')
       }
     } catch (err: any) {
-      console.error('Erro ao alterar chave global de SLA:', err)
-      toast.error('Erro de conexão ao alterar chave global de SLA.')
+      console.error('Erro ao alterar configurações de SLA:', err)
+      toast.error('Erro de conexão ao alterar configurações de SLA.')
     } finally {
       setIsSubmitting(false)
     }
   }
+
+  const handleToggleColaborador = (id: string) => {
+    const updated = { ...selectedColaboradorIds, [id]: !selectedColaboradorIds[id] }
+    setSelectedColaboradorIds(updated)
+  }
+
+  const handleToggleSelectAllColaboradores = () => {
+    const activeCount = Object.keys(selectedColaboradorIds).filter(id => selectedColaboradorIds[id]).length
+    const allSelected = activeCount === colaboradoresList.length && colaboradoresList.length > 0
+    const updated: Record<string, boolean> = {}
+    if (!allSelected) {
+      colaboradoresList.forEach(c => { updated[c.id] = true })
+    }
+    setSelectedColaboradorIds(updated)
+  }
+
+  const filteredColaboradores = colaboradoresList.filter(c =>
+    c.nome.toLowerCase().includes(searchColaborador.toLowerCase()) ||
+    c.email.toLowerCase().includes(searchColaborador.toLowerCase()) ||
+    (c.funcao && c.funcao.toLowerCase().includes(searchColaborador.toLowerCase()))
+  )
+
+  const selectedColabCount = Object.keys(selectedColaboradorIds).filter(id => selectedColaboradorIds[id]).length
+  const isAllColaboradoresSelected = selectedColabCount === colaboradoresList.length && colaboradoresList.length > 0
 
   const resetNewForm = () => {
     setStatusCrm('')
@@ -485,51 +660,227 @@ export function SLAConfigManager() {
 
   return (
     <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-6">
-      {/* Chave Mestra Global de Ativação / Desativação do SLA */}
-      <div className={`p-5 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-        isSlaGlobalActive
-          ? 'bg-emerald-50/70 border-emerald-200'
-          : 'bg-rose-50/80 border-rose-200 shadow-sm'
-      }`}>
-        <div className="flex items-start md:items-center gap-3">
-          <div className={`p-2.5 rounded-xl flex items-center justify-center shrink-0 ${
-            isSlaGlobalActive ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
-          }`}>
-            <Power className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-800">
-                Chave Mestra do SLA & Cobranças
-              </span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide ${
-                isSlaGlobalActive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+      {/* Grid: Chave Mestra & Seleção de Colaboradores */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column (col-span-7): Chave Mestra + Filtro de Período */}
+        <div className={`lg:col-span-7 p-5 rounded-2xl border transition-all flex flex-col justify-between gap-4 ${
+          isSlaGlobalActive
+            ? 'bg-emerald-50/70 border-emerald-200'
+            : 'bg-rose-50/80 border-rose-200 shadow-sm'
+        }`}>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start md:items-center gap-3">
+              <div className={`p-2.5 rounded-xl flex items-center justify-center shrink-0 ${
+                isSlaGlobalActive ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
               }`}>
-                {isSlaGlobalActive ? '● SISTEMA ATIVO' : '○ SISTEMA DESATIVADO (PAUSADO)'}
+                <Power className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-800">
+                    Chave Mestra do SLA & Cobranças
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide ${
+                    isSlaGlobalActive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                  }`}>
+                    {isSlaGlobalActive ? '● SISTEMA ATIVO' : '○ SISTEMA DESATIVADO'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  {isSlaGlobalActive
+                    ? 'O motor de SLA está rodando normalmente.'
+                    : 'O motor de SLA está globalmente desativado.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Seletor de Período de Atuação do SLA e Botão de Ativação */}
+          <div className="pt-4 border-t border-slate-200/80 flex flex-col gap-3">
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-slate-700" />
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800">
+                  Filtro de Período dos Chamados
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-500 font-medium italic pl-6">
+                Evita travamentos e pop-ups em massa aplicando regras apenas aos chamados do período selecionado
               </span>
             </div>
-            <p className="text-[11px] text-slate-600 mt-0.5">
-              {isSlaGlobalActive
-                ? 'O motor de SLA está rodando normalmente. Prazos, perguntas forçadas e bloqueios estão em vigor.'
-                : 'O motor de SLA está globalmente desativado. Nenhuma cobrança, pergunta forçada ou bloqueio será aplicado (deploy seguro).'}
-            </p>
+
+            <div className="flex flex-wrap items-end justify-between gap-3 w-full">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1 min-w-[190px]">
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Período de Atuação</Label>
+                  <select
+                    value={tipoPeriodo}
+                    onChange={(e) => {
+                      const val = e.target.value as any
+                      setTipoPeriodo(val)
+                      saveGlobalSettings(isSlaGlobalActive, val, dataInicio, dataFim, selectedColaboradorIds)
+                    }}
+                    disabled={isSubmitting}
+                    className="h-9 bg-white border border-slate-200 text-[11px] font-bold rounded-lg px-2 text-slate-800 cursor-pointer focus:outline-none focus:border-primary shadow-2xs"
+                  >
+                    <option value="30d">Últimos 30 dias (Recomendado)</option>
+                    <option value="7d">Últimos 7 dias</option>
+                    <option value="15d">Últimos 15 dias</option>
+                    <option value="60d">Últimos 60 dias</option>
+                    <option value="90d">Últimos 90 dias</option>
+                    <option value="a_partir_de">A partir de data específica</option>
+                    <option value="intervalo">Intervalo personalizado (Início e Fim)</option>
+                    <option value="todos">Todos os chamados (Sem filtro)</option>
+                  </select>
+                </div>
+
+                {(tipoPeriodo === 'a_partir_de' || tipoPeriodo === 'intervalo') && (
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Data Inicial</Label>
+                    <Input
+                      type="date"
+                      value={dataInicio}
+                      onChange={(e) => setDataInicio(e.target.value)}
+                      onBlur={() => saveGlobalSettings(isSlaGlobalActive, tipoPeriodo, dataInicio, dataFim, selectedColaboradorIds)}
+                      className="h-9 bg-white border-slate-200 text-[11px] font-bold text-slate-800 w-32 shadow-2xs"
+                    />
+                  </div>
+                )}
+
+                {tipoPeriodo === 'intervalo' && (
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Data Final</Label>
+                    <Input
+                      type="date"
+                      value={dataFim}
+                      onChange={(e) => setDataFim(e.target.value)}
+                      onBlur={() => saveGlobalSettings(isSlaGlobalActive, tipoPeriodo, dataInicio, dataFim, selectedColaboradorIds)}
+                      className="h-9 bg-white border-slate-200 text-[11px] font-bold text-slate-800 w-32 shadow-2xs"
+                    />
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => saveGlobalSettings(isSlaGlobalActive, tipoPeriodo, dataInicio, dataFim, selectedColaboradorIds)}
+                  disabled={isSubmitting}
+                  className="h-9 px-3 text-[10px] font-bold bg-slate-800 hover:bg-slate-900 text-white rounded-lg shadow-2xs"
+                >
+                  <Save className="w-3.5 h-3.5 mr-1" />
+                  Salvar
+                </Button>
+              </div>
+
+              <Button
+                type="button"
+                onClick={() => toggleGlobalSLA(!isSlaGlobalActive)}
+                disabled={isSubmitting}
+                className={`font-bold text-[10px] h-9 px-3 transition-all shadow-2xs rounded-lg ml-auto ${
+                  isSlaGlobalActive
+                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                <Power className="w-3.5 h-3.5 mr-1" />
+                {isSlaGlobalActive ? 'DESATIVAR SLA' : 'ATIVAR SLA'}
+              </Button>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            type="button"
-            onClick={() => toggleGlobalSLA(!isSlaGlobalActive)}
-            disabled={isSubmitting}
-            className={`font-bold text-[11px] h-10 px-4 transition-all shadow-xs ${
-              isSlaGlobalActive
-                ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-            }`}
-          >
-            <Power className="w-4 h-4 mr-1.5" />
-            {isSlaGlobalActive ? 'DESATIVAR SISTEMA DE SLA' : 'ATIVAR SISTEMA DE SLA'}
-          </Button>
+        {/* Right Column (col-span-5): Seleção de Colaboradores */}
+        <div className="lg:col-span-5 p-5 rounded-2xl border border-slate-200 bg-slate-50/80 shadow-2xs flex flex-col justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-slate-700" />
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800">
+                  SELECIONE OS COLABORADORES
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleSelectAllColaboradores}
+                className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 uppercase tracking-wide cursor-pointer"
+              >
+                {isAllColaboradoresSelected ? 'Desmarcar Todos' : 'Selecionar Todos'}
+              </button>
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium italic">
+              SLA e cobranças atuarão apenas nos chamados dos colaboradores marcados
+            </span>
+          </div>
+
+          <div className="space-y-2 flex-1 flex flex-col min-h-0">
+            <Input
+              type="text"
+              placeholder="Buscar colaborador por nome ou e-mail..."
+              value={searchColaborador}
+              onChange={(e) => setSearchColaborador(e.target.value)}
+              className="h-8 text-[11px] bg-white border-slate-200 shadow-2xs"
+            />
+
+            <div className="border border-slate-200 rounded-xl bg-white max-h-[160px] overflow-y-auto p-2 space-y-1 divide-y divide-slate-100 flex-1">
+              {filteredColaboradores.length === 0 ? (
+                <div className="p-4 text-center text-[11px] text-slate-400 font-semibold">
+                  Nenhum colaborador encontrado
+                </div>
+              ) : (
+                filteredColaboradores.map((colab) => {
+                  const isChecked = !!selectedColaboradorIds[colab.id]
+                  return (
+                    <label
+                      key={colab.id}
+                      className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors pt-2 first:pt-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleToggleColaborador(colab.id)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                      />
+                      <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 shrink-0 relative">
+                        <img
+                          src={colab.avatar_url || `https://picsum.photos/seed/${colab.id}/50/50`}
+                          alt="Avatar"
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-xs font-bold text-slate-800 truncate">{colab.nome}</p>
+                          {colab.funcao && (
+                            <span className="px-1.5 py-0.2 text-[9px] font-extrabold uppercase rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                              {colab.funcao}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-500 truncate">{colab.email}</p>
+                      </div>
+                    </label>
+                  )
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[10px] font-bold text-slate-500">
+              {selectedColabCount} de {colaboradoresList.length} selecionado(s)
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => saveGlobalSettings(isSlaGlobalActive, tipoPeriodo, dataInicio, dataFim, selectedColaboradorIds)}
+              disabled={isSubmitting}
+              className="h-8 px-3 text-[10px] font-bold bg-slate-800 hover:bg-slate-900 text-white rounded-lg shadow-2xs"
+            >
+              <Save className="w-3.5 h-3.5 mr-1" />
+              Salvar Colaboradores
+            </Button>
+          </div>
         </div>
       </div>
 
