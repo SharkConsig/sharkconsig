@@ -183,6 +183,37 @@ const parseCleanFloat = (val: string | number | null | undefined): number | null
   return isNaN(parsed) ? null : parsed;
 };
 
+const extractTicketOperationValues = (t: any) => {
+  let opValMargem = 0
+  let opValCartao = 0
+
+  try {
+    const desc = t.descricao || t.description || t.content || ''
+    const meta = parseDescriptionMetadata(desc)
+    if (meta) {
+      if (meta.valor_operacao_margem) {
+        opValMargem = parseCleanFloat(meta.valor_operacao_margem) || 0
+      }
+      if (meta.valor_operacao_liquida5) {
+        opValCartao = parseCleanFloat(meta.valor_operacao_liquida5) || 0
+      } else if (meta.valor_operacao_beneficio5) {
+        opValCartao = parseCleanFloat(meta.valor_operacao_beneficio5) || 0
+      }
+    }
+  } catch (e) {
+    // ignorar
+  }
+
+  if (!opValMargem && t.valor_operacao) {
+    opValMargem = parseCleanFloat(t.valor_operacao) || 0
+  }
+  if (!opValCartao && t.valor_cartao) {
+    opValCartao = parseCleanFloat(t.valor_cartao) || 0
+  }
+
+  return { opValMargem, opValCartao }
+};
+
 const getValorOperacaoDeAbertura = (ticket: any) => {
   const desc = ticket.descricao || ticket.description || ticket.content || "";
   const meta = parseDescriptionMetadata(desc);
@@ -669,13 +700,15 @@ export default function TicketsPage() {
 
       // Avaliar status de SLA para cada chamado em tempo real
       try {
-        const { data: slaConfigs } = await supabase.from('sla_config').select('*').eq('ativo', true)
+        const { data: slaConfigs } = await supabase.from('sla_config').select('*')
         if (slaConfigs && slaConfigs.length > 0) {
           const globalSettings = getSLAGlobalSettings(slaConfigs)
           if (globalSettings.ativo) {
             all = all.map(ticket => {
               const isTargeted = isCollaboratorTargeted(ticket.user_id, globalSettings)
               if (!isTargeted) return ticket
+
+              const { opValMargem, opValCartao } = extractTicketOperationValues(ticket)
 
               const ticketState: SLATicketState = {
                 id: ticket.id,
@@ -690,8 +723,8 @@ export default function TicketsPage() {
                 timestamp_soneca: ticket.timestamp_soneca,
                 escalonamento_status: ticket.escalonamento_status,
                 timestamp_escalonamento: ticket.timestamp_escalonamento,
-                operacao_valor_margem: Number(ticket.valor_operacao || ticket.margem || 0),
-                operacao_valor_cartao: Number(ticket.valor_cartao || 0)
+                operacao_valor_margem: opValMargem,
+                operacao_valor_cartao: opValCartao
               }
 
               const res = evaluateTicketSLA(ticketState, slaConfigs, null)

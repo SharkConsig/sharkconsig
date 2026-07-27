@@ -251,7 +251,8 @@ export function SLAConfigManager() {
     const pColabMap = nextColabsMap !== undefined ? nextColabsMap : selectedColaboradorIds
 
     const activeColabIds = Object.keys(pColabMap).filter(id => pColabMap[id])
-    const finalColabArray = (activeColabIds.length === colaboradoresList.length || colaboradoresList.length === 0)
+    const totalUsers = colaboradoresList.length
+    const finalColabArray = (totalUsers > 0 && activeColabIds.length === totalUsers)
       ? ['todos']
       : (activeColabIds.length === 0 ? ['none'] : activeColabIds)
 
@@ -1062,20 +1063,22 @@ export function SLAConfigManager() {
               <span className="text-[10px] font-extrabold text-amber-700 uppercase block">Faixa 2 (Escala para Supervisor)</span>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-[9px] font-bold text-slate-500 uppercase">Mín. Margem (R$)</Label>
+                  <Label className="text-[9px] font-bold text-slate-500 uppercase">Mín. Valor Op. Margem (R$)</Label>
                   <Input
                     type="number"
                     placeholder="Desativado"
+                    title="Mínimo Valor da Operação referente à Margem Principal"
                     value={faixa2MinMargem}
                     onChange={(e) => setFaixa2MinMargem(e.target.value === '' ? '' : Number(e.target.value))}
                     className="h-8 bg-slate-50 border-slate-200 font-bold text-[11px]"
                   />
                 </div>
                 <div>
-                  <Label className="text-[9px] font-bold text-slate-500 uppercase">Mín. Cartão (R$)</Label>
+                  <Label className="text-[9px] font-bold text-slate-500 uppercase">Mín. Valor Op. Cartão (R$)</Label>
                   <Input
                     type="number"
                     placeholder="Desativado"
+                    title="Mínimo Valor da Operação referente ao Cartão"
                     value={faixa2MinCartao}
                     onChange={(e) => setFaixa2MinCartao(e.target.value === '' ? '' : Number(e.target.value))}
                     className="h-8 bg-slate-50 border-slate-200 font-bold text-[11px]"
@@ -1088,20 +1091,22 @@ export function SLAConfigManager() {
               <span className="text-[10px] font-extrabold text-rose-700 uppercase block">Faixa 3 (Escala Supervisor + Admin)</span>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-[9px] font-bold text-slate-500 uppercase">Mín. Margem (R$)</Label>
+                  <Label className="text-[9px] font-bold text-slate-500 uppercase">Mín. Valor Op. Margem (R$)</Label>
                   <Input
                     type="number"
                     placeholder="Desativado"
+                    title="Mínimo Valor da Operação referente à Margem Principal"
                     value={faixa3MinMargem}
                     onChange={(e) => setFaixa3MinMargem(e.target.value === '' ? '' : Number(e.target.value))}
                     className="h-8 bg-slate-50 border-slate-200 font-bold text-[11px]"
                   />
                 </div>
                 <div>
-                  <Label className="text-[9px] font-bold text-slate-500 uppercase">Mín. Cartão (R$)</Label>
+                  <Label className="text-[9px] font-bold text-slate-500 uppercase">Mín. Valor Op. Cartão (R$)</Label>
                   <Input
                     type="number"
                     placeholder="Desativado"
+                    title="Mínimo Valor da Operação referente ao Cartão"
                     value={faixa3MinCartao}
                     onChange={(e) => setFaixa3MinCartao(e.target.value === '' ? '' : Number(e.target.value))}
                     className="h-8 bg-slate-50 border-slate-200 font-bold text-[11px]"

@@ -25,6 +25,59 @@ interface PendingQuestionItem {
   escaladoGestao: boolean
 }
 
+function parseCleanMoney(val: any): number {
+  if (val === null || val === undefined) return 0
+  if (typeof val === 'number') return isNaN(val) ? 0 : val
+  const str = String(val).trim()
+  if (!str) return 0
+  let cleaned = str.replace(/[^0-9.,-]/g, '').trim()
+  if (!cleaned) return 0
+  if (cleaned.includes(',')) {
+    cleaned = cleaned.replace(/\./g, '').replace(',', '.')
+  } else {
+    const parts = cleaned.split('.')
+    if (parts.length > 2) {
+      cleaned = cleaned.replace(/\./g, '')
+    } else if (parts.length === 2 && parts[1].length === 3) {
+      cleaned = cleaned.replace(/\./g, '')
+    }
+  }
+  const parsed = parseFloat(cleaned)
+  return isNaN(parsed) ? 0 : parsed
+}
+
+function extractTicketOperationValues(t: any) {
+  let opValMargem = 0
+  let opValCartao = 0
+
+  try {
+    const desc = t.descricao || t.description || t.content || ''
+    const match = desc.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/)
+    if (match && match[1]) {
+      const meta = JSON.parse(match[1])
+      if (meta.valor_operacao_margem) {
+        opValMargem = parseCleanMoney(meta.valor_operacao_margem)
+      }
+      if (meta.valor_operacao_liquida5) {
+        opValCartao = parseCleanMoney(meta.valor_operacao_liquida5)
+      } else if (meta.valor_operacao_beneficio5) {
+        opValCartao = parseCleanMoney(meta.valor_operacao_beneficio5)
+      }
+    }
+  } catch (e) {
+    // Ignorar erro de JSON
+  }
+
+  if (!opValMargem && t.valor_operacao) {
+    opValMargem = parseCleanMoney(t.valor_operacao)
+  }
+  if (!opValCartao && t.valor_cartao) {
+    opValCartao = parseCleanMoney(t.valor_cartao)
+  }
+
+  return { opValMargem, opValCartao }
+}
+
 export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props) {
   const [slaConfigs, setSlaConfigs] = useState<SLAConfig[]>([])
   const [pendingItems, setPendingItems] = useState<PendingQuestionItem[]>([])
@@ -39,14 +92,21 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
     if (!user || !isCorretorOrEstagiario) return
 
     try {
-      // 1. Carregar Configurações de SLA
-      const { data: configs } = await supabase.from('sla_config').select('*').eq('ativo', true)
-      if (!configs || configs.length === 0) return
+      // 1. Carregar Configurações de SLA (sem .eq('ativo', true) para não desconsiderar __GLOBAL_SETTINGS__ desativado)
+      const { data: configs } = await supabase.from('sla_config').select('*')
+      if (!configs || configs.length === 0) {
+        setIsLocked(false)
+        setPendingItems([])
+        return
+      }
       setSlaConfigs(configs)
 
       const globalSettings = getSLAGlobalSettings(configs)
-      if (!globalSettings.ativo) return
-      if (!isCollaboratorTargeted(user.id, globalSettings)) return
+      if (!globalSettings.ativo || !isCollaboratorTargeted(user.id, globalSettings)) {
+        setIsLocked(false)
+        setPendingItems([])
+        return
+      }
 
       const { startDate, endDate } = getSLACutoffDates(globalSettings)
 
@@ -80,6 +140,7 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
       let userShouldBeLocked = false
 
       for (const t of tickets) {
+        const { opValMargem, opValCartao } = extractTicketOperationValues(t)
         const ticketState: SLATicketState = {
           id: t.id,
           status: t.status_chamados?.nome || t.status,
@@ -93,8 +154,8 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
           timestamp_soneca: t.timestamp_soneca,
           escalonamento_status: t.escalonamento_status,
           timestamp_escalonamento: t.timestamp_escalonamento,
-          operacao_valor_margem: Number(t.valor_operacao || t.margem || 0),
-          operacao_valor_cartao: Number(t.valor_cartao || 0)
+          operacao_valor_margem: opValMargem,
+          operacao_valor_cartao: opValCartao
         }
 
         const res = evaluateTicketSLA(ticketState, configs, brokerSonecaEstourada)

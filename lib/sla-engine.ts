@@ -163,16 +163,19 @@ export function getSLAGlobalSettings(configs: SLAConfig[]): SLAGlobalSettings {
     colaboradores: []
   }
 
+  let foundInDb = false
+
   if (configs && Array.isArray(configs)) {
     const globalSetting = configs.find(c => c.status_crm?.trim().toUpperCase() === '__GLOBAL_SETTINGS__')
     if (globalSetting) {
+      foundInDb = true
       settings.ativo = globalSetting.ativo !== false
       if (globalSetting.pergunta_forcada && globalSetting.pergunta_forcada.trim().startsWith('{')) {
         try {
           const parsed = JSON.parse(globalSetting.pergunta_forcada)
           if (parsed.tipo_periodo) settings.tipo_periodo = parsed.tipo_periodo
-          if (parsed.data_inicio) settings.data_inicio = parsed.data_inicio
-          if (parsed.data_fim) settings.data_fim = parsed.data_fim
+          if (parsed.data_inicio !== undefined) settings.data_inicio = parsed.data_inicio
+          if (parsed.data_fim !== undefined) settings.data_fim = parsed.data_fim
           if (Array.isArray(parsed.colaboradores)) settings.colaboradores = parsed.colaboradores
         } catch (e) {
           // Ignora se não for JSON válido
@@ -181,7 +184,8 @@ export function getSLAGlobalSettings(configs: SLAConfig[]): SLAGlobalSettings {
     }
   }
 
-  if (typeof window !== 'undefined') {
+  // Só recorre ao localStorage se a configuração global NÃO foi encontrada no banco de dados
+  if (!foundInDb && typeof window !== 'undefined') {
     const localActive = localStorage.getItem('sla_global_active')
     if (localActive === 'false') settings.ativo = false
     const localPeriod = localStorage.getItem('sla_global_period')
