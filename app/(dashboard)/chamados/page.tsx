@@ -417,6 +417,7 @@ export default function TicketsPage() {
   const [endDate, setEndDate] = useState("")
 
   // Novos estados para filtros avançados
+  const [slaActive, setSlaActive] = useState(false)
   const [filterCorretores, setFilterCorretores] = useState<string[]>([])
   const [filterStatusList, setFilterStatusList] = useState<string[]>([])
   const [filterOrigens, setFilterOrigens] = useState<string[]>([])
@@ -701,49 +702,54 @@ export default function TicketsPage() {
       // Avaliar status de SLA para cada chamado em tempo real
       try {
         const { data: slaConfigs } = await supabase.from('sla_config').select('*')
-        if (slaConfigs && slaConfigs.length > 0) {
-          const globalSettings = getSLAGlobalSettings(slaConfigs)
-          if (globalSettings.ativo) {
-            all = all.map(ticket => {
-              const isTargeted = isCollaboratorTargeted(ticket.user_id, globalSettings)
-              if (!isTargeted) return ticket
+        const globalSettings = slaConfigs ? getSLAGlobalSettings(slaConfigs) : { ativo: false }
+        setSlaActive(globalSettings.ativo)
 
-              const { opValMargem, opValCartao } = extractTicketOperationValues(ticket)
+        if (globalSettings.ativo && slaConfigs && slaConfigs.length > 0) {
+          all = all.map(ticket => {
+            const isTargeted = isCollaboratorTargeted(ticket.user_id, globalSettings)
+            if (!isTargeted) return { ...ticket, escalonamento_status: 'nenhum' }
 
-              const ticketState: SLATicketState = {
-                id: ticket.id,
-                status: ticket.status_chamados?.nome || ticket.status,
-                created_at: ticket.created_at,
-                user_id: ticket.user_id,
-                corretor_id: ticket.user_id,
-                timestamp_ultima_mudanca_status: ticket.timestamp_ultima_mudanca_status || ticket.updated_at || ticket.created_at,
-                pergunta_pendente: ticket.pergunta_pendente,
-                timestamp_gatilho_disparado: ticket.timestamp_gatilho_disparado,
-                soneca_usada: ticket.soneca_usada,
-                timestamp_soneca: ticket.timestamp_soneca,
-                escalonamento_status: ticket.escalonamento_status,
-                timestamp_escalonamento: ticket.timestamp_escalonamento,
-                operacao_valor_margem: opValMargem,
-                operacao_valor_cartao: opValCartao
-              }
+            const { opValMargem, opValCartao } = extractTicketOperationValues(ticket)
 
-              const res = evaluateTicketSLA(ticketState, slaConfigs, null)
-              let computedEscalonamento: 'nenhum' | 'supervisao' | 'administrador' | 'supervisao_administrador' | 'supervisao_gestao' = 'nenhum'
-              if (res.gatilhoDisparado && !res.sonecaAtiva) {
-                computedEscalonamento = res.escaladoGestao ? 'supervisao_gestao' : res.escaladoSupervisao ? 'supervisao' : 'nenhum'
-              }
+            const ticketState: SLATicketState = {
+              id: ticket.id,
+              status: ticket.status_chamados?.nome || ticket.status,
+              created_at: ticket.created_at,
+              user_id: ticket.user_id,
+              corretor_id: ticket.user_id,
+              timestamp_ultima_mudanca_status: ticket.timestamp_ultima_mudanca_status || ticket.updated_at || ticket.created_at,
+              pergunta_pendente: ticket.pergunta_pendente,
+              timestamp_gatilho_disparado: ticket.timestamp_gatilho_disparado,
+              soneca_usada: ticket.soneca_usada,
+              timestamp_soneca: ticket.timestamp_soneca,
+              escalonamento_status: ticket.escalonamento_status,
+              timestamp_escalonamento: ticket.timestamp_escalonamento,
+              operacao_valor_margem: opValMargem,
+              operacao_valor_cartao: opValCartao
+            }
 
-              if (computedEscalonamento !== 'nenhum' && ticket.escalonamento_status !== computedEscalonamento) {
-                // Atualizar no banco em background
-                supabase.from('chamados').update({ escalonamento_status: computedEscalonamento }).eq('id', ticket.id).then()
-                return { ...ticket, escalonamento_status: computedEscalonamento }
-              }
-              return ticket
-            })
-          }
+            const res = evaluateTicketSLA(ticketState, slaConfigs, null)
+            let computedEscalonamento: 'nenhum' | 'supervisao' | 'administrador' | 'supervisao_administrador' | 'supervisao_gestao' = 'nenhum'
+            if (res.gatilhoDisparado && !res.sonecaAtiva) {
+              computedEscalonamento = res.escaladoGestao ? 'supervisao_gestao' : res.escaladoSupervisao ? 'supervisao' : 'nenhum'
+            }
+
+            if (ticket.escalonamento_status !== computedEscalonamento) {
+              // Atualizar no banco em background
+              supabase.from('chamados').update({ escalonamento_status: computedEscalonamento }).eq('id', ticket.id).then()
+              return { ...ticket, escalonamento_status: computedEscalonamento }
+            }
+            return ticket
+          })
+        } else {
+          // Quando SLA está desativado, desativa alertas no objeto retornado
+          all = all.map(ticket => ({ ...ticket, escalonamento_status: 'nenhum' }))
         }
       } catch (slaErr) {
         console.error("Erro ao avaliar SLA nos chamados:", slaErr)
+        setSlaActive(false)
+        all = all.map(ticket => ({ ...ticket, escalonamento_status: 'nenhum' }))
       }
 
       setTickets(all)
@@ -1836,7 +1842,7 @@ export default function TicketsPage() {
                               >
                                 {ticket.status_chamados?.nome || ticket.status}
                               </span>
-                              {ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && (
+                              {slaActive && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && (
                                 <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-tight shadow-sm flex items-center gap-1">
                                   🚨 SLA {ticket.escalonamento_status === 'supervisao_administrador' || ticket.escalonamento_status === 'supervisao_gestao' ? 'Supervisor + Admin' : ticket.escalonamento_status === 'administrador' ? 'Administrador' : 'Supervisor'}
                                 </span>
