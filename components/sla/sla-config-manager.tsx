@@ -128,6 +128,9 @@ export function SLAConfigManager() {
               const isAtivo = (u.status || 'ATIVO').trim().toUpperCase() === 'ATIVO'
               if (!isAtivo) return false
 
+              const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj' || (u.role || "").trim().toLowerCase() === 'pj'
+              if (isPJ) return false
+
               const func = (u.funcao || 'Corretor').trim().toLowerCase()
               const normFunc = func.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
               return allowedFuncoes.includes(func) || normFunc.includes('corretor') || normFunc.includes('estag') || normFunc.includes('supervisor')

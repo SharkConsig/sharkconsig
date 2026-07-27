@@ -257,6 +257,7 @@ const roleOptions = [
   { value: "Monitoria", label: "Monitoria", bg: "bg-[#4b5563] hover:bg-[#374151]", border: "border-transparent", text: "text-white" },
   { value: "Estagiário Operacional", label: "Estagiário Operacional", bg: "bg-[#31006f] hover:bg-[#20005a]", border: "border-transparent", text: "text-white" },
   { value: "PJ", label: "PJ", bg: "bg-black hover:bg-neutral-900", border: "border-transparent", text: "text-white" },
+  { value: "Home Office", label: "Home Office", bg: "bg-teal-700 hover:bg-teal-800", border: "border-transparent", text: "text-white" },
   { value: "Estagiário", label: "Estagiário", bg: "bg-[#1e3a8a] hover:bg-[#172554]", border: "border-transparent", text: "text-white" }
 ]
 
@@ -352,6 +353,7 @@ export default function ColaboradoresPage() {
   const [newPixKey, setNewPixKey] = useState("")
   const [newCollegeName, setNewCollegeName] = useState("")
   const [newCollegeEmail, setNewCollegeEmail] = useState("")
+  const [newCnpj, setNewCnpj] = useState("")
 
   // Load from Supabase on mount
   useEffect(() => {
@@ -757,6 +759,7 @@ export default function ColaboradoresPage() {
     setNewJoinDate("")
     setNewCollegeName("")
     setNewCollegeEmail("")
+    setNewCnpj("")
     setFormDocs({})
   }
 
@@ -1015,6 +1018,20 @@ export default function ColaboradoresPage() {
                             onChange={(e) => setNewCollegeEmail(e.target.value)}
                             className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800 font-bold"
                             placeholder="email@instituicao.edu.br"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {(newRole === "Home Office" || newRole === "HOME OFFICE") && (
+                      <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mt-4 p-4 bg-teal-50/25 border border-teal-100/50 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-bold text-teal-900 uppercase tracking-widest ml-1 block">CNPJ</label>
+                          <input 
+                            type="text" 
+                            value={newCnpj} 
+                            onChange={(e) => setNewCnpj(e.target.value)}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800 font-bold"
+                            placeholder="00.000.000/0000-00"
                           />
                         </div>
                       </div>

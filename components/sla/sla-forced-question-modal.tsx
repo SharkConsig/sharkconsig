@@ -86,10 +86,15 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
   const [isLocked, setIsLocked] = useState(false)
 
   const roleUpper = (perfil?.role || perfil?.funcao || '').trim().toUpperCase()
-  const isCorretorOrEstagiario = true // A checagem de colaborador alvo (isCollaboratorTargeted) feita abaixo garante o escopo correto
+  const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || (perfil?.role || "").trim().toLowerCase() === 'pj'
+  const isCorretorOrEstagiario = !isPJ
 
   const fetchSLAData = useCallback(async () => {
-    if (!user || !isCorretorOrEstagiario) return
+    if (!user || !isCorretorOrEstagiario) {
+      setIsLocked(false)
+      setPendingItems([])
+      return
+    }
 
     try {
       // 1. Carregar Configurações de SLA (consultando sla_global_config e sla_config)

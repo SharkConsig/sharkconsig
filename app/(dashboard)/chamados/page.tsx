@@ -827,6 +827,37 @@ export default function TicketsPage() {
   }, [tickets])
 
   // Base tickets filtered by search and advanced filters
+  const isGestaoOrSupervisor = useMemo(() => {
+    const roleLower = (perfil?.role || '').toLowerCase()
+    const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || roleLower === 'pj'
+    if (isPJ) return false
+
+    return (isSupervisor || isAdmin || isOperational || isDeveloper || ['supervisor', 'administrador', 'administrativo', 'operacional', 'desenvolvedor'].includes(roleLower)) && !isUserEstagio && roleLower !== 'corretor'
+  }, [perfil?.role, perfil?.regime_contratacao, perfil?.funcao, isSupervisor, isAdmin, isOperational, isDeveloper, isUserEstagio])
+
+  const isTicketInUserSLAEscalation = useCallback((ticket: Ticket) => {
+    if (!slaActive || !ticket.escalonamento_status || ticket.escalonamento_status === 'nenhum') return false
+
+    const roleLower = (perfil?.role || '').toLowerCase()
+    const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || roleLower === 'pj'
+    if (isPJ) return false
+
+    const isSupervisorRole = isSupervisor || roleLower === 'supervisor'
+    const isAdminOrOpRole = isAdmin || isOperational || isDeveloper || ['administrador', 'administrativo', 'operacional', 'desenvolvedor'].includes(roleLower)
+
+    const isFaixa1 = ticket.escalonamento_status === 'supervisao'
+    const isFaixa2 = ['supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status)
+
+    if (isAdminOrOpRole) {
+      return isFaixa2 || (isSupervisorRole && isFaixa1)
+    }
+    if (isSupervisorRole) {
+      return isFaixa1
+    }
+
+    return false
+  }, [slaActive, perfil?.role, perfil?.regime_contratacao, perfil?.funcao, isSupervisor, isAdmin, isOperational, isDeveloper])
+
   const baseFilteredTickets = useMemo(() => {
     return tickets.filter(ticket => {
       // Se for Corretor e o chamado for de um estagiário, só mostra se tiver sido enviado para ele
@@ -976,7 +1007,9 @@ export default function TicketsPage() {
           matchesStatus = ticketStatusUpper === u || ticketStatusUpper === ua
         }
       } else if (selectedStatus && selectedStatus !== "TODOS") {
-        if (selectedStatus === "APROVADOS") {
+        if (selectedStatus === "SLA ESTOURADO") {
+          matchesStatus = isTicketInUserSLAEscalation(ticket)
+        } else if (selectedStatus === "APROVADOS") {
           matchesStatus = APROVADOS_LABELS.some(label => {
             const u = label.toUpperCase()
             const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
@@ -1008,7 +1041,7 @@ export default function TicketsPage() {
       
       return matchesStatus
     })
-  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus])
+  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus, isTicketInUserSLAEscalation])
 
   // Summing values per status label
   const statusValues = useMemo(() => {
@@ -1022,59 +1055,90 @@ export default function TicketsPage() {
     return res;
   }, [baseFilteredTickets])
 
-  const statusCards = useMemo(() => statusCardsList.map(card => {
-    let count = counts[card.label] || 0
-    let totalValor = statusValues[card.label] || 0
-    
-    if (card.label === "ABERTO") {
-      count = (counts["ABERTO"] || 0) + (counts["ABERTOS"] || 0)
-      totalValor = (statusValues["ABERTO"] || 0) + (statusValues["ABERTOS"] || 0)
-    } else if (card.label === "AGUARDANDO OPERACIONAL") {
-      count = counts["AGUARDANDO OPERACIONAL"] || 0
-      totalValor = statusValues["AGUARDANDO OPERACIONAL"] || 0
-    } else if (card.label === "APROVADOS") {
-      count = APROVADOS_LABELS.reduce((acc, label) => {
-        const u = label.toUpperCase()
-        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
-        return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
-      }, 0)
-      totalValor = APROVADOS_LABELS.reduce((acc, label) => {
-        const u = label.toUpperCase()
-        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
-        return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
-      }, 0)
-    } else if (card.label === "NÃO APROVADOS") {
-      count = NAO_APROVADOS_LABELS.reduce((acc, label) => {
-        const u = label.toUpperCase()
-        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
-        return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
-      }, 0)
-      totalValor = NAO_APROVADOS_LABELS.reduce((acc, label) => {
-        const u = label.toUpperCase()
-        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
-        return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
-      }, 0)
-    } else if (card.label === "PROPOSTA ENVIADA / EM NEGOCIAÇÃO") {
-      count = NEGOCIACAO_LABELS.reduce((acc, label) => {
-        const u = label.toUpperCase()
-        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
-        return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
-      }, 0)
-      totalValor = NEGOCIACAO_LABELS.reduce((acc, label) => {
-        const u = label.toUpperCase()
-        const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
-        return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
-      }, 0)
-    } else if (card.label === "TODOS") {
-      count = baseFilteredTickets.length
-      totalValor = baseFilteredTickets.reduce((acc, t) => {
+  const statusCards = useMemo(() => {
+    const list = statusCardsList.map(c => ({ ...c }))
+
+    if (isGestaoOrSupervisor) {
+      const slaTickets = baseFilteredTickets.filter(isTicketInUserSLAEscalation)
+      const slaCount = slaTickets.length
+      const slaTotalValor = slaTickets.reduce((acc, t) => {
         const opData = getValorOperacaoDeAbertura(t)
         return acc + parseValorToNumber(opData.valor)
       }, 0)
+
+      const todosIdx = list.findIndex(c => c.label === "TODOS")
+      const slaCard = {
+        label: "SLA ESTOURADO",
+        count: slaCount,
+        totalValor: slaTotalValor,
+        color: "border-t-[#610000] bg-[#610000]/5",
+        textColor: "text-[#610000]"
+      }
+
+      if (todosIdx !== -1) {
+        list.splice(todosIdx, 0, slaCard)
+      } else {
+        list.push(slaCard)
+      }
     }
 
-    return { ...card, count, totalValor }
-  }), [counts, statusValues, baseFilteredTickets])
+    return list.map(card => {
+      if (card.label === "SLA ESTOURADO") {
+        return card
+      }
+      let count = counts[card.label] || 0
+      let totalValor = statusValues[card.label] || 0
+      
+      if (card.label === "ABERTO") {
+        count = (counts["ABERTO"] || 0) + (counts["ABERTOS"] || 0)
+        totalValor = (statusValues["ABERTO"] || 0) + (statusValues["ABERTOS"] || 0)
+      } else if (card.label === "AGUARDANDO OPERACIONAL") {
+        count = counts["AGUARDANDO OPERACIONAL"] || 0
+        totalValor = statusValues["AGUARDANDO OPERACIONAL"] || 0
+      } else if (card.label === "APROVADOS") {
+        count = APROVADOS_LABELS.reduce((acc, label) => {
+          const u = label.toUpperCase()
+          const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+          return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
+        }, 0)
+        totalValor = APROVADOS_LABELS.reduce((acc, label) => {
+          const u = label.toUpperCase()
+          const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+          return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
+        }, 0)
+      } else if (card.label === "NÃO APROVADOS") {
+        count = NAO_APROVADOS_LABELS.reduce((acc, label) => {
+          const u = label.toUpperCase()
+          const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+          return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
+        }, 0)
+        totalValor = NAO_APROVADOS_LABELS.reduce((acc, label) => {
+          const u = label.toUpperCase()
+          const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+          return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
+        }, 0)
+      } else if (card.label === "PROPOSTA ENVIADA / EM NEGOCIAÇÃO") {
+        count = NEGOCIACAO_LABELS.reduce((acc, label) => {
+          const u = label.toUpperCase()
+          const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+          return acc + (counts[u] || 0) + (u !== ua ? (counts[ua] || 0) : 0)
+        }, 0)
+        totalValor = NEGOCIACAO_LABELS.reduce((acc, label) => {
+          const u = label.toUpperCase()
+          const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
+          return acc + (statusValues[u] || 0) + (u !== ua ? (statusValues[ua] || 0) : 0)
+        }, 0)
+      } else if (card.label === "TODOS") {
+        count = baseFilteredTickets.length
+        totalValor = baseFilteredTickets.reduce((acc, t) => {
+          const opData = getValorOperacaoDeAbertura(t)
+          return acc + parseValorToNumber(opData.valor)
+        }, 0)
+      }
+
+      return { ...card, count, totalValor }
+    })
+  }, [counts, statusValues, baseFilteredTickets, isGestaoOrSupervisor, isTicketInUserSLAEscalation])
 
   const handleParentClick = (status: string) => {
     setCurrentPage(1)
@@ -1639,7 +1703,7 @@ export default function TicketsPage() {
         </Card>
 
         {/* Status Counts Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className={cn("grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4", isGestaoOrSupervisor ? "xl:grid-cols-7" : "xl:grid-cols-6")}>
           {statusCards.map((card) => (
             <button 
               key={card.label}
