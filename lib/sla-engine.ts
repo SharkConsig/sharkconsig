@@ -140,21 +140,30 @@ export function encodePerguntaForcadaMeta(
 
 export interface SLAGlobalSettings {
   ativo: boolean
-  tipo_periodo: 'todos' | '7d' | '15d' | '30d' | '60d' | '90d' | 'a_partir_de' | 'intervalo'
+  tipo_periodo: string
   data_inicio?: string
   data_fim?: string
-  colaboradores?: string[]
+  colaboradores?: any[]
 }
 
 export function isCollaboratorTargeted(colaboradorId: string | null | undefined, settings: SLAGlobalSettings): boolean {
-  if (!settings.colaboradores || settings.colaboradores.length === 0 || settings.colaboradores.includes('todos')) {
-    return true
+  if (!settings.colaboradores || settings.colaboradores.length === 0) {
+    return false
   }
   if (!colaboradorId) return false
-  return settings.colaboradores.includes(colaboradorId)
+
+  return settings.colaboradores.some((item: any) => {
+    if (typeof item === 'string') {
+      return item === 'todos' || item === colaboradorId
+    }
+    if (item && typeof item === 'object') {
+      return item.id === 'todos' || item.id === colaboradorId
+    }
+    return false
+  })
 }
 
-export function getSLAGlobalSettings(configs: SLAConfig[]): SLAGlobalSettings {
+export function getSLAGlobalSettings(configs: SLAConfig[], globalConfigData?: any): SLAGlobalSettings {
   let settings: SLAGlobalSettings = {
     ativo: false,
     tipo_periodo: '30d',
@@ -164,6 +173,16 @@ export function getSLAGlobalSettings(configs: SLAConfig[]): SLAGlobalSettings {
   }
 
   let foundInDb = false
+
+  if (globalConfigData) {
+    foundInDb = true
+    settings.ativo = globalConfigData.ativo === true
+    if (globalConfigData.tipo_periodo) settings.tipo_periodo = globalConfigData.tipo_periodo
+    if (globalConfigData.data_inicio !== undefined) settings.data_inicio = globalConfigData.data_inicio
+    if (globalConfigData.data_fim !== undefined) settings.data_fim = globalConfigData.data_fim
+    if (Array.isArray(globalConfigData.colaboradores)) settings.colaboradores = globalConfigData.colaboradores
+    return settings
+  }
 
   if (configs && Array.isArray(configs)) {
     const globalSetting = configs.find(c => c.status_crm?.trim().toUpperCase() === '__GLOBAL_SETTINGS__')
@@ -178,13 +197,12 @@ export function getSLAGlobalSettings(configs: SLAConfig[]): SLAGlobalSettings {
           if (parsed.data_fim !== undefined) settings.data_fim = parsed.data_fim
           if (Array.isArray(parsed.colaboradores)) settings.colaboradores = parsed.colaboradores
         } catch (e) {
-          // Ignora se não for JSON válido
+          // Ignora
         }
       }
     }
   }
 
-  // Só recorre ao localStorage se a configuração global NÃO foi encontrada no banco de dados
   if (!foundInDb && typeof window !== 'undefined') {
     const localActive = localStorage.getItem('sla_global_active')
     if (localActive === 'true') settings.ativo = true
@@ -293,7 +311,8 @@ export function isSLAGlobalActive(configs: SLAConfig[]): boolean {
 export function evaluateTicketSLA(
   ticket: SLATicketState,
   configs: SLAConfig[],
-  brokerSonecaEstourada?: string | null
+  brokerSonecaEstourada?: string | null,
+  globalConfigData?: any
 ): {
   perguntaForcada: string | null
   gatilhoDisparado: boolean
@@ -305,7 +324,7 @@ export function evaluateTicketSLA(
   bloquearNovoLead: boolean
   horasAtraso: number
 } {
-  const globalSettings = getSLAGlobalSettings(configs)
+  const globalSettings = getSLAGlobalSettings(configs, globalConfigData)
   if (!globalSettings.ativo) {
     return {
       perguntaForcada: null,

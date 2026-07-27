@@ -111,7 +111,8 @@ export function SLAConfigManager() {
   const fetchConfigsAndStatuses = useCallback(async () => {
     setIsLoading(true)
     try {
-      const [{ data: slaData, error: slaErr }, { data: statusData }, usersRes] = await Promise.all([
+      const [{ data: globalData }, { data: slaData, error: slaErr }, { data: statusData }, usersRes] = await Promise.all([
+        supabase.from('sla_global_config').select('*').maybeSingle(),
         supabase.from('sla_config').select('*').order('created_at', { ascending: true }),
         supabase.from('status_chamados').select('nome').eq('ativo', true),
         fetch('/api/usuarios').catch(() => null)
@@ -124,7 +125,6 @@ export function SLAConfigManager() {
           const allowedFuncoes = ['corretor', 'estágio', 'estagio', 'estagiário', 'estagiario', 'supervisor']
           loadedUsers = uData
             .filter((u: any) => {
-              // Apenas colaboradores ativos
               const isAtivo = (u.status || 'ATIVO').trim().toUpperCase() === 'ATIVO'
               if (!isAtivo) return false
 
@@ -148,11 +148,17 @@ export function SLAConfigManager() {
         toast.error(`Erro ao carregar regras do banco: ${slaErr.message}`)
       }
 
-      if (slaData && slaData.length > 0) {
+      let savedColabs: any[] = []
+      if (globalData) {
+        setIsSlaGlobalActive(globalData.ativo === true)
+        if (globalData.tipo_periodo) setTipoPeriodo(globalData.tipo_periodo)
+        if (globalData.data_inicio) setDataInicio(globalData.data_inicio)
+        if (globalData.data_fim) setDataFim(globalData.data_fim)
+        if (Array.isArray(globalData.colaboradores)) savedColabs = globalData.colaboradores
+      } else if (slaData && slaData.length > 0) {
         const globalSetting = slaData.find(item => item.status_crm?.trim().toUpperCase() === '__GLOBAL_SETTINGS__')
-        let savedColabs: string[] = []
         if (globalSetting) {
-          const globalActive = globalSetting.ativo !== false
+          const globalActive = globalSetting.ativo === true
           setIsSlaGlobalActive(globalActive)
 
           if (globalSetting.pergunta_forcada && globalSetting.pergunta_forcada.trim().startsWith('{')) {
@@ -163,32 +169,27 @@ export function SLAConfigManager() {
               if (parsed.data_fim) setDataFim(parsed.data_fim)
               if (Array.isArray(parsed.colaboradores)) savedColabs = parsed.colaboradores
             } catch (e) {}
-          } else if (typeof window !== 'undefined') {
-            const localPeriod = localStorage.getItem('sla_global_period')
-            if (localPeriod) {
-              try {
-                const parsed = JSON.parse(localPeriod)
-                if (parsed.tipo_periodo) setTipoPeriodo(parsed.tipo_periodo)
-                if (parsed.data_inicio) setDataInicio(parsed.data_inicio)
-                if (parsed.data_fim) setDataFim(parsed.data_fim)
-                if (Array.isArray(parsed.colaboradores)) savedColabs = parsed.colaboradores
-              } catch (e) {}
-            }
-          }
-
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('sla_global_active', String(globalActive))
           }
         }
+      }
 
-        const map: Record<string, boolean> = {}
-        if (savedColabs.length > 0 && !savedColabs.includes('todos')) {
-          savedColabs.forEach(id => { map[id] = true })
-        } else {
+      const map: Record<string, boolean> = {}
+      if (Array.isArray(savedColabs) && savedColabs.length > 0) {
+        const isTodosString = savedColabs.some(item => typeof item === 'string' && item === 'todos')
+        if (isTodosString) {
           loadedUsers.forEach(u => { map[u.id] = true })
+        } else {
+          savedColabs.forEach((item: any) => {
+            const colabId = typeof item === 'string' ? item : item?.id
+            if (colabId) map[colabId] = true
+          })
         }
-        setSelectedColaboradorIds(map)
+      } else {
+        loadedUsers.forEach(u => { map[u.id] = true })
+      }
+      setSelectedColaboradorIds(map)
 
+      if (slaData && slaData.length > 0) {
         const filteredSlaData = slaData.filter(item => item.status_crm?.trim().toUpperCase() !== '__GLOBAL_SETTINGS__')
 
         const parsed = filteredSlaData.map(item => {
@@ -252,29 +253,38 @@ export function SLAConfigManager() {
 
     const activeColabIds = Object.keys(pColabMap).filter(id => pColabMap[id])
     const totalUsers = colaboradoresList.length
-    const finalColabArray = (totalUsers > 0 && activeColabIds.length === totalUsers)
-      ? ['todos']
-      : (activeColabIds.length === 0 ? ['none'] : activeColabIds)
+
+    let finalColabObjects: { id: string; nome: string }[] = []
+    if (totalUsers > 0 && activeColabIds.length === totalUsers) {
+      finalColabObjects = colaboradoresList.map(u => ({ id: u.id, nome: u.nome }))
+    } else {
+      finalColabObjects = colaboradoresList
+        .filter(u => pColabMap[u.id])
+        .map(u => ({ id: u.id, nome: u.nome }))
+    }
+
+    const globalTablePayload = {
+      id: 'global',
+      ativo: active,
+      tipo_periodo: pTipo,
+      data_inicio: pInicio,
+      data_fim: pFim,
+      colaboradores: finalColabObjects,
+      updated_at: new Date().toISOString()
+    }
 
     const payloadMeta = JSON.stringify({
       tipo_periodo: pTipo,
       data_inicio: pInicio,
       data_fim: pFim,
-      colaboradores: finalColabArray
+      colaboradores: finalColabObjects
     })
 
     try {
-      const payload = {
-        status_crm: '__GLOBAL_SETTINGS__',
-        prazo_horas_uteis: 0,
-        pergunta_forcada: payloadMeta,
-        ativo: active,
-        updated_at: new Date().toISOString()
-      }
-      const { error } = await supabase.from('sla_config').upsert(payload, { onConflict: 'status_crm' })
-      if (error) {
-        console.error('Erro ao atualizar chave global SLA:', error)
-        toast.error(`Erro ao salvar no banco: ${error.message}`)
+      const { error: globalErr } = await supabase.from('sla_global_config').upsert(globalTablePayload, { onConflict: 'id' })
+      if (globalErr) {
+        console.error('Erro ao salvar em sla_global_config:', globalErr)
+        toast.error(`Erro ao salvar configurações globais: ${globalErr.message}`)
         return
       }
 

@@ -85,15 +85,19 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
 
-  const roleUpper = (perfil?.role || '').trim().toUpperCase()
-  const isCorretorOrEstagiario = ['CORRETOR', 'ESTAGIO', 'ESTÁGIO', 'PROCESSO SELETIVO', 'USER'].includes(roleUpper)
+  const roleUpper = (perfil?.role || perfil?.funcao || '').trim().toUpperCase()
+  const isCorretorOrEstagiario = true // A checagem de colaborador alvo (isCollaboratorTargeted) feita abaixo garante o escopo correto
 
   const fetchSLAData = useCallback(async () => {
     if (!user || !isCorretorOrEstagiario) return
 
     try {
-      // 1. Carregar Configurações de SLA (sem .eq('ativo', true) para não desconsiderar __GLOBAL_SETTINGS__ desativado)
-      const { data: configs } = await supabase.from('sla_config').select('*')
+      // 1. Carregar Configurações de SLA (consultando sla_global_config e sla_config)
+      const [{ data: globalData }, { data: configs }] = await Promise.all([
+        supabase.from('sla_global_config').select('*').maybeSingle(),
+        supabase.from('sla_config').select('*')
+      ])
+
       if (!configs || configs.length === 0) {
         setIsLocked(false)
         setPendingItems([])
@@ -101,7 +105,7 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
       }
       setSlaConfigs(configs)
 
-      const globalSettings = getSLAGlobalSettings(configs)
+      const globalSettings = getSLAGlobalSettings(configs, globalData)
       if (!globalSettings.ativo || !isCollaboratorTargeted(user.id, globalSettings)) {
         setIsLocked(false)
         setPendingItems([])
@@ -158,7 +162,7 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
           operacao_valor_cartao: opValCartao
         }
 
-        const res = evaluateTicketSLA(ticketState, configs, brokerSonecaEstourada)
+        const res = evaluateTicketSLA(ticketState, configs, brokerSonecaEstourada, globalData)
 
         if (res.gatilhoDisparado && !res.sonecaAtiva) {
           userShouldBeLocked = true

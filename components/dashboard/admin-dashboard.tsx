@@ -146,6 +146,8 @@ interface AdminDashboardProps {
   setEndDate: (d: string) => void
   estagioRankingGroup?: RankingItem | null
   onlyPropostasComerciais?: boolean
+  onlyFinanceiro?: boolean
+  filterUserId?: string
 }
 
 export function AdminDashboard({ 
@@ -159,7 +161,9 @@ export function AdminDashboard({
   setStartDate,
   setEndDate,
   estagioRankingGroup,
-  onlyPropostasComerciais = false
+  onlyPropostasComerciais = false,
+  onlyFinanceiro = false,
+  filterUserId
 }: AdminDashboardProps) {
   const router = useRouter()
   const {
@@ -219,7 +223,7 @@ export function AdminDashboard({
     }
   }, [startDate, endDate, setStartDate, setEndDate])
   const [activeTab, setActiveTab] = React.useState<'propostas' | 'chamados' | 'propostas_comerciais' | 'financeiro'>(
-    onlyPropostasComerciais ? 'propostas_comerciais' : 'propostas'
+    onlyFinanceiro ? 'financeiro' : onlyPropostasComerciais ? 'propostas_comerciais' : 'propostas'
   )
   const [proposalsStats, setProposalsStats] = React.useState<{
     total: number;
@@ -450,10 +454,16 @@ export function AdminDashboard({
     setIsFinancialLoading(true)
     try {
       // 1. Fetch proposals with status in ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA']
-      const { data: propData, error: propErr } = await supabase
+      let propQuery = supabase
         .from("propostas")
         .select("*")
         .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA"])
+
+      if (filterUserId) {
+        propQuery = propQuery.eq("corretor_id", filterUserId)
+      }
+
+      const { data: propData, error: propErr } = await propQuery
 
       if (propErr) throw propErr
       setFinancialProposals(propData || [])
@@ -491,7 +501,7 @@ export function AdminDashboard({
     } finally {
       setIsFinancialLoading(false)
     }
-  }, [])
+  }, [filterUserId])
 
   React.useEffect(() => {
     if (activeTab === 'financeiro') {
@@ -932,6 +942,7 @@ export function AdminDashboard({
   // Memoized filter of proposals by active date range
   const filteredFinancialProposals = React.useMemo(() => {
     return financialProposals.filter((proposal) => {
+      if (filterUserId && proposal.corretor_id !== filterUserId) return false
       if (!financialStartDate && !financialEndDate) return true
       const compareDate = proposal.data_pago_cliente || proposal.updated_at || proposal.created_at
       if (!compareDate) return true
@@ -1016,6 +1027,7 @@ export function AdminDashboard({
     const { prevStart, prevEnd } = prevPeriodDates
     if (!prevStart || !prevEnd) return []
     return financialProposals.filter((proposal) => {
+      if (filterUserId && proposal.corretor_id !== filterUserId) return false
       const compareDate = proposal.data_pago_cliente || proposal.updated_at || proposal.created_at
       if (!compareDate) return false
 
@@ -1846,7 +1858,7 @@ export function AdminDashboard({
   return (
     <div className="space-y-8">
       {/* 1. Linha da saudação e o prazo para bater a meta */}
-      {!onlyPropostasComerciais && (
+      {!onlyPropostasComerciais && !onlyFinanceiro && (
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
@@ -1884,7 +1896,7 @@ export function AdminDashboard({
       )}
 
       {/* TABS SELECTION */}
-      {!onlyPropostasComerciais && (
+      {!onlyPropostasComerciais && !onlyFinanceiro && (
         <div className="flex flex-col gap-4 mb-8">
           <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl border border-slate-200/50">
             <button

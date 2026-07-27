@@ -432,6 +432,7 @@ export default function DashboardPage() {
   const { perfil, isCorretor, isAdmin, isOperational, isDeveloper, isRecursosHumanos } = useAuth()
   const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO' || isAdmin || isDeveloper
   const isEstagio = perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
+  const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || perfil?.role?.toLowerCase() === 'pj'
   const { isCollapsed } = useSidebar()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -2142,7 +2143,7 @@ export default function DashboardPage() {
                 </p>
               </motion.div>
               
-              {!isEstagio && (
+              {!isEstagio && !isPJ && (
                 <motion.div 
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -2165,7 +2166,24 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {isSupervisor && (
+            {isPJ ? (
+              <AdminDashboard 
+                perfil={perfil} 
+                isLoading={isLoading} 
+                remainingBusinessDays={remainingBusinessDays} 
+                headerContent={headerContent} 
+                stats={adminStats}
+                startDate={startDate}
+                endDate={endDate}
+                setStartDate={setStartDate}
+                setEndDate={setEndDate}
+                estagioRankingGroup={estagioRankingGroup}
+                onlyFinanceiro={true}
+                filterUserId={perfil?.id}
+              />
+            ) : (
+              <>
+                {isSupervisor && (
               <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 gap-1.5 self-start mb-8 w-fit">
                 <button
                   onClick={() => setActiveTab('propostas')}
@@ -4497,8 +4515,10 @@ export default function DashboardPage() {
           </motion.div>
           )
         )}
-      </>
-    )}
+              </>
+            )}
+          </>
+        )}
     </div>
 
     <AnimatePresence>

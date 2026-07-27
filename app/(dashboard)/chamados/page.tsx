@@ -701,8 +701,11 @@ export default function TicketsPage() {
 
       // Avaliar status de SLA para cada chamado em tempo real
       try {
-        const { data: slaConfigs } = await supabase.from('sla_config').select('*')
-        const globalSettings = slaConfigs ? getSLAGlobalSettings(slaConfigs) : { ativo: false }
+        const [{ data: slaGlobal }, { data: slaConfigs }] = await Promise.all([
+          supabase.from('sla_global_config').select('*').maybeSingle(),
+          supabase.from('sla_config').select('*')
+        ])
+        const globalSettings = getSLAGlobalSettings(slaConfigs || [], slaGlobal)
         setSlaActive(globalSettings.ativo)
 
         if (globalSettings.ativo && slaConfigs && slaConfigs.length > 0) {
@@ -729,7 +732,7 @@ export default function TicketsPage() {
               operacao_valor_cartao: opValCartao
             }
 
-            const res = evaluateTicketSLA(ticketState, slaConfigs, null)
+            const res = evaluateTicketSLA(ticketState, slaConfigs, null, slaGlobal)
             let computedEscalonamento: 'nenhum' | 'supervisao' | 'administrador' | 'supervisao_administrador' | 'supervisao_gestao' = 'nenhum'
             if (res.gatilhoDisparado && !res.sonecaAtiva) {
               computedEscalonamento = res.escaladoGestao ? 'supervisao_gestao' : res.escaladoSupervisao ? 'supervisao' : 'nenhum'
@@ -1842,7 +1845,7 @@ export default function TicketsPage() {
                               >
                                 {ticket.status_chamados?.nome || ticket.status}
                               </span>
-                              {slaActive && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && (
+                              {slaActive && (isSupervisor || isAdmin || isOperational || isDeveloper) && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && (
                                 <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-tight shadow-sm flex items-center gap-1">
                                   🚨 SLA {ticket.escalonamento_status === 'supervisao_administrador' || ticket.escalonamento_status === 'supervisao_gestao' ? 'Supervisor + Admin' : ticket.escalonamento_status === 'administrador' ? 'Administrador' : 'Supervisor'}
                                 </span>
