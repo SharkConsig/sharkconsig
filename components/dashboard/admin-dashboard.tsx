@@ -2044,7 +2044,7 @@ export function AdminDashboard({
             <DashboardCard className="md:col-span-7 flex flex-col shadow-2xl shadow-[#1C2643]/5 overflow-hidden group border-slate-100">
               <div className="relative z-10 flex flex-col h-full">
                 <div className="flex items-center justify-between mb-2">
-                   <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">Meta Mensal da Empresa</p>
+                   <p className="text-[12px] font-black text-[#718198] uppercase tracking-widest">{filterUserId ? "Sua Meta Mensal" : "Meta Mensal da Empresa"}</p>
                    <div className="bg-[#1C2643]/5 p-2 rounded-xl">
                       <Target className="w-5 h-5 text-[#1C2643]" />
                    </div>
@@ -2077,7 +2077,7 @@ export function AdminDashboard({
                       {remainingValue > 0 ? (
                         <>Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para a meta</>
                       ) : (
-                        <span className="text-emerald-600 font-black">A meta da empresa foi superada!</span>
+                        <span className="text-emerald-600 font-black">{filterUserId ? "Sua meta foi superada!" : "A meta da empresa foi superada!"}</span>
                       )}
                     </p>
                   </div>
@@ -2100,7 +2100,7 @@ export function AdminDashboard({
                   <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-4">
                      <Target className="w-6 h-6 text-emerald-400" />
                   </div>
-                  <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest leading-tight">Meta Anual da Empresa</p>
+                  <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest leading-tight">{filterUserId ? "Sua Meta Anual" : "Meta Anual da Empresa"}</p>
                   <div className="flex flex-col mt-2">
                     <p className="text-xl lg:text-2xl font-black text-emerald-400 tracking-tighter leading-none">{formatCurrency(annualGoal)}</p>
                     <p className="text-[10px] font-bold text-white/30 uppercase mt-1">Total acumulado: {formatCurrency(annualProduced)}</p>
@@ -3319,7 +3319,7 @@ export function AdminDashboard({
                       </div>
                       
                       <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                        A empresa está dependendo demais de Corretor, Origem ou Convênio?
+                        {filterUserId ? "Sua operação está dependendo demais de Origem ou Convênio?" : "A empresa está dependendo demais de Corretor, Origem ou Convênio?"}
                       </h4>
 
                       <p className="text-xs font-bold text-slate-500 leading-relaxed mb-4">
@@ -3328,7 +3328,7 @@ export function AdminDashboard({
                             Detectamos que o {concentrationRisk.type.toLowerCase()} <span className="text-amber-600 font-extrabold uppercase">{concentrationRisk.name}</span> representa <span className="text-[#1C2643] font-extrabold">{concentrationRisk.share.toFixed(1)}%</span> da receita operacional dos chamados. Recomenda-se diversificar canais para atenuar o risco.
                           </>
                         ) : (
-                          "Excelente! A distribuição dos chamados está saudável e equilibrada entre corretores, origens e convênios. Nenhuma entidade individual representa mais de 40% do potencial financeiro total da empresa."
+                          filterUserId ? "Excelente! A distribuição dos chamados está saudável e equilibrada entre origens e convênios. Nenhuma entidade individual representa mais de 40% do seu potencial financeiro total." : "Excelente! A distribuição dos chamados está saudável e equilibrada entre corretores, origens e convênios. Nenhuma entidade individual representa mais de 40% do potencial financeiro total da empresa."
                         )}
                       </p>
 
@@ -3714,7 +3714,7 @@ export function AdminDashboard({
                             {sortedUsersStats.map((stats, idx) => {
                               const position = idx + 1;
                               return (
-                                <tr key={stats.email || idx} className="hover:bg-slate-50/80 transition-colors">
+                                <tr key={stats.email ? `${stats.email}-${idx}` : idx} className="hover:bg-slate-50/80 transition-colors">
                                   <td className="px-4 py-4">
                                     <div className="flex items-center gap-3">
                                       <div className={cn(
@@ -4301,7 +4301,7 @@ export function AdminDashboard({
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                        Receita Total da Empresa
+                        {filterUserId ? "Sua Receita Total" : "Receita Total da Empresa"}
                       </span>
                       <div className="bg-emerald-50 text-emerald-600 p-2 rounded-xl">
                         <TrendingUp className="w-4 h-4" />
@@ -4709,17 +4709,19 @@ export function AdminDashboard({
                 >
                   Bancos
                 </button>
-                <button
-                  onClick={() => setAnalysisTab('comercial')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
-                    analysisTab === 'comercial'
-                      ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-700"
-                  )}
-                >
-                  Equipe Comercial
-                </button>
+                {!((perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || perfil?.role?.toLowerCase() === 'pj' || (!!filterUserId && onlyFinanceiro)) && (
+                  <button
+                    onClick={() => setAnalysisTab('comercial')}
+                    className={cn(
+                      "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
+                      analysisTab === 'comercial'
+                        ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
+                        : "text-slate-500 hover:text-slate-[#718198]"
+                    )}
+                  >
+                    Equipe Comercial
+                  </button>
+                )}
               </div>
             </div>
 
@@ -5384,7 +5386,7 @@ export function AdminDashboard({
                         {strategicDiagnostic.mainSustainingConvenio.name}
                       </p>
                       <p className="text-[11px] font-bold text-slate-400 mt-1">
-                        Sustenta <span className="text-indigo-600 font-extrabold">{strategicDiagnostic.topConvenioShare.toFixed(1)}%</span> da receita da empresa
+                        Sustenta <span className="text-indigo-600 font-extrabold">{strategicDiagnostic.topConvenioShare.toFixed(1)}%</span> {filterUserId ? "da sua receita" : "da receita da empresa"}
                       </p>
                     </div>
                   ) : (
@@ -5514,7 +5516,7 @@ export function AdminDashboard({
                         {strategicDiagnostic.concentrationRisk ? "Atenção Operacional" : "Operação Saudável"}
                       </span>
                       <h4 className="text-sm font-black text-[#1C2643] uppercase tracking-tight">
-                        A empresa está dependendo demais de um canal ou parceiro?
+                        {filterUserId ? "Sua operação está dependendo demais de um canal ou parceiro?" : "A empresa está dependendo demais de um canal ou parceiro?"}
                       </h4>
                     </div>
 
@@ -5524,7 +5526,7 @@ export function AdminDashboard({
                           Detectamos que o {strategicDiagnostic.concentrationRisk.type.toLowerCase()} <span className="text-amber-600 font-extrabold uppercase">{strategicDiagnostic.concentrationRisk.name}</span> representa <span className="text-[#1C2643] font-extrabold">{strategicDiagnostic.concentrationRisk.share.toFixed(1)}%</span> da receita da operação. Recomenda-se diversificar canais para atenuar o risco de dependência e perdas financeiras em oscilações deste canal.
                         </>
                       ) : (
-                        "Excelente! A receita da sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios. Nenhum canal individual representa mais de 40% do faturamento da empresa."
+                        filterUserId ? "Excelente! A receita da sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios. Nenhum canal individual representa mais de 40% do seu faturamento." : "Excelente! A receita da sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios. Nenhum canal individual representa mais de 40% do faturamento da empresa."
                       )}
                     </p>
                   </div>
