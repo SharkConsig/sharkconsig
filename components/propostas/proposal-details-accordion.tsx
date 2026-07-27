@@ -338,20 +338,46 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           console.warn("Aviso na busca de histórico:", error.message)
           setHistory([])
         } else {
-          // Remover duplicatas baseadas em status, descrição e proximidade temporal
-          // Frequentemente ocorre duplicidade entre triggers do banco e inserts do frontend
-          const uniqueData = (data || []).filter((item, index, self) => {
-            const isDuplicate = self.some((other, otherIdx) => 
-              otherIdx < index && 
-              other.status_novo === item.status_novo &&
-              other.descricao === item.descricao &&
-              other.observacoes === item.observacoes &&
-              other.usuario_id === item.usuario_id &&
-              Math.abs(new Date(other.created_at).getTime() - new Date(item.created_at).getTime()) < 30000
-            );
-            return !isDuplicate;
-          });
-          setHistory(uniqueData)
+          // Remover duplicatas e eventos redundantes de alteração de status
+          // Ocorre duplicidade quando o trigger do banco e o frontend registram a mesma mudança de status
+          const getRichnessScore = (item: any) => {
+            let score = 0;
+            if (item.observacoes && item.observacoes.trim().length > 0) score += 10;
+            if (item.alteracoes && Object.keys(item.alteracoes).length > 0) score += 5;
+            if (item.descricao && !item.descricao.toLowerCase().startsWith('status alterado')) score += 3;
+            if (item.usuario_id && item.usuario_id !== 'system') score += 1;
+            return score;
+          };
+
+          const rawList = data || [];
+          const filteredList: typeof rawList = [];
+
+          for (const item of rawList) {
+            const existingIdx = filteredList.findIndex(other => {
+              const timeDiff = Math.abs(new Date(other.created_at).getTime() - new Date(item.created_at).getTime());
+              const sameStatusNew = item.status_novo && other.status_novo && 
+                item.status_novo.trim().toLowerCase() === other.status_novo.trim().toLowerCase();
+              
+              const sameStatusTransition = sameStatusNew && (
+                !item.status_anterior || !other.status_anterior ||
+                item.status_anterior.trim().toLowerCase() === other.status_anterior.trim().toLowerCase()
+              );
+
+              return sameStatusTransition && timeDiff < 120000;
+            });
+
+            if (existingIdx === -1) {
+              filteredList.push(item);
+            } else {
+              const existingScore = getRichnessScore(filteredList[existingIdx]);
+              const itemScore = getRichnessScore(item);
+              if (itemScore > existingScore) {
+                filteredList[existingIdx] = item;
+              }
+            }
+          }
+
+          setHistory(filteredList)
         }
       } catch (err) {
         console.error("Exceção ao carregar histórico:", err)
