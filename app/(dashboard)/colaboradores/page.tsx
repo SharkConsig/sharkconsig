@@ -77,6 +77,7 @@ interface DBCollaborator {
   nome: string
   funcao?: string
   cpf?: string | null
+  cnpj?: string | null
   data_nascimento?: string
   estado_civil?: string
   endereco?: string
@@ -154,6 +155,7 @@ function mapDBToCollaborator(db: DBCollaborator): Collaborator {
     name: db.nome || "",
     role: db.funcao || "",
     cpf: db.cpf || "",
+    cnpj: db.cnpj || "",
     birthDate: formatDateToBR(db.data_nascimento),
     civilStatus: db.estado_civil || "",
     address: db.endereco || "",
@@ -187,6 +189,9 @@ function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
   if (c.cpf !== undefined) {
     db.cpf = c.cpf && c.cpf.trim() !== "" ? c.cpf.trim() : null
   }
+  if (c.cnpj !== undefined) {
+    db.cnpj = c.cnpj && c.cnpj.trim() !== "" ? c.cnpj.trim() : null
+  }
   if (c.birthDate !== undefined) db.data_nascimento = formatDateToDB(c.birthDate)
   if (c.civilStatus !== undefined) db.estado_civil = c.civilStatus
   if (c.address !== undefined) db.endereco = c.address
@@ -218,6 +223,7 @@ interface Collaborator {
   name: string            // Nome Completo
   role: string            // Função
   cpf: string             // CPF
+  cnpj?: string           // CNPJ
   birthDate: string       // Data de Nasc.
   civilStatus: string     // Estado Civil
   address: string         // Endereço Completo
@@ -258,6 +264,7 @@ const roleOptions = [
   { value: "Estagiário Operacional", label: "Estagiário Operacional", bg: "bg-[#31006f] hover:bg-[#20005a]", border: "border-transparent", text: "text-white" },
   { value: "PJ", label: "PJ", bg: "bg-black hover:bg-neutral-900", border: "border-transparent", text: "text-white" },
   { value: "Home Office", label: "Home Office", bg: "bg-teal-700 hover:bg-teal-800", border: "border-transparent", text: "text-white" },
+  { value: "TI", label: "TI", bg: "bg-cyan-700 hover:bg-cyan-800", border: "border-transparent", text: "text-white" },
   { value: "Estagiário", label: "Estagiário", bg: "bg-[#1e3a8a] hover:bg-[#172554]", border: "border-transparent", text: "text-white" }
 ]
 
@@ -641,6 +648,7 @@ export default function ColaboradoresPage() {
       name: newName,
       role: newRole,
       cpf: newCpf || "",
+      cnpj: (newRole === "Home Office" || newRole === "HOME OFFICE") ? newCnpj : (newCnpj || ""),
       birthDate: newBirthDate || "",
       civilStatus: newCivilStatus || "",
       address: newAddress || "",
@@ -1365,24 +1373,25 @@ export default function ColaboradoresPage() {
               )}
 
             {/* List Table */}
-            <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 border border-slate-200/60 rounded-2xl relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+            <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 pb-40 border border-slate-200/60 rounded-2xl relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
               <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4100px]">
                 <thead>
                   <tr className="bg-[#171717] text-white">
                     <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CNPJ</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Banco</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Agência</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Conta-Bancária</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chave Pix</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
+                    <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Nº Calçado</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Filhos</th>
                     <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Instituição de Ensino</th>
@@ -1400,7 +1409,7 @@ export default function ColaboradoresPage() {
                 <tbody className="divide-y divide-slate-100">
                   {loadingTable ? (
                     <tr>
-                      <td colSpan={26} className="text-center py-20 bg-slate-50/10">
+                      <td colSpan={27} className="text-center py-20 bg-slate-50/10">
                         <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                           <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de colaboradores...</p>
                         </div>
@@ -1408,7 +1417,7 @@ export default function ColaboradoresPage() {
                     </tr>
                   ) : filteredCollaborators.length === 0 ? (
                     <tr>
-                      <td colSpan={26} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={27} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador encontrado</p>
@@ -1443,6 +1452,16 @@ export default function ColaboradoresPage() {
                             value={colab.cpf} 
                             onChange={(val) => updateCell(colab.id, "cpf", val)}
                             placeholder="---.---.------"
+                            fontClass="font-mono text-slate-600 text-[11px]"
+                          />
+                        </td>
+
+                        {/* 3.1. CNPJ */}
+                        <td className="px-4 py-3.5">
+                          <TextInputCell 
+                            value={colab.cnpj || ""} 
+                            onChange={(val) => updateCell(colab.id, "cnpj", val)}
+                            placeholder="00.000.000/0000-00"
                             fontClass="font-mono text-slate-600 text-[11px]"
                           />
                         </td>
@@ -2254,6 +2273,9 @@ function PillDropdown({
   onChange: (val: string) => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [dropUp, setDropUp] = useState(false)
+  const buttonRef = React.useRef<HTMLButtonElement>(null)
+
   const currentOpt = options.find(o => o.value === value) || {
     value: value,
     label: value || "Definir",
@@ -2262,11 +2284,21 @@ function PillDropdown({
     border: "border-slate-200"
   }
 
+  const handleToggle = () => {
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      setDropUp(spaceBelow < 280 && rect.top > 200)
+    }
+    setIsOpen(!isOpen)
+  }
+
   return (
-    <div className={cn("relative inline-block text-center w-[150px] select-none", isOpen ? "z-30" : "z-10")}>
+    <div className={cn("relative inline-block text-center w-[150px] select-none", isOpen ? "z-50" : "z-10")}>
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
         className={cn(
           "flex items-center justify-center gap-1.5 w-full rounded-full px-2.5 py-1.5 text-[9.5px] font-black uppercase transition-all shadow-sm outline-none cursor-pointer text-center",
           currentOpt.bg,
@@ -2275,13 +2307,16 @@ function PillDropdown({
         )}
       >
         <span className="truncate text-center">{currentOpt.label}</span>
-        <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-85" />
+        <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 opacity-85 transition-transform", dropUp && isOpen ? "rotate-180" : "")} />
       </button>
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-20" onClick={() => setIsOpen(false)} />
-          <div className="absolute left-1/2 -translate-x-1/2 mt-1 w-[200px] rounded-xl bg-white shadow-2xl border border-slate-200 focus:outline-none z-30 py-1.5 p-1 flex flex-col gap-1 max-h-[260px] overflow-y-auto">
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className={cn(
+            "absolute left-1/2 -translate-x-1/2 w-[200px] rounded-xl bg-white shadow-2xl border border-slate-200 focus:outline-none z-50 py-1.5 p-1 flex flex-col gap-1 max-h-[260px] overflow-y-auto",
+            dropUp ? "bottom-full mb-1.5" : "top-full mt-1.5"
+          )}>
             {options.map((opt) => (
               <button
                 key={opt.value}
