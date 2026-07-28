@@ -26,7 +26,7 @@ import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
 import { ClientDetailsModal } from "@/components/clients/client-details-modal"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
-import { evaluateTicketSLA, SLATicketState, getSLAGlobalSettings, isCollaboratorTargeted } from "@/lib/sla-engine"
+import { evaluateTicketSLA, SLATicketState, getSLAGlobalSettings, isCollaboratorTargeted, SLAConfig } from "@/lib/sla-engine"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import ExcelJS from 'exceljs'
@@ -445,6 +445,8 @@ export default function TicketsPage() {
 
   // Novos estados para filtros avançados
   const [slaActive, setSlaActive] = useState(false)
+  const [slaConfigs, setSlaConfigs] = useState<SLAConfig[]>([])
+  const [usersMap, setUsersMap] = useState<Record<string, { nome: string; funcao: string; isEstagiario: boolean }>>({})
   const [filterCorretores, setFilterCorretores] = useState<string[]>([])
   const [filterStatusList, setFilterStatusList] = useState<string[]>([])
   const [filterOrigens, setFilterOrigens] = useState<string[]>([])
@@ -734,6 +736,7 @@ export default function TicketsPage() {
         ])
         const globalSettings = getSLAGlobalSettings(slaConfigs || [], slaGlobal)
         setSlaActive(globalSettings.ativo)
+        setSlaConfigs(slaConfigs || [])
 
         if (globalSettings.ativo && slaConfigs && slaConfigs.length > 0) {
           all = all.map(ticket => {
@@ -825,6 +828,31 @@ export default function TicketsPage() {
       }
     }
     fetchStatusList()
+  }, [])
+
+  useEffect(() => {
+    const loadUsersMap = async () => {
+      try {
+        const res = await fetch("/api/usuarios")
+        if (res.ok) {
+          const users = await res.json()
+          const map: Record<string, { nome: string; funcao: string; isEstagiario: boolean }> = {}
+          if (Array.isArray(users)) {
+            users.forEach((u: any) => {
+              const func = (u.funcao || u.role || '').toLowerCase()
+              const isEstagiario = func.includes('estágio') || func.includes('estagio') || func.includes('estagiario') || func.includes('processo seletivo')
+              if (u.id) {
+                map[u.id] = { nome: u.nome, funcao: u.funcao || '', isEstagiario }
+              }
+            })
+          }
+          setUsersMap(map)
+        }
+      } catch (e) {
+        console.error("Erro ao carregar mapa de usuários para SLA:", e)
+      }
+    }
+    loadUsersMap()
   }, [])
 
   // Extração de valores únicos para os filtros
@@ -1937,22 +1965,46 @@ export default function TicketsPage() {
                                 {ticket.status_chamados?.nome || ticket.status}
                               </span>
                               {slaActive && (isSupervisor || isAdmin || isOperational || isDeveloper) && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && isTicketInUserSLAEscalation(ticket) && (() => {
-                                const meta = parseDescriptionMetadata(ticket.descricao || "")
-                                const isRespondido = (ticket as any).sla_respondido === true || meta?.sla_respondido === true
                                 const isFaixaAdmin = ['supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status)
-                                const labelText = isFaixaAdmin ? 'SLA ADMINISTRADOR' : 'SLA SUPERVISOR'
+                                const labelText = isFaixaAdmin ? '🚨 ATENÇÃO ADMINISTRADOR!' : '🚨 ATENÇÃO SUPERVISOR!'
+                                const currentStatus = ticket.status_chamados?.nome || ticket.status || ''
+                                const statusUpper = currentStatus.trim().toUpperCase()
 
-                                if (isRespondido) {
-                                  return (
-                                    <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-600 text-white uppercase tracking-tight shadow-sm flex items-center gap-1">
-                                      ✅ {labelText} (RESPONDIDO)
-                                    </span>
-                                  )
+                                let config = slaConfigs.find(c => c.status_crm.trim().toUpperCase() === statusUpper && c.ativo !== false)
+                                if (!config && (statusUpper.includes('APROVADO') || statusUpper.includes('APROVADOS'))) {
+                                  config = slaConfigs.find(c => {
+                                    const cStatus = c.status_crm.trim().toUpperCase()
+                                    return (cStatus === 'APROVADOS' || cStatus === 'APROVADO') && c.ativo !== false
+                                  })
                                 }
 
+                                const n = config?.prazo_horas_uteis ?? config?.prazo_faixa1_horas ?? 0
+
+                                const meta = parseDescriptionMetadata(ticket.descricao || "")
+                                const userInMap = ticket.user_id ? usersMap[ticket.user_id] : null
+
+                                let isEstagiario = false
+                                if (userInMap) {
+                                  isEstagiario = userInMap.isEstagiario
+                                } else if (ticket.user_id === user?.id && perfil) {
+                                  const r = (perfil.role || (perfil as any).funcao || '').toLowerCase()
+                                  isEstagiario = r.includes('estágio') || r.includes('estagio') || r.includes('estagiario') || r.includes('processo seletivo')
+                                } else if (meta?.estagiario_id && meta.estagiario_id === ticket.user_id) {
+                                  isEstagiario = true
+                                } else if (meta?.estagiario_nome && meta.estagiario_nome === ticket.user_nome) {
+                                  isEstagiario = true
+                                }
+
+                                const collaboratorName = ticket.user_nome || userInMap?.nome || "---"
+                                const cargoText = isEstagiario ? "Estagiário" : "Corretor"
+                                const tooltipText = `Chamado parado há ${n} horas no status ${currentStatus} aguardando a ação do ${cargoText} ${collaboratorName}.`
+
                                 return (
-                                  <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-tight shadow-sm flex items-center gap-1">
-                                    🚨 {labelText}
+                                  <span 
+                                    title={tooltipText}
+                                    className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-tight shadow-sm flex items-center gap-1 cursor-help"
+                                  >
+                                    {labelText}
                                   </span>
                                 )
                               })()}

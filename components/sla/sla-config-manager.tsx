@@ -151,8 +151,10 @@ export function SLAConfigManager() {
         toast.error(`Erro ao carregar regras do banco: ${slaErr.message}`)
       }
 
-      let savedColabs: any[] = []
+      let savedColabs: any[] | null = null
+      let hasSavedConfig = false
       if (globalData) {
+        hasSavedConfig = true
         setIsSlaGlobalActive(globalData.ativo === true)
         if (globalData.tipo_periodo) setTipoPeriodo(globalData.tipo_periodo)
         if (globalData.data_inicio) setDataInicio(globalData.data_inicio)
@@ -161,6 +163,7 @@ export function SLAConfigManager() {
       } else if (slaData && slaData.length > 0) {
         const globalSetting = slaData.find(item => item.status_crm?.trim().toUpperCase() === '__GLOBAL_SETTINGS__')
         if (globalSetting) {
+          hasSavedConfig = true
           const globalActive = globalSetting.ativo === true
           setIsSlaGlobalActive(globalActive)
 
@@ -177,7 +180,7 @@ export function SLAConfigManager() {
       }
 
       const map: Record<string, boolean> = {}
-      if (Array.isArray(savedColabs) && savedColabs.length > 0) {
+      if (hasSavedConfig && Array.isArray(savedColabs)) {
         const isTodosString = savedColabs.some(item => typeof item === 'string' && item === 'todos')
         if (isTodosString) {
           loadedUsers.forEach(u => { map[u.id] = true })
@@ -250,8 +253,15 @@ export function SLAConfigManager() {
     setIsSubmitting(true)
     const active = nextActive !== undefined ? nextActive : isSlaGlobalActive
     const pTipo = nextTipoPeriodo !== undefined ? nextTipoPeriodo : tipoPeriodo
-    const pInicio = nextDataInicio !== undefined ? nextDataInicio : dataInicio
-    const pFim = nextDataFim !== undefined ? nextDataFim : dataFim
+    let pInicio = nextDataInicio !== undefined ? nextDataInicio : dataInicio
+    let pFim = nextDataFim !== undefined ? nextDataFim : dataFim
+
+    if (pTipo !== 'a_partir_de' && pTipo !== 'intervalo') {
+      pInicio = ''
+    }
+    if (pTipo !== 'intervalo') {
+      pFim = ''
+    }
     const pColabMap = nextColabsMap !== undefined ? nextColabsMap : selectedColaboradorIds
 
     const activeColabIds = Object.keys(pColabMap).filter(id => pColabMap[id])

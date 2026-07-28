@@ -76,6 +76,7 @@ interface DBCollaborator {
   id?: string
   nome: string
   funcao?: string
+  regime_contratacao?: string | null
   local_trabalho?: string | null
   cpf?: string | null
   cnpj?: string | null
@@ -152,12 +153,36 @@ function formatDateToDB(dateStr: string | null | undefined): string | null {
 }
 
 function mapDBToCollaborator(db: DBCollaborator): Collaborator {
-  const workLoc = db.local_trabalho || (db.funcao === "Home Office" ? "Home Office" : "Empresa")
+  let metaIncentives = db.preferencia_incentivos || ""
+  let parsedEmpType = db.regime_contratacao || ""
+  let parsedWorkLoc = db.local_trabalho || ""
+
+  if (metaIncentives.startsWith("{") && metaIncentives.includes('"__meta":true')) {
+    try {
+      const parsed = JSON.parse(metaIncentives)
+      if (parsed.empType && !parsedEmpType) parsedEmpType = parsed.empType
+      if (parsed.workLoc && !parsedWorkLoc) parsedWorkLoc = parsed.workLoc
+      if (parsed.incentives !== undefined) metaIncentives = parsed.incentives
+    } catch (e) {}
+  }
+
+  if (!parsedWorkLoc) {
+    if (db.funcao === "Home Office") parsedWorkLoc = "Home Office"
+    else parsedWorkLoc = "Empresa"
+  }
+
+  if (!parsedEmpType) {
+    if (db.funcao === "PJ") parsedEmpType = "PJ"
+    else if (db.funcao === "Estagiário" || db.funcao === "Estagiário Operacional") parsedEmpType = "Estágio"
+    else parsedEmpType = "CLT"
+  }
+
   return {
     id: db.id || "",
     name: db.nome || "",
     role: db.funcao || "",
-    workLocation: workLoc,
+    employmentType: parsedEmpType,
+    workLocation: parsedWorkLoc,
     businessAddress: db.endereco_empresarial || "",
     cpf: db.cpf || "",
     cnpj: db.cnpj || "",
@@ -174,7 +199,7 @@ function mapDBToCollaborator(db: DBCollaborator): Collaborator {
     favDrink: db.bebida_preferida || "",
     favFood: db.comida_preferida || "",
     campaignSuggestion: db.sugestao_campanhas || "",
-    incentivesPreference: db.preferencia_incentivos || "",
+    incentivesPreference: metaIncentives,
     bank: db.banco || "",
     bankAgency: db.agencia || "",
     bankAccount: db.conta || "",
@@ -191,6 +216,7 @@ function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
   const db: DBCollaborator = {}
   if (c.name !== undefined) db.nome = c.name
   if (c.role !== undefined) db.funcao = c.role
+  if (c.employmentType !== undefined) db.regime_contratacao = c.employmentType
   if (c.workLocation !== undefined) db.local_trabalho = c.workLocation
   if (c.businessAddress !== undefined) db.endereco_empresarial = c.businessAddress
   if (c.cpf !== undefined) {
@@ -212,7 +238,19 @@ function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
   if (c.favDrink !== undefined) db.bebida_preferida = c.favDrink
   if (c.favFood !== undefined) db.comida_preferida = c.favFood
   if (c.campaignSuggestion !== undefined) db.sugestao_campanhas = c.campaignSuggestion
-  if (c.incentivesPreference !== undefined) db.preferencia_incentivos = c.incentivesPreference
+  
+  if (c.incentivesPreference !== undefined || c.employmentType !== undefined || c.workLocation !== undefined) {
+    const incentivesText = c.incentivesPreference || ""
+    const empType = c.employmentType || "CLT"
+    const workLoc = c.workLocation || "Empresa"
+    db.preferencia_incentivos = JSON.stringify({
+      __meta: true,
+      empType,
+      workLoc,
+      incentives: incentivesText
+    })
+  }
+
   if (c.bank !== undefined) db.banco = c.bank
   if (c.bankAgency !== undefined) db.agencia = c.bankAgency
   if (c.bankAccount !== undefined) db.conta = c.bankAccount
@@ -229,6 +267,7 @@ interface Collaborator {
   id: string
   name: string            // Nome Completo
   role: string            // Função
+  employmentType?: string // REGIME DE CONTRATAÇÃO (CLT | Estágio | PJ)
   workLocation?: string   // LOCAL DE TRABALHO (Empresa | Home Office)
   businessAddress?: string// Endereço Empresarial
   cpf: string             // CPF
@@ -263,6 +302,7 @@ const roleOptions = [
   { value: "Diretora Financeira", label: "Diretora Financeira", bg: "bg-[#dcfce7] hover:bg-[#bbf7d0]", border: "border-[#86efac]", text: "text-[#15803d]" },
   { value: "Supervisora Comercial", label: "Supervisora Comercial", bg: "bg-[#0284c7] hover:bg-[#0369a1]", border: "border-transparent", text: "text-white" },
   { value: "Promotor de Vendas", label: "Promotor de Vendas", bg: "bg-[#bae6fd] hover:bg-[#7dd3fc]", border: "border-[#38bdf8]", text: "text-[#0369a1]" },
+  { value: "Promotor Autônomo", label: "Promotor Autônomo", bg: "bg-[#e0f2fe] hover:bg-[#bae6fd]", border: "border-[#0284c7]", text: "text-[#0369a1]" },
   { value: "Supervisora Operacional", label: "Supervisora Operacional", bg: "bg-[#7c3aed] hover:bg-[#6d28d9]", border: "border-transparent", text: "text-white" },
   { value: "Operacional", label: "Operacional", bg: "bg-[#f3e8ff] hover:bg-[#e9d5ff]", border: "border-[#c084fc]", text: "text-[#6b21a8]" },
   { value: "Monitoramento", label: "Monitoramento", bg: "bg-[#f3e8ff] hover:bg-[#e9d5ff]", border: "border-[#c084fc]", text: "text-[#6b21a8]" },
@@ -271,9 +311,13 @@ const roleOptions = [
   { value: "Serviços Gerais", label: "Serviços Gerais", bg: "bg-[#fef3c7] hover:bg-[#fde68a]", border: "border-[#fcd34d]", text: "text-[#92400e]" },
   { value: "Monitoria", label: "Monitoria", bg: "bg-[#4b5563] hover:bg-[#374151]", border: "border-transparent", text: "text-white" },
   { value: "Estagiário Operacional", label: "Estagiário Operacional", bg: "bg-[#31006f] hover:bg-[#20005a]", border: "border-transparent", text: "text-white" },
-  { value: "PJ", label: "PJ", bg: "bg-black hover:bg-neutral-900", border: "border-transparent", text: "text-white" },
-  { value: "TI", label: "TI", bg: "bg-cyan-700 hover:bg-cyan-800", border: "border-transparent", text: "text-white" },
-  { value: "Estagiário", label: "Estagiário", bg: "bg-[#1e3a8a] hover:bg-[#172554]", border: "border-transparent", text: "text-white" }
+  { value: "TI", label: "TI", bg: "bg-cyan-700 hover:bg-cyan-800", border: "border-transparent", text: "text-white" }
+]
+
+const employmentTypeOptions = [
+  { value: "CLT", label: "CLT", bg: "bg-[#dcfce7] hover:bg-[#bbf7d0]", border: "border-[#86efac]", text: "text-[#15803d]" },
+  { value: "Estágio", label: "Estágio", bg: "bg-[#1e3a8a] hover:bg-[#172554]", border: "border-transparent", text: "text-white" },
+  { value: "PJ", label: "PJ", bg: "bg-black hover:bg-neutral-900", border: "border-transparent", text: "text-white" }
 ]
 
 const initialCollaborators: Collaborator[] = []
@@ -346,6 +390,7 @@ export default function ColaboradoresPage() {
   // Form State
   const [newName, setNewName] = useState("")
   const [newRole, setNewRole] = useState("")
+  const [newEmploymentType, setNewEmploymentType] = useState("CLT")
   const [newWorkLocation, setNewWorkLocation] = useState("Empresa")
   const [newBusinessAddress, setNewBusinessAddress] = useState("")
   const [newCpf, setNewCpf] = useState("")
@@ -547,6 +592,40 @@ export default function ColaboradoresPage() {
     }))
   }
 
+async function safeSupabaseInsert(dbRow: Record<string, any>) {
+  let attempt = { ...dbRow }
+  for (let i = 0; i < 5; i++) {
+    const { data, error } = await supabase.from("hr_colaboradores").insert([attempt]).select()
+    if (!error) return { data, error: null }
+    if (error.code === 'PGRST204' || (error.message && error.message.includes('Could not find the'))) {
+      const match = error.message.match(/Could not find the '([^']+)' column/)
+      if (match && match[1]) {
+        delete attempt[match[1]]
+        continue
+      }
+    }
+    return { data: null, error }
+  }
+  return { data: null, error: new Error("Max retries reached") }
+}
+
+async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
+  let attempt = { ...dbRow }
+  for (let i = 0; i < 5; i++) {
+    const { data, error } = await supabase.from("hr_colaboradores").update(attempt).eq("id", id).select()
+    if (!error) return { data, error: null }
+    if (error.code === 'PGRST204' || (error.message && error.message.includes('Could not find the'))) {
+      const match = error.message.match(/Could not find the '([^']+)' column/)
+      if (match && match[1]) {
+        delete attempt[match[1]]
+        continue
+      }
+    }
+    return { data: null, error }
+  }
+  return { data: null, error: new Error("Max retries reached") }
+}
+
   const updateCell = async (id: string, field: keyof Collaborator, value: string) => {
     // Optimistic state update
     const updated = collaborators.map(c => {
@@ -599,10 +678,7 @@ export default function ColaboradoresPage() {
         mappedField = mapCollaboratorToDB({ [field]: value })
       }
 
-      const { error } = await supabase
-        .from("hr_colaboradores")
-        .update(mappedField)
-        .eq("id", id)
+      const { error } = await safeSupabaseUpdate(id, mappedField)
 
       if (error) {
         throw error
@@ -657,6 +733,7 @@ export default function ColaboradoresPage() {
     const colabData: Partial<Collaborator> = {
       name: newName,
       role: newRole,
+      employmentType: newEmploymentType || "CLT",
       workLocation: newWorkLocation || "Empresa",
       businessAddress: newBusinessAddress || "",
       cpf: newCpf || "",
@@ -681,8 +758,8 @@ export default function ColaboradoresPage() {
       pixKey: newPixKey || "",
       joinDate: newJoinDate || new Date().toLocaleDateString("pt-BR"),
       status: "Ativo",
-      collegeName: (newRole === "Estagiário" || newRole === "Estagiário Operacional") ? newCollegeName : "",
-      collegeEmail: (newRole === "Estagiário" || newRole === "Estagiário Operacional") ? newCollegeEmail : ""
+      collegeName: (newEmploymentType === "Estágio" || newRole === "Estagiário" || newRole === "Estagiário Operacional") ? newCollegeName : "",
+      collegeEmail: (newEmploymentType === "Estágio" || newRole === "Estagiário" || newRole === "Estagiário Operacional") ? newCollegeEmail : ""
     }
 
     const tempColab: Collaborator = {
@@ -694,10 +771,7 @@ export default function ColaboradoresPage() {
 
     try {
       const dbRow = mapCollaboratorToDB(colabData)
-      const { data, error } = await supabase
-        .from("hr_colaboradores")
-        .insert([dbRow])
-        .select()
+      const { data, error } = await safeSupabaseInsert(dbRow)
 
       if (error) {
         throw error
@@ -705,7 +779,16 @@ export default function ColaboradoresPage() {
 
       if (data && data[0]) {
         const savedColab = mapDBToCollaborator(data[0])
+        if (colabData.workLocation) {
+          savedColab.workLocation = colabData.workLocation
+        }
         setCollaborators(prev => prev.map(c => c.id === tempId ? savedColab : c))
+
+        if (colabData.workLocation === "Home Office") {
+          setActiveTab("home_office")
+        } else {
+          setActiveTab("presenciais")
+        }
 
         // Upload documents if any exist in formDocs
         const docKeys = Object.keys(formDocs).filter(k => formDocs[k] !== null)
@@ -970,7 +1053,7 @@ export default function ColaboradoresPage() {
                   {/* Grid 1: Informações Pessoais Principais */}
                   <div>
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">1. Informações Básicas e Administrativas</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-[2.5fr_1.7fr_1.7fr_1.7fr_1.7fr_1.7fr] gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-[2.2fr_1.4fr_1.4fr_1.5fr_1.5fr_1.4fr_1.4fr] gap-3">
                       <div className="space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Nome Completo *</label>
                         <input 
@@ -1013,6 +1096,18 @@ export default function ColaboradoresPage() {
                         </select>
                       </div>
                       <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Regime de Contratação</label>
+                        <select 
+                          value={newEmploymentType}
+                          onChange={(e) => setNewEmploymentType(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold w-full outline-none cursor-pointer focus:border-slate-350 text-slate-700 font-bold"
+                        >
+                          {employmentTypeOptions.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.value}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Local de Trabalho</label>
                         <select 
                           value={newWorkLocation}
@@ -1033,7 +1128,7 @@ export default function ColaboradoresPage() {
                         />
                       </div>
                     </div>
-                    {(newRole === "Estagiário" || newRole === "Estagiário Operacional") && (
+                    {(newEmploymentType === "Estágio" || newRole === "Estagiário" || newRole === "Estagiário Operacional") && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-blue-50/25 border border-blue-100/50 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
                         <div className="space-y-1.5">
                           <label className="text-[9px] font-bold text-[#002060] uppercase tracking-widest ml-1 block">Instituição de Ensino</label>
@@ -1354,6 +1449,7 @@ export default function ColaboradoresPage() {
                       onClick={() => {
                         setNewName("")
                         setNewRole("")
+                        setNewEmploymentType("CLT")
                         setNewCpf("")
                         setNewBirthDate("")
                         setNewCivilStatus("")
@@ -1412,13 +1508,14 @@ export default function ColaboradoresPage() {
             {/* List Table */}
             <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 pb-40 border border-slate-200/60 rounded-2xl relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
               {activeTab === "home_office" ? (
-                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2400px]">
+                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2550px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
                       <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[150px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Regime</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[144px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CNPJ</th>
@@ -1436,7 +1533,7 @@ export default function ColaboradoresPage() {
                   <tbody className="divide-y divide-slate-100">
                     {loadingTable ? (
                       <tr>
-                        <td colSpan={16} className="text-center py-20 bg-slate-50/10">
+                        <td colSpan={17} className="text-center py-20 bg-slate-50/10">
                           <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                             <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando colaboradores home office...</p>
                           </div>
@@ -1444,7 +1541,7 @@ export default function ColaboradoresPage() {
                       </tr>
                     ) : filteredHomeOffice.length === 0 ? (
                       <tr>
-                        <td colSpan={16} className="text-center py-20 bg-slate-50/10 border-none">
+                        <td colSpan={17} className="text-center py-20 bg-slate-50/10 border-none">
                           <div className="flex flex-col items-center justify-center space-y-2">
                             <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                             <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador home office encontrado</p>
@@ -1490,6 +1587,15 @@ export default function ColaboradoresPage() {
                               value={colab.role} 
                               onChange={(val) => updateCell(colab.id, "role", val)}
                               options={roleOptions}
+                            />
+                          </td>
+
+                          {/* REGIME DE CONTRATAÇÃO */}
+                          <td className="px-4 py-3.5 text-center">
+                            <PillDropdown 
+                              value={colab.employmentType || "CLT"} 
+                              onChange={(val) => updateCell(colab.id, "employmentType", val)}
+                              options={employmentTypeOptions}
                             />
                           </td>
 
@@ -1623,11 +1729,12 @@ export default function ColaboradoresPage() {
                   </tbody>
                 </table>
               ) : (
-                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4100px]">
+                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4250px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
                       <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[150px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Regime</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CNPJ</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[144px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
@@ -1658,7 +1765,7 @@ export default function ColaboradoresPage() {
                   <tbody className="divide-y divide-slate-100">
                     {loadingTable ? (
                       <tr>
-                        <td colSpan={27} className="text-center py-20 bg-slate-50/10">
+                        <td colSpan={28} className="text-center py-20 bg-slate-50/10">
                           <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                             <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de colaboradores...</p>
                           </div>
@@ -1666,7 +1773,7 @@ export default function ColaboradoresPage() {
                       </tr>
                     ) : filteredPresenciais.length === 0 ? (
                       <tr>
-                        <td colSpan={27} className="text-center py-20 bg-slate-50/10 border-none">
+                        <td colSpan={28} className="text-center py-20 bg-slate-50/10 border-none">
                           <div className="flex flex-col items-center justify-center space-y-2">
                             <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                             <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador presencial encontrado</p>
@@ -1692,6 +1799,15 @@ export default function ColaboradoresPage() {
                               value={colab.role} 
                               onChange={(val) => updateCell(colab.id, "role", val)}
                               options={roleOptions}
+                            />
+                          </td>
+
+                          {/* REGIME DE CONTRATAÇÃO */}
+                          <td className="px-4 py-3.5 text-center">
+                            <PillDropdown 
+                              value={colab.employmentType || "CLT"} 
+                              onChange={(val) => updateCell(colab.id, "employmentType", val)}
+                              options={employmentTypeOptions}
                             />
                           </td>
 
@@ -2538,13 +2654,14 @@ function PillDropdown({
     if (!isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect()
       const spaceBelow = window.innerHeight - rect.bottom
-      setDropUp(spaceBelow < 280 && rect.top > 200)
+      // Only drop up if button is in the lower half of the screen (>380px from top) AND space below is tight
+      setDropUp(spaceBelow < 260 && rect.top > 380)
     }
     setIsOpen(!isOpen)
   }
 
   return (
-    <div className={cn("relative inline-block text-center w-[150px] select-none", isOpen ? "z-50" : "z-10")}>
+    <div className={cn("relative inline-block text-center w-[150px] select-none", isOpen ? "z-[100]" : "z-10")}>
       <button
         ref={buttonRef}
         type="button"
@@ -2562,9 +2679,9 @@ function PillDropdown({
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="fixed inset-0 z-[90]" onClick={() => setIsOpen(false)} />
           <div className={cn(
-            "absolute left-1/2 -translate-x-1/2 w-[200px] rounded-xl bg-white shadow-2xl border border-slate-200 focus:outline-none z-50 py-1.5 p-1 flex flex-col gap-1 max-h-[260px] overflow-y-auto",
+            "absolute left-1/2 -translate-x-1/2 w-[200px] rounded-xl bg-white shadow-2xl border border-slate-200 focus:outline-none z-[100] py-1.5 p-1 flex flex-col gap-1 max-h-[260px] overflow-y-auto",
             dropUp ? "bottom-full mb-1.5" : "top-full mt-1.5"
           )}>
             {options.map((opt) => (
