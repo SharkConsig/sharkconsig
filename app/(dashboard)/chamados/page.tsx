@@ -845,14 +845,14 @@ export default function TicketsPage() {
     const isSupervisorRole = isSupervisor || roleLower === 'supervisor'
     const isAdminOrOpRole = isAdmin || isOperational || isDeveloper || ['administrador', 'administrativo', 'operacional', 'desenvolvedor'].includes(roleLower)
 
-    const isFaixa1 = ticket.escalonamento_status === 'supervisao'
-    const isFaixa2 = ['supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status)
+    const isFaixaSupervisor = ticket.escalonamento_status === 'supervisao'
+    const isFaixaAdmin = ['supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status)
 
     if (isAdminOrOpRole) {
-      return isFaixa2 || (isSupervisorRole && isFaixa1)
+      return isFaixaAdmin
     }
     if (isSupervisorRole) {
-      return isFaixa1
+      return isFaixaSupervisor
     }
 
     return false
@@ -1909,9 +1909,9 @@ export default function TicketsPage() {
                               >
                                 {ticket.status_chamados?.nome || ticket.status}
                               </span>
-                              {slaActive && (isSupervisor || isAdmin || isOperational || isDeveloper) && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && (
+                              {slaActive && (isSupervisor || isAdmin || isOperational || isDeveloper) && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && isTicketInUserSLAEscalation(ticket) && (
                                 <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-tight shadow-sm flex items-center gap-1">
-                                  🚨 SLA {ticket.escalonamento_status === 'supervisao_administrador' || ticket.escalonamento_status === 'supervisao_gestao' ? 'Supervisor + Admin' : ticket.escalonamento_status === 'administrador' ? 'Administrador' : 'Supervisor'}
+                                  🚨 {['supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status) ? 'SLA ADMINISTRADOR' : 'SLA SUPERVISOR'}
                                 </span>
                               )}
                               {(() => {

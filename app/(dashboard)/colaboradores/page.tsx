@@ -76,8 +76,10 @@ interface DBCollaborator {
   id?: string
   nome: string
   funcao?: string
+  local_trabalho?: string | null
   cpf?: string | null
   cnpj?: string | null
+  endereco_empresarial?: string | null
   data_nascimento?: string
   estado_civil?: string
   endereco?: string
@@ -150,10 +152,13 @@ function formatDateToDB(dateStr: string | null | undefined): string | null {
 }
 
 function mapDBToCollaborator(db: DBCollaborator): Collaborator {
+  const workLoc = db.local_trabalho || (db.funcao === "Home Office" ? "Home Office" : "Empresa")
   return {
     id: db.id || "",
     name: db.nome || "",
     role: db.funcao || "",
+    workLocation: workLoc,
+    businessAddress: db.endereco_empresarial || "",
     cpf: db.cpf || "",
     cnpj: db.cnpj || "",
     birthDate: formatDateToBR(db.data_nascimento),
@@ -186,6 +191,8 @@ function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
   const db: DBCollaborator = {}
   if (c.name !== undefined) db.nome = c.name
   if (c.role !== undefined) db.funcao = c.role
+  if (c.workLocation !== undefined) db.local_trabalho = c.workLocation
+  if (c.businessAddress !== undefined) db.endereco_empresarial = c.businessAddress
   if (c.cpf !== undefined) {
     db.cpf = c.cpf && c.cpf.trim() !== "" ? c.cpf.trim() : null
   }
@@ -222,6 +229,8 @@ interface Collaborator {
   id: string
   name: string            // Nome Completo
   role: string            // Função
+  workLocation?: string   // LOCAL DE TRABALHO (Empresa | Home Office)
+  businessAddress?: string// Endereço Empresarial
   cpf: string             // CPF
   cnpj?: string           // CNPJ
   birthDate: string       // Data de Nasc.
@@ -263,7 +272,6 @@ const roleOptions = [
   { value: "Monitoria", label: "Monitoria", bg: "bg-[#4b5563] hover:bg-[#374151]", border: "border-transparent", text: "text-white" },
   { value: "Estagiário Operacional", label: "Estagiário Operacional", bg: "bg-[#31006f] hover:bg-[#20005a]", border: "border-transparent", text: "text-white" },
   { value: "PJ", label: "PJ", bg: "bg-black hover:bg-neutral-900", border: "border-transparent", text: "text-white" },
-  { value: "Home Office", label: "Home Office", bg: "bg-teal-700 hover:bg-teal-800", border: "border-transparent", text: "text-white" },
   { value: "TI", label: "TI", bg: "bg-cyan-700 hover:bg-cyan-800", border: "border-transparent", text: "text-white" },
   { value: "Estagiário", label: "Estagiário", bg: "bg-[#1e3a8a] hover:bg-[#172554]", border: "border-transparent", text: "text-white" }
 ]
@@ -320,7 +328,7 @@ function getBirthdayDetails(dateStr: string) {
 
 export default function ColaboradoresPage() {
   const [collaborators, setCollaborators] = useState<Collaborator[]>([])
-  const [activeTab, setActiveTab] = useState<"clt" | "aniversarios" | "ex_colaboradores">("clt")
+  const [activeTab, setActiveTab] = useState<"presenciais" | "home_office" | "aniversarios" | "ex_colaboradores">("presenciais")
   const [loadingTable, setLoadingTable] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterRole, setFilterRole] = useState("todos")
@@ -338,6 +346,8 @@ export default function ColaboradoresPage() {
   // Form State
   const [newName, setNewName] = useState("")
   const [newRole, setNewRole] = useState("")
+  const [newWorkLocation, setNewWorkLocation] = useState("Empresa")
+  const [newBusinessAddress, setNewBusinessAddress] = useState("")
   const [newCpf, setNewCpf] = useState("")
   const [newBirthDate, setNewBirthDate] = useState("")
   const [newCivilStatus, setNewCivilStatus] = useState("")
@@ -647,8 +657,10 @@ export default function ColaboradoresPage() {
     const colabData: Partial<Collaborator> = {
       name: newName,
       role: newRole,
+      workLocation: newWorkLocation || "Empresa",
+      businessAddress: newBusinessAddress || "",
       cpf: newCpf || "",
-      cnpj: (newRole === "Home Office" || newRole === "HOME OFFICE") ? newCnpj : (newCnpj || ""),
+      cnpj: (newWorkLocation === "Home Office" || newRole === "Home Office") ? newCnpj : (newCnpj || ""),
       birthDate: newBirthDate || "",
       civilStatus: newCivilStatus || "",
       address: newAddress || "",
@@ -745,6 +757,8 @@ export default function ColaboradoresPage() {
     // Reset Form
     setNewName("")
     setNewRole("")
+    setNewWorkLocation("Empresa")
+    setNewBusinessAddress("")
     setNewCpf("")
     setNewBirthDate("")
     setNewCivilStatus("")
@@ -774,6 +788,9 @@ export default function ColaboradoresPage() {
   const activeCollaborators = collaborators.filter(c => c.status !== "Inativo")
   const inactiveCollaborators = collaborators.filter(c => c.status === "Inativo")
 
+  const presenciaisCollaborators = activeCollaborators.filter(c => c.workLocation !== "Home Office" && c.role !== "Home Office")
+  const homeOfficeCollaborators = activeCollaborators.filter(c => c.workLocation === "Home Office" || c.role === "Home Office")
+
   const currentMonthNum = new Date().getMonth() + 1
   const activeBirthdaysCurrentMonth = activeCollaborators.filter(c => {
     if (!c.birthDate) return false
@@ -787,69 +804,45 @@ export default function ColaboradoresPage() {
     return idx === -1 ? 999 : idx
   }
 
-  const filteredCollaborators = activeCollaborators.filter(c => {
-    const query = searchQuery.toLowerCase()
-    const matchesSearch = 
-      (c.name || "").toLowerCase().includes(query) || 
-      (c.role || "").toLowerCase().includes(query) || 
-      (c.cpf || "").toLowerCase().includes(query) || 
-      (c.email || "").toLowerCase().includes(query) || 
-      (c.phone || "").toLowerCase().includes(query) || 
-      (c.address || "").toLowerCase().includes(query)
+  const filterList = (list: Collaborator[]) => {
+    return list.filter(c => {
+      const query = searchQuery.toLowerCase()
+      const matchesSearch = 
+        (c.name || "").toLowerCase().includes(query) || 
+        (c.role || "").toLowerCase().includes(query) || 
+        (c.cpf || "").toLowerCase().includes(query) || 
+        (c.cnpj || "").toLowerCase().includes(query) || 
+        (c.email || "").toLowerCase().includes(query) || 
+        (c.phone || "").toLowerCase().includes(query) || 
+        (c.address || "").toLowerCase().includes(query) ||
+        (c.businessAddress || "").toLowerCase().includes(query)
 
-    const matchesRole = filterRole === "todos" || c.role === filterRole
-    return matchesSearch && matchesRole
-  }).sort((a, b) => {
-    const roleA = a.role || ""
-    const roleB = b.role || ""
-    const orderA = getRoleOrder(roleA)
-    const orderB = getRoleOrder(roleB)
+      const matchesRole = filterRole === "todos" || c.role === filterRole
+      return matchesSearch && matchesRole
+    }).sort((a, b) => {
+      const roleA = a.role || ""
+      const roleB = b.role || ""
+      const orderA = getRoleOrder(roleA)
+      const orderB = getRoleOrder(roleB)
 
-    if (orderA !== orderB) {
-      return orderA - orderB
-    }
+      if (orderA !== orderB) {
+        return orderA - orderB
+      }
 
-    if (orderA === 999 && orderB === 999) {
-      const cmpRole = roleA.localeCompare(roleB, 'pt', { sensitivity: 'base' })
-      if (cmpRole !== 0) return cmpRole
-    }
+      if (orderA === 999 && orderB === 999) {
+        const cmpRole = roleA.localeCompare(roleB, 'pt', { sensitivity: 'base' })
+        if (cmpRole !== 0) return cmpRole
+      }
 
-    const nameA = a.name || ""
-    const nameB = b.name || ""
-    return nameA.localeCompare(nameB, 'pt', { sensitivity: 'base' })
-  })
+      const nameA = a.name || ""
+      const nameB = b.name || ""
+      return nameA.localeCompare(nameB, 'pt', { sensitivity: 'base' })
+    })
+  }
 
-  const filteredExCollaborators = inactiveCollaborators.filter(c => {
-    const query = searchQuery.toLowerCase()
-    const matchesSearch = 
-      (c.name || "").toLowerCase().includes(query) || 
-      (c.role || "").toLowerCase().includes(query) || 
-      (c.cpf || "").toLowerCase().includes(query) || 
-      (c.email || "").toLowerCase().includes(query) || 
-      (c.phone || "").toLowerCase().includes(query) || 
-      (c.address || "").toLowerCase().includes(query)
-
-    const matchesRole = filterRole === "todos" || c.role === filterRole
-    return matchesSearch && matchesRole
-  }).sort((a, b) => {
-    const roleA = a.role || ""
-    const roleB = b.role || ""
-    const orderA = getRoleOrder(roleA)
-    const orderB = getRoleOrder(roleB)
-
-    if (orderA !== orderB) {
-      return orderA - orderB
-    }
-
-    if (orderA === 999 && orderB === 999) {
-      const cmpRole = roleA.localeCompare(roleB, 'pt', { sensitivity: 'base' })
-      if (cmpRole !== 0) return cmpRole
-    }
-
-    const nameA = a.name || ""
-    const nameB = b.name || ""
-    return nameA.localeCompare(nameB, 'pt', { sensitivity: 'base' })
-  })
+  const filteredPresenciais = filterList(presenciaisCollaborators)
+  const filteredHomeOffice = filterList(homeOfficeCollaborators)
+  const filteredExCollaborators = filterList(inactiveCollaborators)
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50/50 min-h-screen">
@@ -864,7 +857,11 @@ export default function ColaboradoresPage() {
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Colaboradores Ativos</p>
                 <p className="text-3xl font-black text-slate-800 mt-1">
-                  {activeCollaborators.length}
+                  {activeTab === "home_office" 
+                    ? homeOfficeCollaborators.length 
+                    : activeTab === "presenciais" 
+                    ? presenciaisCollaborators.length 
+                    : activeCollaborators.length}
                 </p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
@@ -906,16 +903,35 @@ export default function ColaboradoresPage() {
         <div className="flex flex-wrap gap-1 px-4 sm:px-8 -mb-[1px]">
           <button
             type="button"
-            onClick={() => setActiveTab("clt")}
+            onClick={() => {
+              setActiveTab("presenciais")
+              setNewWorkLocation("Empresa")
+            }}
             className={cn(
               "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 cursor-pointer",
-              activeTab === "clt"
+              activeTab === "presenciais"
                 ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black"
                 : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             )}
-            id="tab-clt"
+            id="tab-presenciais"
           >
-            COLABORADORES
+            COLABORADORES PRESENCIAIS
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("home_office")
+              setNewWorkLocation("Home Office")
+            }}
+            className={cn(
+              "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 cursor-pointer",
+              activeTab === "home_office"
+                ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black"
+                : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            )}
+            id="tab-home-office"
+          >
+            COLABORADORES HOME OFFICE
           </button>
           <button
             type="button"
@@ -945,7 +961,7 @@ export default function ColaboradoresPage() {
           </button>
         </div>
 
-        {activeTab === "clt" ? (
+        {(activeTab === "presenciais" || activeTab === "home_office") ? (
           <Card className="border border-slate-200 overflow-hidden bg-white rounded-2xl rounded-tl-none shadow-sm animate-in fade-in duration-300">
             <CardContent className="p-0">
               {/* Form Cadastro */}
@@ -954,8 +970,8 @@ export default function ColaboradoresPage() {
                   {/* Grid 1: Informações Pessoais Principais */}
                   <div>
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">1. Informações Básicas e Administrativas</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                      <div className="space-y-1.5 col-span-1 md:col-span-3">
+                    <div className="grid grid-cols-1 md:grid-cols-[2.5fr_1.7fr_1.7fr_1.7fr_1.7fr_1.7fr] gap-4">
+                      <div className="space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Nome Completo *</label>
                         <input 
                           type="text" 
@@ -965,7 +981,7 @@ export default function ColaboradoresPage() {
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350"
                         />
                       </div>
-                      <div className="space-y-1.5 col-span-1 md:col-span-2">
+                      <div className="space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">CPF</label>
                         <input 
                           type="text" 
@@ -974,7 +990,7 @@ export default function ColaboradoresPage() {
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
                         />
                       </div>
-                      <div className="space-y-1.5 col-span-1 md:col-span-2">
+                      <div className="space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Data de Nasc.</label>
                         <input 
                           type="date" 
@@ -983,12 +999,12 @@ export default function ColaboradoresPage() {
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
                         />
                       </div>
-                      <div className="space-y-1.5 col-span-1 md:col-span-3">
+                      <div className="space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Função (Cargo)</label>
                         <select 
                           value={newRole}
                           onChange={(e) => setNewRole(e.target.value)}
-                          className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none cursor-pointer focus:border-slate-350 text-slate-700"
+                          className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold w-full outline-none cursor-pointer focus:border-slate-350 text-slate-700"
                         >
                           <option value=""></option>
                           {roleOptions.map(opt => (
@@ -996,7 +1012,18 @@ export default function ColaboradoresPage() {
                           ))}
                         </select>
                       </div>
-                      <div className="space-y-1.5 col-span-1 md:col-span-2">
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Local de Trabalho</label>
+                        <select 
+                          value={newWorkLocation}
+                          onChange={(e) => setNewWorkLocation(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold w-full outline-none cursor-pointer focus:border-slate-350 text-slate-700"
+                        >
+                          <option value="Empresa">Empresa</option>
+                          <option value="Home Office">Home Office</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Admissão</label>
                         <input 
                           type="date" 
@@ -1030,8 +1057,8 @@ export default function ColaboradoresPage() {
                         </div>
                       </div>
                     )}
-                    {(newRole === "Home Office" || newRole === "HOME OFFICE") && (
-                      <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mt-4 p-4 bg-teal-50/25 border border-teal-100/50 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+                    {(newWorkLocation === "Home Office" || newRole === "Home Office") && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-teal-50/25 border border-teal-100/50 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
                         <div className="space-y-1.5">
                           <label className="text-[9px] font-bold text-teal-900 uppercase tracking-widest ml-1 block">CNPJ</label>
                           <input 
@@ -1040,6 +1067,16 @@ export default function ColaboradoresPage() {
                             onChange={(e) => setNewCnpj(e.target.value)}
                             className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800 font-bold"
                             placeholder="00.000.000/0000-00"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-bold text-teal-900 uppercase tracking-widest ml-1 block">Endereço Empresarial</label>
+                          <input 
+                            type="text" 
+                            value={newBusinessAddress} 
+                            onChange={(e) => setNewBusinessAddress(e.target.value)}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800 font-bold"
+                            placeholder="Endereço Empresarial..."
                           />
                         </div>
                       </div>
@@ -1374,337 +1411,550 @@ export default function ColaboradoresPage() {
 
             {/* List Table */}
             <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 pb-40 border border-slate-200/60 rounded-2xl relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-              <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4100px]">
-                <thead>
-                  <tr className="bg-[#171717] text-white">
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CNPJ</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Banco</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Agência</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Conta-Bancária</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chave Pix</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Nº Calçado</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Filhos</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Instituição de Ensino</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail da Instituição</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Tamanho da Roupa</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chocolate Preferido</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Bebida Preferida</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Comida Preferida</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[250px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Sugestão de Campanhas</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Preferência de Incentivos</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
-                    <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {loadingTable ? (
-                    <tr>
-                      <td colSpan={27} className="text-center py-20 bg-slate-50/10">
-                        <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
-                          <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de colaboradores...</p>
-                        </div>
-                      </td>
+              {activeTab === "home_office" ? (
+                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2400px]">
+                  <thead>
+                    <tr className="bg-[#171717] text-white">
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[144px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CNPJ</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Empresarial</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Banco</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Agência</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Conta-Bancária</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chave Pix</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
                     </tr>
-                  ) : filteredCollaborators.length === 0 ? (
-                    <tr>
-                      <td colSpan={27} className="text-center py-20 bg-slate-50/10 border-none">
-                        <div className="flex flex-col items-center justify-center space-y-2">
-                          <FileSpreadsheet className="w-10 h-10 text-slate-350" />
-                          <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador encontrado</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredCollaborators.map((colab) => (
-                      <tr key={colab.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap">
-                        {/* 1. NOME COMPLETO */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.name} 
-                            onChange={(val) => updateCell(colab.id, "name", val)}
-                            placeholder="Adicionar Nome..."
-                            fontClass="font-bold text-slate-800 uppercase text-[11px]"
-                          />
-                        </td>
-
-                        {/* 2. FUNÇÃO (Pill select dropdown) */}
-                        <td className="px-4 py-3.5 text-center">
-                          <PillDropdown 
-                            value={colab.role} 
-                            onChange={(val) => updateCell(colab.id, "role", val)}
-                            options={roleOptions}
-                          />
-                        </td>
-
-                        {/* 3. CPF */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.cpf} 
-                            onChange={(val) => updateCell(colab.id, "cpf", val)}
-                            placeholder="---.---.------"
-                            fontClass="font-mono text-slate-600 text-[11px]"
-                          />
-                        </td>
-
-                        {/* 3.1. CNPJ */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.cnpj || ""} 
-                            onChange={(val) => updateCell(colab.id, "cnpj", val)}
-                            placeholder="00.000.000/0000-00"
-                            fontClass="font-mono text-slate-600 text-[11px]"
-                          />
-                        </td>
-
-                        {/* ADMISSÃO */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.joinDate} 
-                            onChange={(val) => updateCell(colab.id, "joinDate", val)}
-                            placeholder="Admissão..."
-                            fontClass="font-mono text-slate-605 text-[11px]"
-                          />
-                        </td>
-
-                        {/* BANCO */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.bank} 
-                            onChange={(val) => updateCell(colab.id, "bank", val)}
-                            placeholder="Banco..."
-                            fontClass="text-slate-605 text-[11px]"
-                          />
-                        </td>
-
-                        {/* AGÊNCIA */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.bankAgency} 
-                            onChange={(val) => updateCell(colab.id, "bankAgency", val)}
-                            placeholder="Agência..."
-                            fontClass="font-mono text-slate-605 text-[11px]"
-                          />
-                        </td>
-
-                        {/* CONTA-BANCÁRIA */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.bankAccount} 
-                            onChange={(val) => updateCell(colab.id, "bankAccount", val)}
-                            placeholder="Conta..."
-                            fontClass="font-mono text-slate-605 text-[11px]"
-                          />
-                        </td>
-
-                        {/* CHAVE PIX */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.pixKey} 
-                            onChange={(val) => updateCell(colab.id, "pixKey", val)}
-                            placeholder="Chave Pix..."
-                            fontClass="text-slate-605 text-[11px]"
-                          />
-                        </td>
-
-                        {/* 4. DATA DE NASC. */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.birthDate} 
-                            onChange={(val) => updateCell(colab.id, "birthDate", val)}
-                            placeholder="DD/MM/AAAA"
-                            fontClass="font-mono text-slate-500 text-[11px]"
-                          />
-                        </td>
-
-                        {/* 5. ESTADO CIVIL */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.civilStatus} 
-                            onChange={(val) => updateCell(colab.id, "civilStatus", val)}
-                            placeholder="Solteiro/Casado"
-                            fontClass="text-slate-600 text-[11px]"
-                          />
-                        </td>
-
-                        {/* 6. ENDEREÇO COMPLETO */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.address} 
-                            onChange={(val) => updateCell(colab.id, "address", val)}
-                            placeholder="Endereço eletrônico..."
-                            fontClass="text-slate-600 text-[11px] font-medium"
-                          />
-                        </td>
-
-                        {/* 7. TELEFONE */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.phone} 
-                            onChange={(val) => updateCell(colab.id, "phone", val)}
-                            placeholder="(--) -----_----"
-                            fontClass="font-mono text-slate-600 text-[11px]"
-                          />
-                        </td>
-
-                        {/* 8. E-MAIL */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.email} 
-                            onChange={(val) => updateCell(colab.id, "email", val)}
-                            placeholder="nome@email.com"
-                            fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
-                          />
-                        </td>
-
-                        {/* 9. TELEFONE DE EMERGÊNCIA */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.emergencyPhone} 
-                            onChange={(val) => updateCell(colab.id, "emergencyPhone", val)}
-                            placeholder="Contato emergência..."
-                            fontClass="font-mono text-slate-600 text-[11px]"
-                          />
-                        </td>
-
-                        {/* 10. Nº CALÇADO */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.shoeSize} 
-                            onChange={(val) => updateCell(colab.id, "shoeSize", val)}
-                            placeholder="Nº"
-                            fontClass="text-slate-600 text-[11px] text-center"
-                          />
-                        </td>
-
-                        {/* 11. FILHOS */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.children} 
-                            onChange={(val) => updateCell(colab.id, "children", val)}
-                            placeholder="Não / Qtd..."
-                            fontClass="text-slate-600 text-[11px]"
-                          />
-                        </td>
-
-                        {/* INSTITUIÇÃO DE ENSINO */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.collegeName || ""} 
-                            onChange={(val) => updateCell(colab.id, "collegeName", val)}
-                            placeholder="Adicionar Faculdade..."
-                            fontClass="text-slate-600 text-[11px] font-medium"
-                          />
-                        </td>
-
-                        {/* E-MAIL DA INSTITUIÇÃO */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.collegeEmail || ""} 
-                            onChange={(val) => updateCell(colab.id, "collegeEmail", val)}
-                            placeholder="Adicionar E-mail..."
-                            fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
-                          />
-                        </td>
-
-                        {/* 12. TAMANHO DA ROUPA */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.clothingSize} 
-                            onChange={(val) => updateCell(colab.id, "clothingSize", val)}
-                            placeholder="PP, P, M, G, GG..."
-                            fontClass="text-slate-600 text-[11px] font-extrabold text-center"
-                          />
-                        </td>
-
-                        {/* 13. CHOCOLATE PREFERIDO */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.favChocolate} 
-                            onChange={(val) => updateCell(colab.id, "favChocolate", val)}
-                            placeholder="Ex: Milka Oreo"
-                            fontClass="text-slate-600 text-[11px]"
-                          />
-                        </td>
-
-                        {/* 14. BEBIDA PREFERIDA */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.favDrink} 
-                            onChange={(val) => updateCell(colab.id, "favDrink", val)}
-                            placeholder="Ex: Aperol Spritz"
-                            fontClass="text-slate-600 text-[11px]"
-                          />
-                        </td>
-
-                        {/* 15. COMIDA PREFERIDA */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.favFood} 
-                            onChange={(val) => updateCell(colab.id, "favFood", val)}
-                            placeholder="Ex: Frutos do mar"
-                            fontClass="text-slate-600 text-[11px]"
-                          />
-                        </td>
-
-                        {/* 16. SUGESTÃO DE CAMPANHAS */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.campaignSuggestion} 
-                            onChange={(val) => updateCell(colab.id, "campaignSuggestion", val)}
-                            placeholder="Ideias e melhorias..."
-                            fontClass="text-slate-650 text-[11px]"
-                          />
-                        </td>
-
-                        {/* 17. PREFERÊNCIA DE INCENTIVOS */}
-                        <td className="px-4 py-3.5">
-                          <TextInputCell 
-                            value={colab.incentivesPreference} 
-                            onChange={(val) => updateCell(colab.id, "incentivesPreference", val)}
-                            placeholder="Vale cultura, dinheiro..."
-                            fontClass="text-slate-650 text-[11px]"
-                          />
-                        </td>
-
-                        {/* SITUAÇÃO (ATIVO/DESATIVAR) ROW BUTTON */}
-                        <td className="px-2 py-3.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => updateCell(colab.id, "status", "Inactive" && "Inativo")}
-                            className="group w-[100px] h-[28px] mx-auto flex items-center justify-center text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-rose-50 hover:text-rose-700 border border-emerald-200 hover:border-rose-200 rounded-lg transition-all uppercase tracking-wider text-[9.5px] cursor-pointer"
-                            title="Desativar colaborador (mover para Ex-colaboradores)"
-                          >
-                            <span className="group-hover:hidden">Ativo</span>
-                            <span className="group-hover:inline hidden">Desativar</span>
-                          </button>
-                        </td>
-
-                        {/* DOCUMENTO ROW LINK/MODAL CONTROL */}
-                        <td className="px-4 py-3.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => setActiveModalColab(colab)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 hover:bg-[#002060]/5 hover:border-[#002060]/30 hover:text-[#002060] transition-all rounded-xl text-[10.5px] font-black uppercase text-slate-700 cursor-pointer shadow-sm text-center justify-center"
-                          >
-                            <Paperclip className="w-3.5 h-3.5 shrink-0" />
-                            DOCUMENTOS ({colabDocs[colab.id]?.length || 0})
-                          </button>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {loadingTable ? (
+                      <tr>
+                        <td colSpan={16} className="text-center py-20 bg-slate-50/10">
+                          <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
+                            <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando colaboradores home office...</p>
+                          </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : filteredHomeOffice.length === 0 ? (
+                      <tr>
+                        <td colSpan={16} className="text-center py-20 bg-slate-50/10 border-none">
+                          <div className="flex flex-col items-center justify-center space-y-2">
+                            <FileSpreadsheet className="w-10 h-10 text-slate-350" />
+                            <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador home office encontrado</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredHomeOffice.map((colab) => (
+                        <tr key={colab.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap">
+                          {/* 1. NOME COMPLETO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.name} 
+                              onChange={(val) => updateCell(colab.id, "name", val)}
+                              placeholder="Adicionar Nome..."
+                              fontClass="font-bold text-slate-800 uppercase text-[11px]"
+                            />
+                          </td>
+
+                          {/* 2. CPF */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.cpf} 
+                              onChange={(val) => updateCell(colab.id, "cpf", val)}
+                              placeholder="---.---.------"
+                              fontClass="font-mono text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 3. DATA DE NASC. */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.birthDate} 
+                              onChange={(val) => updateCell(colab.id, "birthDate", val)}
+                              placeholder="DD/MM/AAAA"
+                              fontClass="font-mono text-slate-500 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 4. FUNÇÃO */}
+                          <td className="px-4 py-3.5 text-center">
+                            <PillDropdown 
+                              value={colab.role} 
+                              onChange={(val) => updateCell(colab.id, "role", val)}
+                              options={roleOptions}
+                            />
+                          </td>
+
+                          {/* 5. ADMISSÃO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.joinDate} 
+                              onChange={(val) => updateCell(colab.id, "joinDate", val)}
+                              placeholder="Admissão..."
+                              fontClass="font-mono text-slate-605 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 6. ENDEREÇO COMPLETO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.address} 
+                              onChange={(val) => updateCell(colab.id, "address", val)}
+                              placeholder="Endereço eletrônico..."
+                              fontClass="text-slate-600 text-[11px] font-medium"
+                            />
+                          </td>
+
+                          {/* 7. CNPJ */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.cnpj || ""} 
+                              onChange={(val) => updateCell(colab.id, "cnpj", val)}
+                              placeholder="00.000.000/0000-00"
+                              fontClass="font-mono text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 8. ENDEREÇO EMPRESARIAL */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.businessAddress || ""} 
+                              onChange={(val) => updateCell(colab.id, "businessAddress", val)}
+                              placeholder="Endereço Empresarial..."
+                              fontClass="text-slate-600 text-[11px] font-medium"
+                            />
+                          </td>
+
+                          {/* 9. BANCO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.bank} 
+                              onChange={(val) => updateCell(colab.id, "bank", val)}
+                              placeholder="Banco..."
+                              fontClass="text-slate-605 text-[11px]"
+                            />
+                          </td>
+
+                          {/* AGÊNCIA */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.bankAgency} 
+                              onChange={(val) => updateCell(colab.id, "bankAgency", val)}
+                              placeholder="Agência..."
+                              fontClass="font-mono text-slate-605 text-[11px]"
+                            />
+                          </td>
+
+                          {/* CONTA-BANCÁRIA */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.bankAccount} 
+                              onChange={(val) => updateCell(colab.id, "bankAccount", val)}
+                              placeholder="Conta..."
+                              fontClass="font-mono text-slate-605 text-[11px]"
+                            />
+                          </td>
+
+                          {/* CHAVE PIX */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.pixKey} 
+                              onChange={(val) => updateCell(colab.id, "pixKey", val)}
+                              placeholder="Chave Pix..."
+                              fontClass="text-slate-605 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 10. TELEFONE */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.phone} 
+                              onChange={(val) => updateCell(colab.id, "phone", val)}
+                              placeholder="(--) -----_----"
+                              fontClass="font-mono text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 11. E-MAIL */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.email} 
+                              onChange={(val) => updateCell(colab.id, "email", val)}
+                              placeholder="nome@email.com"
+                              fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
+                            />
+                          </td>
+
+                          {/* SITUAÇÃO */}
+                          <td className="px-2 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => updateCell(colab.id, "status", "Inativo")}
+                              className="group w-[100px] h-[28px] mx-auto flex items-center justify-center text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-rose-50 hover:text-rose-700 border border-emerald-200 hover:border-rose-200 rounded-lg transition-all uppercase tracking-wider text-[9.5px] cursor-pointer"
+                              title="Desativar colaborador (mover para Ex-colaboradores)"
+                            >
+                              <span className="group-hover:hidden">Ativo</span>
+                              <span className="group-hover:inline hidden">Desativar</span>
+                            </button>
+                          </td>
+
+                          {/* DOCUMENTOS */}
+                          <td className="px-4 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setActiveModalColab(colab)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 hover:bg-[#002060]/5 hover:border-[#002060]/30 hover:text-[#002060] transition-all rounded-xl text-[10.5px] font-black uppercase text-slate-700 cursor-pointer shadow-sm text-center justify-center"
+                            >
+                              <Paperclip className="w-3.5 h-3.5 shrink-0" />
+                              DOCUMENTOS ({colabDocs[colab.id]?.length || 0})
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4100px]">
+                  <thead>
+                    <tr className="bg-[#171717] text-white">
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CNPJ</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[144px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Banco</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Agência</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Conta-Bancária</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chave Pix</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Nº Calçado</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Filhos</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Instituição de Ensino</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail da Instituição</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Tamanho da Roupa</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chocolate Preferido</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Bebida Preferida</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Comida Preferida</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[250px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Sugestão de Campanhas</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Preferência de Incentivos</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {loadingTable ? (
+                      <tr>
+                        <td colSpan={27} className="text-center py-20 bg-slate-50/10">
+                          <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
+                            <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de colaboradores...</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filteredPresenciais.length === 0 ? (
+                      <tr>
+                        <td colSpan={27} className="text-center py-20 bg-slate-50/10 border-none">
+                          <div className="flex flex-col items-center justify-center space-y-2">
+                            <FileSpreadsheet className="w-10 h-10 text-slate-350" />
+                            <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador presencial encontrado</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredPresenciais.map((colab) => (
+                        <tr key={colab.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap">
+                          {/* 1. NOME COMPLETO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.name} 
+                              onChange={(val) => updateCell(colab.id, "name", val)}
+                              placeholder="Adicionar Nome..."
+                              fontClass="font-bold text-slate-800 uppercase text-[11px]"
+                            />
+                          </td>
+
+                          {/* 2. FUNÇÃO (Pill select dropdown) */}
+                          <td className="px-4 py-3.5 text-center">
+                            <PillDropdown 
+                              value={colab.role} 
+                              onChange={(val) => updateCell(colab.id, "role", val)}
+                              options={roleOptions}
+                            />
+                          </td>
+
+                          {/* 3. CPF */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.cpf} 
+                              onChange={(val) => updateCell(colab.id, "cpf", val)}
+                              placeholder="---.---.------"
+                              fontClass="font-mono text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 3.1. CNPJ */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.cnpj || ""} 
+                              onChange={(val) => updateCell(colab.id, "cnpj", val)}
+                              placeholder="00.000.000/0000-00"
+                              fontClass="font-mono text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* ADMISSÃO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.joinDate} 
+                              onChange={(val) => updateCell(colab.id, "joinDate", val)}
+                              placeholder="Admissão..."
+                              fontClass="font-mono text-slate-605 text-[11px]"
+                            />
+                          </td>
+
+                          {/* BANCO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.bank} 
+                              onChange={(val) => updateCell(colab.id, "bank", val)}
+                              placeholder="Banco..."
+                              fontClass="text-slate-605 text-[11px]"
+                            />
+                          </td>
+
+                          {/* AGÊNCIA */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.bankAgency} 
+                              onChange={(val) => updateCell(colab.id, "bankAgency", val)}
+                              placeholder="Agência..."
+                              fontClass="font-mono text-slate-605 text-[11px]"
+                            />
+                          </td>
+
+                          {/* CONTA-BANCÁRIA */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.bankAccount} 
+                              onChange={(val) => updateCell(colab.id, "bankAccount", val)}
+                              placeholder="Conta..."
+                              fontClass="font-mono text-slate-605 text-[11px]"
+                            />
+                          </td>
+
+                          {/* CHAVE PIX */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.pixKey} 
+                              onChange={(val) => updateCell(colab.id, "pixKey", val)}
+                              placeholder="Chave Pix..."
+                              fontClass="text-slate-605 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 4. DATA DE NASC. */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.birthDate} 
+                              onChange={(val) => updateCell(colab.id, "birthDate", val)}
+                              placeholder="DD/MM/AAAA"
+                              fontClass="font-mono text-slate-500 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 5. ESTADO CIVIL */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.civilStatus} 
+                              onChange={(val) => updateCell(colab.id, "civilStatus", val)}
+                              placeholder="Solteiro/Casado"
+                              fontClass="text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 6. ENDEREÇO COMPLETO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.address} 
+                              onChange={(val) => updateCell(colab.id, "address", val)}
+                              placeholder="Endereço eletrônico..."
+                              fontClass="text-slate-600 text-[11px] font-medium"
+                            />
+                          </td>
+
+                          {/* 7. TELEFONE */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.phone} 
+                              onChange={(val) => updateCell(colab.id, "phone", val)}
+                              placeholder="(--) -----_----"
+                              fontClass="font-mono text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 8. E-MAIL */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.email} 
+                              onChange={(val) => updateCell(colab.id, "email", val)}
+                              placeholder="nome@email.com"
+                              fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
+                            />
+                          </td>
+
+                          {/* 9. TELEFONE DE EMERGÊNCIA */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.emergencyPhone} 
+                              onChange={(val) => updateCell(colab.id, "emergencyPhone", val)}
+                              placeholder="Contato emergência..."
+                              fontClass="font-mono text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 10. Nº CALÇADO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.shoeSize} 
+                              onChange={(val) => updateCell(colab.id, "shoeSize", val)}
+                              placeholder="Nº"
+                              fontClass="text-slate-600 text-[11px] text-center"
+                            />
+                          </td>
+
+                          {/* 11. FILHOS */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.children} 
+                              onChange={(val) => updateCell(colab.id, "children", val)}
+                              placeholder="Não / Qtd..."
+                              fontClass="text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* INSTITUIÇÃO DE ENSINO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.collegeName || ""} 
+                              onChange={(val) => updateCell(colab.id, "collegeName", val)}
+                              placeholder="Adicionar Faculdade..."
+                              fontClass="text-slate-600 text-[11px] font-medium"
+                            />
+                          </td>
+
+                          {/* E-MAIL DA INSTITUIÇÃO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.collegeEmail || ""} 
+                              onChange={(val) => updateCell(colab.id, "collegeEmail", val)}
+                              placeholder="Adicionar E-mail..."
+                              fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
+                            />
+                          </td>
+
+                          {/* 12. TAMANHO DA ROUPA */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.clothingSize} 
+                              onChange={(val) => updateCell(colab.id, "clothingSize", val)}
+                              placeholder="PP, P, M, G, GG..."
+                              fontClass="text-slate-600 text-[11px] font-extrabold text-center"
+                            />
+                          </td>
+
+                          {/* 13. CHOCOLATE PREFERIDO */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.favChocolate} 
+                              onChange={(val) => updateCell(colab.id, "favChocolate", val)}
+                              placeholder="Ex: Milka Oreo"
+                              fontClass="text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 14. BEBIDA PREFERIDA */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.favDrink} 
+                              onChange={(val) => updateCell(colab.id, "favDrink", val)}
+                              placeholder="Ex: Aperol Spritz"
+                              fontClass="text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 15. COMIDA PREFERIDA */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.favFood} 
+                              onChange={(val) => updateCell(colab.id, "favFood", val)}
+                              placeholder="Ex: Frutos do mar"
+                              fontClass="text-slate-600 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 16. SUGESTÃO DE CAMPANHAS */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.campaignSuggestion} 
+                              onChange={(val) => updateCell(colab.id, "campaignSuggestion", val)}
+                              placeholder="Ideias e melhorias..."
+                              fontClass="text-slate-650 text-[11px]"
+                            />
+                          </td>
+
+                          {/* 17. PREFERÊNCIA DE INCENTIVOS */}
+                          <td className="px-4 py-3.5">
+                            <TextInputCell 
+                              value={colab.incentivesPreference} 
+                              onChange={(val) => updateCell(colab.id, "incentivesPreference", val)}
+                              placeholder="Vale cultura, dinheiro..."
+                              fontClass="text-slate-650 text-[11px]"
+                            />
+                          </td>
+
+                          {/* SITUAÇÃO (ATIVO/DESATIVAR) ROW BUTTON */}
+                          <td className="px-2 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => updateCell(colab.id, "status", "Inativo")}
+                              className="group w-[100px] h-[28px] mx-auto flex items-center justify-center text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-rose-50 hover:text-rose-700 border border-emerald-200 hover:border-rose-200 rounded-lg transition-all uppercase tracking-wider text-[9.5px] cursor-pointer"
+                              title="Desativar colaborador (mover para Ex-colaboradores)"
+                            >
+                              <span className="group-hover:hidden">Ativo</span>
+                              <span className="group-hover:inline hidden">Desativar</span>
+                            </button>
+                          </td>
+
+                          {/* DOCUMENTO ROW LINK/MODAL CONTROL */}
+                          <td className="px-4 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setActiveModalColab(colab)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 hover:bg-[#002060]/5 hover:border-[#002060]/30 hover:text-[#002060] transition-all rounded-xl text-[10.5px] font-black uppercase text-slate-700 cursor-pointer shadow-sm text-center justify-center"
+                            >
+                              <Paperclip className="w-3.5 h-3.5 shrink-0" />
+                              DOCUMENTOS ({colabDocs[colab.id]?.length || 0})
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
           </CardContent>
         </Card>

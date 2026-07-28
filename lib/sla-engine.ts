@@ -407,10 +407,21 @@ export function evaluateTicketSLA(
   const margem = ticket.operacao_valor_margem || 0
   const cartao = ticket.operacao_valor_cartao || 0
 
-  const rawF2Margem = config.faixa2_min_margem ?? config.faixa_valor_min_margem
-  const rawF2Cartao = config.faixa2_min_cartao ?? config.faixa_valor_min_cartao
-  const rawF3Margem = config.faixa3_min_margem ?? meta.faixa3MinMargem
-  const rawF3Cartao = config.faixa3_min_cartao ?? meta.faixa3MinCartao
+  const rawF2Margem = (config.faixa2_min_margem != null && Number(config.faixa2_min_margem) > 0)
+    ? Number(config.faixa2_min_margem)
+    : (config.faixa_valor_min_margem != null && Number(config.faixa_valor_min_margem) > 0 ? Number(config.faixa_valor_min_margem) : null)
+
+  const rawF2Cartao = (config.faixa2_min_cartao != null && Number(config.faixa2_min_cartao) > 0)
+    ? Number(config.faixa2_min_cartao)
+    : (config.faixa_valor_min_cartao != null && Number(config.faixa_valor_min_cartao) > 0 ? Number(config.faixa_valor_min_cartao) : null)
+
+  const rawF3Margem = (config.faixa3_min_margem != null && Number(config.faixa3_min_margem) > 0)
+    ? Number(config.faixa3_min_margem)
+    : (meta.faixa3MinMargem > 0 ? meta.faixa3MinMargem : null)
+
+  const rawF3Cartao = (config.faixa3_min_cartao != null && Number(config.faixa3_min_cartao) > 0)
+    ? Number(config.faixa3_min_cartao)
+    : (meta.faixa3MinCartao > 0 ? meta.faixa3MinCartao : null)
 
   const isF3Active = (rawF3Margem != null && Number(rawF3Margem) > 0 && margem >= Number(rawF3Margem)) ||
                      (rawF3Cartao != null && Number(rawF3Cartao) > 0 && cartao >= Number(rawF3Cartao))
@@ -419,9 +430,9 @@ export function evaluateTicketSLA(
                      (rawF2Cartao != null && Number(rawF2Cartao) > 0 && cartao >= Number(rawF2Cartao))
 
   let prazoFinalHoras = config.prazo_horas_uteis || 1
-  let alvoEscalonamento: 'supervisao' | 'supervisao_gestao' = 'supervisao'
+  let alvoEscalonamento: 'supervisao' | 'supervisao_gestao' | 'nenhum' = 'nenhum'
 
-  // Regra especial para o status 'EM NEGOCIAÇÃO'
+  // Regra de Faixas de Valor: Faixa 3 (Administrador), Faixa 2 (Supervisor)
   if (statusUpper === 'EM NEGOCIAÇÃO') {
     if (isF3Active) {
       prazoFinalHoras = config.prazo_faixa3_horas ?? 12
@@ -431,14 +442,19 @@ export function evaluateTicketSLA(
       alvoEscalonamento = 'supervisao'
     } else {
       prazoFinalHoras = config.prazo_faixa1_horas ?? config.prazo_horas_uteis ?? 36
-      alvoEscalonamento = 'supervisao'
+      alvoEscalonamento = 'nenhum'
     }
   } else {
-    // Demais status: Faixa 3 (Supervisão + Administrativo) e Faixa 2 (Supervisão)
+    // Demais status: Faixa 3 (Administrador) e Faixa 2 (Supervisão)
     if (isF3Active) {
+      prazoFinalHoras = config.prazo_faixa3_horas ?? config.prazo_horas_uteis ?? 1
       alvoEscalonamento = 'supervisao_gestao'
-    } else {
+    } else if (isF2Active) {
+      prazoFinalHoras = config.prazo_faixa2_horas ?? config.prazo_horas_uteis ?? 1
       alvoEscalonamento = 'supervisao'
+    } else {
+      prazoFinalHoras = config.prazo_faixa1_horas ?? config.prazo_horas_uteis ?? 1
+      alvoEscalonamento = 'nenhum'
     }
   }
 
