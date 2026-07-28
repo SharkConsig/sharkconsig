@@ -190,25 +190,52 @@ const extractTicketOperationValues = (t: any) => {
   try {
     const desc = t.descricao || t.description || t.content || ''
     const meta = parseDescriptionMetadata(desc)
-    if (meta) {
-      if (meta.valor_operacao_margem) {
-        opValMargem = parseCleanFloat(meta.valor_operacao_margem) || 0
+    
+    let selectedType = meta?.selected_operation_type
+    if (!selectedType && desc) {
+      const descUpper = desc.toUpperCase()
+      if (descUpper.includes('MARGEM 35%') || descUpper.includes('MARGEM')) {
+        selectedType = 'margem'
+      } else if (descUpper.includes('LÍQUIDA 5%') || descUpper.includes('LIQUIDA 5%')) {
+        selectedType = 'liquida5'
+      } else if (descUpper.includes('BENEFÍCIO 5%') || descUpper.includes('BENEFICIO 5%') || descUpper.includes('CARTÃO') || descUpper.includes('CARTAO')) {
+        selectedType = 'beneficio5'
       }
-      if (meta.valor_operacao_liquida5) {
-        opValCartao = parseCleanFloat(meta.valor_operacao_liquida5) || 0
-      } else if (meta.valor_operacao_beneficio5) {
-        opValCartao = parseCleanFloat(meta.valor_operacao_beneficio5) || 0
+    }
+
+    if (meta) {
+      if (selectedType === 'margem') {
+        opValMargem = parseCleanFloat(meta.valor_operacao_margem) || 0
+        opValCartao = 0
+      } else if (selectedType === 'liquida5' || selectedType === 'beneficio5') {
+        opValMargem = 0
+        if (selectedType === 'liquida5') {
+          opValCartao = parseCleanFloat(meta.valor_operacao_liquida5) || 0
+        } else {
+          opValCartao = parseCleanFloat(meta.valor_operacao_beneficio5) || 0
+        }
+      } else {
+        if (meta.valor_operacao_margem) {
+          opValMargem = parseCleanFloat(meta.valor_operacao_margem) || 0
+        }
+        if (meta.valor_operacao_liquida5) {
+          opValCartao = parseCleanFloat(meta.valor_operacao_liquida5) || 0
+        } else if (meta.valor_operacao_beneficio5) {
+          opValCartao = parseCleanFloat(meta.valor_operacao_beneficio5) || 0
+        }
       }
     }
   } catch (e) {
     // ignorar
   }
 
-  if (!opValMargem && t.valor_operacao) {
-    opValMargem = parseCleanFloat(t.valor_operacao) || 0
-  }
-  if (!opValCartao && t.valor_cartao) {
-    opValCartao = parseCleanFloat(t.valor_cartao) || 0
+  if (!opValMargem && !opValCartao) {
+    if (t.valor_operacao) {
+      opValMargem = parseCleanFloat(t.valor_operacao) || 0
+    }
+    if (t.valor_cartao) {
+      opValCartao = parseCleanFloat(t.valor_cartao) || 0
+    }
   }
 
   return { opValMargem, opValCartao }
@@ -1909,11 +1936,26 @@ export default function TicketsPage() {
                               >
                                 {ticket.status_chamados?.nome || ticket.status}
                               </span>
-                              {slaActive && (isSupervisor || isAdmin || isOperational || isDeveloper) && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && isTicketInUserSLAEscalation(ticket) && (
-                                <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-tight shadow-sm flex items-center gap-1">
-                                  🚨 {['supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status) ? 'SLA ADMINISTRADOR' : 'SLA SUPERVISOR'}
-                                </span>
-                              )}
+                              {slaActive && (isSupervisor || isAdmin || isOperational || isDeveloper) && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && isTicketInUserSLAEscalation(ticket) && (() => {
+                                const meta = parseDescriptionMetadata(ticket.descricao || "")
+                                const isRespondido = (ticket as any).sla_respondido === true || meta?.sla_respondido === true
+                                const isFaixaAdmin = ['supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status)
+                                const labelText = isFaixaAdmin ? 'SLA ADMINISTRADOR' : 'SLA SUPERVISOR'
+
+                                if (isRespondido) {
+                                  return (
+                                    <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-600 text-white uppercase tracking-tight shadow-sm flex items-center gap-1">
+                                      ✅ {labelText} (RESPONDIDO)
+                                    </span>
+                                  )
+                                }
+
+                                return (
+                                  <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-tight shadow-sm flex items-center gap-1">
+                                    🚨 {labelText}
+                                  </span>
+                                )
+                              })()}
                               {(() => {
                                 const meta = parseDescriptionMetadata(ticket.descricao || "")
                                 if (meta?.enviado_para_corretor === true && ticket.user_id !== user?.id) {

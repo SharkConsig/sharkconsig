@@ -34,6 +34,7 @@ export interface SLATicketState {
   timestamp_escalonamento?: string
   operacao_valor_margem?: number
   operacao_valor_cartao?: number
+  descricao?: string
 }
 
 // Expediente Comercial: Segunda a Sexta, 08:00 às 18:00 (10 horas por dia útil)

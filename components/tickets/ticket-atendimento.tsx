@@ -1491,6 +1491,8 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                       ? "bg-emerald-50/40 border-emerald-100/75 group hover:border-emerald-200"
                       : msg.action === 'alterou o valor da operação'
                       ? "bg-amber-50/40 border-amber-100/75 group hover:border-amber-200"
+                      : msg.action === 'respondeu_sla' || msg.action === 'respondeu o alerta SLA'
+                      ? "bg-emerald-50/50 border-emerald-200 group hover:border-emerald-300"
                       : "bg-slate-50/50 border-slate-100 group hover:border-primary/20"
                   )}>
                     {editingMessageId === msg.id ? (

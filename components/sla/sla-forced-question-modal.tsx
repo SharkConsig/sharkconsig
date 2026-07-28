@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { evaluateTicketSLA, SLAConfig, SLATicketState, getSLAGlobalSettings, getSLACutoffDates, isTicketInSLAPeriod, isCollaboratorTargeted } from '@/lib/sla-engine'
-import { Clock, AlertTriangle, Send, Moon, ShieldAlert } from 'lucide-react'
+import { Clock, AlertTriangle, Send, Moon, ShieldAlert, Phone, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
@@ -16,6 +16,7 @@ interface Props {
 interface PendingQuestionItem {
   ticket: SLATicketState
   clienteNome: string
+  clienteTelefones: string[]
   operacaoValor: number
   pergunta: string
   horasAtraso: number
@@ -55,24 +56,50 @@ function extractTicketOperationValues(t: any) {
     const match = desc.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/)
     if (match && match[1]) {
       const meta = JSON.parse(match[1])
-      if (meta.valor_operacao_margem) {
-        opValMargem = parseCleanMoney(meta.valor_operacao_margem)
+      let selectedType = meta.selected_operation_type
+      if (!selectedType && desc) {
+        const descUpper = desc.toUpperCase()
+        if (descUpper.includes('MARGEM 35%') || descUpper.includes('MARGEM')) {
+          selectedType = 'margem'
+        } else if (descUpper.includes('LÍQUIDA 5%') || descUpper.includes('LIQUIDA 5%')) {
+          selectedType = 'liquida5'
+        } else if (descUpper.includes('BENEFÍCIO 5%') || descUpper.includes('BENEFICIO 5%') || descUpper.includes('CARTÃO') || descUpper.includes('CARTAO')) {
+          selectedType = 'beneficio5'
+        }
       }
-      if (meta.valor_operacao_liquida5) {
-        opValCartao = parseCleanMoney(meta.valor_operacao_liquida5)
-      } else if (meta.valor_operacao_beneficio5) {
-        opValCartao = parseCleanMoney(meta.valor_operacao_beneficio5)
+
+      if (selectedType === 'margem') {
+        opValMargem = parseCleanMoney(meta.valor_operacao_margem)
+        opValCartao = 0
+      } else if (selectedType === 'liquida5' || selectedType === 'beneficio5') {
+        opValMargem = 0
+        if (selectedType === 'liquida5') {
+          opValCartao = parseCleanMoney(meta.valor_operacao_liquida5)
+        } else {
+          opValCartao = parseCleanMoney(meta.valor_operacao_beneficio5)
+        }
+      } else {
+        if (meta.valor_operacao_margem) {
+          opValMargem = parseCleanMoney(meta.valor_operacao_margem)
+        }
+        if (meta.valor_operacao_liquida5) {
+          opValCartao = parseCleanMoney(meta.valor_operacao_liquida5)
+        } else if (meta.valor_operacao_beneficio5) {
+          opValCartao = parseCleanMoney(meta.valor_operacao_beneficio5)
+        }
       }
     }
   } catch (e) {
     // Ignorar erro de JSON
   }
 
-  if (!opValMargem && t.valor_operacao) {
-    opValMargem = parseCleanMoney(t.valor_operacao)
-  }
-  if (!opValCartao && t.valor_cartao) {
-    opValCartao = parseCleanMoney(t.valor_cartao)
+  if (!opValMargem && !opValCartao) {
+    if (t.valor_operacao) {
+      opValMargem = parseCleanMoney(t.valor_operacao)
+    }
+    if (t.valor_cartao) {
+      opValCartao = parseCleanMoney(t.valor_cartao)
+    }
   }
 
   return { opValMargem, opValCartao }
@@ -149,6 +176,19 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
       let userShouldBeLocked = false
 
       for (const t of tickets) {
+        const desc = t.descricao || t.description || t.content || ''
+        let ticketMeta: any = {}
+        try {
+          const match = desc.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/)
+          if (match && match[1]) {
+            ticketMeta = JSON.parse(match[1])
+          }
+        } catch (e) {}
+
+        const lastStatusOrAnswerDate = ticketMeta.sla_respondido && ticketMeta.sla_resposta_data
+          ? ticketMeta.sla_resposta_data
+          : (t.timestamp_ultima_mudanca_status || t.updated_at || t.created_at)
+
         const { opValMargem, opValCartao } = extractTicketOperationValues(t)
         const ticketState: SLATicketState = {
           id: t.id,
@@ -156,7 +196,7 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
           created_at: t.created_at,
           user_id: t.user_id,
           corretor_id: t.user_id,
-          timestamp_ultima_mudanca_status: t.timestamp_ultima_mudanca_status || t.updated_at || t.created_at,
+          timestamp_ultima_mudanca_status: lastStatusOrAnswerDate,
           pergunta_pendente: t.pergunta_pendente,
           timestamp_gatilho_disparado: t.timestamp_gatilho_disparado,
           soneca_usada: t.soneca_usada,
@@ -164,7 +204,8 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
           escalonamento_status: t.escalonamento_status,
           timestamp_escalonamento: t.timestamp_escalonamento,
           operacao_valor_margem: opValMargem,
-          operacao_valor_cartao: opValCartao
+          operacao_valor_cartao: opValCartao,
+          descricao: desc
         }
 
         const res = evaluateTicketSLA(ticketState, configs, brokerSonecaEstourada, globalData)
@@ -181,9 +222,44 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
             }).eq('id', t.id).then()
           }
 
+          const rawTels = [
+            t.cliente_telefone,
+            t.cliente_telefone_2,
+            t.cliente_telefone_3,
+            t.telefone,
+            t.telefone_1,
+            t.telefone_2,
+            t.telefone_3,
+            t.celular
+          ]
+          try {
+            const desc = t.descricao || t.description || t.content || ''
+            const match = desc.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/)
+            if (match && match[1]) {
+              const meta = JSON.parse(match[1])
+              if (meta.cliente_telefone) rawTels.push(meta.cliente_telefone)
+              if (meta.telefone_1) rawTels.push(meta.telefone_1)
+              if (meta.telefone_2) rawTels.push(meta.telefone_2)
+              if (meta.telefone_3) rawTels.push(meta.telefone_3)
+              if (meta.telefone) rawTels.push(meta.telefone)
+              if (meta.celular) rawTels.push(meta.celular)
+            }
+          } catch (e) {}
+
+          const clienteTelefones: string[] = []
+          rawTels.forEach(tel => {
+            if (tel && typeof tel === 'string') {
+              const cleaned = tel.trim()
+              if (cleaned && !clienteTelefones.includes(cleaned)) {
+                clienteTelefones.push(cleaned)
+              }
+            }
+          })
+
           pending.push({
             ticket: ticketState,
             clienteNome: t.cliente_nome || t.nome || `Chamado #${t.id}`,
+            clienteTelefones,
             operacaoValor: Math.max(ticketState.operacao_valor_margem || 0, ticketState.operacao_valor_cartao || 0),
             pergunta: res.perguntaForcada || 'Favor informar o status do atendimento deste cliente.',
             horasAtraso: res.horasAtraso,
@@ -229,28 +305,66 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
 
     setIsSubmitting(true)
     try {
-      // 1. Inserir resposta no histórico/mensagens do chamado
+      const ticketIdNum = typeof currentItem.ticket.id === 'string' ? parseInt(currentItem.ticket.id, 10) : currentItem.ticket.id
+
+      // 1. Inserir resposta no histórico/mensagens do chamado (chat estendido)
       await supabase.from('mensagens_chamado').insert({
-        chamado_id: currentItem.ticket.id,
+        chamado_id: ticketIdNum,
         user_id: user.id,
-        content: `[RESPOSTA DE SLA OBRIGATÓRIA]: ${respostaText.trim()}`,
+        user_nome: perfil?.nome || 'Colaborador',
+        user_role: perfil?.role || 'corretor',
+        user_avatar: perfil?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil?.nome || 'Colaborador')}&background=random`,
+        content: `**Pergunta:** ${currentItem.pergunta}\n**Resposta:** ${respostaText.trim()}`,
         action: 'respondeu_sla'
       })
 
-      // 2. Atualizar o chamado limpando os gatilhos e renovando o timestamp do status
-      await supabase.from('chamados').update({
-        timestamp_ultima_mudanca_status: new Date().toISOString(),
+      // 2. Extrair e atualizar metadata no chamado marcando sla_respondido = true
+      const rawDesc = currentItem.ticket.descricao || ''
+      let meta: any = {}
+      try {
+        const match = rawDesc.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/)
+        if (match && match[1]) {
+          meta = JSON.parse(match[1])
+        }
+      } catch (e) {}
+
+      const nowIso = new Date().toISOString()
+      const updatedMeta = { ...meta, sla_respondido: true, sla_resposta_data: nowIso }
+      const cleanedDesc = rawDesc.replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "").trim()
+      const newDesc = cleanedDesc + `\n\n<!-- TICKET_METADATA: ${JSON.stringify(updatedMeta)} -->`
+
+      // 3. Atualizar o chamado no Supabase limpando gatilhos e renovando timestamp_ultima_mudanca_status
+      const updateData: any = {
+        updated_at: nowIso,
+        timestamp_ultima_mudanca_status: nowIso,
         pergunta_pendente: null,
         timestamp_gatilho_disparado: null,
         soneca_usada: false,
         timestamp_soneca: null,
-        escalonamento_status: 'nenhum'
-      }).eq('id', currentItem.ticket.id)
+        descricao: newDesc
+      }
+
+      const { error: updateErr } = await supabase.from('chamados').update(updateData).eq('id', currentItem.ticket.id)
+      if (updateErr) {
+        // Se a coluna timestamp_ultima_mudanca_status não existir no schema, tenta sem ela
+        delete updateData.timestamp_ultima_mudanca_status
+        await supabase.from('chamados').update(updateData).eq('id', currentItem.ticket.id)
+      }
 
       toast.success('Resposta registrada com sucesso!')
       setRespostaText('')
+
+      // 4. Remover imediatamente o lead respondido da lista pendente local e destravar a tela
+      setPendingItems(prev => {
+        const remaining = prev.filter(item => String(item.ticket.id) !== String(currentItem.ticket.id))
+        if (remaining.length === 0) {
+          setIsLocked(false)
+        }
+        return remaining
+      })
+
       if (onLeadResponded) onLeadResponded()
-      fetchSLAData()
+      await fetchSLAData()
     } catch (err: any) {
       console.error('Erro ao responder SLA:', err)
       toast.error('Erro ao registrar resposta.')
@@ -298,11 +412,8 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
         <div className="bg-amber-500 text-slate-950 p-4 flex items-center justify-between gap-3 font-extrabold text-[12px] uppercase tracking-wider">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 shrink-0" />
-            <span>Aviso de Cobrança / Resposta Obrigatória de Lead</span>
+            <span>Seu lead está muito tempo parado no status {currentItem.ticket.status}.</span>
           </div>
-          <span className="bg-slate-950 text-amber-400 px-2.5 py-1 rounded-full text-[10px]">
-            {pendingItems.length} PENDENTE{pendingItems.length > 1 ? 'S' : ''}
-          </span>
         </div>
 
         <div className="p-6 space-y-5">
@@ -313,15 +424,27 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
             <h3 className="text-[16px] font-extrabold text-slate-900 uppercase">
               {currentItem.clienteNome}
             </h3>
-            <div className="flex items-center gap-2 pt-1 text-[11px] font-bold text-amber-600">
-              <Clock className="w-3.5 h-3.5" />
-              <span>Atraso na Etapa: {currentItem.horasAtraso.toFixed(1)} horas úteis</span>
-            </div>
-          </div>
-
-          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2">
-            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block">
-              Pergunta Forçada
+            {currentItem.clienteTelefones && currentItem.clienteTelefones.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pt-1.5">
+                {currentItem.clienteTelefones.map((tel, idx) => (
+                  <div 
+                    key={idx}
+                    onClick={() => {
+                      navigator.clipboard.writeText(tel)
+                      toast.success(`Telefone ${tel} copiado!`)
+                    }}
+                    title="Clique para copiar este telefone"
+                    className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1 rounded-lg text-[12px] font-bold text-slate-700 cursor-pointer transition-all active:scale-95 group shadow-sm"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-800 shrink-0" />
+                    <span>{tel}</span>
+                    <Copy className="w-3 h-3 text-slate-400 group-hover:text-slate-700 ml-1 opacity-70 group-hover:opacity-100 shrink-0" />
+                  </div>
+                ))}
+              </div>
+            )}
+            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block pt-4">
+              RESPONDA PARA MIM
             </span>
             <p className="text-[13px] font-extrabold text-slate-800 leading-relaxed">
               "{currentItem.pergunta}"
@@ -341,6 +464,10 @@ export function SLAForcedQuestionModal({ user, perfil, onLeadResponded }: Props)
               className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-[12px] font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all resize-none"
             />
           </div>
+
+          <p className="text-[11px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200/80 rounded-xl p-3">
+            Atenção! Se não for alterado o status desse lead, você será notificado novamente com esse alerta.
+          </p>
 
           {/* Ações */}
           <div className="flex items-center justify-between gap-3 pt-2">

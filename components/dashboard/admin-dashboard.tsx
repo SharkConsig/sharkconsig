@@ -188,6 +188,9 @@ export function AdminDashboard({
   const userRole = perfil?.role?.toLowerCase() || "";
   const isEstagio = userRole === 'estágio' || userRole === 'estagio';
   const isCorretor = userRole === 'corretor';
+  const isCorretorPJ = (perfil as any)?.regime_contratacao?.trim().toLowerCase() === 'pj' || 
+                       (perfil as any)?.funcao?.trim().toLowerCase() === 'pj' || 
+                       userRole === 'pj';
   
   // Show only for Administrator, Supervisor, Operational and Monitoring. Estagiário and Corretores cannot see it.
   const showPartnership = !isEstagio && !isCorretor && (
@@ -3034,13 +3037,13 @@ export function AdminDashboard({
                     <div>
                       <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
                         <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">
-                          Maior Receita Potencial
+                          {isCorretorPJ ? "Maior Produção Potencial" : "Maior Receita Potencial"}
                         </span>
                         <Trophy className="w-4 h-4 text-amber-500" />
                       </div>
                       
                       <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                        Quem gera maior potencial de receita?
+                        {isCorretorPJ ? "Quem gera maior potencial de produção?" : "Quem gera maior potencial de receita?"}
                       </h4>
 
                       <div className="space-y-4">
@@ -3325,7 +3328,7 @@ export function AdminDashboard({
                       <p className="text-xs font-bold text-slate-500 leading-relaxed mb-4">
                         {concentrationRisk ? (
                           <>
-                            Detectamos que o {concentrationRisk.type.toLowerCase()} <span className="text-amber-600 font-extrabold uppercase">{concentrationRisk.name}</span> representa <span className="text-[#1C2643] font-extrabold">{concentrationRisk.share.toFixed(1)}%</span> da receita operacional dos chamados. Recomenda-se diversificar canais para atenuar o risco.
+                            Detectamos que o {concentrationRisk.type.toLowerCase()} <span className="text-amber-600 font-extrabold uppercase">{concentrationRisk.name}</span> representa <span className="text-[#1C2643] font-extrabold">{concentrationRisk.share.toFixed(1)}%</span> {isCorretorPJ ? "da produção operacional dos chamados" : "da receita operacional dos chamados"}. Recomenda-se diversificar canais para atenuar o risco.
                           </>
                         ) : (
                           filterUserId ? "Excelente! A distribuição dos chamados está saudável e equilibrada entre origens e convênios. Nenhuma entidade individual representa mais de 40% do seu potencial financeiro total." : "Excelente! A distribuição dos chamados está saudável e equilibrada entre corretores, origens e convênios. Nenhuma entidade individual representa mais de 40% do potencial financeiro total da empresa."
@@ -4245,7 +4248,7 @@ export function AdminDashboard({
           {/* Section Title (Static/Non-Sticky) */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2">
             <div>
-              <h2 className="text-xl font-black text-[#1C2643] tracking-tight mt-1 uppercase">SUSTENTABILIDADE E RECEITA</h2>
+              <h2 className="text-xl font-black text-[#1C2643] tracking-tight mt-1 uppercase">{isCorretorPJ ? "SUSTENTABILIDADE E PRODUÇÃO" : "SUSTENTABILIDADE E RECEITA"}</h2>
             </div>
           </div>
 
@@ -4290,40 +4293,42 @@ export function AdminDashboard({
               </motion.div>
 
               {/* Card: Receita Total da Empresa */}
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.1 }}
-                className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/10 transition-all duration-300 flex-1 min-h-[160px]"
-              >
-                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/2 rounded-full blur-3xl group-hover:bg-emerald-500/5 transition-all duration-300" />
-                <div className="relative z-10 flex flex-col justify-between h-full">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                        {filterUserId ? "Sua Receita Total" : "Receita Total da Empresa"}
-                      </span>
-                      <div className="bg-emerald-50 text-emerald-600 p-2 rounded-xl">
-                        <TrendingUp className="w-4 h-4" />
+              {!isCorretorPJ && (
+                <motion.div
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                  className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/10 transition-all duration-300 flex-1 min-h-[160px]"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/2 rounded-full blur-3xl group-hover:bg-emerald-500/5 transition-all duration-300" />
+                  <div className="relative z-10 flex flex-col justify-between h-full">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
+                          {filterUserId ? "Sua Receita Total" : "Receita Total da Empresa"}
+                        </span>
+                        <div className="bg-emerald-50 text-emerald-600 p-2 rounded-xl">
+                          <TrendingUp className="w-4 h-4" />
+                        </div>
                       </div>
+                      
+                      {isFinancialLoading ? (
+                        <div className="h-8 flex items-center">
+                          <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                        </div>
+                      ) : (
+                        <h3 className="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight">
+                          {formatCurrency(totalRevenue)}
+                        </h3>
+                      )}
                     </div>
                     
-                    {isFinancialLoading ? (
-                      <div className="h-8 flex items-center">
-                        <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
-                      </div>
-                    ) : (
-                      <h3 className="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight">
-                        {formatCurrency(totalRevenue)}
-                      </h3>
-                    )}
+                    <p className="text-[10px] font-bold text-slate-400 mt-2">
+                      Soma das comissões faturadas (<span className="text-emerald-600 font-extrabold">Contas a Receber</span>) no período.
+                    </p>
                   </div>
-                  
-                  <p className="text-[10px] font-bold text-slate-400 mt-2">
-                    Soma das comissões faturadas (<span className="text-emerald-600 font-extrabold">Contas a Receber</span>) no período.
-                  </p>
-                </div>
-              </motion.div>
+                </motion.div>
+              )}
             </div>
 
             {/* Column 2: Quantidade de Contratos Pagos */}
@@ -4410,44 +4415,46 @@ export function AdminDashboard({
               </motion.div>
 
               {/* Card: Receita Média por Contrato */}
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.4 }}
-                className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-[#1C2643]/10 transition-all duration-300 flex-1 min-h-[160px]"
-              >
-                <div className="absolute top-0 right-0 w-32 h-32 bg-[#1C2643]/2 rounded-full blur-3xl group-hover:bg-[#1C2643]/5 transition-all duration-300" />
-                <div className="relative z-10 flex flex-col justify-between h-full">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                        Receita Média por Contrato
-                      </span>
-                      <div className="bg-[#1C2643]/5 p-2 rounded-xl text-[#1C2643]">
-                        <Target className="w-4 h-4" />
+              {!isCorretorPJ && (
+                <motion.div
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.4 }}
+                  className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-[#1C2643]/10 transition-all duration-300 flex-1 min-h-[160px]"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-[#1C2643]/2 rounded-full blur-3xl group-hover:bg-[#1C2643]/5 transition-all duration-300" />
+                  <div className="relative z-10 flex flex-col justify-between h-full">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
+                          Receita Média por Contrato
+                        </span>
+                        <div className="bg-[#1C2643]/5 p-2 rounded-xl text-[#1C2643]">
+                          <Target className="w-4 h-4" />
+                        </div>
                       </div>
+                      
+                      {isFinancialLoading ? (
+                        <div className="h-8 flex items-center">
+                          <Loader2 className="w-5 h-5 animate-spin text-[#1C2643]" />
+                        </div>
+                      ) : (
+                        <h3 className="text-xl sm:text-2xl font-black text-[#1C2643] tracking-tight">
+                          {formatCurrency(
+                            filteredFinancialProposals.length === 0
+                              ? 0
+                              : totalRevenue / filteredFinancialProposals.length
+                          )}
+                        </h3>
+                      )}
                     </div>
                     
-                    {isFinancialLoading ? (
-                      <div className="h-8 flex items-center">
-                        <Loader2 className="w-5 h-5 animate-spin text-[#1C2643]" />
-                      </div>
-                    ) : (
-                      <h3 className="text-xl sm:text-2xl font-black text-[#1C2643] tracking-tight">
-                        {formatCurrency(
-                          filteredFinancialProposals.length === 0
-                            ? 0
-                            : totalRevenue / filteredFinancialProposals.length
-                        )}
-                      </h3>
-                    )}
+                    <p className="text-[10px] font-bold text-slate-400 mt-2">
+                      Soma da receita total dividida pela <span className="text-[#1C2643] font-extrabold">quantidade de contratos pagos</span>.
+                    </p>
                   </div>
-                  
-                  <p className="text-[10px] font-bold text-slate-400 mt-2">
-                    Soma da receita total dividida pela <span className="text-[#1C2643] font-extrabold">quantidade de contratos pagos</span>.
-                  </p>
-                </div>
-              </motion.div>
+                </motion.div>
+              )}
             </div>
           </div>
 
@@ -4476,17 +4483,19 @@ export function AdminDashboard({
                 >
                   Produção (R$)
                 </button>
-                <button
-                  onClick={() => setCompareChartMetric('receita')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
-                    compareChartMetric === 'receita'
-                      ? "bg-emerald-600 text-white shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-700"
-                  )}
-                >
-                  Receita (R$)
-                </button>
+                {!isCorretorPJ && (
+                  <button
+                    onClick={() => setCompareChartMetric('receita')}
+                    className={cn(
+                      "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      compareChartMetric === 'receita'
+                        ? "bg-emerald-600 text-white shadow-sm font-extrabold"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    Receita (R$)
+                  </button>
+                )}
               </div>
             </div>
 
@@ -4531,26 +4540,28 @@ export function AdminDashboard({
                         </div>
 
                         {/* MoM Receita */}
-                        <div className="pt-3 border-t border-slate-50">
-                          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Receita</p>
-                          <div className="flex items-baseline justify-between mt-1">
-                            <p className="text-lg font-black text-emerald-600">{formatCurrency(dynamicComparisonStats.revCurrent)}</p>
-                            <div className={cn(
-                              "flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black",
-                              dynamicComparisonStats.revPct > 0 
-                                ? "bg-emerald-50 text-emerald-600" 
-                                : dynamicComparisonStats.revPct < 0 
-                                  ? "bg-rose-50 text-rose-600" 
-                                  : "bg-slate-100 text-slate-500"
-                            )}>
-                              {dynamicComparisonStats.revPct > 0 ? <ArrowUpRight className="w-3 h-3" /> : dynamicComparisonStats.revPct < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
-                              {Math.abs(dynamicComparisonStats.revPct).toFixed(1)}%
+                        {!isCorretorPJ && (
+                          <div className="pt-3 border-t border-slate-50">
+                            <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Receita</p>
+                            <div className="flex items-baseline justify-between mt-1">
+                              <p className="text-lg font-black text-emerald-600">{formatCurrency(dynamicComparisonStats.revCurrent)}</p>
+                              <div className={cn(
+                                "flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black",
+                                dynamicComparisonStats.revPct > 0 
+                                  ? "bg-emerald-50 text-emerald-600" 
+                                  : dynamicComparisonStats.revPct < 0 
+                                    ? "bg-rose-50 text-rose-600" 
+                                    : "bg-slate-100 text-slate-500"
+                              )}>
+                                {dynamicComparisonStats.revPct > 0 ? <ArrowUpRight className="w-3 h-3" /> : dynamicComparisonStats.revPct < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
+                                {Math.abs(dynamicComparisonStats.revPct).toFixed(1)}%
+                              </div>
                             </div>
+                            <p className="text-[9px] font-medium text-slate-400 mt-0.5">
+                              Anterior: {formatCurrency(dynamicComparisonStats.revPrevious)}
+                            </p>
                           </div>
-                          <p className="text-[9px] font-medium text-slate-400 mt-0.5">
-                            Anterior: {formatCurrency(dynamicComparisonStats.revPrevious)}
-                          </p>
-                        </div>
+                        )}
                       </div>
                     </div>
 
@@ -4656,7 +4667,7 @@ export function AdminDashboard({
                 </div>
 
                 <p className="text-[10px] font-bold text-slate-400 mt-4 leading-relaxed">
-                  * Os dados mostram a distribuição do período selecionado de propostas efetivadas. As barras do momento atual e anterior são destacadas em cores diferentes. Use os botões acima para alternar o foco da análise entre volume de <span className={cn("font-extrabold", compareChartMetric === 'producao' ? "text-[#1C2643]" : "text-emerald-600")}>{compareChartMetric === 'producao' ? 'Produção' : 'Receita'}</span>.
+                  * Os dados mostram a distribuição do período selecionado de propostas efetivadas.{!isCorretorPJ ? <> As barras do momento atual e anterior são destacadas em cores diferentes. Use os botões acima para alternar o foco da análise entre volume de <span className={cn("font-extrabold", compareChartMetric === 'producao' ? "text-[#1C2643]" : "text-emerald-600")}>{compareChartMetric === 'producao' ? 'Produção' : 'Receita'}</span>.</> : <> As barras do momento atual e anterior são destacadas em cores diferentes.</>}
                 </p>
               </div>
             </div>
@@ -4764,15 +4775,17 @@ export function AdminDashboard({
                                 </div>
                               </div>
 
-                              <div>
-                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-                                  <span>Receita: {formatCurrency(p.rev)}</span>
-                                  <span className="font-extrabold text-emerald-600">{revShare.toFixed(1)}%</span>
+                              {!isCorretorPJ && (
+                                <div>
+                                  <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+                                    <span>Receita: {formatCurrency(p.rev)}</span>
+                                    <span className="font-extrabold text-emerald-600">{revShare.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${revShare}%` }} />
+                                  </div>
                                 </div>
-                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${revShare}%` }} />
-                                </div>
-                              </div>
+                              )}
                             </div>
                           </div>
                         )
@@ -4819,15 +4832,17 @@ export function AdminDashboard({
                                 </div>
                               </div>
 
-                              <div>
-                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-                                  <span>Receita: {formatCurrency(c.rev)}</span>
-                                  <span className="font-extrabold text-emerald-600">{revShare.toFixed(1)}%</span>
+                              {!isCorretorPJ && (
+                                <div>
+                                  <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+                                    <span>Receita: {formatCurrency(c.rev)}</span>
+                                    <span className="font-extrabold text-emerald-600">{revShare.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${revShare}%` }} />
+                                  </div>
                                 </div>
-                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${revShare}%` }} />
-                                </div>
-                              </div>
+                              )}
                             </div>
                           </div>
                         )
@@ -4874,15 +4889,17 @@ export function AdminDashboard({
                                 </div>
                               </div>
 
-                              <div>
-                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-                                  <span>Receita: {formatCurrency(b.rev)}</span>
-                                  <span className="font-extrabold text-emerald-600">{revShare.toFixed(1)}%</span>
+                              {!isCorretorPJ && (
+                                <div>
+                                  <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+                                    <span>Receita: {formatCurrency(b.rev)}</span>
+                                    <span className="font-extrabold text-emerald-600">{revShare.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${revShare}%` }} />
+                                  </div>
                                 </div>
-                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${revShare}%` }} />
-                                </div>
-                              </div>
+                              )}
                             </div>
                           </div>
                         )
@@ -4921,10 +4938,12 @@ export function AdminDashboard({
                                   <span>Prod: {formatCurrency(c.prod)}</span>
                                   <span>{prodShare.toFixed(1)}%</span>
                                 </div>
-                                <div className="flex justify-between text-[8.5px] font-bold text-slate-500">
-                                  <span className="text-emerald-600">Rec: {formatCurrency(c.rev)}</span>
-                                  <span className="text-emerald-600">{revShare.toFixed(1)}%</span>
-                                </div>
+                                {!isCorretorPJ && (
+                                  <div className="flex justify-between text-[8.5px] font-bold text-slate-500">
+                                    <span className="text-emerald-600">Rec: {formatCurrency(c.rev)}</span>
+                                    <span className="text-emerald-600">{revShare.toFixed(1)}%</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           )
@@ -4962,17 +4981,19 @@ export function AdminDashboard({
                 >
                   Produção
                 </button>
-                <button
-                  onClick={() => setRankingMetric('receita')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
-                    rankingMetric === 'receita'
-                      ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-700"
-                  )}
-                >
-                  Receita
-                </button>
+                {!isCorretorPJ && (
+                  <button
+                    onClick={() => setRankingMetric('receita')}
+                    className={cn(
+                      "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
+                      rankingMetric === 'receita'
+                        ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    Receita
+                  </button>
+                )}
                 <button
                   onClick={() => setRankingMetric('crescimento')}
                   className={cn(
@@ -5247,86 +5268,90 @@ export function AdminDashboard({
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">
               
               {/* 1. BANCO LÍDER DE RECEITA */}
-              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                <div>
-                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
-                    <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">
-                      Maior Receita
-                    </span>
-                    <Trophy className="w-4 h-4 text-amber-500" />
-                  </div>
-                  
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    Qual banco gera mais receita?
-                  </h4>
-                  
-                  {strategicDiagnostic.topRevenueBanco ? (
-                    <div className="mt-3">
-                      <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
-                        {strategicDiagnostic.topRevenueBanco.name}
-                      </p>
-                      <p className="text-[11px] font-bold text-slate-400 mt-1">
-                        Gerou <span className="text-emerald-600 font-extrabold">{formatCurrency(strategicDiagnostic.topRevenueBanco.rev)}</span> em comissões
-                      </p>
+              {!isCorretorPJ && (
+                <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                  <div>
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                      <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                        Maior Receita
+                      </span>
+                      <Trophy className="w-4 h-4 text-amber-500" />
                     </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 mt-3 font-bold">Sem dados no período</p>
+                    
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Qual banco gera mais receita?
+                    </h4>
+                    
+                    {strategicDiagnostic.topRevenueBanco ? (
+                      <div className="mt-3">
+                        <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
+                          {strategicDiagnostic.topRevenueBanco.name}
+                        </p>
+                        <p className="text-[11px] font-bold text-slate-400 mt-1">
+                          Gerou <span className="text-emerald-600 font-extrabold">{formatCurrency(strategicDiagnostic.topRevenueBanco.rev)}</span> em comissões
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 mt-3 font-bold">Sem dados no período</p>
+                    )}
+                  </div>
+
+                  {strategicDiagnostic.topRevenueBanco && (
+                    <div className="mt-4 pt-3 border-t border-slate-50">
+                      <div className="flex justify-between text-[10px] font-extrabold text-[#1C2643] uppercase mb-1">
+                        <span>Participação na Receita</span>
+                        <span>{strategicDiagnostic.topBancoShare.toFixed(1)}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, strategicDiagnostic.topBancoShare)}%` }}
+                        />
+                      </div>
+                    </div>
                   )}
                 </div>
-
-                {strategicDiagnostic.topRevenueBanco && (
-                  <div className="mt-4 pt-3 border-t border-slate-50">
-                    <div className="flex justify-between text-[10px] font-extrabold text-[#1C2643] uppercase mb-1">
-                      <span>Participação na Receita</span>
-                      <span>{strategicDiagnostic.topBancoShare.toFixed(1)}%</span>
-                    </div>
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-amber-500 h-full rounded-full transition-all duration-500"
-                        style={{ width: `${Math.min(100, strategicDiagnostic.topBancoShare)}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* 2. VOLUME VS EFICIÊNCIA */}
-              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                <div>
-                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
-                    <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-2 py-1 rounded-lg uppercase tracking-wider">
-                      Eficiência de Margem
-                    </span>
-                    <Percent className="w-4 h-4 text-orange-500" />
+              {!isCorretorPJ && (
+                <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                  <div>
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                      <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                        Eficiência de Margem
+                      </span>
+                      <Percent className="w-4 h-4 text-orange-500" />
+                    </div>
+
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
+                      Produz bastante, mas entrega pouca receita?
+                    </h4>
+
+                    {strategicDiagnostic.lowYieldBanco ? (
+                      <div className="mt-3">
+                        <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
+                          {strategicDiagnostic.lowYieldBanco.name}
+                        </p>
+                        <p className="text-[11px] font-bold text-slate-400 mt-1">
+                          Comissionamento médio de <span className="text-orange-600 font-extrabold">
+                            {((strategicDiagnostic.lowYieldBanco.rev / strategicDiagnostic.lowYieldBanco.prod) * 100).toFixed(2)}%
+                          </span>
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 mt-3 font-bold">Sem dados para análise de margem</p>
+                    )}
                   </div>
 
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
-                    Produz bastante, mas entrega pouca receita?
-                  </h4>
-
-                  {strategicDiagnostic.lowYieldBanco ? (
-                    <div className="mt-3">
-                      <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
-                        {strategicDiagnostic.lowYieldBanco.name}
-                      </p>
-                      <p className="text-[11px] font-bold text-slate-400 mt-1">
-                        Comissionamento médio de <span className="text-orange-600 font-extrabold">
-                          {((strategicDiagnostic.lowYieldBanco.rev / strategicDiagnostic.lowYieldBanco.prod) * 100).toFixed(2)}%
-                        </span>
-                      </p>
+                  {strategicDiagnostic.lowYieldBanco && (
+                    <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[10px] font-bold text-slate-500 leading-tight">
+                      <span>Vol. Produção:</span>
+                      <span className="text-[#1C2643] font-black">{formatCurrency(strategicDiagnostic.lowYieldBanco.prod)}</span>
                     </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 mt-3 font-bold">Sem dados para análise de margem</p>
                   )}
                 </div>
-
-                {strategicDiagnostic.lowYieldBanco && (
-                  <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[10px] font-bold text-slate-500 leading-tight">
-                    <span>Vol. Produção:</span>
-                    <span className="text-[#1C2643] font-black">{formatCurrency(strategicDiagnostic.lowYieldBanco.prod)}</span>
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* 3. PRODUTO COM MELHOR RETORNO */}
               <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
@@ -5358,7 +5383,7 @@ export function AdminDashboard({
                   )}
                 </div>
 
-                {strategicDiagnostic.bestReturnProduct && (
+                {strategicDiagnostic.bestReturnProduct && !isCorretorPJ && (
                   <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[10px] font-bold text-slate-500">
                     <span>Receita Total:</span>
                     <span className="text-emerald-600 font-black">{formatCurrency(strategicDiagnostic.bestReturnProduct.rev)}</span>
@@ -5386,7 +5411,7 @@ export function AdminDashboard({
                         {strategicDiagnostic.mainSustainingConvenio.name}
                       </p>
                       <p className="text-[11px] font-bold text-slate-400 mt-1">
-                        Sustenta <span className="text-indigo-600 font-extrabold">{strategicDiagnostic.topConvenioShare.toFixed(1)}%</span> {filterUserId ? "da sua receita" : "da receita da empresa"}
+                        Sustenta <span className="text-indigo-600 font-extrabold">{strategicDiagnostic.topConvenioShare.toFixed(1)}%</span> {isCorretorPJ ? "da sua produção" : (filterUserId ? "da sua receita" : "da receita da empresa")}
                       </p>
                     </div>
                   ) : (
@@ -5454,53 +5479,55 @@ export function AdminDashboard({
               </div>
 
               {/* 6. FATURAMENTO VS PRODUÇÃO */}
-              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                <div>
-                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
-                    <span className="text-[10px] font-black text-[#1C2643] bg-slate-100 px-2 py-1 rounded-lg uppercase tracking-wider">
-                      Equilíbrio Financeiro
-                    </span>
-                    <BarChart3 className="w-4 h-4 text-[#1C2643]" />
+              {!isCorretorPJ && (
+                <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                  <div>
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                      <span className="text-[10px] font-black text-[#1C2643] bg-slate-100 px-2 py-1 rounded-lg uppercase tracking-wider">
+                        Equilíbrio Financeiro
+                      </span>
+                      <BarChart3 className="w-4 h-4 text-[#1C2643]" />
+                    </div>
+
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
+                      O faturamento acompanha a produção?
+                    </h4>
+
+                    <div className="mt-3 space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500 font-bold">Produção:</span>
+                        <span className={cn(
+                          "font-extrabold",
+                          strategicDiagnostic.overallProdGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
+                        )}>
+                          {strategicDiagnostic.overallProdGrowth >= 0 ? '↑' : '↓'} {Math.abs(strategicDiagnostic.overallProdGrowth).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500 font-bold">Faturamento (Receita):</span>
+                        <span className={cn(
+                          "font-extrabold",
+                          strategicDiagnostic.overallRevGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
+                        )}>
+                          {strategicDiagnostic.overallRevGrowth >= 0 ? '↑' : '↓'} {Math.abs(strategicDiagnostic.overallRevGrowth).toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
-                    O faturamento acompanha a produção?
-                  </h4>
-
-                  <div className="mt-3 space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-500 font-bold">Produção:</span>
-                      <span className={cn(
-                        "font-extrabold",
-                        strategicDiagnostic.overallProdGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
-                      )}>
-                        {strategicDiagnostic.overallProdGrowth >= 0 ? '↑' : '↓'} {Math.abs(strategicDiagnostic.overallProdGrowth).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-500 font-bold">Faturamento (Receita):</span>
-                      <span className={cn(
-                        "font-extrabold",
-                        strategicDiagnostic.overallRevGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
-                      )}>
-                        {strategicDiagnostic.overallRevGrowth >= 0 ? '↑' : '↓'} {Math.abs(strategicDiagnostic.overallRevGrowth).toFixed(1)}%
-                      </span>
-                    </div>
+                  <div className="mt-4 pt-3 border-t border-slate-50">
+                    {strategicDiagnostic.isRevenueKeepingUp ? (
+                      <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-emerald-600 uppercase">
+                        <span>✓ Faturamento Saudável (Acima do Vol.)</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-amber-600 uppercase">
+                        <span>⚠️ Alerta: Queda de Margem Média</span>
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-50">
-                  {strategicDiagnostic.isRevenueKeepingUp ? (
-                    <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-emerald-600 uppercase">
-                      <span>✓ Faturamento Saudável (Acima do Vol.)</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-amber-600 uppercase">
-                      <span>⚠️ Alerta: Queda de Margem Média</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+              )}
 
               {/* 7. INDICE DE DEPENDÊNCIA (FULL WIDTH CARD) */}
               <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col md:col-span-2 lg:col-span-3 justify-between hover:shadow-md transition-all">
@@ -5523,17 +5550,17 @@ export function AdminDashboard({
                     <p className="text-xs font-bold text-slate-500 leading-relaxed">
                       {strategicDiagnostic.concentrationRisk ? (
                         <>
-                          Detectamos que o {strategicDiagnostic.concentrationRisk.type.toLowerCase()} <span className="text-amber-600 font-extrabold uppercase">{strategicDiagnostic.concentrationRisk.name}</span> representa <span className="text-[#1C2643] font-extrabold">{strategicDiagnostic.concentrationRisk.share.toFixed(1)}%</span> da receita da operação. Recomenda-se diversificar canais para atenuar o risco de dependência e perdas financeiras em oscilações deste canal.
+                          Detectamos que o {strategicDiagnostic.concentrationRisk.type.toLowerCase()} <span className="text-amber-600 font-extrabold uppercase">{strategicDiagnostic.concentrationRisk.name}</span> representa <span className="text-[#1C2643] font-extrabold">{strategicDiagnostic.concentrationRisk.share.toFixed(1)}%</span> {isCorretorPJ ? "da produção da operação" : "da receita da operação"}. Recomenda-se diversificar canais para atenuar o risco de dependência em oscilações deste canal.
                         </>
                       ) : (
-                        filterUserId ? "Excelente! A receita da sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios. Nenhum canal individual representa mais de 40% do seu faturamento." : "Excelente! A receita da sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios. Nenhum canal individual representa mais de 40% do faturamento da empresa."
+                        isCorretorPJ ? "Excelente! A sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios." : (filterUserId ? "Excelente! A receita da sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios. Nenhum canal individual representa mais de 40% do seu faturamento." : "Excelente! A receita da sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios. Nenhum canal individual representa mais de 40% do faturamento da empresa.")
                       )}
                     </p>
                   </div>
 
                   <div className="flex-1 bg-slate-50 rounded-2xl p-4 border border-slate-100/50 min-w-[280px]">
                     <div className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider mb-2.5">
-                      Distribuição de Riscos (% da Receita Total)
+                      Distribuição de Riscos (% {isCorretorPJ ? "da Produção Total" : "da Receita Total"})
                     </div>
                     <div className="space-y-2">
                       <div>
