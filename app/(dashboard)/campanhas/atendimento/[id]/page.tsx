@@ -779,10 +779,11 @@ export default function CampanhaAtendimentoPage() {
           }
         }
       }
-      
+
       if (data) {
         // Transform base data to ClientData and Fetch registrations
         const client: ClientData = {
+          ...data,
           id: data.id || data.cpf,
           nome: data.nome,
           cpf: data.cpf,
@@ -805,6 +806,210 @@ export default function CampanhaAtendimentoPage() {
           )
           
           setRegistrations(regData || [])
+        } else if (table === 'base_consulta_prefeitura_sp') {
+          const cleanCpf = client.cpf?.replace(/\D/g, '') || ''
+          const paddedCpf = cleanCpf.padStart(11, '0')
+          
+          let pmspData = null
+          if (data && data.id) {
+            const { data: directData } = await withRetry(() =>
+              supabase.from('prefeitura_sp_clientes').select('*').eq('id', data.id).maybeSingle()
+            )
+            if (directData) pmspData = directData
+          }
+          if (!pmspData && client.cpf) {
+            const { data: searchData } = await withRetry(() =>
+              supabase.from('prefeitura_sp_clientes')
+                .select('*')
+                .or(`cpf.eq.${paddedCpf},cpf.eq.${cleanCpf},cpf.eq.${client.cpf}`)
+                .maybeSingle()
+            )
+            if (searchData) pmspData = searchData
+          }
+
+          const targetClientId = pmspData?.id || (typeof data?.id === 'number' || (typeof data?.id === 'string' && !isNaN(Number(data?.id))) ? data?.id : null);
+          let idData: any[] | null = null
+          if (targetClientId) {
+            const { data: fetchedIds } = await withRetry(() =>
+              supabase
+                .from('prefeitura_sp_identificacoes')
+                .select('*, prefeitura_sp_lotacoes(*)')
+                .eq('cliente_id', targetClientId)
+            )
+            if (fetchedIds && fetchedIds.length > 0) idData = fetchedIds
+          }
+
+          if (!idData || idData.length === 0) {
+            const { data: directIds } = await withRetry(() =>
+              supabase
+                .from('prefeitura_sp_identificacoes')
+                .select('*, prefeitura_sp_lotacoes(*)')
+                .or(`cpf.eq.${paddedCpf},cpf.eq.${cleanCpf},identificacao.eq.${cleanCpf}`)
+            )
+            if (directIds && directIds.length > 0) idData = directIds
+          }
+          if (idData && idData.length > 0) {
+            const mappedRegs = idData.map((r: any) => {
+              const lotacoes = (r.prefeitura_sp_lotacoes && r.prefeitura_sp_lotacoes.length > 0)
+                ? r.prefeitura_sp_lotacoes.map((l: any) => ({
+                    ...l,
+                    lotacao: l.lotacao || r.lotacao || r.regime_juridico || data?.lotacao || 'NÃO INFORMADO',
+                    orgao: l.orgao || r.orgao || r.secretaria || data?.orgao || 'SP (PMSP)',
+                    mb_consignacoes: l.mb_consignacoes || l.bruta_consignacoes || r.mb_consignacoes || r.bruta_consignacoes || data?.mb_consignacoes || data?.bruta_consignacoes || 0,
+                    md_consignacoes: l.md_consignacoes || l.liquida_consignacoes || l.margem_35 || r.md_consignacoes || r.liquida_consignacoes || r.margem_35 || data?.md_consignacoes || data?.liquida_consignacoes || data?.margem_35 || data?.margem_emprestimo_consignado || data?.margem_emprestimo || data?.margem_disponivel_emprestimo || 0,
+                    mb_cartao_beneficio: l.mb_cartao_beneficio || l.beneficio_bruta_5 || r.mb_cartao_beneficio || r.beneficio_bruta_5 || data?.mb_cartao_beneficio || data?.beneficio_bruta_5 || 0,
+                    md_cartao_beneficio: l.md_cartao_beneficio || l.beneficio_liquida_5 || r.md_cartao_beneficio || r.beneficio_liquida_5 || data?.md_cartao_beneficio || data?.beneficio_liquida_5 || data?.margem_cartao_beneficio || 0
+                  }))
+                : [{
+                    lotacao: r.lotacao || r.regime_juridico || data?.lotacao || 'NÃO INFORMADO',
+                    orgao: r.orgao || r.secretaria || data?.orgao || 'SP (PMSP)',
+                    mb_consignacoes: r.mb_consignacoes || r.bruta_consignacoes || data?.mb_consignacoes || data?.bruta_consignacoes || 0,
+                    md_consignacoes: r.md_consignacoes || r.liquida_consignacoes || r.margem_35 || data?.md_consignacoes || data?.liquida_consignacoes || data?.margem_35 || data?.margem_emprestimo_consignado || data?.margem_emprestimo || data?.margem_disponivel_emprestimo || 0,
+                    mb_cartao_beneficio: r.mb_cartao_beneficio || r.beneficio_bruta_5 || data?.mb_cartao_beneficio || data?.beneficio_bruta_5 || 0,
+                    md_cartao_beneficio: r.md_cartao_beneficio || r.beneficio_liquida_5 || data?.md_cartao_beneficio || data?.beneficio_liquida_5 || data?.margem_cartao_beneficio || 0
+                  }];
+              return {
+                ...r,
+                id: r.id,
+                numero_matricula: r.identificacao || '---',
+                identificacao: r.identificacao || '---',
+                situacao_funcional: r.tipo_vinculo || r.situacao_funcional || null,
+                salario: 0,
+                orgao: lotacoes[0]?.orgao || r.orgao || r.secretaria || null,
+                regime_juridico: lotacoes[0]?.lotacao || r.regime_juridico || null,
+                uf: 'SP',
+                mb_consignacoes: r.mb_consignacoes || data?.mb_consignacoes || lotacoes[0]?.mb_consignacoes || 0,
+                md_consignacoes: lotacoes[0]?.md_consignacoes || r.md_consignacoes || data?.md_consignacoes || 0,
+                mb_cartao_beneficio: lotacoes[0]?.mb_cartao_beneficio || r.mb_cartao_beneficio || data?.mb_cartao_beneficio || 0,
+                md_cartao_beneficio: lotacoes[0]?.md_cartao_beneficio || r.md_cartao_beneficio || data?.md_cartao_beneficio || 0,
+                prefeitura_sp_lotacoes: lotacoes
+              }
+            })
+            setRegistrations(mappedRegs)
+          } else {
+            const lotacoes = [{
+              lotacao: data.lotacao || data.regime_juridico || 'NÃO INFORMADO',
+              orgao: data.orgao || 'SP (PMSP)',
+              mb_consignacoes: data.mb_consignacoes || data.bruta_consignacoes || 0,
+              md_consignacoes: data.md_consignacoes || data.liquida_consignacoes || data.margem_35 || data.margem_emprestimo_consignado || data.margem_emprestimo || data.margem_disponivel_emprestimo || 0,
+              mb_cartao_beneficio: data.mb_cartao_beneficio || data.beneficio_bruta_5 || 0,
+              md_cartao_beneficio: data.md_cartao_beneficio || data.beneficio_liquida_5 || data.margem_cartao_beneficio || 0
+            }]
+            setRegistrations([{
+              id: data.id || data.cpf,
+              numero_matricula: data.identificacao || data.matricula || '---',
+              identificacao: data.identificacao || data.matricula || '---',
+              tipo_vinculo: data.tipo_vinculo || data.vinculo || 'NÃO INFORMADO',
+              data_nomeacao: data.data_nomeacao || null,
+              uf: 'SP',
+              mb_consignacoes: data.mb_consignacoes || data.bruta_consignacoes || 0,
+              md_consignacoes: data.md_consignacoes || data.liquida_consignacoes || data.margem_35 || data.margem_emprestimo_consignado || data.margem_emprestimo || data.margem_disponivel_emprestimo || 0,
+              mb_cartao_beneficio: data.mb_cartao_beneficio || data.beneficio_bruta_5 || 0,
+              md_cartao_beneficio: data.md_cartao_beneficio || data.beneficio_liquida_5 || data.margem_cartao_beneficio || 0,
+              prefeitura_sp_lotacoes: lotacoes
+            }])
+          }
+        } else if (table === 'base_consulta_governo_sp') {
+          const cleanCpf = client.cpf?.replace(/\D/g, '') || ''
+          const paddedCpf = cleanCpf.padStart(11, '0')
+
+          let govSpData = null
+          if (data && data.id) {
+            const { data: directData } = await withRetry(() =>
+              supabase.from('governo_sp_clientes').select('*').eq('id', data.id).maybeSingle()
+            )
+            if (directData) govSpData = directData
+          }
+          if (!govSpData && client.cpf) {
+            const { data: searchData } = await withRetry(() =>
+              supabase.from('governo_sp_clientes')
+                .select('*')
+                .or(`cpf.eq.${paddedCpf},cpf.eq.${cleanCpf},cpf.eq.${client.cpf}`)
+                .maybeSingle()
+            )
+            if (searchData) govSpData = searchData
+          }
+
+          const targetClientId = govSpData?.id || (typeof data?.id === 'number' || (typeof data?.id === 'string' && !isNaN(Number(data?.id))) ? data?.id : null);
+          let idData: any[] | null = null
+          if (targetClientId) {
+            const { data: fetchedIds } = await withRetry(() =>
+              supabase
+                .from('governo_sp_identificacoes')
+                .select('*, governo_sp_lotacoes(*)')
+                .eq('cliente_id', targetClientId)
+            )
+            if (fetchedIds && fetchedIds.length > 0) idData = fetchedIds
+          }
+
+          if (!idData || idData.length === 0) {
+            const { data: directIds } = await withRetry(() =>
+              supabase
+                .from('governo_sp_identificacoes')
+                .select('*, governo_sp_lotacoes(*)')
+                .or(`cpf.eq.${paddedCpf},cpf.eq.${cleanCpf},identificacao.eq.${cleanCpf}`)
+            )
+            if (directIds && directIds.length > 0) idData = directIds
+          }
+          if (idData && idData.length > 0) {
+            const mappedRegs = idData.map((r: any) => {
+              const lotacoes = (r.governo_sp_lotacoes && r.governo_sp_lotacoes.length > 0)
+                ? r.governo_sp_lotacoes.map((l: any) => ({
+                    ...l,
+                    lotacao: l.lotacao || r.lotacao || r.regime_juridico || data?.lotacao || 'NÃO INFORMADO',
+                    orgao: l.orgao || r.orgao || r.secretaria || data?.orgao || 'GOVERNO SP',
+                    mb_consignacoes: l.mb_consignacoes || l.bruta_consignacoes || r.mb_consignacoes || r.bruta_consignacoes || data?.mb_consignacoes || data?.bruta_consignacoes || 0,
+                    md_consignacoes: l.md_consignacoes || l.liquida_consignacoes || l.margem_35 || r.md_consignacoes || r.liquida_consignacoes || r.margem_35 || data?.md_consignacoes || data?.liquida_consignacoes || data?.margem_35 || data?.margem_emprestimo_consignado || data?.margem_emprestimo || data?.margem_disponivel_emprestimo || 0,
+                    mb_cartao_credito: l.mb_cartao_credito || l.bruta_5 || r.mb_cartao_credito || r.bruta_5 || data?.mb_cartao_credito || data?.bruta_5 || 0,
+                    md_cartao_credito: l.md_cartao_credito || l.liquida_5 || r.md_cartao_credito || r.liquida_5 || data?.md_cartao_credito || data?.liquida_5 || data?.margem_cartao_consignado || data?.margem_cartao || 0,
+                    mb_cartao_beneficio: l.mb_cartao_beneficio || l.beneficio_bruta_5 || r.mb_cartao_beneficio || r.beneficio_bruta_5 || data?.mb_cartao_beneficio || data?.beneficio_bruta_5 || 0,
+                    md_cartao_beneficio: l.md_cartao_beneficio || l.beneficio_liquida_5 || r.md_cartao_beneficio || r.beneficio_liquida_5 || data?.md_cartao_beneficio || data?.beneficio_liquida_5 || data?.margem_cartao_beneficio || 0
+                  }))
+                : [{
+                    lotacao: r.lotacao || r.regime_juridico || data?.lotacao || 'NÃO INFORMADO',
+                    orgao: r.orgao || r.secretaria || data?.orgao || 'GOVERNO SP',
+                    mb_consignacoes: r.mb_consignacoes || r.bruta_consignacoes || data?.mb_consignacoes || data?.bruta_consignacoes || 0,
+                    md_consignacoes: r.md_consignacoes || r.liquida_consignacoes || r.margem_35 || data?.md_consignacoes || data?.liquida_consignacoes || data?.margem_35 || data?.margem_emprestimo_consignado || data?.margem_emprestimo || data?.margem_disponivel_emprestimo || 0,
+                    mb_cartao_credito: r.mb_cartao_credito || r.bruta_5 || data?.mb_cartao_credito || data?.bruta_5 || 0,
+                    md_cartao_credito: r.md_cartao_credito || r.liquida_5 || data?.md_cartao_credito || data?.liquida_5 || data?.margem_cartao_consignado || data?.margem_cartao || 0,
+                    mb_cartao_beneficio: r.mb_cartao_beneficio || r.beneficio_bruta_5 || data?.mb_cartao_beneficio || data?.beneficio_bruta_5 || 0,
+                    md_cartao_beneficio: r.md_cartao_beneficio || r.beneficio_liquida_5 || data?.md_cartao_beneficio || data?.beneficio_liquida_5 || data?.margem_cartao_beneficio || 0
+                  }];
+              return {
+                ...r,
+                id: r.id,
+                numero_matricula: r.identificacao || '---',
+                identificacao: r.identificacao || '---',
+                situacao_funcional: r.tipo_vinculo || r.situacao_funcional || null,
+                salario: 0,
+                orgao: lotacoes[0]?.orgao || r.orgao || r.secretaria || null,
+                regime_juridico: lotacoes[0]?.lotacao || r.regime_juridico || null,
+                uf: 'SP',
+                governo_sp_lotacoes: lotacoes
+              }
+            })
+            setRegistrations(mappedRegs)
+          } else {
+            const lotacoes = [{
+              lotacao: data.lotacao || data.regime_juridico || 'NÃO INFORMADO',
+              orgao: data.orgao || 'GOVERNO SP',
+              mb_consignacoes: data.mb_consignacoes || data.bruta_consignacoes || 0,
+              md_consignacoes: data.md_consignacoes || data.liquida_consignacoes || data.margem_35 || data.margem_emprestimo_consignado || data.margem_emprestimo || data.margem_disponivel_emprestimo || 0,
+              mb_cartao_credito: data.mb_cartao_credito || data.bruta_5 || 0,
+              md_cartao_credito: data.md_cartao_credito || data.liquida_5 || data.margem_cartao_consignado || data.margem_cartao || 0,
+              mb_cartao_beneficio: data.mb_cartao_beneficio || data.beneficio_bruta_5 || 0,
+              md_cartao_beneficio: data.md_cartao_beneficio || data.beneficio_liquida_5 || data.margem_cartao_beneficio || 0
+            }]
+            setRegistrations([{
+              id: data.id || data.cpf,
+              numero_matricula: data.identificacao || data.matricula || '---',
+              identificacao: data.identificacao || data.matricula || '---',
+              tipo_vinculo: data.tipo_vinculo || data.vinculo || 'NÃO INFORMADO',
+              data_nomeacao: data.data_nomeacao || null,
+              uf: 'SP',
+              governo_sp_lotacoes: lotacoes
+            } as any])
+          }
         } else {
           // Wrapped generic data
           const isGovPi = table === 'base_consulta_governo_pi';
@@ -2033,6 +2238,376 @@ export default function CampanhaAtendimentoPage() {
                             );
                           })()}
                         </>
+                      ) : activeTable === 'base_consulta_prefeitura_sp' ? (
+                        <>
+                          {/* Prefeitura de São Paulo (PMSP) */}
+                          {(() => {
+                            const reg = activeReg as any;
+                            const lotacoes = reg.prefeitura_sp_lotacoes || [];
+                            const lotacao = lotacoes[0] || {};
+                            const lead = currentLead as any;
+
+                            const mb_consignacoes = Number(reg.mb_consignacoes || lead?.mb_consignacoes || lotacao.mb_consignacoes || lotacao.bruta_consignacoes || reg.bruta_consignacoes || reg.margem_bruta_consignacoes || lead?.bruta_consignacoes || 0);
+                            const md_consignacoes = Number(lotacao.md_consignacoes || lotacao.liquida_consignacoes || lotacao.margem_35 || reg.md_consignacoes || reg.liquida_consignacoes || reg.margem_35 || lead?.md_consignacoes || lead?.liquida_consignacoes || lead?.margem_35 || lead?.margem_emprestimo_consignado || lead?.margem_emprestimo || lead?.margem_disponivel_emprestimo || 0);
+
+                            const mb_cartao_beneficio = Number(lotacao.mb_cartao_beneficio || lotacao.bruta_cartao_beneficio || lotacao.beneficio_bruta_5 || reg.mb_cartao_beneficio || reg.beneficio_bruta_5 || lead?.mb_cartao_beneficio || lead?.beneficio_bruta_5 || 0);
+                            const md_cartao_beneficio = Number(lotacao.md_cartao_beneficio || lotacao.liquida_cartao_beneficio || lotacao.beneficio_liquida_5 || reg.md_cartao_beneficio || reg.beneficio_liquida_5 || lead?.md_cartao_beneficio || lead?.beneficio_liquida_5 || lead?.margem_cartao_beneficio || 0);
+
+                            const getMarginLogic = (bruta: number, liquida_db: number) => {
+                              const b = Number(bruta) || 0;
+                              const l = Number(liquida_db) || 0;
+                              let status: 'SIM' | 'NÃO' | 'PARCIAL' = 'NÃO';
+                              if (l <= 0) {
+                                status = 'SIM';
+                              } else if (l < b) {
+                                status = 'PARCIAL';
+                              } else {
+                                status = 'NÃO';
+                              }
+                              return { 
+                                status, 
+                                liquida_val: l,
+                                label: l > 0 ? 'DISPONÍVEL' : 'INDISPONÍVEL'
+                              };
+                            };
+
+                            const getCardLogic = (bruta: number, liquida_db: number) => {
+                              const l = Number(liquida_db) || 0;
+                              const used = l <= 0;
+                              return {
+                                status: used ? 'SIM' : 'NÃO' as const,
+                                liquida_val: l,
+                                label: l > 0 ? 'DISPONÍVEL' : 'INDISPONÍVEL'
+                              };
+                            };
+
+                            const consignacoes = getMarginLogic(mb_consignacoes, md_consignacoes);
+                            const beneficio = getCardLogic(mb_cartao_beneficio, md_cartao_beneficio);
+
+                            const formatDateLocal = (dateStr: string | null) => {
+                              if (!dateStr) return "---";
+                              try {
+                                const [year, month, day] = dateStr.split("T")[0].split("-");
+                                return `${day}/${month}/${year}`;
+                              } catch {
+                                return dateStr;
+                              }
+                            };
+
+                            return (
+                              <div className="space-y-10 sm:space-y-12 text-left">
+                                <div className="space-y-8 sm:space-y-10">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                    <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Identificação (PMSP)</h3>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                                    <div className="space-y-1.5">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identificação</p>
+                                      <p className="text-[13px] font-bold text-slate-900">{reg.identificacao || reg.matricula || reg.numero_matricula || "---"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data da Nomeação</p>
+                                      <p className="text-[13px] font-bold text-slate-900">{formatDateLocal(reg.data_nomeacao)}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Vínculo</p>
+                                      <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.tipo_vinculo || reg.vinculo || reg.situacao_funcional || "NÃO INFORMADO"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lotação</p>
+                                      <p className="text-[13px] font-bold text-slate-900 uppercase">{lotacao.lotacao || reg.regime_juridico || "NÃO INFORMADO"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                      <p className="text-[13px] font-bold text-slate-900 uppercase">{lotacao.orgao || "SP (PMSP)"}</p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                  {/* Consignações */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Consignações</p>
+                                      <p className="text-[17px] font-bold text-slate-900">{formatCurrency(mb_consignacoes)}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      consignacoes.status === 'SIM' ? "bg-red-100/50 border-red-200" : 
+                                      consignacoes.status === 'PARCIAL' ? "bg-slate-100/80 border-slate-200" : 
+                                      "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                        consignacoes.status === 'SIM' ? "text-red-700/60" : 
+                                        consignacoes.status === 'PARCIAL' ? "text-slate-500" : 
+                                        "text-emerald-700/60"
+                                      )}>Utilizada</p>
+                                      <p className={cn("text-[17px] font-bold uppercase", 
+                                        consignacoes.status === 'SIM' ? "text-red-700" : 
+                                        consignacoes.status === 'PARCIAL' ? "text-slate-600" : 
+                                        "text-emerald-700"
+                                      )}>{consignacoes.status}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      consignacoes.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
+                                      <div className="flex flex-col">
+                                        <p className={cn("text-[17px] font-bold", consignacoes.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
+                                        <div className="flex items-center gap-1.5">
+                                          <div className={cn("w-1.5 h-1.5 rounded-full", consignacoes.liquida_val > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-600" : "text-red-600")}>
+                                            {consignacoes.label}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Cartão Benefício */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Benefício</p>
+                                      <p className="text-[17px] font-bold text-slate-900">{formatCurrency(mb_cartao_beneficio)}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                        beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
+                                      )}>Utilizada</p>
+                                      <p className={cn("text-[17px] font-bold uppercase", 
+                                        beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700"
+                                      )}>{beneficio.status}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      beneficio.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
+                                      <div className="flex flex-col">
+                                        <p className={cn("text-[17px] font-bold", beneficio.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(beneficio.liquida_val)}</p>
+                                        <div className="flex items-center gap-1.5">
+                                          <div className={cn("w-1.5 h-1.5 rounded-full", beneficio.liquida_val > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", beneficio.liquida_val > 0 ? "text-emerald-600" : "text-red-600")}>
+                                            {beneficio.label}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </>
+                      ) : activeTable === 'base_consulta_governo_sp' ? (
+                        <>
+                          {/* Governo SP */}
+                          {(() => {
+                            const reg = activeReg as any;
+                            const lotacoes = reg.governo_sp_lotacoes || [];
+                            const lotacao = lotacoes[0] || {};
+                            const lead = currentLead as any;
+
+                            const mb_consignacoes = Number(lotacao.mb_consignacoes || lotacao.bruta_consignacoes || reg.mb_consignacoes || reg.bruta_consignacoes || reg.margem_bruta_consignacoes || lead?.mb_consignacoes || lead?.bruta_consignacoes || 0);
+                            const md_consignacoes = Number(lotacao.md_consignacoes || lotacao.liquida_consignacoes || lotacao.margem_35 || reg.md_consignacoes || reg.liquida_consignacoes || reg.margem_35 || lead?.md_consignacoes || lead?.liquida_consignacoes || lead?.margem_35 || lead?.margem_emprestimo_consignado || lead?.margem_emprestimo || lead?.margem_disponivel_emprestimo || 0);
+
+                            const mb_cartao_credito = Number(lotacao.mb_cartao_credito || lotacao.bruta_cartao_credito || lotacao.bruta_5 || reg.mb_cartao_credito || reg.bruta_5 || lead?.mb_cartao_credito || lead?.bruta_5 || 0);
+                            const md_cartao_credito = Number(lotacao.md_cartao_credito || lotacao.liquida_cartao_credito || lotacao.liquida_5 || reg.md_cartao_credito || reg.liquida_5 || lead?.md_cartao_credito || lead?.liquida_5 || lead?.margem_cartao_consignado || lead?.margem_cartao || 0);
+
+                            const mb_cartao_beneficio = Number(lotacao.mb_cartao_beneficio || lotacao.bruta_cartao_beneficio || lotacao.beneficio_bruta_5 || reg.mb_cartao_beneficio || reg.beneficio_bruta_5 || lead?.mb_cartao_beneficio || lead?.beneficio_bruta_5 || 0);
+                            const md_cartao_beneficio = Number(lotacao.md_cartao_beneficio || lotacao.liquida_cartao_beneficio || lotacao.beneficio_liquida_5 || reg.md_cartao_beneficio || reg.beneficio_liquida_5 || lead?.md_cartao_beneficio || lead?.beneficio_liquida_5 || lead?.margem_cartao_beneficio || 0);
+
+                            const getMarginLogic = (bruta: number, liquida_db: number) => {
+                              const b = Number(bruta) || 0;
+                              const l = Number(liquida_db) || 0;
+                              let status: 'SIM' | 'NÃO' | 'PARCIAL' = 'NÃO';
+                              if (l > 0) {
+                                status = (b > 0 && l < b) ? 'PARCIAL' : 'NÃO';
+                              } else {
+                                status = b > 0 ? 'SIM' : 'NÃO';
+                              }
+                              return { 
+                                status, 
+                                liquida_val: l,
+                                label: l > 0 ? 'DISPONÍVEL' : 'INDISPONÍVEL'
+                              };
+                            };
+
+                            const getCardLogic = (bruta: number, liquida_db: number) => {
+                              const l = Number(liquida_db) || 0;
+                              const used = l <= 0;
+                              return {
+                                status: used ? 'SIM' : 'NÃO' as const,
+                                liquida_val: l,
+                                label: l > 0 ? 'DISPONÍVEL' : 'INDISPONÍVEL'
+                              };
+                            };
+
+                            const consignacoes = getMarginLogic(mb_consignacoes, md_consignacoes);
+                            const cartao = getCardLogic(mb_cartao_credito, md_cartao_credito);
+                            const beneficio = getCardLogic(mb_cartao_beneficio, md_cartao_beneficio);
+
+                            const formatDateLocal = (dateStr: string | null) => {
+                              if (!dateStr) return "---";
+                              try {
+                                const [year, month, day] = dateStr.split("T")[0].split("-");
+                                return `${day}/${month}/${year}`;
+                              } catch {
+                                return dateStr;
+                              }
+                            };
+
+                            return (
+                              <div className="space-y-10 sm:space-y-12 text-left">
+                                <div className="space-y-8 sm:space-y-10">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                    <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Identificação (GOVERNO SP)</h3>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                                    <div className="space-y-1.5">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identificação</p>
+                                      <p className="text-[13px] font-bold text-slate-900">{reg.identificacao || reg.matricula || reg.numero_matricula || "---"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data da Nomeação</p>
+                                      <p className="text-[13px] font-bold text-slate-900">{formatDateLocal(reg.data_nomeacao)}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Vínculo</p>
+                                      <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.tipo_vinculo || reg.vinculo || reg.situacao_funcional || "NÃO INFORMADO"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lotação</p>
+                                      <p className="text-[13px] font-bold text-slate-900 uppercase">{lotacao.lotacao || reg.regime_juridico || "NÃO INFORMADO"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                      <p className="text-[13px] font-bold text-slate-900 uppercase">{lotacao.orgao || "GOVERNO SP"}</p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                  {/* Consignações */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Consignações</p>
+                                      <p className="text-[17px] font-bold text-slate-900">{formatCurrency(mb_consignacoes)}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      consignacoes.status === 'SIM' ? "bg-red-100/50 border-red-200" : 
+                                      consignacoes.status === 'PARCIAL' ? "bg-slate-100/80 border-slate-200" : 
+                                      "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                        consignacoes.status === 'SIM' ? "text-red-700/60" : 
+                                        consignacoes.status === 'PARCIAL' ? "text-slate-500" : 
+                                        "text-emerald-700/60"
+                                      )}>Utilizada</p>
+                                      <p className={cn("text-[17px] font-bold uppercase", 
+                                        consignacoes.status === 'SIM' ? "text-red-700" : 
+                                        consignacoes.status === 'PARCIAL' ? "text-slate-600" : 
+                                        "text-emerald-700"
+                                      )}>{consignacoes.status}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      consignacoes.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
+                                      <div className="flex flex-col">
+                                        <p className={cn("text-[17px] font-bold", consignacoes.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
+                                        <div className="flex items-center gap-1.5">
+                                          <div className={cn("w-1.5 h-1.5 rounded-full", consignacoes.liquida_val > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-600" : "text-red-600")}>
+                                            {consignacoes.label}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Cartão Crédito */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Crédito</p>
+                                      <p className="text-[17px] font-bold text-slate-900">{formatCurrency(mb_cartao_credito)}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                        cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
+                                      )}>Utilizada</p>
+                                      <p className={cn("text-[17px] font-bold uppercase", 
+                                        cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700"
+                                      )}>{cartao.status}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      cartao.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", cartao.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
+                                      <div className="flex flex-col">
+                                        <p className={cn("text-[17px] font-bold", cartao.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(cartao.liquida_val)}</p>
+                                        <div className="flex items-center gap-1.5">
+                                          <div className={cn("w-1.5 h-1.5 rounded-full", cartao.liquida_val > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", cartao.liquida_val > 0 ? "text-emerald-600" : "text-red-600")}>
+                                            {cartao.label}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Cartão Benefício */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Benefício</p>
+                                      <p className="text-[17px] font-bold text-slate-900">{formatCurrency(mb_cartao_beneficio)}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                        beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
+                                      )}>Utilizada</p>
+                                      <p className={cn("text-[17px] font-bold uppercase", 
+                                        beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700"
+                                      )}>{beneficio.status}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      beneficio.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
+                                      <div className="flex flex-col">
+                                        <p className={cn("text-[17px] font-bold", beneficio.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(beneficio.liquida_val)}</p>
+                                        <div className="flex items-center gap-1.5">
+                                          <div className={cn("w-1.5 h-1.5 rounded-full", beneficio.liquida_val > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", beneficio.liquida_val > 0 ? "text-emerald-600" : "text-red-600")}>
+                                            {beneficio.label}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </>
                       ) : (
                         <>
                           <div className="space-y-10">
@@ -2057,12 +2632,23 @@ export default function CampanhaAtendimentoPage() {
                               {/* Row 1 */}
                               <MarginCard label="Saldo 70%" value={formatCurrency(activeInst.saldo_70)} type="neutral" />
                               <MarginCard 
-                                label="LÍQUIDA FACULTATIVA GLOBAL" 
+                                label={activeTable === 'base_consulta_siape' ? "LÍQUIDA FACULTATIVA GLOBAL" : "MARGEM 35%"} 
                                 value={formatCurrency(activeInst.margem_35)} 
                                 type={(activeInst.margem_35 || 0) > 0 ? "success" : "danger"}
                                 status={(activeInst.margem_35 || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                className="sm:col-span-1 lg:col-span-2"
+                                className={activeTable === 'base_consulta_siape' ? "sm:col-span-1 lg:col-span-2" : ""}
                               />
+                              {activeTable !== 'base_consulta_siape' && (
+                                <MarginCard 
+                                  label="SOMA DAS MARGENS LÍQUIDAS" 
+                                  value={formatCurrency(
+                                    (Number(activeInst.margem_35) || 0) + 
+                                    (Number(activeInst.liquida_5) || 0) + 
+                                    (Number(activeInst.beneficio_liquida_5) || 0)
+                                  )} 
+                                  type="neutral" 
+                                />
+                              )}
                               
                               {/* Row 2 */}
                               <MarginCard label="Bruta 5%" value={formatCurrency(activeInst.bruta_5)} type="neutral" />

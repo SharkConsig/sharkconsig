@@ -1508,7 +1508,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
             {/* List Table */}
             <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 pb-40 border border-slate-200/60 rounded-2xl relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
               {activeTab === "home_office" ? (
-                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2550px]">
+                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2630px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
                       <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
@@ -1527,13 +1527,14 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                       <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">DOCUMENTOS</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[80px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">AÇÕES</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {loadingTable ? (
                       <tr>
-                        <td colSpan={17} className="text-center py-20 bg-slate-50/10">
+                        <td colSpan={18} className="text-center py-20 bg-slate-50/10">
                           <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                             <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando colaboradores home office...</p>
                           </div>
@@ -1541,7 +1542,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                       </tr>
                     ) : filteredHomeOffice.length === 0 ? (
                       <tr>
-                        <td colSpan={17} className="text-center py-20 bg-slate-50/10 border-none">
+                        <td colSpan={18} className="text-center py-20 bg-slate-50/10 border-none">
                           <div className="flex flex-col items-center justify-center space-y-2">
                             <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                             <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador home office encontrado</p>
@@ -1723,13 +1724,25 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                               DOCUMENTOS ({colabDocs[colab.id]?.length || 0})
                             </button>
                           </td>
+
+                          {/* EXCLUIR */}
+                          <td className="px-2 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(colab.id)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center"
+                              title="Excluir colaborador"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
               ) : (
-                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4250px]">
+                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4330px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
                       <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
@@ -1759,13 +1772,14 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                       <th className="sticky top-0 bg-[#171717] z-30 w-[250px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Sugestão de Campanhas</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Preferência de Incentivos</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">DOCUMENTOS</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[80px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">AÇÕES</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {loadingTable ? (
                       <tr>
-                        <td colSpan={28} className="text-center py-20 bg-slate-50/10">
+                        <td colSpan={29} className="text-center py-20 bg-slate-50/10">
                           <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                             <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de colaboradores...</p>
                           </div>
@@ -1773,7 +1787,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                       </tr>
                     ) : filteredPresenciais.length === 0 ? (
                       <tr>
-                        <td colSpan={28} className="text-center py-20 bg-slate-50/10 border-none">
+                        <td colSpan={29} className="text-center py-20 bg-slate-50/10 border-none">
                           <div className="flex flex-col items-center justify-center space-y-2">
                             <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                             <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador presencial encontrado</p>
@@ -2063,6 +2077,18 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                             >
                               <Paperclip className="w-3.5 h-3.5 shrink-0" />
                               DOCUMENTOS ({colabDocs[colab.id]?.length || 0})
+                            </button>
+                          </td>
+
+                          {/* EXCLUIR */}
+                          <td className="px-2 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(colab.id)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center"
+                              title="Excluir colaborador"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </td>
                         </tr>
