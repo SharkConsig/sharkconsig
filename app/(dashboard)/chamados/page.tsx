@@ -1049,6 +1049,33 @@ export default function TicketsPage() {
     return ['supervisao', 'supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status)
   }, [slaActive, perfil?.role, perfil?.regime_contratacao, perfil?.funcao, isUserAdmin, isUserSupervisor])
 
+  const isTicketSLAHistory = useCallback((ticket: Ticket) => {
+    if (!slaActive) return false
+
+    const roleLower = (perfil?.role || '').toLowerCase()
+    const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || roleLower === 'pj'
+    if (isPJ) return false
+
+    if (!isUserAdmin && !isUserSupervisor) {
+      return false
+    }
+
+    const t = ticket as any
+    const wasTriggeredInPast = Boolean(
+      t.timestamp_gatilho_disparado ||
+      t.timestamp_escalonamento ||
+      t.respondeu_sla === true ||
+      t.cobranca_expressa === true ||
+      t.soneca_usada === true
+    )
+
+    return wasTriggeredInPast
+  }, [slaActive, perfil?.role, perfil?.regime_contratacao, perfil?.funcao, isUserAdmin, isUserSupervisor])
+
+  const isTicketInSLAFolder = useCallback((ticket: Ticket) => {
+    return isTicketInUserSLAEscalation(ticket) || isTicketSLAHistory(ticket)
+  }, [isTicketInUserSLAEscalation, isTicketSLAHistory])
+
   const baseFilteredTickets = useMemo(() => {
     return tickets.filter(ticket => {
       // Se for Corretor e o chamado for de um estagiário, só mostra se tiver sido enviado para ele
@@ -1199,7 +1226,7 @@ export default function TicketsPage() {
         }
       } else if (selectedStatus && selectedStatus !== "TODOS") {
         if (selectedStatus === "SLA ESTOURADO") {
-          matchesStatus = isTicketInUserSLAEscalation(ticket)
+          matchesStatus = isTicketInSLAFolder(ticket)
         } else if (selectedStatus === "APROVADOS") {
           matchesStatus = APROVADOS_LABELS.some(label => {
             const u = label.toUpperCase()
@@ -1232,7 +1259,7 @@ export default function TicketsPage() {
       
       return matchesStatus
     })
-  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus, isTicketInUserSLAEscalation])
+  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus, isTicketInSLAFolder])
 
   // Summing values per status label
   const statusValues = useMemo(() => {
@@ -1250,7 +1277,7 @@ export default function TicketsPage() {
     const list = statusCardsList.map(c => ({ ...c }))
 
     if (isGestaoOrSupervisor) {
-      const slaTickets = baseFilteredTickets.filter(isTicketInUserSLAEscalation)
+      const slaTickets = baseFilteredTickets.filter(isTicketInSLAFolder)
       const slaCount = slaTickets.length
       const slaTotalValor = slaTickets.reduce((acc, t) => {
         const opData = getValorOperacaoDeAbertura(t)
@@ -1329,7 +1356,7 @@ export default function TicketsPage() {
 
       return { ...card, count, totalValor }
     })
-  }, [counts, statusValues, baseFilteredTickets, isGestaoOrSupervisor, isTicketInUserSLAEscalation])
+  }, [counts, statusValues, baseFilteredTickets, isGestaoOrSupervisor, isTicketInSLAFolder])
 
   const handleParentClick = (status: string) => {
     setCurrentPage(1)
@@ -2100,38 +2127,62 @@ export default function TicketsPage() {
                               >
                                 {ticket.status_chamados?.nome || ticket.status}
                               </span>
-                              {slaActive && (isUserAdmin || isUserSupervisor) && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && isTicketInUserSLAEscalation(ticket) && (() => {
-                                const labelText = isUserAdmin ? '🚨 ATENÇÃO ADMINISTRADOR!' : '🚨 ATENÇÃO SUPERVISOR!'
-                                const currentStatus = ticket.status_chamados?.nome || ticket.status || ''
+                              {slaActive && (isUserAdmin || isUserSupervisor) && isTicketInSLAFolder(ticket) && (() => {
+                                const isActive = isTicketInUserSLAEscalation(ticket)
 
-                                const meta = parseDescriptionMetadata(ticket.descricao || "")
-                                const userInMap = ticket.user_id ? usersMap[ticket.user_id] : null
+                                if (isActive) {
+                                  const labelText = isUserAdmin ? '🚨 ATENÇÃO ADMINISTRADOR!' : '🚨 ATENÇÃO SUPERVISOR!'
+                                  const currentStatus = ticket.status_chamados?.nome || ticket.status || ''
 
-                                let isEstagiario = false
-                                if (userInMap) {
-                                  isEstagiario = userInMap.isEstagiario
-                                } else if (ticket.user_id === user?.id && perfil) {
-                                  const r = (perfil.role || (perfil as any).funcao || '').toLowerCase()
-                                  isEstagiario = r.includes('estágio') || r.includes('estagio') || r.includes('estagiario') || r.includes('processo seletivo')
-                                } else if (meta?.estagiario_id && meta.estagiario_id === ticket.user_id) {
-                                  isEstagiario = true
-                                } else if (meta?.estagiario_nome && meta.estagiario_nome === ticket.user_nome) {
-                                  isEstagiario = true
+                                  const meta = parseDescriptionMetadata(ticket.descricao || "")
+                                  const userInMap = ticket.user_id ? usersMap[ticket.user_id] : null
+
+                                  let isEstagiario = false
+                                  if (userInMap) {
+                                    isEstagiario = userInMap.isEstagiario
+                                  } else if (ticket.user_id === user?.id && perfil) {
+                                    const r = (perfil.role || (perfil as any).funcao || '').toLowerCase()
+                                    isEstagiario = r.includes('estágio') || r.includes('estagio') || r.includes('estagiario') || r.includes('processo seletivo')
+                                  } else if (meta?.estagiario_id && meta.estagiario_id === ticket.user_id) {
+                                    isEstagiario = true
+                                  } else if (meta?.estagiario_nome && meta.estagiario_nome === ticket.user_nome) {
+                                    isEstagiario = true
+                                  }
+
+                                  const collaboratorName = ticket.user_nome || userInMap?.nome || "---"
+                                  const cargoText = isEstagiario ? "Estagiário" : "Corretor"
+                                  const tempoParadoStr = formatTempoParadoAmigavel(ticket.timestamp_ultima_mudanca_status || ticket.created_at)
+                                  const tooltipText = `Chamado parado há ${tempoParadoStr} no status ${currentStatus} aguardando a ação do ${cargoText} ${collaboratorName}.`
+
+                                  return (
+                                    <span 
+                                      title={tooltipText}
+                                      className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-tight shadow-sm flex items-center gap-1 cursor-help"
+                                    >
+                                      {labelText}
+                                    </span>
+                                  )
+                                } else {
+                                  const isCobrado = Boolean((ticket as any).cobranca_expressa)
+                                  const labelText = isCobrado ? '⚡ SLA COBRADO' : '✅ SLA RESPONDIDO'
+                                  const tooltipText = isCobrado
+                                    ? "Este chamado foi cobrado via Cobrança Expressa e já possui andamento/resposta no histórico."
+                                    : "Este chamado teve alerta de SLA e a resposta/ação foi realizada pelo colaborador."
+
+                                  return (
+                                    <span 
+                                      title={tooltipText}
+                                      className={cn(
+                                        "text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-tight shadow-sm flex items-center gap-1 cursor-help border",
+                                        isCobrado 
+                                          ? "bg-blue-50 text-blue-700 border-blue-200" 
+                                          : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      )}
+                                    >
+                                      {labelText}
+                                    </span>
+                                  )
                                 }
-
-                                const collaboratorName = ticket.user_nome || userInMap?.nome || "---"
-                                const cargoText = isEstagiario ? "Estagiário" : "Corretor"
-                                const tempoParadoStr = formatTempoParadoAmigavel(ticket.timestamp_ultima_mudanca_status || ticket.created_at)
-                                const tooltipText = `Chamado parado há ${tempoParadoStr} no status ${currentStatus} aguardando a ação do ${cargoText} ${collaboratorName}.`
-
-                                return (
-                                  <span 
-                                    title={tooltipText}
-                                    className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-tight shadow-sm flex items-center gap-1 cursor-help"
-                                  >
-                                    {labelText}
-                                  </span>
-                                )
                               })()}
                               {(() => {
                                 const meta = parseDescriptionMetadata(ticket.descricao || "")
