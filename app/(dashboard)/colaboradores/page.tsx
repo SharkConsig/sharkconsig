@@ -1549,8 +1549,8 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                         </td>
                       </tr>
                     ) : (
-                      filteredHomeOffice.map((colab) => (
-                        <tr key={colab.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap">
+                      filteredHomeOffice.map((colab, idx) => (
+                        <tr key={colab.id} className={cn("transition-all font-semibold align-middle whitespace-nowrap hover:bg-slate-200/50", idx % 2 === 0 ? "bg-white" : "bg-slate-100")}>
                           {/* 1. NOME COMPLETO */}
                           <td className="px-4 py-3.5">
                             <TextInputCell 
@@ -1781,8 +1781,8 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                         </td>
                       </tr>
                     ) : (
-                      filteredPresenciais.map((colab) => (
-                        <tr key={colab.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap">
+                      filteredPresenciais.map((colab, idx) => (
+                        <tr key={colab.id} className={cn("transition-all font-semibold align-middle whitespace-nowrap hover:bg-slate-200/50", idx % 2 === 0 ? "bg-white" : "bg-slate-100")}>
                           {/* 1. NOME COMPLETO */}
                           <td className="px-4 py-3.5">
                             <TextInputCell 
@@ -2202,8 +2202,8 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                         </td>
                       </tr>
                     ) : (
-                      filteredExCollaborators.map((colab) => (
-                        <tr key={colab.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap">
+                      filteredExCollaborators.map((colab, idx) => (
+                        <tr key={colab.id} className={cn("transition-all font-semibold align-middle whitespace-nowrap hover:bg-slate-200/50", idx % 2 === 0 ? "bg-white" : "bg-slate-100")}>
                           {/* Nome Completo */}
                           <td className="px-4 py-3.5">
                             <TextInputCell 
