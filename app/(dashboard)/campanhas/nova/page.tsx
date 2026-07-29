@@ -1253,7 +1253,7 @@ export default function NewCampaignPage() {
                           ? `${getCardNumbers()['margem']}. LÍQUIDA CONSIGNADO`
                           : activeConvenio === 'governo_rr' || activeConvenio === 'prefeitura_porto_velho'
                             ? `${getCardNumbers()['margem']}. MARGEM EMPRÉSTIMO`
-                            : `${getCardNumbers()['margem']}. MARGEM 35%`}
+                            : `${getCardNumbers()['margem']}. LÍQUIDA FACULTATIVA GLOBAL`}
                     </h3>
                   </div>
                   <button 

@@ -1555,14 +1555,14 @@ export default function SearchClientPage() {
                             </div>
                           </div>
                           <div className={cn(
-                            "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]",
+                            "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] sm:col-span-1 lg:col-span-2",
                             (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
                           )}>
                             <div>
                               <p className={cn(
                                 "text-[9px] font-bold uppercase tracking-widest",
                                 (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "text-emerald-700/60" : "text-red-700/60"
-                              )}>Margem 35%</p>
+                              )}>LÍQUIDA FACULTATIVA GLOBAL</p>
                               <p className={cn(
                                 "text-[17px] font-bold tracking-tight",
                                 (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "text-emerald-700" : "text-red-700"
@@ -1573,22 +1573,6 @@ export default function SearchClientPage() {
                               <span className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
                                 {(Number(allRegs[activeRegIndex].margem_35) || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
                               </span>
-                            </div>
-                          </div>
-                          <div className="p-3.5 bg-orange-100/50 border border-orange-200 rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]">
-                            <div>
-                              <p className="text-[9px] font-bold text-orange-700/60 uppercase tracking-widest">Soma das Margens Líquidas</p>
-                              <p className="text-[17px] font-bold text-orange-700 tracking-tight">
-                                {formatCurrency(
-                                  (Number(allRegs[activeRegIndex].margem_35) || 0) + 
-                                  (Number(allRegs[activeRegIndex].liquida_5) || 0) + 
-                                  (Number(allRegs[activeRegIndex].beneficio_liquida_5) || 0)
-                                )}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-1.5 invisible">
-                              <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
-                              <span className="text-[8px] font-bold uppercase tracking-widest">STATUS</span>
                             </div>
                           </div>
 

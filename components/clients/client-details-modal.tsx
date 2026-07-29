@@ -1047,10 +1047,10 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                     <p className="text-xl font-black text-slate-900">{formatCurrency(activeReg.saldo_70)}</p>
                                   </div>
                                   <div className={cn(
-                                    "p-4 border rounded-2xl",
+                                    "p-4 border rounded-2xl sm:col-span-2",
                                     (activeReg.margem_35 || 0) > 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
                                   )}>
-                                    <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (activeReg.margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700")}>Margem 35%</p>
+                                    <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (activeReg.margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700")}>LÍQUIDA FACULTATIVA GLOBAL</p>
                                     <p className={cn("text-xl font-black", (activeReg.margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(activeReg.margem_35)}</p>
                                     <div className="flex items-center gap-1.5 mt-2">
                                       <div className={cn("w-1.5 h-1.5 rounded-full", (activeReg.margem_35 || 0) > 0 ? "bg-emerald-500" : "bg-red-500")}></div>
@@ -1058,16 +1058,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                         {(activeReg.margem_35 || 0) > 0 ? "Disponível" : "Indisponível"}
                                       </p>
                                     </div>
-                                  </div>
-                                  <div className="p-4 bg-[#fff7ed] border border-orange-200 rounded-2xl">
-                                    <p className="text-[9px] font-bold text-orange-700 uppercase tracking-widest mb-1">Soma Margens Líquidas</p>
-                                    <p className="text-xl font-black text-orange-700">
-                                      {formatCurrency(
-                                        (Number(activeReg.margem_35) || 0) + 
-                                        (Number(activeReg.liquida_5) || 0) + 
-                                        (Number(activeReg.beneficio_liquida_5) || 0)
-                                      )}
-                                    </p>
                                   </div>
                                 </div>
                               </div>

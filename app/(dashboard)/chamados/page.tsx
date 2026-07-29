@@ -19,7 +19,9 @@ import {
   RefreshCw,
   Check,
   FileSpreadsheet,
-  Send
+  Send,
+  Zap,
+  UserCheck
 } from "lucide-react"
 import { cn, withRetry } from "@/lib/utils"
 import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
@@ -144,6 +146,33 @@ const parseDescriptionMetadata = (desc: string) => {
   }
   return null;
 };
+
+function formatTempoParadoAmigavel(startDateISO?: string): string {
+  if (!startDateISO) return 'alguns minutos'
+  const start = new Date(startDateISO).getTime()
+  if (isNaN(start)) return 'alguns minutos'
+  const diffMs = Math.max(0, Date.now() - start)
+  const diffMinutes = Math.floor(diffMs / (1000 * 60))
+
+  if (diffMinutes < 1) return 'menos de 1 minuto'
+  if (diffMinutes < 60) return `${diffMinutes} ${diffMinutes === 1 ? 'minuto' : 'minutos'}`
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  const remMinutes = diffMinutes % 60
+
+  if (diffHours < 24) {
+    const horaText = `${diffHours} ${diffHours === 1 ? 'hora' : 'horas'}`
+    if (remMinutes === 0) return horaText
+    return `${horaText} e ${remMinutes} ${remMinutes === 1 ? 'minuto' : 'minutos'}`
+  }
+
+  const diffDays = Math.floor(diffHours / 24)
+  const remHours = diffHours % 24
+
+  const diaText = `${diffDays} ${diffDays === 1 ? 'dia' : 'dias'}`
+  if (remHours === 0) return diaText
+  return `${diaText} e ${remHours} ${remHours === 1 ? 'hora' : 'horas'}`
+}
 
 const parseValorToNumber = (valStr: string) => {
   if (!valStr) return 0;
@@ -469,6 +498,109 @@ export default function TicketsPage() {
   const [isUpdatingBulk, setIsUpdatingBulk] = useState(false)
 
   const [selectedMatricula, setSelectedMatricula] = useState<string | undefined>()
+
+  // Estados e Handlers para Cobrança Expressa e Transbordo de Lead (SLA)
+  const [allUsersList, setAllUsersList] = useState<Array<{ id: string; nome: string; funcao?: string; role?: string; status?: string }>>([])
+
+  const [selectedCobrancaTicket, setSelectedCobrancaTicket] = useState<Ticket | null>(null)
+  const [cobrancaMensagem, setCobrancaMensagem] = useState("")
+  const [isSendingCobranca, setIsSendingCobranca] = useState(false)
+  const [isCobrancaModalOpen, setIsCobrancaModalOpen] = useState(false)
+
+  const [selectedTransbordoTicket, setSelectedTransbordoTicket] = useState<Ticket | null>(null)
+  const [selectedNewUserId, setSelectedNewUserId] = useState("")
+  const [transbordoMotivo, setTransbordoMotivo] = useState("")
+  const [isSubmittingTransbordo, setIsSubmittingTransbordo] = useState(false)
+  const [isTransbordoModalOpen, setIsTransbordoModalOpen] = useState(false)
+
+  const handleOpenCobrancaExpressa = useCallback((ticket: Ticket) => {
+    const opVal = getValorOperacaoDeAbertura(ticket).valor
+    const currentStatus = ticket.status_chamados?.nome || ticket.status || ''
+    setSelectedCobrancaTicket(ticket)
+    setCobrancaMensagem(`🚨 Favor dar andamento imediato a este chamado do cliente ${ticket.cliente_nome || ''} (${opVal || 'S/ Valor'}). O tempo limite desse chamado no status ${currentStatus} expirou e este lead exige priorização máxima!`)
+    setIsCobrancaModalOpen(true)
+  }, [])
+
+  const handleConfirmCobrancaExpressa = async () => {
+    if (!selectedCobrancaTicket || !cobrancaMensagem.trim() || !user || !perfil) return
+    setIsSendingCobranca(true)
+    try {
+      const { error } = await supabase
+        .from('mensagens_chamado')
+        .insert({
+          chamado_id: parseInt(selectedCobrancaTicket.id, 10),
+          user_id: user.id,
+          user_nome: perfil.nome,
+          user_role: perfil.role,
+          user_avatar: perfil.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil.nome)}&background=random`,
+          content: cobrancaMensagem,
+          action: 'cobranca_expressa'
+        })
+
+      if (error) throw error
+      toast.success("⚡ Cobrança Expressa enviada ao responsável do chamado!")
+      setIsCobrancaModalOpen(false)
+      setSelectedCobrancaTicket(null)
+      setCobrancaMensagem("")
+    } catch (err) {
+      console.error("Erro ao enviar cobrança expressa:", err)
+      toast.error("Erro ao enviar cobrança expressa.")
+    } finally {
+      setIsSendingCobranca(false)
+    }
+  }
+
+  const handleOpenTransbordoLead = useCallback((ticket: Ticket) => {
+    setSelectedTransbordoTicket(ticket)
+    setSelectedNewUserId("")
+    setTransbordoMotivo("SLA Excedido - Reatribuição imediata do Lead pelo Supervisor/Administrador para acelerar o atendimento.")
+    setIsTransbordoModalOpen(true)
+  }, [])
+
+  const handleConfirmTransbordoLead = async () => {
+    if (!selectedTransbordoTicket || !selectedNewUserId || !user || !perfil) return
+    setIsSubmittingTransbordo(true)
+    try {
+      const targetUser = allUsersList.find(u => u.id === selectedNewUserId)
+      const targetName = targetUser?.nome || usersMap[selectedNewUserId]?.nome || "Novo Colaborador"
+
+      // 1. Atualizar o responsável pelo chamado na tabela chamados
+      const { error: updateErr } = await supabase
+        .from('chamados')
+        .update({
+          user_id: selectedNewUserId,
+          user_nome: targetName
+        })
+        .eq('id', selectedTransbordoTicket.id)
+
+      if (updateErr) throw updateErr
+
+      // 2. Registrar no histórico de mensagens do chamado
+      await supabase
+        .from('mensagens_chamado')
+        .insert({
+          chamado_id: parseInt(selectedTransbordoTicket.id, 10),
+          user_id: user.id,
+          user_nome: perfil.nome,
+          user_role: perfil.role,
+          user_avatar: perfil.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(perfil.nome)}&background=random`,
+          content: `🔄 REATRIBUIÇÃO / TRANSBORDO DE LEAD (SLA ESTOURADO):\nLead transferido de "${selectedTransbordoTicket.user_nome || 'Anterior'}" para "${targetName}".\nMotivo: ${transbordoMotivo}`,
+          action: 'transbordo_lead'
+        })
+
+      toast.success(`🔄 Lead reatribuído para ${targetName} com sucesso!`)
+      setIsTransbordoModalOpen(false)
+      setSelectedTransbordoTicket(null)
+      setSelectedNewUserId("")
+      setTransbordoMotivo("")
+      fetchTickets()
+    } catch (err) {
+      console.error("Erro no transbordo do lead:", err)
+      toast.error("Erro ao reatribuir o lead.")
+    } finally {
+      setIsSubmittingTransbordo(false)
+    }
+  }
 
   const handleViewClient = useCallback((cpf: string, matricula?: string) => {
     setSelectedClientCpf(cpf)
@@ -838,6 +970,7 @@ export default function TicketsPage() {
           const users = await res.json()
           const map: Record<string, { nome: string; funcao: string; isEstagiario: boolean }> = {}
           if (Array.isArray(users)) {
+            setAllUsersList(users)
             users.forEach((u: any) => {
               const func = (u.funcao || u.role || '').toLowerCase()
               const isEstagiario = func.includes('estágio') || func.includes('estagio') || func.includes('estagiario') || func.includes('processo seletivo')
@@ -890,6 +1023,18 @@ export default function TicketsPage() {
     return (isSupervisor || isAdmin || isOperational || isDeveloper || ['supervisor', 'administrador', 'administrativo', 'operacional', 'desenvolvedor'].includes(roleLower)) && !isUserEstagio && roleLower !== 'corretor'
   }, [perfil?.role, perfil?.regime_contratacao, perfil?.funcao, isSupervisor, isAdmin, isOperational, isDeveloper, isUserEstagio])
 
+  const isUserAdmin = useMemo(() => {
+    const roleLower = (perfil?.role || '').toLowerCase()
+    const funcaoLower = ((perfil as any)?.funcao || '').toLowerCase()
+    return isAdmin || isDeveloper || roleLower === 'administrador' || roleLower === 'admin' || roleLower === 'desenvolvedor' || funcaoLower.includes('admin')
+  }, [isAdmin, isDeveloper, perfil?.role, (perfil as any)?.funcao])
+
+  const isUserSupervisor = useMemo(() => {
+    const roleLower = (perfil?.role || '').toLowerCase()
+    const funcaoLower = ((perfil as any)?.funcao || '').toLowerCase()
+    return isSupervisor || roleLower === 'supervisor' || funcaoLower.includes('supervis')
+  }, [isSupervisor, perfil?.role, (perfil as any)?.funcao])
+
   const isTicketInUserSLAEscalation = useCallback((ticket: Ticket) => {
     if (!slaActive || !ticket.escalonamento_status || ticket.escalonamento_status === 'nenhum') return false
 
@@ -897,21 +1042,12 @@ export default function TicketsPage() {
     const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || roleLower === 'pj'
     if (isPJ) return false
 
-    const isSupervisorRole = isSupervisor || roleLower === 'supervisor'
-    const isAdminOrOpRole = isAdmin || isOperational || isDeveloper || ['administrador', 'administrativo', 'operacional', 'desenvolvedor'].includes(roleLower)
-
-    const isFaixaSupervisor = ticket.escalonamento_status === 'supervisao'
-    const isFaixaAdmin = ['supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status)
-
-    if (isAdminOrOpRole) {
-      return isFaixaAdmin
-    }
-    if (isSupervisorRole) {
-      return isFaixaSupervisor
+    if (!isUserAdmin && !isUserSupervisor) {
+      return false
     }
 
-    return false
-  }, [slaActive, perfil?.role, perfil?.regime_contratacao, perfil?.funcao, isSupervisor, isAdmin, isOperational, isDeveloper])
+    return ['supervisao', 'supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status)
+  }, [slaActive, perfil?.role, perfil?.regime_contratacao, perfil?.funcao, isUserAdmin, isUserSupervisor])
 
   const baseFilteredTickets = useMemo(() => {
     return tickets.filter(ticket => {
@@ -1964,21 +2100,9 @@ export default function TicketsPage() {
                               >
                                 {ticket.status_chamados?.nome || ticket.status}
                               </span>
-                              {slaActive && (isSupervisor || isAdmin || isOperational || isDeveloper) && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && isTicketInUserSLAEscalation(ticket) && (() => {
-                                const isFaixaAdmin = ['supervisao_administrador', 'supervisao_gestao', 'administrador'].includes(ticket.escalonamento_status)
-                                const labelText = isFaixaAdmin ? '🚨 ATENÇÃO ADMINISTRADOR!' : '🚨 ATENÇÃO SUPERVISOR!'
+                              {slaActive && (isUserAdmin || isUserSupervisor) && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && isTicketInUserSLAEscalation(ticket) && (() => {
+                                const labelText = isUserAdmin ? '🚨 ATENÇÃO ADMINISTRADOR!' : '🚨 ATENÇÃO SUPERVISOR!'
                                 const currentStatus = ticket.status_chamados?.nome || ticket.status || ''
-                                const statusUpper = currentStatus.trim().toUpperCase()
-
-                                let config = slaConfigs.find(c => c.status_crm.trim().toUpperCase() === statusUpper && c.ativo !== false)
-                                if (!config && (statusUpper.includes('APROVADO') || statusUpper.includes('APROVADOS'))) {
-                                  config = slaConfigs.find(c => {
-                                    const cStatus = c.status_crm.trim().toUpperCase()
-                                    return (cStatus === 'APROVADOS' || cStatus === 'APROVADO') && c.ativo !== false
-                                  })
-                                }
-
-                                const n = config?.prazo_horas_uteis ?? config?.prazo_faixa1_horas ?? 0
 
                                 const meta = parseDescriptionMetadata(ticket.descricao || "")
                                 const userInMap = ticket.user_id ? usersMap[ticket.user_id] : null
@@ -1997,7 +2121,8 @@ export default function TicketsPage() {
 
                                 const collaboratorName = ticket.user_nome || userInMap?.nome || "---"
                                 const cargoText = isEstagiario ? "Estagiário" : "Corretor"
-                                const tooltipText = `Chamado parado há ${n} horas no status ${currentStatus} aguardando a ação do ${cargoText} ${collaboratorName}.`
+                                const tempoParadoStr = formatTempoParadoAmigavel(ticket.timestamp_ultima_mudanca_status || ticket.created_at)
+                                const tooltipText = `Chamado parado há ${tempoParadoStr} no status ${currentStatus} aguardando a ação do ${cargoText} ${collaboratorName}.`
 
                                 return (
                                   <span 
@@ -2155,6 +2280,34 @@ export default function TicketsPage() {
                                 >
                                   <FileEdit className="w-5 h-5" />
                                 </Button>
+                              )}
+                              {slaActive && (isUserAdmin || isUserSupervisor) && ticket.escalonamento_status && ticket.escalonamento_status !== 'nenhum' && isTicketInUserSLAEscalation(ticket) && (
+                                <>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-100/80 rounded-full transition-all cursor-pointer bg-amber-50 border border-amber-200/60 shadow-xs"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleOpenCobrancaExpressa(ticket)
+                                    }}
+                                    title="Cobrança Expressa (Nudge de Alta Prioridade)"
+                                  >
+                                    <Zap className="w-4 h-4 text-amber-600 fill-amber-500 animate-pulse" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-100/80 rounded-full transition-all cursor-pointer bg-indigo-50 border border-indigo-200/60 shadow-xs"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleOpenTransbordoLead(ticket)
+                                    }}
+                                    title="Reatribuição / Transbordo Imediato do Lead"
+                                  >
+                                    <UserCheck className="w-4 h-4 text-indigo-600" />
+                                  </Button>
+                                </>
                               )}
                             </div>
                           </td>
@@ -2424,6 +2577,206 @@ export default function TicketsPage() {
                       Confirmar Alteração
                     </>
                   )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Cobrança Expressa (Nudge SLA) */}
+        {isCobrancaModalOpen && selectedCobrancaTicket && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-amber-100 flex items-center justify-between bg-amber-50/60">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center border border-amber-200/60">
+                    <Zap className="w-5 h-5 fill-amber-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                      Cobrança Expressa
+                    </h3>
+                    <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mt-0.5">
+                      Chamado #{selectedCobrancaTicket.id} • {selectedCobrancaTicket.cliente_nome}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsCobrancaModalOpen(false)
+                    setSelectedCobrancaTicket(null)
+                  }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-200 transition-colors text-slate-400 hover:text-slate-600 font-bold cursor-pointer"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex flex-col gap-1 text-xs">
+                  <div className="flex justify-between items-center text-[11px] font-bold text-slate-600">
+                    <span>Responsável Atual: <strong className="text-slate-900">{selectedCobrancaTicket.user_nome || 'Não atribuído'}</strong></span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
+                    Mensagem de Alerta ao Colaborador
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={cobrancaMensagem}
+                    onChange={(e) => setCobrancaMensagem(e.target.value)}
+                    className="w-full p-3 text-xs font-bold border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-slate-800 leading-relaxed resize-none"
+                    placeholder="Digite a instrução para o colaborador..."
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsCobrancaModalOpen(false)
+                    setSelectedCobrancaTicket(null)
+                  }}
+                  className="h-10 px-5 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-100 rounded-xl transition-all cursor-pointer border-2"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!cobrancaMensagem.trim() || isSendingCobranca}
+                  onClick={handleConfirmCobrancaExpressa}
+                  className="h-10 px-6 text-[10px] font-bold uppercase tracking-widest bg-amber-500 hover:bg-amber-600 text-white rounded-xl transition-all cursor-pointer flex items-center gap-2 shadow-xs"
+                >
+                  {isSendingCobranca ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Zap className="w-4 h-4 fill-white" />
+                  )}
+                  Enviar Cobrança
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Reatribuição / Transbordo do Lead */}
+        {isTransbordoModalOpen && selectedTransbordoTicket && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-indigo-100 flex items-center justify-between bg-indigo-50/60">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center border border-indigo-200/60">
+                    <UserCheck className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                      Reatribuição
+                    </h3>
+                    <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider mt-0.5">
+                      Chamado #{selectedTransbordoTicket.id} • {selectedTransbordoTicket.cliente_nome}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsTransbordoModalOpen(false)
+                    setSelectedTransbordoTicket(null)
+                  }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-200 transition-colors text-slate-400 hover:text-slate-600 font-bold cursor-pointer"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-600">Responsável Atual:</span>
+                  <span className="font-extrabold text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-lg">
+                    {selectedTransbordoTicket.user_nome || 'Não informado'}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
+                    Novo Responsável pelo Lead *
+                  </label>
+                  <select
+                    value={selectedNewUserId}
+                    onChange={(e) => setSelectedNewUserId(e.target.value)}
+                    className="w-full h-11 px-3 text-xs font-bold border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 cursor-pointer"
+                  >
+                    <option value="" disabled>Selecione o novo colaborador...</option>
+                    {allUsersList
+                      .filter(u => u.id !== selectedTransbordoTicket.user_id)
+                      .filter(u => {
+                        const statusUpper = (u.status || 'ATIVO').toUpperCase()
+                        const isActive = statusUpper === 'ATIVO' || statusUpper === 'ACTIVE'
+                        if (!isActive) return false
+
+                        const f = ((u.funcao || '') + ' ' + (u.role || '')).toLowerCase()
+                        const isCorretor = f.includes('corretor') || f.includes('corretagem')
+                        const isEstagiario = f.includes('estágio') || f.includes('estagio') || f.includes('estagiario') || f.includes('processo seletivo')
+                        const isSupervisor = f.includes('supervis')
+                        const isDefault = !u.funcao && !u.role
+                        return isCorretor || isEstagiario || isSupervisor || isDefault
+                      })
+                      .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
+                      .map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.nome} {u.funcao ? `(${u.funcao})` : ''}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
+                    Motivo da Reatribuição
+                  </label>
+                  <input
+                    type="text"
+                    value={transbordoMotivo}
+                    onChange={(e) => setTransbordoMotivo(e.target.value)}
+                    className="w-full h-10 px-3 text-xs font-bold border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
+                    placeholder="Informe o motivo..."
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsTransbordoModalOpen(false)
+                    setSelectedTransbordoTicket(null)
+                  }}
+                  className="h-10 px-5 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-100 rounded-xl transition-all cursor-pointer border-2"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!selectedNewUserId || isSubmittingTransbordo}
+                  onClick={handleConfirmTransbordoLead}
+                  className="h-10 px-6 text-[10px] font-bold uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all cursor-pointer flex items-center gap-2 shadow-xs"
+                >
+                  {isSubmittingTransbordo ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <UserCheck className="w-4 h-4" />
+                  )}
+                  Confirmar Reatribuição
                 </Button>
               </div>
             </div>

@@ -215,7 +215,7 @@ function InfoCard({ label, value, color = "default" }: { label: string; value: s
   )
 }
 
-function MarginCard({ label, value, status, type = "neutral" }: { label: string; value: string; status?: string; type: 'neutral' | 'success' | 'danger' | 'warning' }) {
+function MarginCard({ label, value, status, type = "neutral", className }: { label: string; value: string; status?: string; type: 'neutral' | 'success' | 'danger' | 'warning'; className?: string }) {
   const colors = {
     neutral: "bg-slate-300/60 border-slate-400/40 text-slate-900 status-slate-400",
     success: "bg-emerald-100/50 border-emerald-200 text-emerald-700 status-emerald-600",
@@ -227,7 +227,7 @@ function MarginCard({ label, value, status, type = "neutral" }: { label: string;
   const statusColor = selectedColor.split('status-')[1]
 
   return (
-    <div className={cn("p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]", selectedColor.split(' status-')[0])}>
+    <div className={cn("p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]", selectedColor.split(' status-')[0], className)}>
       <div>
         <p className={cn("text-[9px] font-bold uppercase tracking-widest opacity-60")}>{label}</p>
         <p className="text-[17px] font-bold tracking-tight">{value}</p>
@@ -2057,19 +2057,11 @@ export default function CampanhaAtendimentoPage() {
                               {/* Row 1 */}
                               <MarginCard label="Saldo 70%" value={formatCurrency(activeInst.saldo_70)} type="neutral" />
                               <MarginCard 
-                                label="Margem 35%" 
+                                label="LÍQUIDA FACULTATIVA GLOBAL" 
                                 value={formatCurrency(activeInst.margem_35)} 
                                 type={(activeInst.margem_35 || 0) > 0 ? "success" : "danger"}
                                 status={(activeInst.margem_35 || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                              />
-                              <MarginCard 
-                                label="Soma das Margens Líquidas" 
-                                value={formatCurrency(
-                                  (activeInst.margem_35 || 0) + 
-                                  (activeInst.liquida_5 || 0) + 
-                                  (activeInst.beneficio_liquida_5 || 0)
-                                )} 
-                                type="warning" 
+                                className="sm:col-span-1 lg:col-span-2"
                               />
                               
                               {/* Row 2 */}

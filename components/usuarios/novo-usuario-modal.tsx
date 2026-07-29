@@ -87,7 +87,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         avatar_url: usuario.avatar_url || "",
         foto_campanha_url: usuario.foto_campanha_url || "",
         foto_proposta_url: usuario.foto_proposta_url || "",
-        supervisor_id: usuario.supervisor_id || ""
+        supervisor_id: usuario.supervisor_id || (usuario.supervisor_nome === "Nenhum" ? "nenhum" : (usuario.supervisor_nome || "nenhum"))
       })
       setPreviewUrl(usuario.avatar_url || null)
       setPreviewCampanhaUrl(usuario.foto_campanha_url || null)
@@ -102,7 +102,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         avatar_url: "",
         foto_campanha_url: "",
         foto_proposta_url: "",
-        supervisor_id: ""
+        supervisor_id: "nenhum"
       })
       setPreviewUrl(null)
       setSelectedFile(null)
@@ -118,9 +118,30 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       try {
         const response = await fetch("/api/usuarios")
         if (response.ok) {
-          const data = await response.json()
-          const supers = data.filter((u: UsuarioData) => u.funcao === "Supervisor" || u.funcao === "Administrador")
-          setSupervisores(supers.map((s: UsuarioData) => ({ id: s.id, nome: s.nome })))
+          const data: UsuarioData[] = await response.json()
+          const supers = data.filter((u: UsuarioData) => {
+            const func = (u.funcao || '').toLowerCase()
+            return (
+              func.includes("supervis") || 
+              func.includes("admin") || 
+              func.includes("gest") || 
+              func.includes("diretor") || 
+              func.includes("gerent") || 
+              func.includes("ceo")
+            )
+          })
+
+          const mapped = supers.map((s: UsuarioData) => ({ id: s.id, nome: s.nome }))
+
+          // Se o usuário editado tem um supervisor_id ou supervisor_nome que não está na lista filtrada, adiciona para garantir a exibição do nome
+          if (usuario?.supervisor_id && !mapped.some((s: { id: string }) => s.id === usuario.supervisor_id)) {
+            const foundInAll = data.find((u: UsuarioData) => u.id === usuario.supervisor_id)
+            mapped.push({
+              id: usuario.supervisor_id,
+              nome: foundInAll?.nome || usuario.supervisor_nome || "Supervisor"
+            })
+          }
+          setSupervisores(mapped)
         }
       } catch (error) {
         console.error("Erro ao buscar supervisores:", error)
@@ -129,7 +150,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     if (isOpen) {
       fetchSupervisores()
     }
-  }, [isOpen])
+  }, [isOpen, usuario])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -343,7 +364,13 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       const method = isEdit ? "PUT" : "POST"
 
       // Busca o nome do supervisor se houver um selecionado
-      const supervisorNome = supervisores.find(s => s.id === formData.supervisor_id)?.nome
+      const isNenhum = !formData.supervisor_id || formData.supervisor_id === "nenhum"
+      const selectedSup = isNenhum 
+        ? null 
+        : supervisores.find(s => s.id === formData.supervisor_id || s.nome === formData.supervisor_id)
+
+      const finalSupervisorId = isNenhum ? null : (selectedSup ? selectedSup.id : formData.supervisor_id)
+      const finalSupervisorNome = isNenhum ? "Nenhum" : (selectedSup ? selectedSup.nome : "Nenhum")
 
       const payload = isEdit 
         ? { 
@@ -353,9 +380,17 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
             foto_campanha_url: finalFotoCampanhaUrl,
             foto_proposta_url: finalFotoPropostaUrl,
             password: formData.senha || undefined,
-            supervisor_nome: supervisorNome
+            supervisor_id: finalSupervisorId,
+            supervisor_nome: finalSupervisorNome
           }
-        : { ...formData, avatar_url: finalAvatarUrl, foto_campanha_url: finalFotoCampanhaUrl, foto_proposta_url: finalFotoPropostaUrl, supervisor_nome: supervisorNome }
+        : { 
+            ...formData, 
+            avatar_url: finalAvatarUrl, 
+            foto_campanha_url: finalFotoCampanhaUrl, 
+            foto_proposta_url: finalFotoPropostaUrl, 
+            supervisor_id: finalSupervisorId,
+            supervisor_nome: finalSupervisorNome 
+          }
 
       const response = await fetch(endpoint, {
         method,
@@ -498,26 +533,35 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                   </Select>
                 </div>
 
-                {/* Supervisor (Apenas para Corretor ou Estágio) */}
-                {(formData.funcao === "Corretor" || formData.funcao === "Estágio" || formData.funcao === "Processo Seletivo") && (
+                {/* Supervisor (Apenas para Corretor ou Estágio ou quando houver supervisor definido) */}
+                {(formData.funcao === "Corretor" || formData.funcao === "Estágio" || formData.funcao === "Processo Seletivo" || (formData.supervisor_id && formData.supervisor_id !== "nenhum")) && (
                   <div className="space-y-1.5">
                     <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Supervisor Responsável</Label>
                     <Select 
-                      value={formData.supervisor_id} 
+                      value={formData.supervisor_id || "nenhum"} 
                       onValueChange={(value) => setFormData({ ...formData, supervisor_id: value })}
                     >
                       <SelectTrigger className="h-[38px] bg-slate-50/50 border-slate-100 rounded-lg px-3 text-[11px] font-bold text-slate-700 focus:ring-1 focus:ring-slate-200 transition-all">
-                        <SelectValue placeholder="Selecione o supervisor..." />
+                        <SelectValue placeholder="Selecione o supervisor...">
+                          {(() => {
+                            const val = formData.supervisor_id
+                            if (!val || val === "nenhum") return "NENHUM"
+                            const sup = supervisores.find(s => s.id === val)
+                            if (sup) return sup.nome
+                            if (usuario?.supervisor_nome && usuario.supervisor_nome !== "Nenhum") return usuario.supervisor_nome
+                            return "NENHUM"
+                          })()}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent className="rounded-xl border-slate-100 shadow-xl">
+                        <SelectItem value="nenhum" className="text-[10.5px] font-bold text-slate-500">
+                          NENHUM
+                        </SelectItem>
                         {supervisores.map((sup) => (
                           <SelectItem key={sup.id} value={sup.id} className="text-[10.5px] font-medium">
                             {sup.nome}
                           </SelectItem>
                         ))}
-                        {supervisores.length === 0 && (
-                          <div className="px-2 py-1.5 text-[10.5px] text-slate-400 italic">Nenhum supervisor encontrado</div>
-                        )}
                       </SelectContent>
                     </Select>
                   </div>
