@@ -23,7 +23,8 @@ import {
   Briefcase,
   Clock,
   AlertTriangle,
-  GraduationCap
+  GraduationCap,
+  Calculator
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
@@ -194,6 +195,12 @@ const allMenuItems = [
   {
     title: "",
     items: [
+      { 
+        name: "CALCULADORA", 
+        href: "/calculadora", 
+        icon: Calculator, 
+        roles: ["Administrador", "Desenvolvedor"] 
+      },
       { 
         name: "CONFIGURAÇÕES", 
         href: "/configuracoes", 
