@@ -22,7 +22,8 @@ import {
   Calendar,
   Briefcase,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  GraduationCap
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
@@ -158,6 +159,12 @@ const allMenuItems = [
         href: "/tempo-empresa", 
         icon: Clock, 
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "CAPACITAÇÃO PJ", 
+        href: "/capacitacao-pj", 
+        icon: GraduationCap, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
       }
     ]
   },
@@ -205,7 +212,7 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const { isCollapsed, toggleCollapse, isHovered: contextHovered, setIsHovered: contextSetHovered } = useSidebar()
-  const { perfil, isAdmin, isRecursosHumanos } = useAuth()
+  const { perfil, user, isAdmin, isRecursosHumanos, isCorretor } = useAuth()
   const isHovered = contextHovered ?? false
   const setIsHovered = contextSetHovered ?? (() => {})
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
@@ -222,10 +229,28 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     }))
   }
 
-  const filteredMenuItems = allMenuItems
+  const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
+  const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ' && !isAdmin
+
+  const processedMenuItems = allMenuItems.map(section => {
+    if (isCorretorPJ && section.title === "RECURSOS HUMANOS") {
+      return {
+        title: "",
+        items: section.items
+          .filter(item => item.href === "/capacitacao-pj")
+          .map(item => ({ ...item, name: "CAPACITAÇÃO" }))
+      }
+    }
+    return section
+  })
+
+  const filteredMenuItems = processedMenuItems
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
+        // Se for o link de capacitação e for Corretor PJ, permite!
+        if (item.href === "/capacitacao-pj" && isCorretorPJ) return true
+
         // Se for admin via email (superadmin), vê tudo
         if (isAdmin) return true
         

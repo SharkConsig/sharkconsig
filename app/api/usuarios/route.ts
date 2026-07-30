@@ -41,7 +41,8 @@ export async function GET(request: Request) {
         foto_proposta_url: metadata.foto_proposta_url || '',
         status: (metadata.status || 'ATIVO').toUpperCase(),
         padrinho_id: metadata.padrinho_id || '',
-        padrinho_nome: metadata.padrinho_nome || ''
+        padrinho_nome: metadata.padrinho_nome || '',
+        rh_mensagem_destaque: metadata.rh_mensagem_destaque || ''
       })
     }
 
@@ -82,6 +83,7 @@ export async function GET(request: Request) {
         status: (metadata.status || 'ATIVO').toUpperCase(),
         padrinho_id: metadata.padrinho_id || '',
         padrinho_nome: metadata.padrinho_nome || '',
+        rh_mensagem_destaque: metadata.rh_mensagem_destaque || '',
         created_at: user.created_at,
         last_sign_in_at: user.last_sign_in_at
       }

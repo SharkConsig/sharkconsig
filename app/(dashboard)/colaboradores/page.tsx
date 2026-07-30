@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,8 +24,10 @@ import {
   Eye,
   UploadCloud,
   X,
-  CheckCircle2
+  CheckCircle2,
+  MessageSquare
 } from "lucide-react"
+import { RHMessagingModal } from "@/components/rh/rh-messaging-modal"
 
 const DOCUMENT_TYPES = [
   {
@@ -74,6 +76,7 @@ const DOCUMENT_TYPES = [
 
 interface DBCollaborator {
   id?: string
+  usuario_id?: string | null
   nome: string
   funcao?: string
   regime_contratacao?: string | null
@@ -179,6 +182,7 @@ function mapDBToCollaborator(db: DBCollaborator): Collaborator {
 
   return {
     id: db.id || "",
+    usuarioId: db.usuario_id || "",
     name: db.nome || "",
     role: db.funcao || "",
     employmentType: parsedEmpType,
@@ -214,6 +218,9 @@ function mapDBToCollaborator(db: DBCollaborator): Collaborator {
 
 function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
   const db: DBCollaborator = {}
+  if (c.usuarioId !== undefined) {
+    db.usuario_id = c.usuarioId && c.usuarioId.trim() !== "" ? c.usuarioId.trim() : null
+  }
   if (c.name !== undefined) db.nome = c.name
   if (c.role !== undefined) db.funcao = c.role
   if (c.employmentType !== undefined) db.regime_contratacao = c.employmentType
@@ -265,6 +272,7 @@ function mapCollaboratorToDB(c: Partial<Collaborator>): DBCollaborator {
 
 interface Collaborator {
   id: string
+  usuarioId?: string
   name: string            // Nome Completo
   role: string            // Função
   employmentType?: string // REGIME DE CONTRATAÇÃO (CLT | Estágio | PJ)
@@ -371,6 +379,7 @@ function getBirthdayDetails(dateStr: string) {
 }
 
 export default function ColaboradoresPage() {
+  const [isRHMessagingOpen, setIsRHMessagingOpen] = useState(false)
   const [collaborators, setCollaborators] = useState<Collaborator[]>([])
   const [activeTab, setActiveTab] = useState<"presenciais" | "home_office" | "aniversarios" | "ex_colaboradores">("presenciais")
   const [loadingTable, setLoadingTable] = useState(true)
@@ -416,6 +425,32 @@ export default function ColaboradoresPage() {
   const [newCollegeName, setNewCollegeName] = useState("")
   const [newCollegeEmail, setNewCollegeEmail] = useState("")
   const [newCnpj, setNewCnpj] = useState("")
+  const [newUsuarioId, setNewUsuarioId] = useState("")
+  const [systemUsers, setSystemUsers] = useState<Array<{ id: string; nome: string; email?: string }>>([])
+
+  // Load system users
+  useEffect(() => {
+    async function fetchSystemUsers() {
+      try {
+        const res = await fetch("/api/usuarios")
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data)) {
+            const mapped = data.map((u: any) => ({
+              id: u.id,
+              nome: u.nome || u.username || 'Sem Nome',
+              email: u.email || ''
+            }))
+            mapped.sort((a: any, b: any) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' }))
+            setSystemUsers(mapped)
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao carregar usuários do sistema:", err)
+      }
+    }
+    fetchSystemUsers()
+  }, [])
 
   // Load from Supabase on mount
   useEffect(() => {
@@ -731,6 +766,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
     // Temporary optimistic representation until saved in database
     const tempId = `temp-${Date.now()}`
     const colabData: Partial<Collaborator> = {
+      usuarioId: newUsuarioId || "",
       name: newName,
       role: newRole,
       employmentType: newEmploymentType || "CLT",
@@ -865,6 +901,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
     setNewCollegeName("")
     setNewCollegeEmail("")
     setNewCnpj("")
+    setNewUsuarioId("")
     setFormDocs({})
   }
 
@@ -1053,8 +1090,8 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                   {/* Grid 1: Informações Pessoais Principais */}
                   <div>
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">1. Informações Básicas e Administrativas</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-[2.2fr_1.4fr_1.4fr_1.5fr_1.5fr_1.4fr_1.4fr] gap-3">
-                      <div className="space-y-1.5">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                      <div className="md:col-span-3 space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Nome Completo *</label>
                         <input 
                           type="text" 
@@ -1064,7 +1101,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350"
                         />
                       </div>
-                      <div className="space-y-1.5">
+                      <div className="md:col-span-1 space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">CPF</label>
                         <input 
                           type="text" 
@@ -1073,7 +1110,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none"
                         />
                       </div>
-                      <div className="space-y-1.5">
+                      <div className="md:col-span-1 space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Data de Nasc.</label>
                         <input 
                           type="date" 
@@ -1082,6 +1119,9 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
                         />
                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mt-3">
                       <div className="space-y-1.5">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Função (Cargo)</label>
                         <select 
@@ -1126,6 +1166,21 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                           onChange={(e) => setNewJoinDate(e.target.value)}
                           className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold w-full outline-none focus:border-slate-350 text-slate-800"
                         />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Identificação do Usuário (Sistema)</label>
+                        <select 
+                          value={newUsuarioId}
+                          onChange={(e) => setNewUsuarioId(e.target.value)}
+                          className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold w-full outline-none cursor-pointer focus:border-slate-350 text-slate-800"
+                        >
+                          <option value="">Selecione o usuário do sistema...</option>
+                          {systemUsers.map(user => (
+                            <option key={user.id} value={user.id}>
+                              {user.nome} {user.email ? `(${user.email})` : `[ID: ${user.id.substring(0, 8)}]`}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                     {(newEmploymentType === "Estágio" || newRole === "Estagiário" || newRole === "Estagiário Operacional") && (
@@ -1468,6 +1523,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                         setNewJoinDate("")
                         setNewCollegeName("")
                         setNewCollegeEmail("")
+                        setNewUsuarioId("")
                         setFormDocs({})
                       }}
                       className="text-slate-500 hover:bg-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest"
@@ -1508,10 +1564,11 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
             {/* List Table */}
             <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 pb-40 border border-slate-200/60 rounded-2xl relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
               {activeTab === "home_office" ? (
-                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2630px]">
+                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2830px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
                       <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">ID do USUÁRIO</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
@@ -1534,7 +1591,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                   <tbody className="divide-y divide-slate-100">
                     {loadingTable ? (
                       <tr>
-                        <td colSpan={18} className="text-center py-20 bg-slate-50/10">
+                        <td colSpan={19} className="text-center py-20 bg-slate-50/10">
                           <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                             <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando colaboradores home office...</p>
                           </div>
@@ -1542,7 +1599,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                       </tr>
                     ) : filteredHomeOffice.length === 0 ? (
                       <tr>
-                        <td colSpan={18} className="text-center py-20 bg-slate-50/10 border-none">
+                        <td colSpan={19} className="text-center py-20 bg-slate-50/10 border-none">
                           <div className="flex flex-col items-center justify-center space-y-2">
                             <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                             <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador home office encontrado</p>
@@ -1559,6 +1616,15 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                               onChange={(val) => updateCell(colab.id, "name", val)}
                               placeholder="Adicionar Nome..."
                               fontClass="font-bold text-slate-800 uppercase text-[11px]"
+                            />
+                          </td>
+
+                          {/* ID DO USUÁRIO */}
+                          <td className="px-4 py-3.5">
+                            <UserSelectCell 
+                              value={colab.usuarioId || ""} 
+                              onChange={(val) => updateCell(colab.id, "usuarioId", val)}
+                              users={systemUsers}
                             />
                           </td>
 
@@ -1742,10 +1808,11 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                   </tbody>
                 </table>
               ) : (
-                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4330px]">
+                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4530px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
                       <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
+                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">ID do USUÁRIO</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[150px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Regime</th>
                       <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
@@ -1779,7 +1846,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                   <tbody className="divide-y divide-slate-100">
                     {loadingTable ? (
                       <tr>
-                        <td colSpan={29} className="text-center py-20 bg-slate-50/10">
+                        <td colSpan={30} className="text-center py-20 bg-slate-50/10">
                           <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                             <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de colaboradores...</p>
                           </div>
@@ -1787,7 +1854,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                       </tr>
                     ) : filteredPresenciais.length === 0 ? (
                       <tr>
-                        <td colSpan={29} className="text-center py-20 bg-slate-50/10 border-none">
+                        <td colSpan={30} className="text-center py-20 bg-slate-50/10 border-none">
                           <div className="flex flex-col items-center justify-center space-y-2">
                             <FileSpreadsheet className="w-10 h-10 text-slate-350" />
                             <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador presencial encontrado</p>
@@ -1804,6 +1871,15 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                               onChange={(val) => updateCell(colab.id, "name", val)}
                               placeholder="Adicionar Nome..."
                               fontClass="font-bold text-slate-800 uppercase text-[11px]"
+                            />
+                          </td>
+
+                          {/* ID DO USUÁRIO */}
+                          <td className="px-4 py-3.5">
+                            <UserSelectCell 
+                              value={colab.usuarioId || ""} 
+                              onChange={(val) => updateCell(colab.id, "usuarioId", val)}
+                              users={systemUsers}
                             />
                           </td>
 
@@ -2600,6 +2676,12 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Modal Módulo de Mensagens RH */}
+      <RHMessagingModal
+        isOpen={isRHMessagingOpen}
+        onClose={() => setIsRHMessagingOpen(false)}
+      />
     </div>
   )
 }
@@ -2733,5 +2815,34 @@ function PillDropdown({
         </>
       )}
     </div>
+  )
+}
+
+function UserSelectCell({ 
+  value, 
+  onChange, 
+  users 
+}: { 
+  value: string; 
+  onChange: (val: string) => void; 
+  users: Array<{ id: string; nome: string; email?: string }> 
+}) {
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' }))
+  }, [users])
+
+  return (
+    <select
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value)}
+      className="bg-transparent hover:bg-slate-200/60 focus:bg-white border border-transparent hover:border-slate-300 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none w-full cursor-pointer transition-all"
+    >
+      <option value="">-- Não Vinculado --</option>
+      {sortedUsers.map(u => (
+        <option key={u.id} value={u.id}>
+          {u.nome} {u.email ? `(${u.email})` : `[${u.id.substring(0, 8)}]`}
+        </option>
+      ))}
+    </select>
   )
 }

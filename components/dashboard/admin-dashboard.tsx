@@ -138,7 +138,7 @@ interface AdminDashboardProps {
   perfil: Perfil | null
   isLoading: boolean
   remainingBusinessDays: number
-  headerContent: { greeting: string, phrase: string }
+  headerContent: { greeting: string, phrase: string, isCelebration?: boolean }
   stats?: AdminStats | null
   startDate: string
   endDate: string

@@ -429,7 +429,7 @@ interface Interview {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { perfil, isCorretor, isAdmin, isOperational, isDeveloper, isRecursosHumanos } = useAuth()
+  const { user, perfil, isCorretor, isAdmin, isOperational, isDeveloper, isRecursosHumanos } = useAuth()
   const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO' || isAdmin || isDeveloper
   const isEstagio = perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || perfil?.role?.toLowerCase() === 'pj'
@@ -2066,18 +2066,43 @@ export default function DashboardPage() {
     }
   }, [rankings, perfil, estagioRankingGroup]);
   
+  const [celTrigger, setCelTrigger] = useState(0)
+
+  useEffect(() => {
+    const handleUpdate = () => setCelTrigger(prev => prev + 1)
+    window.addEventListener("storage", handleUpdate)
+    window.addEventListener("shark_hr_celebration_updated", handleUpdate)
+    return () => {
+      window.removeEventListener("storage", handleUpdate)
+      window.removeEventListener("shark_hr_celebration_updated", handleUpdate)
+    }
+  }, [])
+
   const headerContent = useMemo(() => {
-    if (typeof window === 'undefined') return { greeting: "Olá", phrase: "Sua jornada para o topo começa agora" }
+    if (typeof window === 'undefined') return { greeting: "Olá", phrase: "Sua jornada para o topo começa agora", isCelebration: false }
+    
+    let defaultGreeting = "Olá"
+    let defaultPhrase = "Sua jornada para o topo começa agora"
+
     const hour = new Date().toLocaleTimeString('pt-BR', {
       timeZone: 'America/Sao_Paulo',
       hour: 'numeric',
       hour12: false,
     })
     const h = parseInt(hour)
-    if (h >= 0 && h < 12) return { greeting: "Bom dia", phrase: "Sua jornada para o topo começa agora" }
-    if (h >= 12 && h < 18) return { greeting: "Boa tarde", phrase: "Foco total para transformar a tarde em resultados" }
-    return { greeting: "Boa noite", phrase: "Dia produtivo! Organize-se para vencer amanhã" }
-  }, [])
+    if (h >= 0 && h < 12) {
+      defaultGreeting = "Bom dia"
+      defaultPhrase = "Sua jornada para o topo começa agora"
+    } else if (h >= 12 && h < 18) {
+      defaultGreeting = "Boa tarde"
+      defaultPhrase = "Foco total para transformar a tarde em resultados"
+    } else {
+      defaultGreeting = "Boa noite"
+      defaultPhrase = "Dia produtivo! Organize-se para vencer amanhã"
+    }
+
+    return { greeting: defaultGreeting, phrase: defaultPhrase, isCelebration: false }
+  }, [perfil, user, celTrigger])
 
   if (!mounted) return null
 

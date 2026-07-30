@@ -13,6 +13,8 @@ interface HeaderProps {
 }
 
 import { useAuth } from "@/context/auth-context"
+import { RHMessagingModal } from "@/components/rh/rh-messaging-modal"
+import { RHMessagePopup } from "@/components/rh/rh-message-popup"
 
 export function Header({ title }: HeaderProps) {
   const router = useRouter()
@@ -22,7 +24,10 @@ export function Header({ title }: HeaderProps) {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { toggleSidebar, isCollapsed, isHovered } = useSidebar()
   const effectiveCollapsed = isCollapsed && !isHovered
-  const { perfil, user, isAdmin, isRecursosHumanos } = useAuth()
+  const { perfil, user, isAdmin, isRecursosHumanos, isCorretor } = useAuth()
+
+  const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
+  const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ' && !isAdmin
 
   // Apoio na Venda States
   interface ApoioRequest {
@@ -43,6 +48,7 @@ export function Header({ title }: HeaderProps) {
 
   const [activeApoios, setActiveApoios] = useState<ApoioRequest[]>([])
   const [isApoioModalOpen, setIsApoioModalOpen] = useState(false)
+  const [isRHMessagingOpen, setIsRHMessagingOpen] = useState(false)
 
   // Histórico de Apoio para Admin
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
@@ -344,6 +350,16 @@ export function Header({ title }: HeaderProps) {
           </button>
         )}
 
+        {isCorretorPJ && (
+          <Link
+            href="/capacitacao-pj"
+            className="h-9 px-4 text-xs font-bold text-white rounded-lg shadow-sm hover:opacity-90 transition-all flex items-center justify-center cursor-pointer whitespace-nowrap"
+            style={{ backgroundColor: "#1C2643" }}
+          >
+            Aprenda e Venda Mais
+          </Link>
+        )}
+
         {!(isRecursosHumanos || perfil?.role === 'Recursos Humanos') && (
           <div className={`hidden md:flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100 mr-2 ${
             isCampanhaAtendimento ? "pointer-events-none opacity-40 cursor-not-allowed select-none" : ""
@@ -378,6 +394,17 @@ export function Header({ title }: HeaderProps) {
               <ClipboardList className="w-[21px] h-[21px]" />
             </Link>
           </div>
+        )}
+
+        {(perfil?.role?.toLowerCase() === 'recursos humanos' || isRecursosHumanos) && (
+          <button
+            type="button"
+            onClick={() => setIsRHMessagingOpen(true)}
+            className="h-9 px-4 text-xs font-bold text-white bg-[#171717] hover:bg-black rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap uppercase tracking-wider mr-2"
+          >
+            <MessageSquareText className="w-4 h-4" />
+            MENSAGEM DO RH
+          </button>
         )}
 
         <div className="relative" ref={dropdownRef}>
@@ -830,6 +857,15 @@ export function Header({ title }: HeaderProps) {
           </div>
         </div>
       )}
+
+      {/* Modal Módulo de Mensagens RH */}
+      <RHMessagingModal
+        isOpen={isRHMessagingOpen}
+        onClose={() => setIsRHMessagingOpen(false)}
+      />
+
+      {/* Pop-up de Mensagem Recebida do RH para o Colaborador */}
+      <RHMessagePopup />
     </header>
   )
 }

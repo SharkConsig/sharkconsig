@@ -23,6 +23,7 @@ interface Perfil {
   regime_contratacao?: string
   padrinho_id?: string
   padrinho_nome?: string
+  rh_mensagem_destaque?: string
 }
 
 interface AuthContextType {
@@ -117,7 +118,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               supervisor_nome: freshUser.supervisor_nome,
               regime_contratacao: freshUser.regime_contratacao || "",
               padrinho_id: freshUser.padrinho_id || "",
-              padrinho_nome: freshUser.padrinho_nome || ""
+              padrinho_nome: freshUser.padrinho_nome || "",
+              rh_mensagem_destaque: freshUser.rh_mensagem_destaque || ""
             })
             return
           }
@@ -141,7 +143,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           supervisor_nome: metadata.supervisor_nome,
           regime_contratacao: metadata.regime_contratacao || "",
           padrinho_id: metadata.padrinho_id || "",
-          padrinho_nome: metadata.padrinho_nome || ""
+          padrinho_nome: metadata.padrinho_nome || "",
+          rh_mensagem_destaque: metadata.rh_mensagem_destaque || ""
         })
       }
     } catch (e) {
