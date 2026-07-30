@@ -16,7 +16,8 @@ import {
   Download,
   Printer,
   CheckCircle2,
-  Info
+  Info,
+  Pencil
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { cn } from "@/lib/utils"
@@ -97,6 +98,11 @@ export default function CalculadoraPage() {
 
   // Selected plan term in grid
   const [selectedPlanTerm, setSelectedPlanTerm] = useState<number | null>(48)
+
+  // Modals state for Plano de Amortização
+  const [showPlanModal, setShowPlanModal] = useState<boolean>(false)
+  const [showChangePlanModal, setShowChangePlanModal] = useState<boolean>(false)
+  const [clienteNome, setClienteNome] = useState<string>("")
 
   // Show full summary modal state
   const [showSummaryModal, setShowSummaryModal] = useState<boolean>(false)
@@ -215,6 +221,167 @@ export default function CalculadoraPage() {
       }
     })
   }, [taxaImplicita, contratoComIof])
+
+  const selectedPlanObj = useMemo(() => {
+    return planosAmortizacao.find(p => p.term === selectedPlanTerm) || planosAmortizacao[0]
+  }, [planosAmortizacao, selectedPlanTerm])
+
+  const handleGerarPDF = () => {
+    const term = selectedPlanTerm || 48
+    const client = clienteNome.trim() || "Cliente"
+    const initials = client
+      .split(" ")
+      .filter(Boolean)
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "CL"
+
+    const consultant = perfil?.nome || "Elisandra Cassol"
+    const email = perfil?.email || "elis_cassol@yahoo.com.br"
+    const todayStr = new Date().toLocaleDateString("pt-BR")
+
+    const totalExtraAmort = Math.max(0, prazo - term)
+    const extraPerMonth = totalExtraAmort / term
+
+    let currentBackInstallment = prazo - 1
+    let rowsHtml = ""
+
+    for (let m = 1; m <= term; m++) {
+      const numAmortThisMonth = Math.min(
+        Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
+        currentBackInstallment - term + 1
+      )
+
+      const amortNums: number[] = []
+      const amortVals: string[] = []
+
+      for (let k = 0; k < numAmortThisMonth && currentBackInstallment >= term; k++) {
+        amortNums.push(currentBackInstallment)
+        const remMonths = currentBackInstallment - m + 1
+        const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, remMonths))
+        amortVals.push(formatBRL(valAmort))
+        currentBackInstallment--
+      }
+
+      const isEven = m % 2 === 0
+      const rowBg = isEven ? "#F8FAFC" : "#FFFFFF"
+
+      const amortNumsStr = amortNums.length > 0 ? amortNums.join("<br/>") : "-"
+      const amortValsStr = amortVals.length > 0 ? amortVals.join("<br/>") : formatBRL(0)
+
+      rowsHtml += `
+        <tr style="background-color: ${rowBg}; border-bottom: 1px solid #E2E8F0;">
+          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${m}</td>
+          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(parcela)}</td>
+          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #475569; vertical-align: top;">${amortNumsStr}</td>
+          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${amortValsStr}</td>
+        </tr>
+      `
+    }
+
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) return
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Plano de Amortização - ${client}</title>
+          <style>
+            @page { size: A4; margin: 15mm; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #1E293B; background: #FFF; }
+            .header-banner { background-color: #111827; color: #FFF; padding: 24px 32px; border-bottom: 4px solid #00D492; }
+            .header-banner h1 { margin: 0; font-size: 24px; letter-spacing: 1px; font-weight: 800; text-transform: uppercase; }
+            .sub-header { background-color: #1E293B; color: #FFF; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; }
+            .client-info { display: flex; align-items: center; gap: 12px; }
+            .avatar { width: 38px; height: 38px; border-radius: 50%; background: #00D492; color: #111827; font-weight: 900; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+            .consultant-info { text-align: right; font-size: 12px; }
+            .consultant-info .name { color: #00D492; font-weight: bold; font-size: 13px; }
+            .metrics-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 24px 32px; }
+            .metric-card { border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; background: #FFF; }
+            .metric-label { font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; }
+            .metric-value { font-size: 20px; font-weight: 900; color: #0F172A; margin: 4px 0; }
+            .metric-highlight { color: #00D492; }
+            .metric-sub { font-size: 11px; color: #64748B; font-weight: 600; }
+            .table-container { margin: 0 32px 24px 32px; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th { background-color: #111827; color: #00D492; padding: 12px 16px; text-transform: uppercase; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-align: center; }
+            .footer-note { margin: 24px 32px; font-size: 10px; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 12px; display: flex; justify-content: space-between; }
+          </style>
+        </head>
+        <body>
+          <div class="header-banner">
+            <h1>PLANO DE AMORTIZAÇÃO</h1>
+          </div>
+          <div class="sub-header">
+            <div class="client-info">
+              <div class="avatar">${initials}</div>
+              <div>
+                <div style="font-weight: 800; font-size: 15px; text-transform: uppercase;">${client}</div>
+                <div style="font-size: 11px; color: #94A3B8;">Plano de Amortização</div>
+              </div>
+            </div>
+            <div class="consultant-info">
+              <div style="color: #94A3B8; font-size: 10px; text-transform: uppercase; font-weight: 700;">Consultor</div>
+              <div class="name">${consultant}</div>
+              <div style="color: #CBD5E1;">${email}</div>
+            </div>
+          </div>
+
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-label">VALOR DO CONTRATO</div>
+              <div class="metric-value">${formatBRL(contratoComIof)}</div>
+              <div class="metric-sub">Prazo original: ${prazo} meses</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">PRAZO ESTIMADO</div>
+              <div class="metric-value metric-highlight">${term} parcelas</div>
+              <div class="metric-sub">Economia expressiva de tempo</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">PARCELA MÉDIA</div>
+              <div class="metric-value">${formatBRL(selectedPlanObj?.parcelaMedia ?? 0)}</div>
+              <div class="metric-sub">Fixa em folha: ${formatBRL(parcela)}</div>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>PRAZO</th>
+                  <th>FIXA EM FOLHA</th>
+                  <th>AMORTIZADAS</th>
+                  <th>VALOR AMORTIZAÇÕES</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="footer-note">
+            <div>
+              Esta simulação pode utilizar estratégia de amortização, podendo haver variação nos valores conforme cálculos diários. Proposta válida somente para a data de emissão (${todayStr}). Taxas sujeitas à alteração.
+            </div>
+            <div style="font-weight: bold; white-space: nowrap; margin-left: 16px;">
+              Desenvolvido por SharkConsig
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+  }
 
   // Event handlers
   const handleParcelaChange = (v: number) => {
@@ -378,7 +545,10 @@ export default function CalculadoraPage() {
                       return (
                         <button
                           key={p.term}
-                          onClick={() => setSelectedPlanTerm(p.term)}
+                          onClick={() => {
+                            setSelectedPlanTerm(p.term)
+                            setShowPlanModal(true)
+                          }}
                           className={cn(
                             "p-4 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1",
                             isSelected
@@ -731,6 +901,127 @@ export default function CalculadoraPage() {
                 className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all"
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PLANO DE AMORTIZAÇÃO (OPÇÃO DO PLANO + NOME DO CLIENTE + GERAR PDF) */}
+      {showPlanModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-xl space-y-5">
+            <div className="flex items-center gap-2 text-slate-900 font-bold text-base">
+              <FileText className="w-5 h-5 text-[#00D492]" />
+              <span>Plano de amortização</span>
+            </div>
+
+            {/* Selected Plan Summary Box */}
+            {selectedPlanObj && (
+              <div className="bg-[#00D492]/15 border border-[#00D492]/40 rounded-xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-[#00D492]/20 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">
+                      {selectedPlanObj.term}x · Parcela média {formatBRL(selectedPlanObj.parcelaMedia)}
+                    </p>
+                    <p className="text-[11px] font-medium text-slate-600">
+                      Taxa {formatPercent(selectedPlanObj.taxa)} a.m.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowChangePlanModal(true)}
+                  className="bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm flex items-center gap-1 transition-all"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Alterar</span>
+                </button>
+              </div>
+            )}
+
+            {/* Input Nome do Cliente */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                NOME DO CLIENTE
+              </label>
+              <input
+                type="text"
+                value={clienteNome}
+                onChange={(e) => setClienteNome(e.target.value)}
+                placeholder="Nome do cliente"
+                className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D492] shadow-sm"
+              />
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowPlanModal(false)}
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-xl transition-all font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleGerarPDF}
+                className="bg-[#00D492] hover:bg-[#00b87f] text-slate-900 font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Gerar PDF</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ALTERAR PLANO (ESCOLHA O PRAZO DE AMORTIZAÇÃO) */}
+      {showChangePlanModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-xl space-y-5">
+            <div className="flex items-center gap-2 text-slate-900 font-bold text-base">
+              <FileText className="w-5 h-5 text-[#00D492]" />
+              <span>Plano de amortização</span>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                ESCOLHA O PRAZO DE AMORTIZAÇÃO
+              </label>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                {planosAmortizacao.map((p) => {
+                  const isSelected = selectedPlanTerm === p.term
+                  return (
+                    <button
+                      key={p.term}
+                      onClick={() => {
+                        setSelectedPlanTerm(p.term)
+                        setShowChangePlanModal(false)
+                      }}
+                      className={cn(
+                        "py-3 px-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5",
+                        isSelected
+                          ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-[#00D492]"
+                          : "bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                      )}
+                    >
+                      <span className="text-base font-extrabold tracking-tight">
+                        {p.term}x
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setShowChangePlanModal(false)}
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl transition-all font-semibold"
+              >
+                Cancelar
               </button>
             </div>
           </div>
