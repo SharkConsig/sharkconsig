@@ -42,6 +42,21 @@ function formatPercent(val: number, decimals = 4): string {
   }) + "%"
 }
 
+// Helper function to mask middle 6 digits of CPF (e.g., 000.***.***-00)
+function formatMaskedCPF(rawCpf?: string): string {
+  if (!rawCpf) return ""
+  const digits = rawCpf.replace(/\D/g, "")
+  if (digits.length >= 11) {
+    const d = digits.substring(0, 11)
+    return `${d.substring(0, 3)}.***.***-${d.substring(9, 11)}`
+  }
+  if (digits.length >= 3) {
+    const end = digits.length > 3 ? digits.substring(digits.length - 2) : "**"
+    return `${digits.substring(0, 3)}.***.***-${end}`
+  }
+  return rawCpf.replace(/^(\d{3})\.?\d{3}\.?\d{3}-?(\d{2})$/, "$1.***.***-$2")
+}
+
 // Solver for implicit monthly interest rate 'i' in Price table:
 // PMT = PV * [ i * (1 + i)^n ] / [ (1 + i)^n - 1 ]
 function calculateImplicitRate(pv: number, pmt: number, n: number): number {
@@ -416,9 +431,10 @@ export default function CalculadoraPage() {
     const consultant = perfil?.nome || "Elisandra Cassol"
     const email = perfil?.email || "elis_cassol@yahoo.com.br"
     const phone = (perfil as any)?.telefone || ""
+    const consultantPhoto = (perfil as any)?.foto_proposta_url || (perfil as any)?.foto_url || ""
     const cpf = ""
     const orgao = ""
-    const defaultValidityDays = 5
+    const defaultValidityDays = 1
     const validityDate = new Date()
     validityDate.setDate(validityDate.getDate() + defaultValidityDays)
     const validityDateStr = `${String(validityDate.getDate()).padStart(2, "0")}/${String(validityDate.getMonth() + 1).padStart(2, "0")}/${validityDate.getFullYear()}`
@@ -447,12 +463,17 @@ export default function CalculadoraPage() {
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Plano de Portabilidade - ${client}</title>
+            <title></title>
             <style>
-              @page { size: A4; margin: 15mm; }
-              body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #1E293B; background: #FFF; position: relative; }
-              @media print { .no-print { display: none !important; } }
-              .pdf-header { padding: 24px 32px 0 32px; }
+              @page { size: A4; margin: 0mm; }
+              body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 10mm 12mm; color: #1E293B; background: #FFF; position: relative; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+              @media print { 
+                @page { size: A4; margin: 0mm; }
+                .no-print { display: none !important; }
+                * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+                body { padding: 10mm 12mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+              }
+              .pdf-header { padding: 16px 0 0 0; }
               .pdf-title { margin: 0 0 12px 0; font-size: 26px; letter-spacing: 1px; font-weight: 900; text-transform: uppercase; color: #64748B; text-align: center; }
               .green-bar { height: 4px; background-color: #00D492; border-radius: 2px; margin-bottom: 20px; }
               .sub-header { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
@@ -460,16 +481,16 @@ export default function CalculadoraPage() {
               .avatar { width: 38px; height: 38px; border-radius: 50%; background: #00D492; color: #111827; font-weight: 900; display: flex; align-items: center; justify-content: center; font-size: 14px; }
               .consultant-info { text-align: right; font-size: 12px; }
               .consultant-info .name { color: #00D492; font-weight: bold; font-size: 13px; }
-              .metrics-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 24px 32px; }
-              .metric-card { border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; background: #FFF; }
+              .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; align-items: stretch; }
+              .metric-card { border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 12px; background: #FFF; display: flex; flex-direction: column; justify-content: space-between; height: 100%; box-sizing: border-box; }
               .metric-label { font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; }
-              .metric-value { font-size: 20px; font-weight: 900; color: #0F172A; margin: 4px 0; }
+              .metric-value { font-size: 16px; font-weight: 900; color: #0F172A; margin: 6px 0 4px 0; line-height: 1.2; }
               .metric-highlight { color: #00D492; }
-              .metric-sub { font-size: 11px; color: #64748B; font-weight: 600; }
-              .table-container { margin: 0 32px 24px 32px; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; }
+              .metric-sub { font-size: 10.5px; color: #64748B; font-weight: 600; }
+              .table-container { margin: 0 0 24px 0; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; }
               table { width: 100%; border-collapse: collapse; font-size: 12px; }
               th { background-color: #111827; color: #00D492; padding: 12px 16px; text-transform: uppercase; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-align: center; }
-              .footer-note { margin: 24px 32px; font-size: 10px; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 12px; display: flex; justify-content: space-between; }
+              .footer-note { margin: 24px 0; font-size: 10px; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 12px; display: flex; justify-content: space-between; }
             </style>
           </head>
           <body>
@@ -538,12 +559,48 @@ export default function CalculadoraPage() {
                     </div>
                   </div>
 
+                  <div style="border-top: 1px solid #F1F5F9; padding-top: 10px;">
+                    <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">FOTO DO CONSULTOR (PNG SEM FUNDO)</label>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                      <div id="consultant-photo-preview-box" style="width: 48px; height: 48px; border-radius: 10px; border: 1px dashed #CBD5E1; background: #F8FAFC; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                        <img id="consultant-photo-img-preview" src="${consultantPhoto}" style="width: 100%; height: 100%; object-fit: contain; display: ${consultantPhoto ? 'block' : 'none'};" />
+                        <span id="consultant-photo-placeholder-icon" style="display: ${consultantPhoto ? 'none' : 'block'}; font-size: 18px; color: #94A3B8;">📷</span>
+                      </div>
+                      <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                        <input id="input-modal-photo-file" type="file" accept="image/*" style="display: none;" onchange="handlePhotoUpload(event)" />
+                        <button onclick="document.getElementById('input-modal-photo-file').click()" style="background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; text-align: center; width: fit-content;">Selecionar Foto</button>
+                        <div style="display: flex; gap: 12px; align-items: center; margin-top: 2px;">
+                          <button id="btn-remove-photo" onclick="removePhoto()" style="background: none; border: none; color: #EF4444; font-size: 10px; font-weight: 700; cursor: pointer; padding: 0; display: ${consultantPhoto ? 'inline-block' : 'none'};">Remover foto</button>
+                          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: #475569; cursor: pointer;">
+                            <input id="check-show-photo" type="checkbox" ${consultantPhoto ? 'checked' : ''} style="width: 14px; height: 14px; accent-color: #00D492; cursor: pointer;" />
+                            Mostrar no PDF
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div style="border-top: 1px solid #F1F5F9; padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <label style="font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">OPÇÕES DE EXIBIÇÃO</label>
-                    
+
                     <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
-                      <input id="check-show-logo" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
-                      Exibir Logomarca SharkConsig
+                      <input id="check-show-card-contrato" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                      Exibir VALOR DO CONTRATO
+                    </label>
+
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                      <input id="check-show-card-prazo" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                      Exibir PRAZO ESTRATÉGIA
+                    </label>
+
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                      <input id="check-show-card-parcela" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                      Exibir PARCELA MÉDIA
+                    </label>
+
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                      <input id="check-show-card-taxa" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                      Exibir TAXA A.M.
                     </label>
 
                     <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
@@ -566,7 +623,7 @@ export default function CalculadoraPage() {
             </div>
             <div class="pdf-header">
               <!-- Top Branding Header -->
-              <div id="branding-logo-header" style="display: flex; align-items: center; justify-content: center; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #E2E8F0; margin-bottom: 20px;">
+              <div id="branding-logo-header" style="display: flex; align-items: center; justify-content: center; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #E2E8F0; margin-bottom: 40px;">
                 <div style="display: flex; align-items: center; justify-content: center;">
                   <img src="/logo.png" alt="SharkConsig" style="height: 38px; object-fit: contain;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
                   <div style="display: none; align-items: center; gap: 6px; font-weight: 900; font-size: 22px; color: #162546;">
@@ -581,7 +638,7 @@ export default function CalculadoraPage() {
               </div>
 
               <!-- Main Dark Blue Banner Card -->
-              <div style="background-color: #162546; border-radius: 18px; padding: 20px 24px; color: #FFF; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+              <div id="header-banner-card" style="background-color: #162546 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; border-radius: 18px; padding: 20px 24px; color: #FFF; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; overflow: visible;">
                 <!-- Left: Client Details -->
                 <div style="display: flex; align-items: center; gap: 16px;">
                   <div style="width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid #F4C600; display: flex; align-items: center; justify-content: center; background: rgba(244, 198, 0, 0.1); color: #F4C600; font-weight: 900; font-size: 15px; flex-shrink: 0;">
@@ -592,11 +649,16 @@ export default function CalculadoraPage() {
                   </div>
                   <div style="display: flex; flex-direction: column; text-align: left;">
                     <div class="client-name-display" style="font-weight: 900; font-size: 14px; text-transform: uppercase; color: #FFFFFF; letter-spacing: 0.5px; line-height: 1.2;">${client}</div>
-                    <div class="client-meta-display" style="font-size: 11px; color: #94A3B8; margin-top: 3px; font-weight: 600; display: flex; gap: 6px; align-items: center;">
-                      <span class="cpf-display">${cpf ? 'CPF: ' + cpf : ''}</span>
-                      <span class="orgao-display">${orgao ? (cpf ? ' | Órgão: ' : 'Órgão: ') + orgao : ''}</span>
+                    <div class="client-meta-display" style="font-size: 11px; color: #94A3B8; margin-top: 3px; font-weight: 600; display: flex; flex-direction: column; gap: 2px;">
+                      <span class="cpf-display">${cpf ? 'CPF: ' + formatMaskedCPF(cpf) : ''}</span>
+                      <span class="orgao-display">${orgao ? 'Órgão: ' + orgao : ''}</span>
                     </div>
                   </div>
+                </div>
+
+                <!-- Center: Consultant Photo Banner -->
+                <div id="consultant-photo-banner" style="display: ${consultantPhoto ? 'flex' : 'none'}; align-items: flex-end; justify-content: center; position: absolute; left: 50%; transform: translateX(-50%); bottom: 0; height: 140px; pointer-events: none; z-index: 10;">
+                  <img id="banner-consultant-photo-img" src="${consultantPhoto}" style="max-height: 140px; height: 140px; width: auto; object-fit: contain; object-position: bottom;" />
                 </div>
 
                 <!-- Right: Consultant Details -->
@@ -620,17 +682,17 @@ export default function CalculadoraPage() {
             </div>
 
             <div class="metrics-grid">
-              <div class="metric-card">
+              <div class="metric-card" id="metric-card-contrato">
                 <div class="metric-label">SALDO PORTADO</div>
                 <div class="metric-value">${formatBRL(saldoPort)}</div>
                 <div class="metric-sub">Prazo anterior: ${nAtual} meses</div>
               </div>
-              <div class="metric-card">
+              <div class="metric-card" id="metric-card-parcela">
                 <div class="metric-label">NOVA PARCELA</div>
                 <div class="metric-value metric-highlight">${formatBRL(pmtNova)}</div>
                 <div class="metric-sub">Economia mensal: ${formatBRL(economiaMensal)}</div>
               </div>
-              <div class="metric-card">
+              <div class="metric-card" id="metric-card-prazo">
                 <div class="metric-label">NOVO PRAZO</div>
                 <div class="metric-value">${novoPrazo} meses</div>
                 <div class="metric-sub">Economia total: ${formatBRL(economiaTotal)}</div>
@@ -660,19 +722,64 @@ export default function CalculadoraPage() {
                 <div>• Proposta válida até <span class="validity-date-display">${validityDateStr}</span>, sujeita a alteração sem aviso prévio.</div>
                 <div>• A taxa de juros final e a redução do valor da parcela poderão sofrer oscilações a critério das instituições bancárias.</div>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E2E8F0; font-size: 9px; color: #94A3B8;">
-                <span>SharkConsig - Plano de Amortização</span>
-                <span style="font-weight: bold;">Desenvolvido por SharkConsig</span>
-              </div>
             </div>
 
             <script>
+              var currentPhotoData = "${consultantPhoto}";
+
+              function handlePhotoUpload(e) {
+                var file = e.target.files[0];
+                if (file) {
+                  var reader = new FileReader();
+                  reader.onload = function(evt) {
+                    currentPhotoData = evt.target.result;
+                    var imgPrev = document.getElementById('consultant-photo-img-preview');
+                    var placeholder = document.getElementById('consultant-photo-placeholder-icon');
+                    var removeBtn = document.getElementById('btn-remove-photo');
+                    var checkShow = document.getElementById('check-show-photo');
+                    if (imgPrev) { imgPrev.src = currentPhotoData; imgPrev.style.display = 'block'; }
+                    if (placeholder) placeholder.style.display = 'none';
+                    if (removeBtn) removeBtn.style.display = 'inline-block';
+                    if (checkShow) checkShow.checked = true;
+                  };
+                  reader.readAsDataURL(file);
+                }
+              }
+
+              function removePhoto() {
+                currentPhotoData = "";
+                var imgPrev = document.getElementById('consultant-photo-img-preview');
+                var placeholder = document.getElementById('consultant-photo-placeholder-icon');
+                var removeBtn = document.getElementById('btn-remove-photo');
+                var checkShow = document.getElementById('check-show-photo');
+                var fileInput = document.getElementById('input-modal-photo-file');
+                if (imgPrev) { imgPrev.src = ""; imgPrev.style.display = 'none'; }
+                if (placeholder) placeholder.style.display = 'block';
+                if (removeBtn) removeBtn.style.display = 'none';
+                if (checkShow) checkShow.checked = false;
+                if (fileInput) fileInput.value = "";
+              }
+
               function openCustomizeModal() {
                 document.getElementById('customize-pdf-modal').style.display = 'flex';
               }
               function closeCustomizeModal() {
                 document.getElementById('customize-pdf-modal').style.display = 'none';
               }
+              function maskCPF(cpf) {
+                if (!cpf) return '';
+                var digits = cpf.replace(/\D/g, '');
+                if (digits.length >= 11) {
+                  var d = digits.substring(0, 11);
+                  return d.substring(0, 3) + '.***.***-' + d.substring(9, 11);
+                }
+                if (digits.length >= 3) {
+                  var end = digits.length > 3 ? digits.substring(digits.length - 2) : '**';
+                  return digits.substring(0, 3) + '.***.***-' + end;
+                }
+                return cpf.replace(/^(\d{3})\.?\d{3}\.?\d{3}-?(\d{2})$/, '$1.***.***-$2');
+              }
+
               function applyPDFCustomization() {
                 var clientVal = document.getElementById('input-modal-client').value.trim();
                 var cpfVal = document.getElementById('input-modal-cpf').value.trim();
@@ -680,11 +787,16 @@ export default function CalculadoraPage() {
                 var consultantVal = document.getElementById('input-modal-consultant').value.trim();
                 var emailVal = document.getElementById('input-modal-email').value.trim();
                 var phoneVal = document.getElementById('input-modal-phone').value.trim();
-                var validityDaysVal = parseInt(document.getElementById('input-modal-validity').value) || 5;
+                var validityDaysVal = parseInt(document.getElementById('input-modal-validity').value) || 1;
 
-                var showLogo = document.getElementById('check-show-logo').checked;
+                var showCardContrato = document.getElementById('check-show-card-contrato') ? document.getElementById('check-show-card-contrato').checked : true;
+                var showCardPrazo = document.getElementById('check-show-card-prazo') ? document.getElementById('check-show-card-prazo').checked : true;
+                var showCardParcela = document.getElementById('check-show-card-parcela') ? document.getElementById('check-show-card-parcela').checked : true;
+                var showCardTaxa = document.getElementById('check-show-card-taxa') ? document.getElementById('check-show-card-taxa').checked : true;
+
                 var showConsultant = document.getElementById('check-show-consultant').checked;
                 var showFooter = document.getElementById('check-show-footer').checked;
+                var showPhoto = document.getElementById('check-show-photo') ? document.getElementById('check-show-photo').checked : false;
 
                 var d = new Date();
                 d.setDate(d.getDate() + validityDaysVal);
@@ -696,13 +808,14 @@ export default function CalculadoraPage() {
                 var clientEls = document.querySelectorAll('.client-name-display');
                 clientEls.forEach(function(el) { el.textContent = clientVal || 'CLIENTE'; });
 
+                var maskedCpf = maskCPF(cpfVal);
                 var cpfEls = document.querySelectorAll('.cpf-display');
-                cpfEls.forEach(function(el) { el.textContent = cpfVal ? 'CPF: ' + cpfVal : ''; });
+                cpfEls.forEach(function(el) { el.textContent = cpfVal ? 'CPF: ' + maskedCpf : ''; });
 
                 var orgaoEls = document.querySelectorAll('.orgao-display');
                 orgaoEls.forEach(function(el) { 
                   if (orgaoVal) {
-                    el.textContent = cpfVal ? ' | Órgão: ' + orgaoVal : 'Órgão: ' + orgaoVal;
+                    el.textContent = 'Órgão: ' + orgaoVal;
                   } else {
                     el.textContent = '';
                   }
@@ -725,16 +838,40 @@ export default function CalculadoraPage() {
                 var validityEls = document.querySelectorAll('.validity-date-display');
                 validityEls.forEach(function(el) { el.textContent = formattedValidityDate; });
 
-                var logoEl = document.getElementById('branding-logo-header');
-                if (logoEl) logoEl.style.display = showLogo ? 'flex' : 'none';
+                var cardContrato = document.getElementById('metric-card-contrato');
+                if (cardContrato) cardContrato.style.display = showCardContrato ? 'flex' : 'none';
+
+                var cardPrazo = document.getElementById('metric-card-prazo');
+                if (cardPrazo) cardPrazo.style.display = showCardPrazo ? 'flex' : 'none';
+
+                var cardParcela = document.getElementById('metric-card-parcela');
+                if (cardParcela) cardParcela.style.display = showCardParcela ? 'flex' : 'none';
+
+                var cardTaxa = document.getElementById('metric-card-taxa');
+                if (cardTaxa) cardTaxa.style.display = showCardTaxa ? 'flex' : 'none';
 
                 var consultantBox = document.getElementById('consultant-info-banner');
                 if (consultantBox) consultantBox.style.display = showConsultant ? 'flex' : 'none';
+
+                var photoBox = document.getElementById('consultant-photo-banner');
+                var photoImg = document.getElementById('banner-consultant-photo-img');
+                if (photoBox) {
+                  if (showPhoto && currentPhotoData) {
+                    if (photoImg) photoImg.src = currentPhotoData;
+                    photoBox.style.display = 'flex';
+                  } else {
+                    photoBox.style.display = 'none';
+                  }
+                }
 
                 var footerEl = document.querySelector('.footer-note');
                 if (footerEl) footerEl.style.display = showFooter ? 'flex' : 'none';
 
                 closeCustomizeModal();
+
+                setTimeout(function() {
+                  window.print();
+                }, 150);
               }
             </script>
           </body>
@@ -759,11 +896,13 @@ export default function CalculadoraPage() {
 
       const amortNums: number[] = []
       const amortVals: string[] = []
+      let sumAmortValsThisMonth = 0
 
       for (let k = 0; k < numAmortThisMonth && currentBackInstallment > term; k++) {
         amortNums.push(currentBackInstallment)
         const remMonths = currentBackInstallment - m + 1
         const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, remMonths))
+        sumAmortValsThisMonth += valAmort
         amortVals.push(formatBRL(valAmort))
         currentBackInstallment--
       }
@@ -773,6 +912,7 @@ export default function CalculadoraPage() {
 
       const amortNumsStr = amortNums.length > 0 ? amortNums.join("<br/>") : "-"
       const amortValsStr = amortVals.length > 0 ? amortVals.join("<br/>") : formatBRL(0)
+      const totalMes = parcela + sumAmortValsThisMonth
 
       rowsHtml += `
         <tr style="background-color: ${rowBg}; border-bottom: 1px solid #E2E8F0;">
@@ -780,6 +920,7 @@ export default function CalculadoraPage() {
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(parcela)}</td>
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #475569; vertical-align: top;">${amortNumsStr}</td>
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${amortValsStr}</td>
+          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(totalMes)}</td>
         </tr>
       `
     }
@@ -788,12 +929,17 @@ export default function CalculadoraPage() {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Plano de Amortização - ${client}</title>
+          <title></title>
           <style>
-            @page { size: A4; margin: 15mm; }
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #1E293B; background: #FFF; position: relative; }
-            @media print { .no-print { display: none !important; } }
-            .pdf-header { padding: 24px 32px 0 32px; }
+            @page { size: A4; margin: 0mm; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 10mm 12mm; color: #1E293B; background: #FFF; position: relative; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+            @media print { 
+              @page { size: A4; margin: 0mm; }
+              .no-print { display: none !important; }
+              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+              body { padding: 10mm 12mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+            }
+            .pdf-header { padding: 16px 0 0 0; }
             .pdf-title { margin: 0 0 12px 0; font-size: 26px; letter-spacing: 1px; font-weight: 900; text-transform: uppercase; color: #64748B; text-align: center; }
             .green-bar { height: 4px; background-color: #00D492; border-radius: 2px; margin-bottom: 20px; }
             .sub-header { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
@@ -801,16 +947,16 @@ export default function CalculadoraPage() {
             .avatar { width: 38px; height: 38px; border-radius: 50%; background: #00D492; color: #111827; font-weight: 900; display: flex; align-items: center; justify-content: center; font-size: 14px; }
             .consultant-info { text-align: right; font-size: 12px; }
             .consultant-info .name { color: #00D492; font-weight: bold; font-size: 13px; }
-            .metrics-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 24px 32px; }
-            .metric-card { border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; background: #FFF; }
+            .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; align-items: stretch; }
+            .metric-card { border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 12px; background: #FFF; display: flex; flex-direction: column; justify-content: space-between; height: 100%; box-sizing: border-box; }
             .metric-label { font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; }
-            .metric-value { font-size: 20px; font-weight: 900; color: #0F172A; margin: 4px 0; }
+            .metric-value { font-size: 16px; font-weight: 900; color: #0F172A; margin: 6px 0 4px 0; line-height: 1.2; }
             .metric-highlight { color: #00D492; }
-            .metric-sub { font-size: 11px; color: #64748B; font-weight: 600; }
-            .table-container { margin: 0 32px 24px 32px; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; }
+            .metric-sub { font-size: 10.5px; color: #64748B; font-weight: 600; }
+            .table-container { margin: 0 0 24px 0; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; }
             table { width: 100%; border-collapse: collapse; font-size: 12px; }
             th { background-color: #111827; color: #00D492; padding: 12px 16px; text-transform: uppercase; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-align: center; }
-            .footer-note { margin: 24px 32px; font-size: 10px; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 12px; display: flex; justify-content: space-between; }
+            .footer-note { margin: 24px 0; font-size: 10px; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 12px; display: flex; justify-content: space-between; }
           </style>
         </head>
         <body>
@@ -879,12 +1025,48 @@ export default function CalculadoraPage() {
                   </div>
                 </div>
 
+                <div style="border-top: 1px solid #F1F5F9; padding-top: 10px;">
+                  <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">FOTO DO CONSULTOR (PNG SEM FUNDO)</label>
+                  <div style="display: flex; gap: 12px; align-items: center;">
+                    <div id="consultant-photo-preview-box" style="width: 48px; height: 48px; border-radius: 10px; border: 1px dashed #CBD5E1; background: #F8FAFC; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                      <img id="consultant-photo-img-preview" src="${consultantPhoto}" style="width: 100%; height: 100%; object-fit: contain; display: ${consultantPhoto ? 'block' : 'none'};" />
+                      <span id="consultant-photo-placeholder-icon" style="display: ${consultantPhoto ? 'none' : 'block'}; font-size: 18px; color: #94A3B8;">📷</span>
+                    </div>
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                      <input id="input-modal-photo-file" type="file" accept="image/*" style="display: none;" onchange="handlePhotoUpload(event)" />
+                      <button onclick="document.getElementById('input-modal-photo-file').click()" style="background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; text-align: center; width: fit-content;">Selecionar Foto</button>
+                      <div style="display: flex; gap: 12px; align-items: center; margin-top: 2px;">
+                        <button id="btn-remove-photo" onclick="removePhoto()" style="background: none; border: none; color: #EF4444; font-size: 10px; font-weight: 700; cursor: pointer; padding: 0; display: ${consultantPhoto ? 'inline-block' : 'none'};">Remover foto</button>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: #475569; cursor: pointer;">
+                          <input id="check-show-photo" type="checkbox" ${consultantPhoto ? 'checked' : ''} style="width: 14px; height: 14px; accent-color: #00D492; cursor: pointer;" />
+                          Mostrar no PDF
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div style="border-top: 1px solid #F1F5F9; padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
                   <label style="font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">OPÇÕES DE EXIBIÇÃO</label>
-                  
+
                   <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
-                    <input id="check-show-logo" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
-                    Exibir Logomarca SharkConsig
+                    <input id="check-show-card-contrato" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                    Exibir VALOR DO CONTRATO
+                  </label>
+
+                  <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                    <input id="check-show-card-prazo" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                    Exibir PRAZO ESTRATÉGIA
+                  </label>
+
+                  <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                    <input id="check-show-card-parcela" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                    Exibir PARCELA MÉDIA
+                  </label>
+
+                  <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                    <input id="check-show-card-taxa" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                    Exibir TAXA A.M.
                   </label>
 
                   <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
@@ -907,7 +1089,7 @@ export default function CalculadoraPage() {
           </div>
           <div class="pdf-header">
             <!-- Top Branding Header -->
-            <div id="branding-logo-header" style="display: flex; align-items: center; justify-content: center; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #E2E8F0; margin-bottom: 20px;">
+            <div id="branding-logo-header" style="display: flex; align-items: center; justify-content: center; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #E2E8F0; margin-bottom: 40px;">
               <div style="display: flex; align-items: center; justify-content: center;">
                 <img src="/logo.png" alt="SharkConsig" style="height: 38px; object-fit: contain;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
                 <div style="display: none; align-items: center; gap: 6px; font-weight: 900; font-size: 22px; color: #162546;">
@@ -922,7 +1104,7 @@ export default function CalculadoraPage() {
             </div>
 
             <!-- Main Dark Blue Banner Card -->
-            <div style="background-color: #162546; border-radius: 18px; padding: 20px 24px; color: #FFF; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <div id="header-banner-card" style="background-color: #162546 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; border-radius: 18px; padding: 20px 24px; color: #FFF; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; overflow: visible;">
               <!-- Left: Client Details -->
               <div style="display: flex; align-items: center; gap: 16px;">
                 <div style="width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid #F4C600; display: flex; align-items: center; justify-content: center; background: rgba(244, 198, 0, 0.1); color: #F4C600; font-weight: 900; font-size: 15px; flex-shrink: 0;">
@@ -933,11 +1115,16 @@ export default function CalculadoraPage() {
                 </div>
                 <div style="display: flex; flex-direction: column; text-align: left;">
                   <div class="client-name-display" style="font-weight: 900; font-size: 14px; text-transform: uppercase; color: #FFFFFF; letter-spacing: 0.5px; line-height: 1.2;">${client}</div>
-                  <div class="client-meta-display" style="font-size: 11px; color: #94A3B8; margin-top: 3px; font-weight: 600; display: flex; gap: 6px; align-items: center;">
-                    <span class="cpf-display">${cpf ? 'CPF: ' + cpf : ''}</span>
-                    <span class="orgao-display">${orgao ? (cpf ? ' | Órgão: ' : 'Órgão: ') + orgao : ''}</span>
+                  <div class="client-meta-display" style="font-size: 11px; color: #94A3B8; margin-top: 3px; font-weight: 600; display: flex; flex-direction: column; gap: 2px;">
+                    <span class="cpf-display">${cpf ? 'CPF: ' + formatMaskedCPF(cpf) : ''}</span>
+                    <span class="orgao-display">${orgao ? 'Órgão: ' + orgao : ''}</span>
                   </div>
                 </div>
+              </div>
+
+              <!-- Center: Consultant Photo Banner -->
+              <div id="consultant-photo-banner" style="display: ${consultantPhoto ? 'flex' : 'none'}; align-items: flex-end; justify-content: center; position: absolute; left: 50%; transform: translateX(-50%); bottom: 0; height: 140px; pointer-events: none; z-index: 10;">
+                <img id="banner-consultant-photo-img" src="${consultantPhoto}" style="max-height: 140px; height: 140px; width: auto; object-fit: contain; object-position: bottom;" />
               </div>
 
               <!-- Right: Consultant Details -->
@@ -961,20 +1148,25 @@ export default function CalculadoraPage() {
           </div>
 
           <div class="metrics-grid">
-            <div class="metric-card">
+            <div class="metric-card" id="metric-card-contrato">
               <div class="metric-label">VALOR DO CONTRATO</div>
               <div class="metric-value">${formatBRL(contratoComIof)}</div>
               <div class="metric-sub">Prazo original: ${prazo} meses</div>
             </div>
-            <div class="metric-card">
-              <div class="metric-label">PRAZO ESTIMADO</div>
+            <div class="metric-card" id="metric-card-prazo">
+              <div class="metric-label">PRAZO ESTRATÉGIA</div>
               <div class="metric-value metric-highlight">${term} parcelas</div>
-              <div class="metric-sub">Economia expressiva de tempo</div>
+              <div class="metric-sub">Economia de tempo</div>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" id="metric-card-parcela">
               <div class="metric-label">PARCELA MÉDIA</div>
               <div class="metric-value">${formatBRL(selectedPlanObj?.parcelaMedia ?? 0)}</div>
               <div class="metric-sub">Fixa em folha: ${formatBRL(parcela)}</div>
+            </div>
+            <div class="metric-card" id="metric-card-taxa">
+              <div class="metric-label">TAXA A.M.</div>
+              <div class="metric-value">${formatPercent(selectedPlanObj?.taxa ?? taxaImplicita, 2)}</div>
+              <div class="metric-sub">Taxa mensal do contrato</div>
             </div>
           </div>
 
@@ -986,6 +1178,7 @@ export default function CalculadoraPage() {
                   <th>FIXA EM FOLHA</th>
                   <th>AMORTIZADAS</th>
                   <th>VALOR AMORTIZAÇÕES</th>
+                  <th>TOTAL MÊS</th>
                 </tr>
               </thead>
               <tbody>
@@ -1000,19 +1193,64 @@ export default function CalculadoraPage() {
               <div>• Proposta válida até <span class="validity-date-display">${validityDateStr}</span>, sujeita a alteração sem aviso prévio.</div>
               <div>• A taxa de juros final e a redução do valor da parcela poderão sofrer oscilações a critério das instituições bancárias.</div>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E2E8F0; font-size: 9px; color: #94A3B8;">
-              <span>SharkConsig - Plano de Amortização</span>
-              <span style="font-weight: bold;">Desenvolvido por SharkConsig</span>
-            </div>
           </div>
 
           <script>
+            var currentPhotoData = "${consultantPhoto}";
+
+            function handlePhotoUpload(e) {
+              var file = e.target.files[0];
+              if (file) {
+                var reader = new FileReader();
+                reader.onload = function(evt) {
+                  currentPhotoData = evt.target.result;
+                  var imgPrev = document.getElementById('consultant-photo-img-preview');
+                  var placeholder = document.getElementById('consultant-photo-placeholder-icon');
+                  var removeBtn = document.getElementById('btn-remove-photo');
+                  var checkShow = document.getElementById('check-show-photo');
+                  if (imgPrev) { imgPrev.src = currentPhotoData; imgPrev.style.display = 'block'; }
+                  if (placeholder) placeholder.style.display = 'none';
+                  if (removeBtn) removeBtn.style.display = 'inline-block';
+                  if (checkShow) checkShow.checked = true;
+                };
+                reader.readAsDataURL(file);
+              }
+            }
+
+            function removePhoto() {
+              currentPhotoData = "";
+              var imgPrev = document.getElementById('consultant-photo-img-preview');
+              var placeholder = document.getElementById('consultant-photo-placeholder-icon');
+              var removeBtn = document.getElementById('btn-remove-photo');
+              var checkShow = document.getElementById('check-show-photo');
+              var fileInput = document.getElementById('input-modal-photo-file');
+              if (imgPrev) { imgPrev.src = ""; imgPrev.style.display = 'none'; }
+              if (placeholder) placeholder.style.display = 'block';
+              if (removeBtn) removeBtn.style.display = 'none';
+              if (checkShow) checkShow.checked = false;
+              if (fileInput) fileInput.value = "";
+            }
+
             function openCustomizeModal() {
               document.getElementById('customize-pdf-modal').style.display = 'flex';
             }
             function closeCustomizeModal() {
               document.getElementById('customize-pdf-modal').style.display = 'none';
             }
+            function maskCPF(cpf) {
+              if (!cpf) return '';
+              var digits = cpf.replace(/\D/g, '');
+              if (digits.length >= 11) {
+                var d = digits.substring(0, 11);
+                return d.substring(0, 3) + '.***.***-' + d.substring(9, 11);
+              }
+              if (digits.length >= 3) {
+                var end = digits.length > 3 ? digits.substring(digits.length - 2) : '**';
+                return digits.substring(0, 3) + '.***.***-' + end;
+              }
+              return cpf.replace(/^(\d{3})\.?\d{3}\.?\d{3}-?(\d{2})$/, '$1.***.***-$2');
+            }
+
             function applyPDFCustomization() {
               var clientVal = document.getElementById('input-modal-client').value.trim();
               var cpfVal = document.getElementById('input-modal-cpf').value.trim();
@@ -1020,11 +1258,16 @@ export default function CalculadoraPage() {
               var consultantVal = document.getElementById('input-modal-consultant').value.trim();
               var emailVal = document.getElementById('input-modal-email').value.trim();
               var phoneVal = document.getElementById('input-modal-phone').value.trim();
-              var validityDaysVal = parseInt(document.getElementById('input-modal-validity').value) || 5;
+              var validityDaysVal = parseInt(document.getElementById('input-modal-validity').value) || 1;
 
-              var showLogo = document.getElementById('check-show-logo').checked;
+              var showCardContrato = document.getElementById('check-show-card-contrato') ? document.getElementById('check-show-card-contrato').checked : true;
+              var showCardPrazo = document.getElementById('check-show-card-prazo') ? document.getElementById('check-show-card-prazo').checked : true;
+              var showCardParcela = document.getElementById('check-show-card-parcela') ? document.getElementById('check-show-card-parcela').checked : true;
+              var showCardTaxa = document.getElementById('check-show-card-taxa') ? document.getElementById('check-show-card-taxa').checked : true;
+
               var showConsultant = document.getElementById('check-show-consultant').checked;
               var showFooter = document.getElementById('check-show-footer').checked;
+              var showPhoto = document.getElementById('check-show-photo') ? document.getElementById('check-show-photo').checked : false;
 
               var d = new Date();
               d.setDate(d.getDate() + validityDaysVal);
@@ -1036,13 +1279,14 @@ export default function CalculadoraPage() {
               var clientEls = document.querySelectorAll('.client-name-display');
               clientEls.forEach(function(el) { el.textContent = clientVal || 'CLIENTE'; });
 
+              var maskedCpf = maskCPF(cpfVal);
               var cpfEls = document.querySelectorAll('.cpf-display');
-              cpfEls.forEach(function(el) { el.textContent = cpfVal ? 'CPF: ' + cpfVal : ''; });
+              cpfEls.forEach(function(el) { el.textContent = cpfVal ? 'CPF: ' + maskedCpf : ''; });
 
               var orgaoEls = document.querySelectorAll('.orgao-display');
               orgaoEls.forEach(function(el) { 
                 if (orgaoVal) {
-                  el.textContent = cpfVal ? ' | Órgão: ' + orgaoVal : 'Órgão: ' + orgaoVal;
+                  el.textContent = 'Órgão: ' + orgaoVal;
                 } else {
                   el.textContent = '';
                 }
@@ -1065,16 +1309,40 @@ export default function CalculadoraPage() {
               var validityEls = document.querySelectorAll('.validity-date-display');
               validityEls.forEach(function(el) { el.textContent = formattedValidityDate; });
 
-              var logoEl = document.getElementById('branding-logo-header');
-              if (logoEl) logoEl.style.display = showLogo ? 'flex' : 'none';
+              var cardContrato = document.getElementById('metric-card-contrato');
+              if (cardContrato) cardContrato.style.display = showCardContrato ? 'flex' : 'none';
+
+              var cardPrazo = document.getElementById('metric-card-prazo');
+              if (cardPrazo) cardPrazo.style.display = showCardPrazo ? 'flex' : 'none';
+
+              var cardParcela = document.getElementById('metric-card-parcela');
+              if (cardParcela) cardParcela.style.display = showCardParcela ? 'flex' : 'none';
+
+              var cardTaxa = document.getElementById('metric-card-taxa');
+              if (cardTaxa) cardTaxa.style.display = showCardTaxa ? 'flex' : 'none';
 
               var consultantBox = document.getElementById('consultant-info-banner');
               if (consultantBox) consultantBox.style.display = showConsultant ? 'flex' : 'none';
+
+              var photoBox = document.getElementById('consultant-photo-banner');
+              var photoImg = document.getElementById('banner-consultant-photo-img');
+              if (photoBox) {
+                if (showPhoto && currentPhotoData) {
+                  if (photoImg) photoImg.src = currentPhotoData;
+                  photoBox.style.display = 'flex';
+                } else {
+                  photoBox.style.display = 'none';
+                }
+              }
 
               var footerEl = document.querySelector('.footer-note');
               if (footerEl) footerEl.style.display = showFooter ? 'flex' : 'none';
 
               closeCustomizeModal();
+
+              setTimeout(function() {
+                window.print();
+              }, 150);
             }
           </script>
         </body>
