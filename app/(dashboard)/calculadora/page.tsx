@@ -1171,13 +1171,11 @@ export default function CalculadoraPage() {
           <div class="metrics-grid">
             <div class="metric-card" id="metric-card-contrato">
               <div class="metric-label">VALOR DO CONTRATO</div>
-              <div class="metric-value">${formatBRL(contratoComIof)}</div>
-              <div class="metric-sub">Prazo original: ${prazo} meses</div>
+              <div class="metric-value">${formatBRL(valorLiberado)}</div>
             </div>
             <div class="metric-card" id="metric-card-prazo">
               <div class="metric-label">PRAZO ESTRATÉGIA</div>
               <div class="metric-value metric-highlight">${term} parcelas</div>
-              <div class="metric-sub">Economia de tempo</div>
             </div>
             <div class="metric-card" id="metric-card-parcela">
               <div class="metric-label">PARCELA MÉDIA</div>
@@ -1186,7 +1184,6 @@ export default function CalculadoraPage() {
             <div class="metric-card" id="metric-card-taxa">
               <div class="metric-label">TAXA A.M.</div>
               <div class="metric-value">${formatPercent(selectedPlanObj?.taxa ?? taxaImplicita, 2)}</div>
-              <div class="metric-sub">Taxa mensal do contrato</div>
             </div>
           </div>
 
