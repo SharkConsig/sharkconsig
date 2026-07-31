@@ -773,6 +773,30 @@ export default function ProposalsPage() {
     setExpandedProposalId(expandedProposalId === proposalId ? null : proposalId)
   }
 
+  const getFormattedObservation = (p: Proposal) => {
+    const isAuthorized = isAdmin || isDeveloper || isOperational;
+    let obsCorr = p.obs_corretor || "";
+    let obsOper = p.obs_operacional || "";
+
+    // Fallback extraction if columns are empty but combined field exists
+    if (!obsCorr && !obsOper && p.observacoes) {
+      const obs = p.observacoes;
+      const corretorMatch = obs.match(/\[CORRETOR\]: ([\s\S]*?)(?=\n\[OPERACIONAL\]|$)/);
+      const operacionalMatch = obs.match(/\[OPERACIONAL\]: ([\s\S]*?)$/);
+      if (corretorMatch) obsCorr = corretorMatch[1].trim();
+      if (operacionalMatch) obsOper = operacionalMatch[1].trim();
+      if (!obsCorr && !obsOper) {
+        return obs;
+      }
+    }
+
+    if (isAuthorized) {
+      if (obsCorr && obsOper) return `${obsCorr} | ${obsOper}`;
+      return obsOper || obsCorr || "-";
+    }
+    return obsCorr || "-";
+  }
+
   const exportToExcel = async () => {
     if (filteredProposals.length === 0) {
       toast.error("Não há dados para exportar.")
@@ -798,12 +822,15 @@ export default function ProposalsPage() {
         { header: 'TIPO OPERAÇÃO', key: 'tipo', width: 20 },
         { header: 'STATUS', key: 'status', width: 40 },
         { header: 'VALOR OPERAÇÃO', key: 'valor', width: 20 },
+        { header: 'OBSERVAÇÃO', key: 'observacao', width: 40 },
         { header: 'DATA CRIAÇÃO', key: 'criado', width: 20 },
         { header: 'ÚLTIMA ATUALIZAÇÃO', key: 'atualizado', width: 20 },
       ]
 
       // Add rows
       filteredProposals.forEach(p => {
+        const obsTexto = getFormattedObservation(p);
+
         worksheet.addRow({
           id_lead: p.id_lead,
           ade: p.ade || '-',
@@ -816,6 +843,7 @@ export default function ProposalsPage() {
           tipo: p.tipo_operacao,
           status: p.status,
           valor: (p.valor_operacao || p.valor_cliente || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+          observacao: obsTexto,
           criado: format(new Date(p.created_at), "dd/MM/yyyy HH:mm:ss"),
           atualizado: p.updated_at ? format(new Date(p.updated_at), "dd/MM/yyyy HH:mm:ss") : '-',
         })
@@ -1223,26 +1251,7 @@ export default function ProposalsPage() {
                             R$ {(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </td>
                           <td className="px-4 py-4 text-[11px] text-slate-500 max-w-[250px] whitespace-pre-wrap break-words">
-                            {(() => {
-                              const isAuthorized = isAdmin || isDeveloper || isOperational;
-                              let obsCorr = proposal.obs_corretor || "";
-                              let obsOper = proposal.obs_operacional || "";
-
-                              // Fallback extraction if columns are empty but combined field exists
-                              if (!obsCorr && !obsOper && proposal.observacoes) {
-                                const obs = proposal.observacoes;
-                                const corretorMatch = obs.match(/\[CORRETOR\]: ([\s\S]*?)(?=\n\[OPERACIONAL\]|$)/);
-                                const operacionalMatch = obs.match(/\[OPERACIONAL\]: ([\s\S]*?)$/);
-                                if (corretorMatch) obsCorr = corretorMatch[1].trim();
-                                if (operacionalMatch) obsOper = operacionalMatch[1].trim();
-                              }
-
-                              if (isAuthorized) {
-                                if (obsCorr && obsOper) return `${obsCorr} | ${obsOper}`;
-                                return obsOper || obsCorr || "-";
-                              }
-                              return obsCorr || "-";
-                            })()}
+                            {getFormattedObservation(proposal)}
                           </td>
                           <td className="px-4 py-4 text-[10px] font-bold text-slate-600">
                             {proposal.updated_at || proposal.created_at ? (
