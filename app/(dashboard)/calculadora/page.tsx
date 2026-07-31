@@ -306,23 +306,44 @@ export default function CalculadoraPage() {
     const terms = [12, 24, 36, 48, 60, 72, 84, 96, 120]
     
     return terms.map(t => {
+      const totalExtraAmort = Math.max(0, prazo - t)
+      const extraPerMonth = totalExtraAmort / t
+
+      let currentBackInstallment = prazo
+      let sumTotalMes = 0
+
+      for (let m = 1; m <= t; m++) {
+        const numAmortThisMonth = Math.min(
+          Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
+          currentBackInstallment - t
+        )
+
+        let sumAmortValsThisMonth = 0
+        for (let k = 0; k < numAmortThisMonth && currentBackInstallment > t; k++) {
+          const remMonths = currentBackInstallment - m + 1
+          const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, remMonths))
+          sumAmortValsThisMonth += valAmort
+          currentBackInstallment--
+        }
+
+        const totalMes = parcela + sumAmortValsThisMonth
+        sumTotalMes += totalMes
+      }
+
+      const pmtMedia = t > 0 ? sumTotalMes / t : 0
+
       const ratio = t / 120
       const rateN = t === 120 
         ? taxaImplicita 
         : taxaImplicita * (0.15 + 0.85 * Math.pow(ratio, 0.85))
 
-      const compound = Math.pow(1 + rateN, t)
-      const pmtN = compound > 1 
-        ? contratoComIof * ((rateN * compound) / (compound - 1))
-        : 0
-
       return {
         term: t,
         taxa: rateN,
-        parcelaMedia: pmtN
+        parcelaMedia: pmtMedia
       }
     })
-  }, [taxaImplicita, contratoComIof])
+  }, [taxaImplicita, parcela, prazo])
 
   const selectedPlanObj = useMemo(() => {
     return planosAmortizacao.find(p => p.term === selectedPlanTerm) || planosAmortizacao[0]
@@ -1161,7 +1182,6 @@ export default function CalculadoraPage() {
             <div class="metric-card" id="metric-card-parcela">
               <div class="metric-label">PARCELA MÉDIA</div>
               <div class="metric-value">${formatBRL(selectedPlanObj?.parcelaMedia ?? 0)}</div>
-              <div class="metric-sub">Fixa em folha: ${formatBRL(parcela)}</div>
             </div>
             <div class="metric-card" id="metric-card-taxa">
               <div class="metric-label">TAXA A.M.</div>
