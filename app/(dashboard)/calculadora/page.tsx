@@ -96,7 +96,7 @@ export default function CalculadoraPage() {
     return parseFloat(coeficienteInput.replace(",", ".")) || 0
   }, [coeficienteInput])
   const [prazo, setPrazo] = useState<number>(0)
-  const [iofPercent, setIofPercent] = useState<number>(0)
+  const [iofPercent, setIofPercent] = useState<number>(5)
   const [valorBolsoInput, setValorBolsoInput] = useState<string>("")
 
   // Selected plan term in grid
@@ -415,6 +415,13 @@ export default function CalculadoraPage() {
 
     const consultant = perfil?.nome || "Elisandra Cassol"
     const email = perfil?.email || "elis_cassol@yahoo.com.br"
+    const phone = (perfil as any)?.telefone || ""
+    const cpf = ""
+    const orgao = ""
+    const defaultValidityDays = 5
+    const validityDate = new Date()
+    validityDate.setDate(validityDate.getDate() + defaultValidityDays)
+    const validityDateStr = `${String(validityDate.getDate()).padStart(2, "0")}/${String(validityDate.getMonth() + 1).padStart(2, "0")}/${validityDate.getFullYear()}`
     const todayStr = new Date().toLocaleDateString("pt-BR")
 
     const printWindow = window.open("", "_blank")
@@ -443,10 +450,12 @@ export default function CalculadoraPage() {
             <title>Plano de Portabilidade - ${client}</title>
             <style>
               @page { size: A4; margin: 15mm; }
-              body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #1E293B; background: #FFF; }
-              .header-banner { background-color: #111827; color: #FFF; padding: 24px 32px; border-bottom: 4px solid #00D492; }
-              .header-banner h1 { margin: 0; font-size: 24px; letter-spacing: 1px; font-weight: 800; text-transform: uppercase; }
-              .sub-header { background-color: #1E293B; color: #FFF; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; }
+              body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #1E293B; background: #FFF; position: relative; }
+              @media print { .no-print { display: none !important; } }
+              .pdf-header { padding: 24px 32px 0 32px; }
+              .pdf-title { margin: 0 0 12px 0; font-size: 26px; letter-spacing: 1px; font-weight: 900; text-transform: uppercase; color: #64748B; text-align: center; }
+              .green-bar { height: 4px; background-color: #00D492; border-radius: 2px; margin-bottom: 20px; }
+              .sub-header { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
               .client-info { display: flex; align-items: center; gap: 12px; }
               .avatar { width: 38px; height: 38px; border-radius: 50%; background: #00D492; color: #111827; font-weight: 900; display: flex; align-items: center; justify-content: center; font-size: 14px; }
               .consultant-info { text-align: right; font-size: 12px; }
@@ -464,21 +473,149 @@ export default function CalculadoraPage() {
             </style>
           </head>
           <body>
-            <div class="header-banner">
-              <h1>PLANO DE PORTABILIDADE & AMORTIZAÇÃO</h1>
-            </div>
-            <div class="sub-header">
-              <div class="client-info">
-                <div class="avatar">${initials}</div>
-                <div>
-                  <div style="font-weight: 800; font-size: 15px; text-transform: uppercase;">${client}</div>
-                  <div style="font-size: 11px; color: #94A3B8;">Proposta de Portabilidade</div>
+            <!-- Top Right Gerar PDF Button -->
+            <button id="btn-gerar-pdf-page" onclick="openCustomizeModal()" class="no-print" style="position: absolute; top: 20px; right: 28px; background-color: #00D492; color: #162546; font-weight: 800; font-size: 13px; padding: 10px 18px; border-radius: 10px; border: none; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-family: inherit; transition: all 0.2s; z-index: 100;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span>Gerar PDF</span>
+            </button>
+
+            <!-- Modal Overlay for PDF Personalization -->
+            <div id="customize-pdf-modal" class="modal-overlay no-print" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center; padding: 16px;">
+              <div style="background: #FFFFFF; border-radius: 16px; width: 100%; max-width: 520px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); border: 1px solid #E2E8F0; font-family: inherit; color: #0F172A; max-height: 90vh; overflow-y: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #E2E8F0; padding-bottom: 14px; margin-bottom: 18px;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(0, 212, 146, 0.15); display: flex; align-items: center; justify-content: center; color: #00D492;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#162546" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </div>
+                    <div>
+                      <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #162546;">Personalizar PDF</h3>
+                      <p style="margin: 2px 0 0 0; font-size: 11px; color: #64748B;">Plano de Amortização</p>
+                    </div>
+                  </div>
+                  <button onclick="closeCustomizeModal()" style="background: none; border: none; font-size: 20px; color: #94A3B8; cursor: pointer; padding: 4px; border-radius: 6px; font-weight: 700;">✕</button>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px;">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                      <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">NOME DO CLIENTE</label>
+                      <input id="input-modal-client" type="text" value="${client}" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                    </div>
+                    <div>
+                      <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">CPF DO CLIENTE</label>
+                      <input id="input-modal-cpf" type="text" value="${cpf}" placeholder="000.000.000-00" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                    </div>
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                      <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">ÓRGÃO / CONVÊNIO</label>
+                      <input id="input-modal-orgao" type="text" value="${orgao}" placeholder="Ex: GOVERNO SP, INSS..." style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                    </div>
+                    <div>
+                      <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">VALIDADE DA PROPOSTA (DIAS)</label>
+                      <input id="input-modal-validity" type="number" min="1" max="90" value="${defaultValidityDays}" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                    </div>
+                  </div>
+
+                  <div style="border-top: 1px solid #F1F5F9; padding-top: 10px;">
+                    <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">DADOS DO CONSULTOR</label>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                      <div>
+                        <label style="display: block; font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; margin-bottom: 2px;">NOME</label>
+                        <input id="input-modal-consultant" type="text" value="${consultant}" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                      </div>
+                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                          <label style="display: block; font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; margin-bottom: 2px;">E-MAIL</label>
+                          <input id="input-modal-email" type="text" value="${email}" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                        </div>
+                        <div>
+                          <label style="display: block; font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; margin-bottom: 2px;">TELEFONE</label>
+                          <input id="input-modal-phone" type="text" value="${phone}" placeholder="(00) 00000-0000" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="border-top: 1px solid #F1F5F9; padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <label style="font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">OPÇÕES DE EXIBIÇÃO</label>
+                    
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                      <input id="check-show-logo" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                      Exibir Logomarca SharkConsig
+                    </label>
+
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                      <input id="check-show-consultant" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                      Exibir Informações do Consultor
+                    </label>
+
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                      <input id="check-show-footer" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                      Exibir Rodapé Legal
+                    </label>
+                  </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #E2E8F0; padding-top: 14px;">
+                  <button onclick="closeCustomizeModal()" style="background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 700; cursor: pointer;">Cancelar</button>
+                  <button onclick="applyPDFCustomization()" style="background: #00D492; color: #162546; border: none; border-radius: 8px; padding: 8px 18px; font-size: 12px; font-weight: 800; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">Aplicar Personalização</button>
                 </div>
               </div>
-              <div class="consultant-info">
-                <div style="color: #94A3B8; font-size: 10px; text-transform: uppercase; font-weight: 700;">Consultor</div>
-                <div class="name">${consultant}</div>
-                <div style="color: #CBD5E1;">${email}</div>
+            </div>
+            <div class="pdf-header">
+              <!-- Top Branding Header -->
+              <div id="branding-logo-header" style="display: flex; align-items: center; justify-content: center; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #E2E8F0; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; justify-content: center;">
+                  <img src="/logo.png" alt="SharkConsig" style="height: 38px; object-fit: contain;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                  <div style="display: none; align-items: center; gap: 6px; font-weight: 900; font-size: 22px; color: #162546;">
+                    <span style="color: #00D492;">Shark</span>Consig
+                  </div>
+                </div>
+                <span style="color: #CBD5E1; font-size: 28px; font-weight: 300; margin: 0 4px;">|</span>
+                <div style="display: flex; flex-direction: column; text-align: left;">
+                  <span style="font-size: 10px; color: #64748B; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; line-height: 1;">FORMALIZAÇÃO DE</span>
+                  <span style="font-size: 24px; font-weight: 900; color: #162546; letter-spacing: -0.5px; line-height: 1.1; text-transform: uppercase;">PROPOSTA</span>
+                </div>
+              </div>
+
+              <!-- Main Dark Blue Banner Card -->
+              <div style="background-color: #162546; border-radius: 18px; padding: 20px 24px; color: #FFF; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                <!-- Left: Client Details -->
+                <div style="display: flex; align-items: center; gap: 16px;">
+                  <div style="width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid #F4C600; display: flex; align-items: center; justify-content: center; background: rgba(244, 198, 0, 0.1); color: #F4C600; font-weight: 900; font-size: 15px; flex-shrink: 0;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F4C600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; text-align: left;">
+                    <div class="client-name-display" style="font-weight: 900; font-size: 14px; text-transform: uppercase; color: #FFFFFF; letter-spacing: 0.5px; line-height: 1.2;">${client}</div>
+                    <div class="client-meta-display" style="font-size: 11px; color: #94A3B8; margin-top: 3px; font-weight: 600; display: flex; gap: 6px; align-items: center;">
+                      <span class="cpf-display">${cpf ? 'CPF: ' + cpf : ''}</span>
+                      <span class="orgao-display">${orgao ? (cpf ? ' | Órgão: ' : 'Órgão: ') + orgao : ''}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right: Consultant Details -->
+                <div id="consultant-info-banner" style="display: flex; flex-direction: column; text-align: right; align-items: flex-end; gap: 4px; border-left: 1px solid rgba(255, 255, 255, 0.15); padding-left: 20px;">
+                  <div class="consultant-name-display" style="color: #F4C600; font-weight: 900; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">${consultant}</div>
+                  <div style="display: flex; align-items: center; gap: 6px; color: #E2E8F0; font-size: 11px; font-weight: 500;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F4C600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect width="20" height="16" x="2" y="4" rx="2"></rect>
+                      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                    </svg>
+                    <span class="email-display">${email}</span>
+                  </div>
+                  <div class="phone-wrapper" style="display: ${phone ? 'flex' : 'none'}; align-items: center; gap: 6px; color: #E2E8F0; font-size: 11px; font-weight: 500;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F4C600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                    </svg>
+                    <span class="phone-display">${phone}</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -517,19 +654,88 @@ export default function CalculadoraPage() {
               </table>
             </div>
 
-            <div class="footer-note">
-              <div>
-                Esta simulação de portabilidade utiliza cálculo de tabela Price refinanciada. Proposta válida somente para a data de emissão (${todayStr}). Taxas sujeitas à alteração.
+            <div class="footer-note" style="margin: 24px 32px; font-size: 10px; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 12px; display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: #475569; line-height: 1.4;">
+                <div>• Cálculos de amortização de parcela são diários e sofrem alteração.</div>
+                <div>• Proposta válida até <span class="validity-date-display">${validityDateStr}</span>, sujeita a alteração sem aviso prévio.</div>
+                <div>• A taxa de juros final e a redução do valor da parcela poderão sofrer oscilações a critério das instituições bancárias.</div>
               </div>
-              <div style="font-weight: bold; white-space: nowrap; margin-left: 16px;">
-                Desenvolvido por SharkConsig
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E2E8F0; font-size: 9px; color: #94A3B8;">
+                <span>SharkConsig - Plano de Amortização</span>
+                <span style="font-weight: bold;">Desenvolvido por SharkConsig</span>
               </div>
             </div>
 
             <script>
-              window.onload = function() {
-                window.print();
-              };
+              function openCustomizeModal() {
+                document.getElementById('customize-pdf-modal').style.display = 'flex';
+              }
+              function closeCustomizeModal() {
+                document.getElementById('customize-pdf-modal').style.display = 'none';
+              }
+              function applyPDFCustomization() {
+                var clientVal = document.getElementById('input-modal-client').value.trim();
+                var cpfVal = document.getElementById('input-modal-cpf').value.trim();
+                var orgaoVal = document.getElementById('input-modal-orgao').value.trim();
+                var consultantVal = document.getElementById('input-modal-consultant').value.trim();
+                var emailVal = document.getElementById('input-modal-email').value.trim();
+                var phoneVal = document.getElementById('input-modal-phone').value.trim();
+                var validityDaysVal = parseInt(document.getElementById('input-modal-validity').value) || 5;
+
+                var showLogo = document.getElementById('check-show-logo').checked;
+                var showConsultant = document.getElementById('check-show-consultant').checked;
+                var showFooter = document.getElementById('check-show-footer').checked;
+
+                var d = new Date();
+                d.setDate(d.getDate() + validityDaysVal);
+                var day = String(d.getDate()).padStart(2, '0');
+                var month = String(d.getMonth() + 1).padStart(2, '0');
+                var year = d.getFullYear();
+                var formattedValidityDate = day + '/' + month + '/' + year;
+
+                var clientEls = document.querySelectorAll('.client-name-display');
+                clientEls.forEach(function(el) { el.textContent = clientVal || 'CLIENTE'; });
+
+                var cpfEls = document.querySelectorAll('.cpf-display');
+                cpfEls.forEach(function(el) { el.textContent = cpfVal ? 'CPF: ' + cpfVal : ''; });
+
+                var orgaoEls = document.querySelectorAll('.orgao-display');
+                orgaoEls.forEach(function(el) { 
+                  if (orgaoVal) {
+                    el.textContent = cpfVal ? ' | Órgão: ' + orgaoVal : 'Órgão: ' + orgaoVal;
+                  } else {
+                    el.textContent = '';
+                  }
+                });
+
+                var consultantEls = document.querySelectorAll('.consultant-name-display');
+                consultantEls.forEach(function(el) { el.textContent = consultantVal; });
+
+                var emailEls = document.querySelectorAll('.email-display');
+                emailEls.forEach(function(el) { el.textContent = emailVal; });
+
+                var phoneEls = document.querySelectorAll('.phone-display');
+                phoneEls.forEach(function(el) { el.textContent = phoneVal; });
+
+                var phoneWrappers = document.querySelectorAll('.phone-wrapper');
+                phoneWrappers.forEach(function(el) {
+                  el.style.display = phoneVal ? 'flex' : 'none';
+                });
+
+                var validityEls = document.querySelectorAll('.validity-date-display');
+                validityEls.forEach(function(el) { el.textContent = formattedValidityDate; });
+
+                var logoEl = document.getElementById('branding-logo-header');
+                if (logoEl) logoEl.style.display = showLogo ? 'flex' : 'none';
+
+                var consultantBox = document.getElementById('consultant-info-banner');
+                if (consultantBox) consultantBox.style.display = showConsultant ? 'flex' : 'none';
+
+                var footerEl = document.querySelector('.footer-note');
+                if (footerEl) footerEl.style.display = showFooter ? 'flex' : 'none';
+
+                closeCustomizeModal();
+              }
             </script>
           </body>
         </html>
@@ -542,19 +748,19 @@ export default function CalculadoraPage() {
     const totalExtraAmort = Math.max(0, prazo - term)
     const extraPerMonth = totalExtraAmort / term
 
-    let currentBackInstallment = prazo - 1
+    let currentBackInstallment = prazo
     let rowsHtml = ""
 
     for (let m = 1; m <= term; m++) {
       const numAmortThisMonth = Math.min(
         Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
-        currentBackInstallment - term + 1
+        currentBackInstallment - term
       )
 
       const amortNums: number[] = []
       const amortVals: string[] = []
 
-      for (let k = 0; k < numAmortThisMonth && currentBackInstallment >= term; k++) {
+      for (let k = 0; k < numAmortThisMonth && currentBackInstallment > term; k++) {
         amortNums.push(currentBackInstallment)
         const remMonths = currentBackInstallment - m + 1
         const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, remMonths))
@@ -585,10 +791,12 @@ export default function CalculadoraPage() {
           <title>Plano de Amortização - ${client}</title>
           <style>
             @page { size: A4; margin: 15mm; }
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #1E293B; background: #FFF; }
-            .header-banner { background-color: #111827; color: #FFF; padding: 24px 32px; border-bottom: 4px solid #00D492; }
-            .header-banner h1 { margin: 0; font-size: 24px; letter-spacing: 1px; font-weight: 800; text-transform: uppercase; }
-            .sub-header { background-color: #1E293B; color: #FFF; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #1E293B; background: #FFF; position: relative; }
+            @media print { .no-print { display: none !important; } }
+            .pdf-header { padding: 24px 32px 0 32px; }
+            .pdf-title { margin: 0 0 12px 0; font-size: 26px; letter-spacing: 1px; font-weight: 900; text-transform: uppercase; color: #64748B; text-align: center; }
+            .green-bar { height: 4px; background-color: #00D492; border-radius: 2px; margin-bottom: 20px; }
+            .sub-header { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
             .client-info { display: flex; align-items: center; gap: 12px; }
             .avatar { width: 38px; height: 38px; border-radius: 50%; background: #00D492; color: #111827; font-weight: 900; display: flex; align-items: center; justify-content: center; font-size: 14px; }
             .consultant-info { text-align: right; font-size: 12px; }
@@ -606,21 +814,149 @@ export default function CalculadoraPage() {
           </style>
         </head>
         <body>
-          <div class="header-banner">
-            <h1>PLANO DE AMORTIZAÇÃO</h1>
-          </div>
-          <div class="sub-header">
-            <div class="client-info">
-              <div class="avatar">${initials}</div>
-              <div>
-                <div style="font-weight: 800; font-size: 15px; text-transform: uppercase;">${client}</div>
-                <div style="font-size: 11px; color: #94A3B8;">Plano de Amortização</div>
+          <!-- Top Right Gerar PDF Button -->
+          <button id="btn-gerar-pdf-page" onclick="openCustomizeModal()" class="no-print" style="position: absolute; top: 20px; right: 28px; background-color: #00D492; color: #162546; font-weight: 800; font-size: 13px; padding: 10px 18px; border-radius: 10px; border: none; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-family: inherit; transition: all 0.2s; z-index: 100;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>Gerar PDF</span>
+          </button>
+
+          <!-- Modal Overlay for PDF Personalization -->
+          <div id="customize-pdf-modal" class="modal-overlay no-print" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center; padding: 16px;">
+            <div style="background: #FFFFFF; border-radius: 16px; width: 100%; max-width: 520px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); border: 1px solid #E2E8F0; font-family: inherit; color: #0F172A; max-height: 90vh; overflow-y: auto;">
+              <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #E2E8F0; padding-bottom: 14px; margin-bottom: 18px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(0, 212, 146, 0.15); display: flex; align-items: center; justify-content: center; color: #00D492;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#162546" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  </div>
+                  <div>
+                    <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #162546;">Personalizar PDF</h3>
+                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #64748B;">Plano de Amortização</p>
+                  </div>
+                </div>
+                <button onclick="closeCustomizeModal()" style="background: none; border: none; font-size: 20px; color: #94A3B8; cursor: pointer; padding: 4px; border-radius: 6px; font-weight: 700;">✕</button>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div>
+                    <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">NOME DO CLIENTE</label>
+                    <input id="input-modal-client" type="text" value="${client}" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">CPF DO CLIENTE</label>
+                    <input id="input-modal-cpf" type="text" value="${cpf}" placeholder="000.000.000-00" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                  </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div>
+                    <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">ÓRGÃO / CONVÊNIO</label>
+                    <input id="input-modal-orgao" type="text" value="${orgao}" placeholder="Ex: GOVERNO SP, INSS..." style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">VALIDADE DA PROPOSTA (DIAS)</label>
+                    <input id="input-modal-validity" type="number" min="1" max="90" value="${defaultValidityDays}" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                  </div>
+                </div>
+
+                <div style="border-top: 1px solid #F1F5F9; padding-top: 10px;">
+                  <label style="display: block; font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">DADOS DO CONSULTOR</label>
+                  <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div>
+                      <label style="display: block; font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; margin-bottom: 2px;">NOME</label>
+                      <input id="input-modal-consultant" type="text" value="${consultant}" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                      <div>
+                        <label style="display: block; font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; margin-bottom: 2px;">E-MAIL</label>
+                        <input id="input-modal-email" type="text" value="${email}" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                      </div>
+                      <div>
+                        <label style="display: block; font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; margin-bottom: 2px;">TELEFONE</label>
+                        <input id="input-modal-phone" type="text" value="${phone}" placeholder="(00) 00000-0000" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; color: #0F172A; box-sizing: border-box; outline: none;" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="border-top: 1px solid #F1F5F9; padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                  <label style="font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">OPÇÕES DE EXIBIÇÃO</label>
+                  
+                  <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                    <input id="check-show-logo" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                    Exibir Logomarca SharkConsig
+                  </label>
+
+                  <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                    <input id="check-show-consultant" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                    Exibir Informações do Consultor
+                  </label>
+
+                  <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
+                    <input id="check-show-footer" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
+                    Exibir Rodapé Legal
+                  </label>
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #E2E8F0; padding-top: 14px;">
+                <button onclick="closeCustomizeModal()" style="background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 700; cursor: pointer;">Cancelar</button>
+                <button onclick="applyPDFCustomization()" style="background: #00D492; color: #162546; border: none; border-radius: 8px; padding: 8px 18px; font-size: 12px; font-weight: 800; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">Aplicar Personalização</button>
               </div>
             </div>
-            <div class="consultant-info">
-              <div style="color: #94A3B8; font-size: 10px; text-transform: uppercase; font-weight: 700;">Consultor</div>
-              <div class="name">${consultant}</div>
-              <div style="color: #CBD5E1;">${email}</div>
+          </div>
+          <div class="pdf-header">
+            <!-- Top Branding Header -->
+            <div id="branding-logo-header" style="display: flex; align-items: center; justify-content: center; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #E2E8F0; margin-bottom: 20px;">
+              <div style="display: flex; align-items: center; justify-content: center;">
+                <img src="/logo.png" alt="SharkConsig" style="height: 38px; object-fit: contain;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                <div style="display: none; align-items: center; gap: 6px; font-weight: 900; font-size: 22px; color: #162546;">
+                  <span style="color: #00D492;">Shark</span>Consig
+                </div>
+              </div>
+              <span style="color: #CBD5E1; font-size: 28px; font-weight: 300; margin: 0 4px;">|</span>
+              <div style="display: flex; flex-direction: column; text-align: left;">
+                <span style="font-size: 10px; color: #64748B; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; line-height: 1;">FORMALIZAÇÃO DE</span>
+                <span style="font-size: 24px; font-weight: 900; color: #162546; letter-spacing: -0.5px; line-height: 1.1; text-transform: uppercase;">PROPOSTA</span>
+              </div>
+            </div>
+
+            <!-- Main Dark Blue Banner Card -->
+            <div style="background-color: #162546; border-radius: 18px; padding: 20px 24px; color: #FFF; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+              <!-- Left: Client Details -->
+              <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid #F4C600; display: flex; align-items: center; justify-content: center; background: rgba(244, 198, 0, 0.1); color: #F4C600; font-weight: 900; font-size: 15px; flex-shrink: 0;">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F4C600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                </div>
+                <div style="display: flex; flex-direction: column; text-align: left;">
+                  <div class="client-name-display" style="font-weight: 900; font-size: 14px; text-transform: uppercase; color: #FFFFFF; letter-spacing: 0.5px; line-height: 1.2;">${client}</div>
+                  <div class="client-meta-display" style="font-size: 11px; color: #94A3B8; margin-top: 3px; font-weight: 600; display: flex; gap: 6px; align-items: center;">
+                    <span class="cpf-display">${cpf ? 'CPF: ' + cpf : ''}</span>
+                    <span class="orgao-display">${orgao ? (cpf ? ' | Órgão: ' : 'Órgão: ') + orgao : ''}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right: Consultant Details -->
+              <div id="consultant-info-banner" style="display: flex; flex-direction: column; text-align: right; align-items: flex-end; gap: 4px; border-left: 1px solid rgba(255, 255, 255, 0.15); padding-left: 20px;">
+                <div class="consultant-name-display" style="color: #F4C600; font-weight: 900; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">${consultant}</div>
+                <div style="display: flex; align-items: center; gap: 6px; color: #E2E8F0; font-size: 11px; font-weight: 500;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F4C600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="20" height="16" x="2" y="4" rx="2"></rect>
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                  </svg>
+                  <span class="email-display">${email}</span>
+                </div>
+                <div class="phone-wrapper" style="display: ${phone ? 'flex' : 'none'}; align-items: center; gap: 6px; color: #E2E8F0; font-size: 11px; font-weight: 500;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F4C600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                  </svg>
+                  <span class="phone-display">${phone}</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -658,19 +994,88 @@ export default function CalculadoraPage() {
             </table>
           </div>
 
-          <div class="footer-note">
-            <div>
-              Esta simulação pode utilizar estratégia de amortização, podendo haver variação nos valores conforme cálculos diários. Proposta válida somente para a data de emissão (${todayStr}). Taxas sujeitas à alteração.
+          <div class="footer-note" style="margin: 24px 32px; font-size: 10px; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: #475569; line-height: 1.4;">
+              <div>• Cálculos de amortização de parcela são diários e sofrem alteração.</div>
+              <div>• Proposta válida até <span class="validity-date-display">${validityDateStr}</span>, sujeita a alteração sem aviso prévio.</div>
+              <div>• A taxa de juros final e a redução do valor da parcela poderão sofrer oscilações a critério das instituições bancárias.</div>
             </div>
-            <div style="font-weight: bold; white-space: nowrap; margin-left: 16px;">
-              Desenvolvido por SharkConsig
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E2E8F0; font-size: 9px; color: #94A3B8;">
+              <span>SharkConsig - Plano de Amortização</span>
+              <span style="font-weight: bold;">Desenvolvido por SharkConsig</span>
             </div>
           </div>
 
           <script>
-            window.onload = function() {
-              window.print();
-            };
+            function openCustomizeModal() {
+              document.getElementById('customize-pdf-modal').style.display = 'flex';
+            }
+            function closeCustomizeModal() {
+              document.getElementById('customize-pdf-modal').style.display = 'none';
+            }
+            function applyPDFCustomization() {
+              var clientVal = document.getElementById('input-modal-client').value.trim();
+              var cpfVal = document.getElementById('input-modal-cpf').value.trim();
+              var orgaoVal = document.getElementById('input-modal-orgao').value.trim();
+              var consultantVal = document.getElementById('input-modal-consultant').value.trim();
+              var emailVal = document.getElementById('input-modal-email').value.trim();
+              var phoneVal = document.getElementById('input-modal-phone').value.trim();
+              var validityDaysVal = parseInt(document.getElementById('input-modal-validity').value) || 5;
+
+              var showLogo = document.getElementById('check-show-logo').checked;
+              var showConsultant = document.getElementById('check-show-consultant').checked;
+              var showFooter = document.getElementById('check-show-footer').checked;
+
+              var d = new Date();
+              d.setDate(d.getDate() + validityDaysVal);
+              var day = String(d.getDate()).padStart(2, '0');
+              var month = String(d.getMonth() + 1).padStart(2, '0');
+              var year = d.getFullYear();
+              var formattedValidityDate = day + '/' + month + '/' + year;
+
+              var clientEls = document.querySelectorAll('.client-name-display');
+              clientEls.forEach(function(el) { el.textContent = clientVal || 'CLIENTE'; });
+
+              var cpfEls = document.querySelectorAll('.cpf-display');
+              cpfEls.forEach(function(el) { el.textContent = cpfVal ? 'CPF: ' + cpfVal : ''; });
+
+              var orgaoEls = document.querySelectorAll('.orgao-display');
+              orgaoEls.forEach(function(el) { 
+                if (orgaoVal) {
+                  el.textContent = cpfVal ? ' | Órgão: ' + orgaoVal : 'Órgão: ' + orgaoVal;
+                } else {
+                  el.textContent = '';
+                }
+              });
+
+              var consultantEls = document.querySelectorAll('.consultant-name-display');
+              consultantEls.forEach(function(el) { el.textContent = consultantVal; });
+
+              var emailEls = document.querySelectorAll('.email-display');
+              emailEls.forEach(function(el) { el.textContent = emailVal; });
+
+              var phoneEls = document.querySelectorAll('.phone-display');
+              phoneEls.forEach(function(el) { el.textContent = phoneVal; });
+
+              var phoneWrappers = document.querySelectorAll('.phone-wrapper');
+              phoneWrappers.forEach(function(el) {
+                el.style.display = phoneVal ? 'flex' : 'none';
+              });
+
+              var validityEls = document.querySelectorAll('.validity-date-display');
+              validityEls.forEach(function(el) { el.textContent = formattedValidityDate; });
+
+              var logoEl = document.getElementById('branding-logo-header');
+              if (logoEl) logoEl.style.display = showLogo ? 'flex' : 'none';
+
+              var consultantBox = document.getElementById('consultant-info-banner');
+              if (consultantBox) consultantBox.style.display = showConsultant ? 'flex' : 'none';
+
+              var footerEl = document.querySelector('.footer-note');
+              if (footerEl) footerEl.style.display = showFooter ? 'flex' : 'none';
+
+              closeCustomizeModal();
+            }
           </script>
         </body>
       </html>
@@ -817,10 +1222,9 @@ export default function CalculadoraPage() {
                       </label>
                       <select
                         value={iofPercent}
-                        onChange={(e) => setIofPercent(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => setIofPercent(parseFloat(e.target.value) || 5)}
                         className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                       >
-                        <option value={0}>0%</option>
                         <option value={5.0}>5%</option>
                         <option value={8.0}>8%</option>
                       </select>
@@ -1821,7 +2225,7 @@ export default function CalculadoraPage() {
                 className="bg-[#00D492] hover:bg-[#00b87f] text-slate-900 font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5"
               >
                 <FileText className="w-4 h-4" />
-                <span>Gerar PDF</span>
+                <span>Ver Plano</span>
               </button>
             </div>
           </div>

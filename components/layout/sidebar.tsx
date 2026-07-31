@@ -199,7 +199,7 @@ const allMenuItems = [
         name: "CALCULADORA", 
         href: "/calculadora", 
         icon: Calculator, 
-        roles: ["Administrador", "Desenvolvedor"] 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Monitoramento"] 
       },
       { 
         name: "CONFIGURAÇÕES", 
