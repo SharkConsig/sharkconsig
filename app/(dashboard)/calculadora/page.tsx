@@ -116,6 +116,84 @@ export default function CalculadoraPage() {
   const [amortizacaoPosPort, setAmortizacaoPosPort] = useState<boolean>(false)
   const [valorClientePortInput, setValorClientePortInput] = useState<string>("")
 
+  // Calculadora do Cidadão (BACEN) State
+  const [cidadaoPvInput, setCidadaoPvInput] = useState<string>("")
+  const [cidadaoPmtInput, setCidadaoPmtInput] = useState<string>("")
+  const [cidadaoPrazoInput, setCidadaoPrazoInput] = useState<string>("")
+  const [cidadaoTaxaInput, setCidadaoTaxaInput] = useState<string>("")
+
+  const cidadaoCalculo = useMemo(() => {
+    const hasPv = cidadaoPvInput.trim() !== ""
+    const hasPmt = cidadaoPmtInput.trim() !== ""
+    const hasPrazo = cidadaoPrazoInput.trim() !== ""
+    const hasTaxa = cidadaoTaxaInput.trim() !== ""
+
+    const count = (hasPv ? 1 : 0) + (hasPmt ? 1 : 0) + (hasPrazo ? 1 : 0) + (hasTaxa ? 1 : 0)
+
+    if (count !== 3) {
+      return { status: "invalid_count" as const }
+    }
+
+    const pv = parseFloat(cidadaoPvInput.replace(",", ".")) || 0
+    const pmt = parseFloat(cidadaoPmtInput.replace(",", ".")) || 0
+    const n = parseFloat(cidadaoPrazoInput.replace(",", ".")) || 0
+    const i_perc = parseFloat(cidadaoTaxaInput.replace(",", ".")) || 0
+    const i = i_perc / 100
+
+    if (!hasPmt) {
+      if (pv <= 0 || n <= 0 || i <= 0) return { status: "error" as const }
+      const compound = Math.pow(1 + i, n)
+      const pmtCalc = pv * ((i * compound) / (compound - 1))
+      return {
+        status: "success" as const,
+        label: "PARCELA ENCONTRADO",
+        value: formatBRL(pmtCalc)
+      }
+    }
+
+    if (!hasPv) {
+      if (pmt <= 0 || n <= 0 || i <= 0) return { status: "error" as const }
+      const compound = Math.pow(1 + i, n)
+      const pvCalc = pmt * ((compound - 1) / (i * compound))
+      return {
+        status: "success" as const,
+        label: "VALOR FINANCIADO / SALDO ENCONTRADO",
+        value: formatBRL(pvCalc)
+      }
+    }
+
+    if (!hasPrazo) {
+      if (pv <= 0 || pmt <= 0 || i <= 0) return { status: "error" as const }
+      if (pmt <= pv * i) return { status: "error" as const }
+      const nCalc = Math.log(pmt / (pmt - pv * i)) / Math.log(1 + i)
+      const nExato = nCalc.toFixed(2)
+      const nArred = Math.round(nCalc)
+      return {
+        status: "success" as const,
+        label: "PRAZO ENCONTRADO",
+        value: `${nArred} meses (exato: ${nExato})`
+      }
+    }
+
+    if (!hasTaxa) {
+      if (pv <= 0 || pmt <= 0 || n <= 0) return { status: "error" as const }
+      const iCalc = calculateImplicitRate(pv, pmt, n)
+      if (iCalc <= 0) return { status: "error" as const }
+      const iPerc = iCalc * 100
+      const formattedRate = iPerc.toLocaleString("pt-BR", {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 4
+      }) + "% a.m."
+      return {
+        status: "success" as const,
+        label: "TAXA ENCONTRADO",
+        value: formattedRate
+      }
+    }
+
+    return { status: "error" as const }
+  }, [cidadaoPvInput, cidadaoPmtInput, cidadaoPrazoInput, cidadaoTaxaInput])
+
   // Calculations:
   // 1. Valor Liberado & Contrato + IOF
   const valorLiberado = useMemo(() => {
@@ -648,6 +726,19 @@ export default function CalculadoraPage() {
           >
             <ArrowLeftRight className={cn("w-4 h-4", (activeTab === "port_liberacao" || activeTab === "amort_pos_port") ? "text-[#00D492]" : "")} />
             <span>Portabilidade da Liberação</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("cidadao")}
+            className={cn(
+              "px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2",
+              activeTab === "cidadao"
+                ? "bg-slate-900 text-white shadow-md ring-2 ring-[#00D492]"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+            )}
+          >
+            <Calculator className={cn("w-4 h-4", activeTab === "cidadao" ? "text-[#00D492]" : "")} />
+            <span>Calculadora do Cidadão</span>
           </button>
         </div>
 
@@ -1420,6 +1511,107 @@ export default function CalculadoraPage() {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* VIEW 5: CALCULADORA DO CIDADÃO (BACEN) */}
+        {activeTab === "cidadao" && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
+              <div>
+                <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-[#00D492] mb-2">
+                  <Calculator className="w-4 h-4 text-[#00D492]" />
+                  <span>CALCULADORA DO CIDADÃO (BACEN)</span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Preencha 3 dos 4 campos abaixo — deixe em branco o que você quer descobrir. Funciona igual a calculadora do cidadão do Banco Central (Tabela Price).
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
+                    VALOR FINANCIADO / SALDO (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={cidadaoPvInput}
+                    onChange={(e) => setCidadaoPvInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    placeholder="deixe em branco para calcular"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
+                    PARCELA (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={cidadaoPmtInput}
+                    onChange={(e) => setCidadaoPmtInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    placeholder="deixe em branco para calcular"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
+                    PRAZO (MESES)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={cidadaoPrazoInput}
+                    onChange={(e) => setCidadaoPrazoInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    placeholder="deixe em branco para calcular"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
+                    TAXA (% A.M.)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={cidadaoTaxaInput}
+                    onChange={(e) => setCidadaoTaxaInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    placeholder="deixe em branco para calcular"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* RESULTS OR WARNING BANNER */}
+            {cidadaoCalculo.status === "invalid_count" && (
+              <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-4 text-center text-sm font-semibold">
+                Deixe um dos 4 campos em branco — esse é o que será calculado.
+              </div>
+            )}
+
+            {cidadaoCalculo.status === "success" && (
+              <div className="bg-white rounded-2xl p-8 border-2 border-[#00D492] shadow-sm space-y-2">
+                <div className="flex items-center justify-start gap-2 text-xs font-bold uppercase tracking-wider text-[#00D492]">
+                  <CheckCircle2 className="w-4 h-4 text-[#00D492]" />
+                  <span>RESULTADO</span>
+                </div>
+                <div className="text-center pt-2">
+                  <p className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">
+                    {cidadaoCalculo.label}
+                  </p>
+                  <p className="text-3xl sm:text-4xl font-extrabold text-slate-900">
+                    {cidadaoCalculo.value}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
