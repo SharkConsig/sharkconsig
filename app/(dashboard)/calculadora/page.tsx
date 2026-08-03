@@ -299,10 +299,31 @@ export default function CalculadoraPage() {
         ? taxaImplicita 
         : taxaImplicita * (0.15 + 0.85 * Math.pow(ratio, 0.85))
 
+      // Recalcular a soma exata da coluna TOTAL MÊS com base em pmtMedia e rateN
+      let currentBackInst2 = prazo
+      let realTotalPagar = 0
+      for (let m = 1; m <= t; m++) {
+        const numAmortThisMonth = Math.min(
+          Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
+          currentBackInst2 - t
+        )
+
+        let sumAmortValsThisMonth = 0
+        for (let k = 0; k < numAmortThisMonth && currentBackInst2 > t; k++) {
+          const remMonths = currentBackInst2 - m + 1
+          const valAmort = Math.max(0, pmtMedia / Math.pow(1 + rateN, remMonths))
+          sumAmortValsThisMonth += valAmort
+          currentBackInst2--
+        }
+
+        realTotalPagar += (pmtMedia + sumAmortValsThisMonth)
+      }
+
       return {
         term: t,
         taxa: rateN,
-        parcelaMedia: pmtMedia
+        parcelaMedia: pmtMedia,
+        totalPagar: realTotalPagar
       }
     })
   }, [taxaImplicita, parcela, prazo])
@@ -316,7 +337,7 @@ export default function CalculadoraPage() {
       const pmt = selectedPlanObj.parcelaMedia
       const tx = selectedPlanObj.taxa
       const prz = selectedPlanObj.term
-      const totPagar = pmt * prz
+      const totPagar = selectedPlanObj.totalPagar
       const totJuros = Math.max(0, totPagar - valorLiberado)
       return {
         labelParcela: prz === prazo ? "Parcela" : "Parcela média",
@@ -999,7 +1020,7 @@ export default function CalculadoraPage() {
       const isEven = m % 2 === 0
       const rowBg = isEven ? "#F8FAFC" : "#FFFFFF"
 
-      const amortNumsStr = amortNums.length > 0 ? amortNums.join("<br/>") : "-"
+      const amortNumsStr = amortNums.length > 0 ? amortNums.join(", ") : "-"
       const amortValsStr = amortVals.length > 0 ? amortVals.join("<br/>") : formatBRL(0)
       const totalMes = pmt + sumAmortValsThisMonth
 
@@ -1670,22 +1691,13 @@ export default function CalculadoraPage() {
                   </div>
 
                   {/* Black Banner Metrics */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div>
                     <div className="bg-slate-900 text-white p-4 rounded-xl space-y-1 shadow-sm">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                         VALOR LIBERADO
                       </p>
                       <p className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
                         {formatBRL(valorLiberado)}
-                      </p>
-                    </div>
-
-                    <div className="bg-slate-900 text-white p-4 rounded-xl space-y-1 shadow-sm">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        CONTRATO + IOF
-                      </p>
-                      <p className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
-                        {formatBRL(contratoComIof)}
                       </p>
                     </div>
                   </div>
