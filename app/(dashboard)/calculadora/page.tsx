@@ -34,8 +34,8 @@ function formatBRL(val: number): string {
 }
 
 // Helper function to format percentage
-function formatPercent(val: number, decimals = 4): string {
-  if (isNaN(val) || !isFinite(val)) return "0,0000%"
+function formatPercent(val: number, decimals = 2): string {
+  if (isNaN(val) || !isFinite(val)) return "0,00%"
   return (val * 100).toLocaleString("pt-BR", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
@@ -487,7 +487,8 @@ export default function CalculadoraPage() {
             <title></title>
             <style>
               @page { size: A4; margin: 0mm; }
-              body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 10mm 12mm; color: #1E293B; background: #FFF; position: relative; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+              * { font-family: Arial, Helvetica, sans-serif !important; }
+              body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 10mm 12mm; color: #1E293B; background: #FFF; position: relative; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
               @media print { 
                 @page { size: A4; margin: 0mm; }
                 .no-print { display: none !important; }
@@ -953,7 +954,8 @@ export default function CalculadoraPage() {
           <title></title>
           <style>
             @page { size: A4; margin: 0mm; }
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 10mm 12mm; color: #1E293B; background: #FFF; position: relative; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+            * { font-family: Arial, Helvetica, sans-serif !important; }
+            body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 10mm 12mm; color: #1E293B; background: #FFF; position: relative; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
             @media print { 
               @page { size: A4; margin: 0mm; }
               .no-print { display: none !important; }
@@ -1575,10 +1577,11 @@ export default function CalculadoraPage() {
                             {p.term}x
                           </span>
                           <span className={cn(
-                            "text-[10px] font-semibold",
+                            "text-[10px] font-semibold flex flex-col items-center gap-0.5",
                             isSelected ? "text-[#00D492]" : "text-slate-500"
                           )}>
-                            Taxa {formatPercent(p.taxa)} · {p.term === prazo ? "Parcela" : "Média"} {formatBRL(p.parcelaMedia)}
+                            <span>Taxa {formatPercent(p.taxa, 2)}</span>
+                            <span>{p.term === prazo ? "Parcela" : "Média"} {formatBRL(p.parcelaMedia)}</span>
                           </span>
                         </button>
                       )
