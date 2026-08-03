@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { 
   Calculator, 
   DollarSign, 
@@ -211,19 +211,12 @@ export default function CalculadoraPage() {
 
   // Calculations:
   // 1. Valor Liberado & Contrato + IOF
-  const valorLiberadoBruto = useMemo(() => {
+  const valorLiberado = useMemo(() => {
     if (coeficiente <= 0) return 0
     return parcela / coeficiente
   }, [parcela, coeficiente])
 
   const valorBolso = parseFloat(valorBolsoInput) || 0
-
-  const valorLiberado = useMemo(() => {
-    if (valorBolso > 0) {
-      return Math.max(0, valorLiberadoBruto - valorBolso)
-    }
-    return valorLiberadoBruto
-  }, [valorLiberadoBruto, valorBolso])
 
   const contratoComIof = useMemo(() => {
     return valorLiberado * (1 + iofPercent / 100)
@@ -324,27 +317,30 @@ export default function CalculadoraPage() {
       return null
     }
 
-    const valorAntecipacao = valorLiberado
+    const valorAntecipacao = Math.max(0, valorLiberado - valorBolso)
 
     let parcelasQuitadas = 0
     let quantoAntecipado = 0
     let remanescentes = prazo
-    let saldoParaPort = contratoComIof
+    let acumuladoPV = 0
 
-    for (let q = 1; q < prazo; q++) {
-      const remIndex = prazo - q - 1
-      const sdRem = remIndex >= 0 ? tabelaPrice[remIndex].saldoDevedor : contratoComIof
-      const pvAnt = contratoComIof - sdRem
+    for (let q = 1; q <= prazo; q++) {
+      const mesContrato = prazo - q + 1
+      const valPresenteParcela = taxaImplicita > 0 
+        ? parcela / Math.pow(1 + taxaImplicita, mesContrato)
+        : parcela
 
-      if (pvAnt <= valorAntecipacao + 0.01) {
+      if (acumuladoPV + valPresenteParcela <= valorAntecipacao + 0.01) {
+        acumuladoPV += valPresenteParcela
         parcelasQuitadas = q
-        quantoAntecipado = pvAnt
+        quantoAntecipado = acumuladoPV
         remanescentes = prazo - q
-        saldoParaPort = sdRem
       } else {
         break
       }
     }
+
+    const saldoParaPort = Math.max(0, contratoComIof - quantoAntecipado)
 
     return {
       valorAntecipacao,
@@ -353,13 +349,19 @@ export default function CalculadoraPage() {
       remanescentes,
       saldoParaPort
     }
-  }, [temAntecipacao, valorLiberado, contratoComIof, prazo, tabelaPrice])
+  }, [temAntecipacao, valorLiberado, valorBolso, contratoComIof, taxaImplicita, parcela, prazo, tabelaPrice])
 
   // Portabilidade da Liberação - Handshake & Calculations
   const saldoPort = resumoAmortizacao ? resumoAmortizacao.saldoParaPort : contratoComIof
   const nAtual = resumoAmortizacao ? resumoAmortizacao.remanescentes : prazo
   const pmtAtual = parcela
   const iAtual = taxaImplicita
+
+  useEffect(() => {
+    if (nAtual > 0) {
+      setNovoPrazoInput(nAtual.toString())
+    }
+  }, [nAtual])
 
   const novaTaxaPercent = parseFloat(novaTaxaInput) || 0
   const novaTaxaDecimal = novaTaxaPercent / 100
@@ -1387,8 +1389,7 @@ export default function CalculadoraPage() {
 
   const handleLiberadoChange = (v: number) => {
     if (v > 0 && parcela > 0) {
-      const targetBruto = valorBolso > 0 ? v + valorBolso : v
-      const calc = parcela / targetBruto
+      const calc = parcela / v
       setCoeficienteInput(Number.isFinite(calc) ? calc.toString() : "")
     } else {
       setCoeficienteInput("")
