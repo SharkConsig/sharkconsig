@@ -35,11 +35,11 @@ function formatBRL(val: number): string {
 }
 
 // Helper function to format percentage
-function formatPercent(val: number, decimals = 2): string {
+function formatPercent(val: number, maxDecimals = 4): string {
   if (isNaN(val) || !isFinite(val)) return "0,00%"
   return (val * 100).toLocaleString("pt-BR", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals
+    minimumFractionDigits: 2,
+    maximumFractionDigits: maxDecimals
   }) + "%"
 }
 
@@ -268,52 +268,58 @@ export default function CalculadoraPage() {
     const terms = [12, 24, 36, 48, 60, 72, 84, 96, 120]
     
     return terms.map(t => {
-      const totalExtraAmort = Math.max(0, prazo - t)
-      const extraPerMonth = totalExtraAmort / t
-
-      let currentBackInstallment = prazo
-      let sumTotalMes = 0
-
-      for (let m = 1; m <= t; m++) {
-        const numAmortThisMonth = Math.min(
-          Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
-          currentBackInstallment - t
-        )
-
-        let sumAmortValsThisMonth = 0
-        for (let k = 0; k < numAmortThisMonth && currentBackInstallment > t; k++) {
-          const remMonths = currentBackInstallment - m + 1
-          const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, remMonths))
-          sumAmortValsThisMonth += valAmort
-          currentBackInstallment--
+      if (t > prazo) {
+        return {
+          term: t,
+          taxa: 0,
+          parcelaMedia: 0,
+          totalPagar: 0,
+          invalido: true
         }
-
-        const totalMes = parcela + sumAmortValsThisMonth
-        sumTotalMes += totalMes
       }
 
-      const pmtMedia = t > 0 ? sumTotalMes / t : 0
+      if (t === prazo) {
+        return {
+          term: t,
+          taxa: taxaImplicita,
+          parcelaMedia: parcela,
+          totalPagar: totalAPagar,
+          invalido: false
+        }
+      }
 
-      const ratio = t / 120
-      const rateN = t === 120 
-        ? taxaImplicita 
-        : taxaImplicita * (0.15 + 0.85 * Math.pow(ratio, 0.85))
+      // Present value of first t installments at original implicit rate
+      const pvFirstT = taxaImplicita > 0 
+        ? (parcela * (1 - Math.pow(1 + taxaImplicita, -t)) / taxaImplicita)
+        : (parcela * t)
+
+      // Present value of remaining (prazo - t) back-end installments at month 0
+      const pvRemaining = Math.max(0, contratoComIof - pvFirstT)
+
+      // Total to pay over t months = regular t payments + PV of remaining installments
+      const sumTotalMes = (t * parcela) + pvRemaining
+      const pmtMedia = t > 0 ? sumTotalMes / t : 0
+      const rateN = calculateImplicitRate(contratoComIof, pmtMedia, t)
+
+      // Unreachable condition (e.g. 12x or rate below threshold)
+      const invalido = t < 24 || rateN < 0.008 || pmtMedia <= 0 || sumTotalMes < contratoComIof
 
       return {
         term: t,
         taxa: rateN,
         parcelaMedia: pmtMedia,
-        totalPagar: sumTotalMes
+        totalPagar: sumTotalMes,
+        invalido
       }
     })
-  }, [taxaImplicita, parcela, prazo])
+  }, [contratoComIof, taxaImplicita, parcela, prazo, totalAPagar])
 
   const selectedPlanObj = useMemo(() => {
     return planosAmortizacao.find(p => p.term === selectedPlanTerm) || planosAmortizacao[0]
   }, [planosAmortizacao, selectedPlanTerm])
 
   const activeResult = useMemo(() => {
-    if (selectedPlanTerm && selectedPlanObj && valorBolso <= 0) {
+    if (selectedPlanTerm && selectedPlanObj && !selectedPlanObj.invalido && valorBolso <= 0) {
       const pmt = selectedPlanObj.parcelaMedia
       const tx = selectedPlanObj.taxa
       const prz = selectedPlanObj.term
@@ -990,8 +996,7 @@ export default function CalculadoraPage() {
 
       for (let k = 0; k < numAmortThisMonth && currentBackInstallment > term; k++) {
         amortNums.push(currentBackInstallment)
-        const remMonths = currentBackInstallment - m + 1
-        const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, remMonths))
+        const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, currentBackInstallment))
         sumAmortValsThisMonth += valAmort
         amortVals.push(formatBRL(valAmort))
         currentBackInstallment--
@@ -1635,26 +1640,36 @@ export default function CalculadoraPage() {
                       return (
                         <button
                           key={p.term}
+                          disabled={p.invalido}
                           onClick={() => {
-                            setSelectedPlanTerm(p.term)
+                            if (!p.invalido) {
+                              setSelectedPlanTerm(p.term)
+                            }
                           }}
                           className={cn(
                             "p-4 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1",
-                            isSelected
-                              ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-[#00D492]"
-                              : "bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                            p.invalido
+                              ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed opacity-80"
+                              : isSelected
+                                ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-[#00D492]"
+                                : "bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
                           )}
                         >
                           <span className="text-xl font-extrabold tracking-tight">
                             {p.term}x
                           </span>
-                          <span className={cn(
-                            "text-[10px] font-semibold flex flex-col items-center gap-0.5",
-                            isSelected ? "text-[#00D492]" : "text-slate-500"
-                          )}>
-                            <span>Taxa {formatPercent(p.taxa, 2)}</span>
-                            <span>{p.term === prazo ? "Parcela" : "Média"} {formatBRL(p.parcelaMedia)}</span>
-                          </span>
+                          {p.invalido ? (
+                            <span className="text-[10px] font-semibold text-rose-500 leading-tight">
+                              Condição específica não alcançada
+                            </span>
+                          ) : (
+                            <span className={cn(
+                              "text-[10px] font-semibold flex flex-col items-center gap-0.5",
+                              isSelected ? "text-[#00D492]" : "text-slate-500"
+                            )}>
+                              <span>Taxa {formatPercent(p.taxa, 4)} · {p.term === prazo ? "Parcela" : "Média"} {formatBRL(p.parcelaMedia)}</span>
+                            </span>
+                          )}
                         </button>
                       )
                     })}
