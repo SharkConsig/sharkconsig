@@ -12,6 +12,7 @@ import {
   Table as TableIcon, 
   ChevronRight, 
   ArrowLeftRight, 
+  ArrowLeft,
   HelpCircle,
   Download,
   Printer,
@@ -310,6 +311,62 @@ export default function CalculadoraPage() {
     return planosAmortizacao.find(p => p.term === selectedPlanTerm) || planosAmortizacao[0]
   }, [planosAmortizacao, selectedPlanTerm])
 
+  const activeResult = useMemo(() => {
+    if (selectedPlanTerm && selectedPlanObj && valorBolso <= 0) {
+      const pmt = selectedPlanObj.parcelaMedia
+      const tx = selectedPlanObj.taxa
+      const prz = selectedPlanObj.term
+      const totPagar = pmt * prz
+      const totJuros = Math.max(0, totPagar - valorLiberado)
+      return {
+        labelParcela: prz === prazo ? "Parcela" : "Parcela média",
+        parcela: pmt,
+        taxa: tx,
+        prazo: prz,
+        totalAPagar: totPagar,
+        totalJuros: totJuros
+      }
+    }
+    return {
+      labelParcela: "Parcela",
+      parcela: parcela,
+      taxa: taxaImplicita,
+      prazo: prazo,
+      totalAPagar: totalAPagar,
+      totalJuros: totalJuros
+    }
+  }, [selectedPlanTerm, selectedPlanObj, valorBolso, parcela, taxaImplicita, prazo, totalAPagar, totalJuros, valorLiberado])
+
+  const activeTabelaPrice = useMemo(() => {
+    const pmt = activeResult.parcela
+    const tx = activeResult.taxa
+    const prz = activeResult.prazo
+
+    if (contratoComIof <= 0 || tx <= 0 || prz <= 0) return []
+    
+    const rows = []
+    let saldo = contratoComIof
+
+    for (let m = 1; m <= prz; m++) {
+      const juros = saldo * tx
+      const principal = Math.min(saldo, pmt - juros)
+      const novoSaldo = Math.max(0, saldo - principal)
+
+      rows.push({
+        pmtNum: m,
+        parcela: pmt,
+        principal: principal,
+        juros: juros,
+        saldoDevedor: novoSaldo,
+        saldoInicial: saldo
+      })
+
+      saldo = novoSaldo
+    }
+
+    return rows
+  }, [contratoComIof, activeResult])
+
   // 5. Antecipação / Resumo Amortização (calculado com base nas parcelas do contrato original)
   const temAntecipacao = valorBolso > 0
   const resumoAmortizacao = useMemo(() => {
@@ -353,9 +410,9 @@ export default function CalculadoraPage() {
 
   // Portabilidade da Liberação - Handshake & Calculations
   const saldoPort = resumoAmortizacao ? resumoAmortizacao.saldoParaPort : contratoComIof
-  const nAtual = resumoAmortizacao ? resumoAmortizacao.remanescentes : prazo
-  const pmtAtual = parcela
-  const iAtual = taxaImplicita
+  const nAtual = resumoAmortizacao ? resumoAmortizacao.remanescentes : activeResult.prazo
+  const pmtAtual = resumoAmortizacao ? parcela : activeResult.parcela
+  const iAtual = resumoAmortizacao ? taxaImplicita : activeResult.taxa
 
   useEffect(() => {
     if (nAtual > 0) {
@@ -911,9 +968,11 @@ export default function CalculadoraPage() {
       return
     }
 
-    const term = selectedPlanTerm || 48
+    const term = activeResult.prazo
+    const pmt = activeResult.parcela
+    const tx = activeResult.taxa
     const totalExtraAmort = Math.max(0, prazo - term)
-    const extraPerMonth = totalExtraAmort / term
+    const extraPerMonth = term > 0 ? totalExtraAmort / term : 0
 
     let currentBackInstallment = prazo
     let rowsHtml = ""
@@ -931,7 +990,7 @@ export default function CalculadoraPage() {
       for (let k = 0; k < numAmortThisMonth && currentBackInstallment > term; k++) {
         amortNums.push(currentBackInstallment)
         const remMonths = currentBackInstallment - m + 1
-        const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, remMonths))
+        const valAmort = Math.max(0, pmt / Math.pow(1 + tx, remMonths))
         sumAmortValsThisMonth += valAmort
         amortVals.push(formatBRL(valAmort))
         currentBackInstallment--
@@ -942,12 +1001,12 @@ export default function CalculadoraPage() {
 
       const amortNumsStr = amortNums.length > 0 ? amortNums.join("<br/>") : "-"
       const amortValsStr = amortVals.length > 0 ? amortVals.join("<br/>") : formatBRL(0)
-      const totalMes = parcela + sumAmortValsThisMonth
+      const totalMes = pmt + sumAmortValsThisMonth
 
       rowsHtml += `
         <tr style="background-color: ${rowBg}; border-bottom: 1px solid #E2E8F0;">
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${m}</td>
-          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(parcela)}</td>
+          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(pmt)}</td>
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #475569; vertical-align: top;">${amortNumsStr}</td>
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${amortValsStr}</td>
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(totalMes)}</td>
@@ -1189,11 +1248,11 @@ export default function CalculadoraPage() {
             </div>
             <div class="metric-card" id="metric-card-parcela">
               <div class="metric-label">PARCELA MÉDIA</div>
-              <div class="metric-value">${formatBRL(selectedPlanObj?.parcelaMedia ?? 0)}</div>
+              <div class="metric-value">${formatBRL(pmt)}</div>
             </div>
             <div class="metric-card" id="metric-card-taxa">
               <div class="metric-label">TAXA A.M.</div>
-              <div class="metric-value">${formatPercent(selectedPlanObj?.taxa ?? taxaImplicita, 2)}</div>
+              <div class="metric-value">${formatPercent(tx, 2)}</div>
             </div>
           </div>
 
@@ -1540,7 +1599,12 @@ export default function CalculadoraPage() {
                       <input
                         type="number"
                         value={valorBolsoInput}
-                        onChange={(e) => setValorBolsoInput(e.target.value)}
+                        onChange={(e) => {
+                          setValorBolsoInput(e.target.value)
+                          if (e.target.value) {
+                            setSelectedPlanTerm(null)
+                          }
+                        }}
                         placeholder="Deixe vazio se não amortiza"
                         className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 text-base font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D492] shadow-inner"
                       />
@@ -1572,7 +1636,6 @@ export default function CalculadoraPage() {
                           key={p.term}
                           onClick={() => {
                             setSelectedPlanTerm(p.term)
-                            setShowPlanModal(true)
                           }}
                           className={cn(
                             "p-4 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1",
@@ -1630,28 +1693,28 @@ export default function CalculadoraPage() {
                   {/* Summary Rows */}
                   <div className="divide-y divide-slate-100 text-xs">
                     <div className="py-2.5 flex justify-between items-center">
-                      <span className="font-semibold text-slate-500">Parcela</span>
-                      <span className="font-bold text-slate-900">{formatBRL(parcela)}</span>
+                      <span className="font-semibold text-slate-500">{activeResult.labelParcela}</span>
+                      <span className="font-bold text-slate-900">{formatBRL(activeResult.parcela)}</span>
                     </div>
 
                     <div className="py-2.5 flex justify-between items-center">
                       <span className="font-semibold text-slate-500">Taxa implícita</span>
-                      <span className="font-bold text-slate-900">{formatPercent(taxaImplicita)}</span>
+                      <span className="font-bold text-slate-900">{formatPercent(activeResult.taxa)}</span>
                     </div>
 
                     <div className="py-2.5 flex justify-between items-center">
                       <span className="font-semibold text-slate-500">Prazo</span>
-                      <span className="font-bold text-slate-900">{prazo} meses</span>
+                      <span className="font-bold text-slate-900">{activeResult.prazo} meses</span>
                     </div>
 
                     <div className="py-2.5 flex justify-between items-center">
                       <span className="font-semibold text-slate-500">Total a pagar</span>
-                      <span className="font-bold text-slate-900">{formatBRL(totalAPagar)}</span>
+                      <span className="font-bold text-slate-900">{formatBRL(activeResult.totalAPagar)}</span>
                     </div>
 
                     <div className="py-2.5 flex justify-between items-center">
                       <span className="font-semibold text-slate-500">Total de juros</span>
-                      <span className="font-bold text-slate-900">{formatBRL(totalJuros)}</span>
+                      <span className="font-bold text-slate-900">{formatBRL(activeResult.totalJuros)}</span>
                     </div>
                   </div>
 
@@ -1708,7 +1771,7 @@ export default function CalculadoraPage() {
                   <div className="pt-4 flex flex-col sm:flex-row gap-2">
                     <button
                       onClick={() => setActiveTab("amort_liberacao")}
-                      className="flex-1 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2"
+                      className="flex-1 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-3 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5"
                     >
                       <TableIcon className="w-4 h-4 text-slate-600" />
                       <span>Ver amortização</span>
@@ -1716,10 +1779,18 @@ export default function CalculadoraPage() {
 
                     <button
                       onClick={() => setShowSummaryModal(true)}
-                      className="flex-1 bg-[#00D492] hover:bg-[#00b87f] text-slate-900 font-bold text-xs py-3 px-4 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2"
+                      className="flex-1 bg-[#00D492] hover:bg-[#00b87f] text-slate-900 font-bold text-xs py-3 px-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
                     >
                       <FileText className="w-4 h-4" />
-                      <span>Resumo completo</span>
+                      <span>Resumo</span>
+                    </button>
+
+                    <button
+                      onClick={handleGerarPDF}
+                      className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 border border-slate-800"
+                    >
+                      <FileText className="w-4 h-4 text-[#00D492]" />
+                      <span>Ver Plano</span>
                     </button>
                   </div>
                 </div>
@@ -1731,28 +1802,17 @@ export default function CalculadoraPage() {
         {/* VIEW 2: AMORT. LIBERAÇÃO (PRICE TABLE SCHEDULE) */}
         {activeTab === "amort_liberacao" && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <button
-                  onClick={() => setActiveTab("liberacao")}
-                  className="text-xs font-semibold text-slate-500 hover:text-slate-900 flex items-center gap-1 mb-1"
-                >
-                  ← Voltar para Liberação
-                </button>
-                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                  Amort. Liberação
-                </h1>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Imprimir</span>
-                </button>
-              </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setActiveTab("liberacao")}
+                className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl font-bold text-xs inline-flex items-center gap-2 shadow-md hover:shadow transition-all border border-slate-700"
+              >
+                <ArrowLeft className="w-4 h-4 text-[#00D492]" />
+                <span>Voltar para Liberação</span>
+              </button>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                Amort. Liberação
+              </h1>
             </div>
 
             {/* Header Summary Banner */}
@@ -1767,15 +1827,15 @@ export default function CalculadoraPage() {
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-slate-400">Parcela:</span>
-                <span className="text-[#00D492] font-bold">{formatBRL(parcela)}</span>
+                <span className="text-[#00D492] font-bold">{formatBRL(activeResult.parcela)}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-slate-400">Prazo:</span>
-                <span className="text-[#00D492] font-bold">{prazo} meses</span>
+                <span className="text-[#00D492] font-bold">{activeResult.prazo} meses</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-slate-400">Taxa:</span>
-                <span className="text-[#00D492] font-bold">{formatPercent(taxaImplicita)}</span>
+                <span className="text-[#00D492] font-bold">{formatPercent(activeResult.taxa)}</span>
               </div>
             </div>
 
@@ -1787,7 +1847,7 @@ export default function CalculadoraPage() {
                   <span>TABELA PRICE — LIBERAÇÃO</span>
                 </div>
                 <span className="text-xs font-medium text-slate-500">
-                  {tabelaPrice.length} parcelas geradas
+                  {activeTabelaPrice.length} parcelas geradas
                 </span>
               </div>
 
@@ -1803,8 +1863,8 @@ export default function CalculadoraPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {tabelaPrice.map((row) => {
-                      const isQuitada = resumoAmortizacao && row.pmtNum > (prazo - resumoAmortizacao.parcelasQuitadas)
+                    {activeTabelaPrice.map((row) => {
+                      const isQuitada = resumoAmortizacao && row.pmtNum > (activeResult.prazo - resumoAmortizacao.parcelasQuitadas)
                       return (
                         <tr 
                           key={row.pmtNum}
@@ -2144,9 +2204,10 @@ export default function CalculadoraPage() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setActiveTab("port_liberacao")}
-                  className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm transition-all"
+                  className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl font-bold text-xs inline-flex items-center gap-2 shadow-md hover:shadow transition-all border border-slate-700"
                 >
-                  ← Voltar
+                  <ArrowLeft className="w-4 h-4 text-[#00D492]" />
+                  <span>Voltar para Portabilidade</span>
                 </button>
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
                   Amort. pós Port
@@ -2337,12 +2398,12 @@ export default function CalculadoraPage() {
               <div className="bg-slate-50 p-4 rounded-xl space-y-2">
                 <p className="font-bold text-slate-800 uppercase tracking-wider text-[10px]">Premissas</p>
                 <div className="grid grid-cols-2 gap-2 text-slate-700">
-                  <div>Parcela: <span className="font-bold">{formatBRL(parcela)}</span></div>
+                  <div>Parcela: <span className="font-bold">{formatBRL(activeResult.parcela)}</span></div>
                   <div>Coeficiente: <span className="font-bold">{coeficiente}</span></div>
                   <div>Valor Liberado: <span className="font-bold">{formatBRL(valorLiberado)}</span></div>
                   <div>IOF: <span className="font-bold">{iofPercent}%</span></div>
-                  <div>Prazo: <span className="font-bold">{prazo} meses</span></div>
-                  <div>Taxa: <span className="font-bold">{formatPercent(taxaImplicita)}</span></div>
+                  <div>Prazo: <span className="font-bold">{activeResult.prazo} meses</span></div>
+                  <div>Taxa: <span className="font-bold">{formatPercent(activeResult.taxa)}</span></div>
                 </div>
               </div>
 
@@ -2355,11 +2416,11 @@ export default function CalculadoraPage() {
                   </div>
                   <div className="flex justify-between">
                     <span>Total a Pagar:</span>
-                    <span className="font-bold">{formatBRL(totalAPagar)}</span>
+                    <span className="font-bold">{formatBRL(activeResult.totalAPagar)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Total de Juros:</span>
-                    <span className="font-bold">{formatBRL(totalJuros)}</span>
+                    <span className="font-bold">{formatBRL(activeResult.totalJuros)}</span>
                   </div>
                 </div>
               </div>
