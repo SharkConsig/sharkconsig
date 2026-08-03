@@ -299,31 +299,11 @@ export default function CalculadoraPage() {
         ? taxaImplicita 
         : taxaImplicita * (0.15 + 0.85 * Math.pow(ratio, 0.85))
 
-      // Recalcular a soma exata da coluna TOTAL MÊS com base em pmtMedia e rateN
-      let currentBackInst2 = prazo
-      let realTotalPagar = 0
-      for (let m = 1; m <= t; m++) {
-        const numAmortThisMonth = Math.min(
-          Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
-          currentBackInst2 - t
-        )
-
-        let sumAmortValsThisMonth = 0
-        for (let k = 0; k < numAmortThisMonth && currentBackInst2 > t; k++) {
-          const remMonths = currentBackInst2 - m + 1
-          const valAmort = Math.max(0, pmtMedia / Math.pow(1 + rateN, remMonths))
-          sumAmortValsThisMonth += valAmort
-          currentBackInst2--
-        }
-
-        realTotalPagar += (pmtMedia + sumAmortValsThisMonth)
-      }
-
       return {
         term: t,
         taxa: rateN,
         parcelaMedia: pmtMedia,
-        totalPagar: realTotalPagar
+        totalPagar: sumTotalMes
       }
     })
   }, [taxaImplicita, parcela, prazo])
@@ -1011,7 +991,7 @@ export default function CalculadoraPage() {
       for (let k = 0; k < numAmortThisMonth && currentBackInstallment > term; k++) {
         amortNums.push(currentBackInstallment)
         const remMonths = currentBackInstallment - m + 1
-        const valAmort = Math.max(0, pmt / Math.pow(1 + tx, remMonths))
+        const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, remMonths))
         sumAmortValsThisMonth += valAmort
         amortVals.push(formatBRL(valAmort))
         currentBackInstallment--
@@ -1022,12 +1002,12 @@ export default function CalculadoraPage() {
 
       const amortNumsStr = amortNums.length > 0 ? amortNums.join(", ") : "-"
       const amortValsStr = amortVals.length > 0 ? amortVals.join("<br/>") : formatBRL(0)
-      const totalMes = pmt + sumAmortValsThisMonth
+      const totalMes = parcela + sumAmortValsThisMonth
 
       rowsHtml += `
         <tr style="background-color: ${rowBg}; border-bottom: 1px solid #E2E8F0;">
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${m}</td>
-          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(pmt)}</td>
+          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(parcela)}</td>
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #475569; vertical-align: top;">${amortNumsStr}</td>
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${amortValsStr}</td>
           <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(totalMes)}</td>
