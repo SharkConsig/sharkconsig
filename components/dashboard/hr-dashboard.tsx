@@ -995,117 +995,220 @@ export function HRDashboard({
           </DashboardCard>
         </motion.div>
 
-        {estagioRankingGroup && estagioRankingGroup.colaboracoes?.estagiarios && estagioRankingGroup.colaboracoes.estagiarios.length > 0 && (
-          <motion.div 
-            initial={{ opacity: 0, x: 20 }} 
-            animate={{ opacity: 1, x: 0 }} 
-            transition={{ delay: 0.35 }} 
-            className="lg:col-span-12 mt-6 animate-fade-in"
-            id="estagio-pj-ranking-card-hr"
-          >
-            <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px] border border-slate-100">
-              <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
-                 <div className="flex items-center gap-3">
-                   <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Estagiários e Colaboradores PJ</h3>
-                   <GraduationCap className="w-6 h-6 text-emerald-500" />
-                 </div>
-              </div>
+        {estagioRankingGroup && estagioRankingGroup.colaboracoes?.estagiarios && estagioRankingGroup.colaboracoes.estagiarios.length > 0 && (() => {
+          const estagiariosList = estagioRankingGroup.colaboracoes.estagiarios.filter(e => !e.isPJ)
+          const colaboradoresPJList = estagioRankingGroup.colaboracoes.estagiarios.filter(e => e.isPJ)
 
-              <div className="flex-1 flex flex-col overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse min-w-[800px]">
-                  <thead>
-                    <tr className="bg-slate-50/50 border-b border-slate-200">
-                      <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
-                      <th className="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
-                      <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
-                      <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
-                      <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {estagioRankingGroup.colaboracoes.estagiarios.map((est, idx) => {
-                      const position = idx + 1
-                      return (
-                        <tr key={est.estagiario_id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className={cn(
-                                "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
-                                position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
-                                position === 2 ? "bg-slate-500 text-white border-slate-500" :
-                                position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
-                                "bg-slate-50 text-slate-400 border-slate-100"
-                              )}>
-                                {position}º
-                              </div>
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-1.5">
-                                  {est.isPJ ? (
-                                    <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                                  ) : (
-                                    <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                  )}
-                                  <span className="text-[14px] font-black tracking-tight text-[#1C2643]">
-                                    {formatName(est.nome)}
-                                  </span>
-                                  <span className="text-[10px] font-black text-slate-400 ml-1">
-                                    ({est.isPJ ? "PJ" : "ESTÁGIO"})
-                                  </span>
-                                </div>
-                                {est.supervisor && (
-                                  <p className="text-[10px] font-bold text-slate-400 tracking-tighter mt-0.5">
-                                    SUP: {formatName(est.supervisor)}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-right bg-slate-50/50">
-                            <div className="flex flex-col items-end">
-                              <span className="text-[14px] font-black text-[#1C2643]">{est.approvedTicketsCount || 0}</span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                {(est.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-right bg-emerald-100/25">
-                            <div className="flex flex-col items-end">
-                              <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-right bg-orange-100/25">
-                            <div className="flex flex-col items-end">
-                              <span className="text-[14px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-right bg-blue-100/25">
-                            <div className="flex flex-col items-end">
-                              <span className={cn(
-                                "text-[14px] font-bold",
-                                est.totalToday > 0 ? "text-blue-600" : "text-slate-400"
-                              )}>
-                                {formatCurrency(est.totalToday)}
-                              </span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </DashboardCard>
-          </motion.div>
-        )}
+          return (
+            <div className="lg:col-span-12 space-y-6 mt-6 animate-fade-in" id="estagio-pj-ranking-card-hr">
+              {/* RANKING ESTAGIÁRIOS */}
+              {estagiariosList.length > 0 && (
+                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.35 }}>
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px] border border-slate-100">
+                    <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Ranking Estagiários</h3>
+                        <GraduationCap className="w-6 h-6 text-emerald-500" />
+                      </div>
+                    </div>
+
+                    <div className="flex-1 flex flex-col overflow-x-auto custom-scrollbar">
+                      <table className="w-full text-left border-collapse min-w-[800px]">
+                        <thead>
+                          <tr className="bg-slate-50/50 border-b border-slate-200">
+                            <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {estagiariosList.map((est, idx) => {
+                            const position = idx + 1
+                            return (
+                              <tr key={est.estagiario_id} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="px-4 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                      "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                                      position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                      position === 2 ? "bg-slate-500 text-white border-slate-500" :
+                                      position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                      "bg-slate-50 text-slate-400 border-slate-100"
+                                    )}>
+                                      {position}º
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-1.5">
+                                        <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                        <span className="text-[14px] font-black tracking-tight text-[#1C2643]">
+                                          {formatName(est.nome)}
+                                        </span>
+                                        <span className="text-[10px] font-black text-slate-400 ml-1">
+                                          (ESTÁGIO)
+                                        </span>
+                                      </div>
+                                      {est.supervisor && (
+                                        <p className="text-[10px] font-bold text-slate-400 tracking-tighter mt-0.5">
+                                          SUP: {formatName(est.supervisor)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 text-right bg-slate-50/50">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-[14px] font-black text-[#1C2643]">{est.approvedTicketsCount || 0}</span>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      {(est.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 text-right bg-emerald-100/25">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 text-right bg-orange-100/25">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-[14px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 text-right bg-blue-100/25">
+                                  <div className="flex flex-col items-end">
+                                    <span className={cn(
+                                      "text-[14px] font-bold",
+                                      est.totalToday > 0 ? "text-blue-600" : "text-slate-400"
+                                    )}>
+                                      {formatCurrency(est.totalToday)}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </DashboardCard>
+                </motion.div>
+              )}
+
+              {/* RANKING COLABORADORES PJ */}
+              {colaboradoresPJList.length > 0 && (
+                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px] border border-slate-100">
+                    <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-xl font-black text-[#1C2643] tracking-tighter uppercase">Ranking Colaboradores PJ</h3>
+                        <Briefcase className="w-6 h-6 text-blue-500" />
+                      </div>
+                    </div>
+
+                    <div className="flex-1 flex flex-col overflow-x-auto custom-scrollbar">
+                      <table className="w-full text-left border-collapse min-w-[800px]">
+                        <thead>
+                          <tr className="bg-slate-50/50 border-b border-slate-200">
+                            <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {colaboradoresPJList.map((est, idx) => {
+                            const position = idx + 1
+                            return (
+                              <tr key={est.estagiario_id} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="px-4 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                      "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                                      position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                      position === 2 ? "bg-slate-500 text-white border-slate-500" :
+                                      position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                      "bg-slate-50 text-slate-400 border-slate-100"
+                                    )}>
+                                      {position}º
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-1.5">
+                                        <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                        <span className="text-[14px] font-black tracking-tight text-[#1C2643]">
+                                          {formatName(est.nome)}
+                                        </span>
+                                        <span className="text-[10px] font-black text-slate-400 ml-1">
+                                          (PJ)
+                                        </span>
+                                      </div>
+                                      {est.supervisor && (
+                                        <p className="text-[10px] font-bold text-slate-400 tracking-tighter mt-0.5">
+                                          SUP: {formatName(est.supervisor)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 text-right bg-slate-50/50">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-[14px] font-black text-[#1C2643]">{est.approvedTicketsCount || 0}</span>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      {(est.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 text-right bg-emerald-100/25">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 text-right bg-orange-100/25">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-[14px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 text-right bg-blue-100/25">
+                                  <div className="flex flex-col items-end">
+                                    <span className={cn(
+                                      "text-[14px] font-bold",
+                                      est.totalToday > 0 ? "text-blue-600" : "text-slate-400"
+                                    )}>
+                                      {formatCurrency(est.totalToday)}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                      {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </DashboardCard>
+                </motion.div>
+              )}
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

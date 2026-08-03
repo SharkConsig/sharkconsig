@@ -211,10 +211,19 @@ export default function CalculadoraPage() {
 
   // Calculations:
   // 1. Valor Liberado & Contrato + IOF
-  const valorLiberado = useMemo(() => {
+  const valorLiberadoBruto = useMemo(() => {
     if (coeficiente <= 0) return 0
     return parcela / coeficiente
   }, [parcela, coeficiente])
+
+  const valorBolso = parseFloat(valorBolsoInput) || 0
+
+  const valorLiberado = useMemo(() => {
+    if (valorBolso > 0) {
+      return Math.max(0, valorLiberadoBruto - valorBolso)
+    }
+    return valorLiberadoBruto
+  }, [valorLiberadoBruto, valorBolso])
 
   const contratoComIof = useMemo(() => {
     return valorLiberado * (1 + iofPercent / 100)
@@ -233,7 +242,7 @@ export default function CalculadoraPage() {
     return calculateImplicitRate(contratoComIof, parcela, prazo)
   }, [contratoComIof, parcela, prazo])
 
-  // 3. Price Amortization Schedule
+  // 3. Price Amortization Schedule (Base do contrato)
   const tabelaPrice = useMemo(() => {
     if (contratoComIof <= 0 || taxaImplicita <= 0 || prazo <= 0) return []
     
@@ -260,48 +269,7 @@ export default function CalculadoraPage() {
     return rows
   }, [contratoComIof, taxaImplicita, parcela, prazo])
 
-  // 4. Antecipação / Resumo Amortização
-  const valorBolso = parseFloat(valorBolsoInput) || 0
-  const temAntecipacao = valorBolso > 0 && valorBolso < valorLiberado
-
-  const resumoAmortizacao = useMemo(() => {
-    if (!temAntecipacao || tabelaPrice.length === 0) {
-      return null
-    }
-
-    const valorAntecipacao = Math.max(0, valorLiberado - valorBolso)
-
-    // Find parcelas quitadas q from the back (from month n down to 1)
-    let parcelasQuitadas = 0
-    let quantoAntecipado = 0
-    let remanescentes = prazo
-    let saldoParaPort = contratoComIof
-
-    for (let q = 1; q < prazo; q++) {
-      const remIndex = prazo - q - 1
-      const sdRem = remIndex >= 0 ? tabelaPrice[remIndex].saldoDevedor : contratoComIof
-      const pvAnt = contratoComIof - sdRem
-
-      if (pvAnt <= valorAntecipacao + 0.01) {
-        parcelasQuitadas = q
-        quantoAntecipado = pvAnt
-        remanescentes = prazo - q
-        saldoParaPort = sdRem
-      } else {
-        break
-      }
-    }
-
-    return {
-      valorAntecipacao,
-      quantoAntecipado,
-      parcelasQuitadas,
-      remanescentes,
-      saldoParaPort
-    }
-  }, [temAntecipacao, valorLiberado, valorBolso, contratoComIof, prazo, tabelaPrice])
-
-  // 5. Plano de Amortização (Term options: 12x, 24x, 36x, 48x, 60x, 72x, 84x, 96x, 120x)
+  // 4. Plano de Amortização (Term options: 12x, 24x, 36x, 48x, 60x, 72x, 84x, 96x, 120x)
   const planosAmortizacao = useMemo(() => {
     const terms = [12, 24, 36, 48, 60, 72, 84, 96, 120]
     
@@ -348,6 +316,44 @@ export default function CalculadoraPage() {
   const selectedPlanObj = useMemo(() => {
     return planosAmortizacao.find(p => p.term === selectedPlanTerm) || planosAmortizacao[0]
   }, [planosAmortizacao, selectedPlanTerm])
+
+  // 5. Antecipação / Resumo Amortização (calculado com base nas parcelas do contrato original)
+  const temAntecipacao = valorBolso > 0
+  const resumoAmortizacao = useMemo(() => {
+    if (!temAntecipacao || tabelaPrice.length === 0) {
+      return null
+    }
+
+    const valorAntecipacao = valorLiberado
+
+    let parcelasQuitadas = 0
+    let quantoAntecipado = 0
+    let remanescentes = prazo
+    let saldoParaPort = contratoComIof
+
+    for (let q = 1; q < prazo; q++) {
+      const remIndex = prazo - q - 1
+      const sdRem = remIndex >= 0 ? tabelaPrice[remIndex].saldoDevedor : contratoComIof
+      const pvAnt = contratoComIof - sdRem
+
+      if (pvAnt <= valorAntecipacao + 0.01) {
+        parcelasQuitadas = q
+        quantoAntecipado = pvAnt
+        remanescentes = prazo - q
+        saldoParaPort = sdRem
+      } else {
+        break
+      }
+    }
+
+    return {
+      valorAntecipacao,
+      quantoAntecipado,
+      parcelasQuitadas,
+      remanescentes,
+      saldoParaPort
+    }
+  }, [temAntecipacao, valorLiberado, contratoComIof, prazo, tabelaPrice])
 
   // Portabilidade da Liberação - Handshake & Calculations
   const saldoPort = resumoAmortizacao ? resumoAmortizacao.saldoParaPort : contratoComIof
@@ -1381,7 +1387,8 @@ export default function CalculadoraPage() {
 
   const handleLiberadoChange = (v: number) => {
     if (v > 0 && parcela > 0) {
-      const calc = parcela / v
+      const targetBruto = valorBolso > 0 ? v + valorBolso : v
+      const calc = parcela / targetBruto
       setCoeficienteInput(Number.isFinite(calc) ? calc.toString() : "")
     } else {
       setCoeficienteInput("")
