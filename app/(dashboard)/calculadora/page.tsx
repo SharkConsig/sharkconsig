@@ -267,51 +267,40 @@ export default function CalculadoraPage() {
   const planosAmortizacao = useMemo(() => {
     const terms = [12, 24, 36, 48, 60, 72, 84, 96, 120]
     
-    return terms.map(t => {
-      if (t > prazo) {
-        return {
-          term: t,
-          taxa: 0,
-          parcelaMedia: 0,
-          totalPagar: 0,
-          invalido: true
+    return terms
+      .filter(t => t <= prazo)
+      .map(t => {
+        if (t === prazo) {
+          return {
+            term: t,
+            taxa: taxaImplicita,
+            parcelaMedia: parcela,
+            totalPagar: totalAPagar,
+            invalido: false
+          }
         }
-      }
 
-      if (t === prazo) {
+        // Present value of first t installments at original implicit rate
+        const pvFirstT = taxaImplicita > 0 
+          ? (parcela * (1 - Math.pow(1 + taxaImplicita, -t)) / taxaImplicita)
+          : (parcela * t)
+
+        // Present value of remaining (prazo - t) back-end installments at month 0
+        const pvRemaining = Math.max(0, contratoComIof - pvFirstT)
+
+        // Total to pay over t months = regular t payments + PV of remaining installments
+        const sumTotalMes = (t * parcela) + pvRemaining
+        const pmtMedia = t > 0 ? sumTotalMes / t : 0
+        const rateN = calculateImplicitRate(contratoComIof, pmtMedia, t)
+
         return {
           term: t,
-          taxa: taxaImplicita,
-          parcelaMedia: parcela,
-          totalPagar: totalAPagar,
+          taxa: Math.max(0, rateN),
+          parcelaMedia: pmtMedia,
+          totalPagar: sumTotalMes,
           invalido: false
         }
-      }
-
-      // Present value of first t installments at original implicit rate
-      const pvFirstT = taxaImplicita > 0 
-        ? (parcela * (1 - Math.pow(1 + taxaImplicita, -t)) / taxaImplicita)
-        : (parcela * t)
-
-      // Present value of remaining (prazo - t) back-end installments at month 0
-      const pvRemaining = Math.max(0, contratoComIof - pvFirstT)
-
-      // Total to pay over t months = regular t payments + PV of remaining installments
-      const sumTotalMes = (t * parcela) + pvRemaining
-      const pmtMedia = t > 0 ? sumTotalMes / t : 0
-      const rateN = calculateImplicitRate(contratoComIof, pmtMedia, t)
-
-      // Unreachable condition (e.g. 12x or rate below threshold)
-      const invalido = t < 24 || rateN < 0.008 || pmtMedia <= 0 || sumTotalMes < contratoComIof
-
-      return {
-        term: t,
-        taxa: rateN,
-        parcelaMedia: pmtMedia,
-        totalPagar: sumTotalMes,
-        invalido
-      }
-    })
+      })
   }, [contratoComIof, taxaImplicita, parcela, prazo, totalAPagar])
 
   const selectedPlanObj = useMemo(() => {
@@ -320,7 +309,7 @@ export default function CalculadoraPage() {
 
   const activeResult = useMemo(() => {
     if (selectedPlanTerm && selectedPlanObj && !selectedPlanObj.invalido && valorBolso <= 0) {
-      const pmt = selectedPlanObj.parcelaMedia
+      const pmt = selectedPlanObj.term === prazo ? parcela : selectedPlanObj.parcelaMedia
       const tx = selectedPlanObj.taxa
       const prz = selectedPlanObj.term
       const totPagar = selectedPlanObj.totalPagar
@@ -334,6 +323,7 @@ export default function CalculadoraPage() {
         totalJuros: totJuros
       }
     }
+
     return {
       labelParcela: "Parcela",
       parcela: parcela,
@@ -469,6 +459,42 @@ export default function CalculadoraPage() {
     }
     return rows
   }, [saldoPort, novoPrazo, novaTaxaDecimal, pmtNova])
+
+  const planosAmortizacaoPort = useMemo(() => {
+    const terms = [12, 24, 36, 48, 60, 72, 84, 96, 120]
+    const pz = novoPrazo > 0 ? novoPrazo : nAtual
+
+    if (pz <= 0 || saldoPort <= 0) return []
+
+    return terms
+      .filter(t => t <= pz)
+      .map(t => {
+        if (t === pz) {
+          return {
+            term: t,
+            taxa: novaTaxaDecimal,
+            parcelaMedia: pmtNova,
+            totalPagar: pmtNova * t
+          }
+        }
+
+        const pvFirstT = novaTaxaDecimal > 0
+          ? (pmtNova * (1 - Math.pow(1 + novaTaxaDecimal, -t)) / novaTaxaDecimal)
+          : (pmtNova * t)
+
+        const pvRemaining = Math.max(0, saldoPort - pvFirstT)
+        const sumTotalMes = (t * pmtNova) + pvRemaining
+        const pmtMedia = t > 0 ? sumTotalMes / t : 0
+        const rateN = calculateImplicitRate(saldoPort, pmtMedia, t)
+
+        return {
+          term: t,
+          taxa: Math.max(0, rateN),
+          parcelaMedia: pmtMedia,
+          totalPagar: sumTotalMes
+        }
+      })
+  }, [saldoPort, novoPrazo, nAtual, novaTaxaDecimal, pmtNova])
 
   const valorClientePort = parseFloat(valorClientePortInput) || 0
   const valorLiberadoPort = useMemo(() => {
@@ -1640,36 +1666,26 @@ export default function CalculadoraPage() {
                       return (
                         <button
                           key={p.term}
-                          disabled={p.invalido}
                           onClick={() => {
-                            if (!p.invalido) {
-                              setSelectedPlanTerm(p.term)
-                            }
+                            setSelectedPlanTerm(p.term)
                           }}
                           className={cn(
                             "p-4 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1",
-                            p.invalido
-                              ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed opacity-80"
-                              : isSelected
-                                ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-[#00D492]"
-                                : "bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                            isSelected
+                              ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-[#00D492]"
+                              : "bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
                           )}
                         >
                           <span className="text-xl font-extrabold tracking-tight">
                             {p.term}x
                           </span>
-                          {p.invalido ? (
-                            <span className="text-[10px] font-semibold text-rose-500 leading-tight">
-                              Condição específica não alcançada
-                            </span>
-                          ) : (
-                            <span className={cn(
-                              "text-[10px] font-semibold flex flex-col items-center gap-0.5",
-                              isSelected ? "text-[#00D492]" : "text-slate-500"
-                            )}>
-                              <span>Taxa {formatPercent(p.taxa, 4)} · {p.term === prazo ? "Parcela" : "Média"} {formatBRL(p.parcelaMedia)}</span>
-                            </span>
-                          )}
+                          <span className={cn(
+                            "text-[10px] font-semibold flex flex-col items-center gap-0.5",
+                            isSelected ? "text-[#00D492]" : "text-slate-500"
+                          )}>
+                            <span>Taxa {formatPercent(p.taxa, 2)}</span>
+                            <span>{p.term === prazo ? "Parcela" : "Média"} {formatBRL(p.parcelaMedia)}</span>
+                          </span>
                         </button>
                       )
                     })}
@@ -2042,41 +2058,30 @@ export default function CalculadoraPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    {[12, 24, 36, 48, 60, 72, 84, 96, 120].map((t) => {
-                      const isSelected = novoPrazo === t
-                      const isAvailable = t <= novoPrazo
+                    {planosAmortizacaoPort.map((p) => {
+                      const isSelected = novoPrazo === p.term
                       return (
                         <button
-                          key={t}
+                          key={p.term}
                           type="button"
                           onClick={() => {
-                            setNovoPrazoInput(t.toString())
-                            setSelectedPlanTerm(t)
-                            setShowPlanModal(true)
+                            setNovoPrazoInput(p.term.toString())
+                            setSelectedPlanTerm(p.term)
                           }}
                           className={cn(
                             "p-4 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-slate-400",
                             isSelected
                               ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-[#00D492]"
-                              : isAvailable
-                              ? "bg-white text-slate-800 border-slate-200"
-                              : "bg-slate-50/70 text-slate-400 border-slate-200/60"
+                              : "bg-white text-slate-800 border-slate-200"
                           )}
                         >
-                          <span className="text-lg font-extrabold tracking-tight">{t}x</span>
+                          <span className="text-lg font-extrabold tracking-tight">{p.term}x</span>
                           <span className={cn(
-                            "text-[10px] font-semibold",
-                            isSelected
-                              ? "text-[#00D492]"
-                              : isAvailable
-                              ? "text-slate-500"
-                              : "text-red-400/80"
+                            "text-[10px] font-semibold flex flex-col items-center gap-0.5",
+                            isSelected ? "text-[#00D492]" : "text-slate-500"
                           )}>
-                            {!isAvailable
-                              ? "Indisponível (prazo maior que contrato)"
-                              : t === novoPrazo
-                              ? `Prazo Selecionado (${formatBRL(pmtNova)})`
-                              : "Condição específica não alcançada"}
+                            <span>Taxa {formatPercent(p.taxa, 2)}</span>
+                            <span>{p.term === novoPrazo ? "Parcela" : "Média"} {formatBRL(p.parcelaMedia)}</span>
                           </span>
                         </button>
                       )
