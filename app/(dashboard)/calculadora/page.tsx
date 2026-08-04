@@ -263,6 +263,47 @@ export default function CalculadoraPage() {
     return rows
   }, [contratoComIof, taxaImplicita, parcela, prazo])
 
+  // 5. Antecipação / Resumo Amortização (calculado com base nas parcelas do contrato original)
+  const temAntecipacao = valorBolso > 0
+  const resumoAmortizacao = useMemo(() => {
+    if (!temAntecipacao || tabelaPrice.length === 0) {
+      return null
+    }
+
+    const valorAntecipacao = Math.max(0, valorLiberado - valorBolso)
+
+    let parcelasQuitadas = 0
+    let quantoAntecipado = 0
+    let remanescentes = prazo
+    let acumuladoPV = 0
+
+    for (let q = 1; q <= prazo; q++) {
+      const mesContrato = prazo - q + 1
+      const valPresenteParcela = taxaImplicita > 0 
+        ? parcela / Math.pow(1 + taxaImplicita, mesContrato)
+        : parcela
+
+      if (acumuladoPV + valPresenteParcela <= valorAntecipacao + 0.01) {
+        acumuladoPV += valPresenteParcela
+        parcelasQuitadas = q
+        quantoAntecipado = acumuladoPV
+        remanescentes = prazo - q
+      } else {
+        break
+      }
+    }
+
+    const saldoParaPort = Math.max(0, contratoComIof - quantoAntecipado)
+
+    return {
+      valorAntecipacao,
+      quantoAntecipado,
+      parcelasQuitadas,
+      remanescentes,
+      saldoParaPort
+    }
+  }, [temAntecipacao, valorLiberado, valorBolso, contratoComIof, taxaImplicita, parcela, prazo, tabelaPrice])
+
   // 4. Plano de Amortização (Term options: 12x, 24x, 36x, 48x, 60x, 72x, 84x, 96x, 120x)
   const planosAmortizacao = useMemo(() => {
     const terms = [12, 24, 36, 48, 60, 72, 84, 96, 120]
@@ -308,6 +349,20 @@ export default function CalculadoraPage() {
   }, [planosAmortizacao, selectedPlanTerm])
 
   const activeResult = useMemo(() => {
+    if (resumoAmortizacao) {
+      const prz = resumoAmortizacao.remanescentes
+      const totPagar = prz * parcela
+      const totJuros = Math.max(0, totPagar - resumoAmortizacao.saldoParaPort)
+      return {
+        labelParcela: "Parcela",
+        parcela: parcela,
+        taxa: taxaImplicita,
+        prazo: prz,
+        totalAPagar: totPagar,
+        totalJuros: totJuros
+      }
+    }
+
     if (selectedPlanTerm && selectedPlanObj && !selectedPlanObj.invalido && valorBolso <= 0) {
       const pmt = selectedPlanObj.term === prazo ? parcela : selectedPlanObj.parcelaMedia
       const tx = selectedPlanObj.taxa
@@ -332,7 +387,7 @@ export default function CalculadoraPage() {
       totalAPagar: totalAPagar,
       totalJuros: totalJuros
     }
-  }, [selectedPlanTerm, selectedPlanObj, valorBolso, parcela, taxaImplicita, prazo, totalAPagar, totalJuros, valorLiberado])
+  }, [selectedPlanTerm, selectedPlanObj, valorBolso, parcela, taxaImplicita, prazo, totalAPagar, totalJuros, valorLiberado, resumoAmortizacao])
 
   const activeTabelaPrice = useMemo(() => {
     const pmt = activeResult.parcela
@@ -363,47 +418,6 @@ export default function CalculadoraPage() {
 
     return rows
   }, [contratoComIof, activeResult])
-
-  // 5. Antecipação / Resumo Amortização (calculado com base nas parcelas do contrato original)
-  const temAntecipacao = valorBolso > 0
-  const resumoAmortizacao = useMemo(() => {
-    if (!temAntecipacao || tabelaPrice.length === 0) {
-      return null
-    }
-
-    const valorAntecipacao = Math.max(0, valorLiberado - valorBolso)
-
-    let parcelasQuitadas = 0
-    let quantoAntecipado = 0
-    let remanescentes = prazo
-    let acumuladoPV = 0
-
-    for (let q = 1; q <= prazo; q++) {
-      const mesContrato = prazo - q + 1
-      const valPresenteParcela = taxaImplicita > 0 
-        ? parcela / Math.pow(1 + taxaImplicita, mesContrato)
-        : parcela
-
-      if (acumuladoPV + valPresenteParcela <= valorAntecipacao + 0.01) {
-        acumuladoPV += valPresenteParcela
-        parcelasQuitadas = q
-        quantoAntecipado = acumuladoPV
-        remanescentes = prazo - q
-      } else {
-        break
-      }
-    }
-
-    const saldoParaPort = Math.max(0, contratoComIof - quantoAntecipado)
-
-    return {
-      valorAntecipacao,
-      quantoAntecipado,
-      parcelasQuitadas,
-      remanescentes,
-      saldoParaPort
-    }
-  }, [temAntecipacao, valorLiberado, valorBolso, contratoComIof, taxaImplicita, parcela, prazo, tabelaPrice])
 
   // Portabilidade da Liberação - Handshake & Calculations
   const saldoPort = resumoAmortizacao ? resumoAmortizacao.saldoParaPort : contratoComIof
@@ -1271,20 +1285,20 @@ export default function CalculadoraPage() {
 
           <div class="metrics-grid">
             <div class="metric-card" id="metric-card-contrato">
-              <div class="metric-label">VALOR DO CONTRATO</div>
-              <div class="metric-value">${formatBRL(valorLiberado)}</div>
+              <div class="metric-label">${resumoAmortizacao ? 'VALOR P/ CLIENTE' : 'VALOR DO CONTRATO'}</div>
+              <div class="metric-value">${formatBRL(resumoAmortizacao ? valorBolso : valorLiberado)}</div>
             </div>
             <div class="metric-card" id="metric-card-prazo">
-              <div class="metric-label">PRAZO ESTRATÉGIA</div>
+              <div class="metric-label">${resumoAmortizacao ? 'PRAZO REMANESCENTE' : 'PRAZO ESTRATÉGIA'}</div>
               <div class="metric-value metric-highlight">${term} parcelas</div>
             </div>
             <div class="metric-card" id="metric-card-parcela">
-              <div class="metric-label">PARCELA MÉDIA</div>
+              <div class="metric-label">${resumoAmortizacao ? 'PARCELA' : 'PARCELA MÉDIA'}</div>
               <div class="metric-value">${formatBRL(pmt)}</div>
             </div>
             <div class="metric-card" id="metric-card-taxa">
-              <div class="metric-label">TAXA A.M.</div>
-              <div class="metric-value">${formatPercent(tx, 2)}</div>
+              <div class="metric-label">${resumoAmortizacao ? 'SALDO P/ PORT' : 'TAXA A.M.'}</div>
+              <div class="metric-value">${resumoAmortizacao ? formatBRL(resumoAmortizacao.saldoParaPort) : formatPercent(tx, 2)}</div>
             </div>
           </div>
 
@@ -2541,6 +2555,22 @@ export default function CalculadoraPage() {
                   <Pencil className="w-3.5 h-3.5 text-slate-500" />
                   <span>Alterar</span>
                 </button>
+              </div>
+            ) : resumoAmortizacao ? (
+              <div className="bg-[#00D492]/15 border border-[#00D492]/40 rounded-xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-[#00D492]/20 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">
+                      {resumoAmortizacao.remanescentes}x · Parcela {formatBRL(parcela)}
+                    </p>
+                    <p className="text-[11px] font-medium text-slate-600">
+                      {resumoAmortizacao.parcelasQuitadas} parcelas quitadas · Cliente: {formatBRL(valorBolso)}
+                    </p>
+                  </div>
+                </div>
               </div>
             ) : selectedPlanObj && (
               <div className="bg-[#00D492]/15 border border-[#00D492]/40 rounded-xl p-3 flex items-center justify-between">
