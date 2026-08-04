@@ -321,16 +321,28 @@ export default function CalculadoraPage() {
           }
         }
 
-        // Present value of first t installments at original implicit rate
-        const pvFirstT = taxaImplicita > 0 
-          ? (parcela * (1 - Math.pow(1 + taxaImplicita, -t)) / taxaImplicita)
-          : (parcela * t)
+        // Calculate exact sum of "TOTAL MÊS" column by iterating over monthly strategy amortizations
+        const totalExtraAmort = Math.max(0, prazo - t)
+        const extraPerMonth = t > 0 ? totalExtraAmort / t : 0
+        let currentBackInstallment = prazo
+        let sumTotalMes = 0
 
-        // Present value of remaining (prazo - t) back-end installments at month 0
-        const pvRemaining = Math.max(0, contratoComIof - pvFirstT)
+        for (let m = 1; m <= t; m++) {
+          const numAmortThisMonth = Math.min(
+            Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
+            currentBackInstallment - t
+          )
 
-        // Total to pay over t months = regular t payments + PV of remaining installments
-        const sumTotalMes = (t * parcela) + pvRemaining
+          let sumAmortValsThisMonth = 0
+          for (let k = 0; k < numAmortThisMonth && currentBackInstallment > t; k++) {
+            const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, currentBackInstallment))
+            sumAmortValsThisMonth += valAmort
+            currentBackInstallment--
+          }
+
+          sumTotalMes += (parcela + sumAmortValsThisMonth)
+        }
+
         const pmtMedia = t > 0 ? sumTotalMes / t : 0
         const rateN = calculateImplicitRate(contratoComIof, pmtMedia, t)
 
@@ -364,15 +376,27 @@ export default function CalculadoraPage() {
     }
 
     if (selectedPlanTerm && selectedPlanObj && !selectedPlanObj.invalido && valorBolso <= 0) {
-      const pmt = selectedPlanObj.term === prazo ? parcela : selectedPlanObj.parcelaMedia
-      const tx = selectedPlanObj.taxa
       const prz = selectedPlanObj.term
+      const tx = selectedPlanObj.taxa
+      const tx2Dec = Math.round(tx * 10000) / 10000
+      let pmt = selectedPlanObj.term === prazo ? parcela : selectedPlanObj.parcelaMedia
+
+      if (prz !== prazo) {
+        const pv = valorLiberado
+        if (tx2Dec > 0 && prz > 0) {
+          const compound = Math.pow(1 + tx2Dec, prz)
+          pmt = pv * ((tx2Dec * compound) / (compound - 1))
+        } else if (prz > 0) {
+          pmt = pv / prz
+        }
+      }
+
       const totPagar = selectedPlanObj.totalPagar
       const totJuros = Math.max(0, totPagar - valorLiberado)
       return {
         labelParcela: prz === prazo ? "Parcela" : "Parcela média",
         parcela: pmt,
-        taxa: tx,
+        taxa: tx2Dec,
         prazo: prz,
         totalAPagar: totPagar,
         totalJuros: totJuros
@@ -1694,11 +1718,10 @@ export default function CalculadoraPage() {
                             {p.term}x
                           </span>
                           <span className={cn(
-                            "text-[10px] font-semibold flex flex-col items-center gap-0.5",
+                            "text-[12px] font-semibold",
                             isSelected ? "text-[#00D492]" : "text-slate-500"
                           )}>
-                            <span>Taxa {formatPercent(p.taxa, 2)}</span>
-                            <span>{p.term === prazo ? "Parcela" : "Média"} {formatBRL(p.parcelaMedia)}</span>
+                            Taxa {formatPercent(p.taxa, 2)}
                           </span>
                         </button>
                       )
@@ -1742,16 +1765,6 @@ export default function CalculadoraPage() {
                     <div className="py-2.5 flex justify-between items-center">
                       <span className="font-semibold text-slate-500">Prazo</span>
                       <span className="font-bold text-slate-900">{activeResult.prazo} meses</span>
-                    </div>
-
-                    <div className="py-2.5 flex justify-between items-center">
-                      <span className="font-semibold text-slate-500">Total a pagar</span>
-                      <span className="font-bold text-slate-900">{formatBRL(activeResult.totalAPagar)}</span>
-                    </div>
-
-                    <div className="py-2.5 flex justify-between items-center">
-                      <span className="font-semibold text-slate-500">Total de juros</span>
-                      <span className="font-bold text-slate-900">{formatBRL(activeResult.totalJuros)}</span>
                     </div>
                   </div>
 
