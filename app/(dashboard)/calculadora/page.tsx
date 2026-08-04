@@ -58,6 +58,32 @@ function formatMaskedCPF(rawCpf?: string): string {
   return rawCpf.replace(/^(\d{3})\.?\d{3}\.?\d{3}-?(\d{2})$/, "$1.***.***-$2")
 }
 
+// Helper function to parse financial input strings with dots, commas, or integers (e.g. 50.000,00; 50000,00; 50000; 50000.00)
+function parseFormattedFloat(val: string | number | undefined | null): number {
+  if (typeof val === 'number') return isNaN(val) ? 0 : val
+  if (!val) return 0
+  let str = String(val).trim().replace(/^R\$\s?/, '')
+  if (!str) return 0
+
+  if (str.includes('.') && str.includes(',')) {
+    str = str.replace(/\./g, '').replace(',', '.')
+  } else if (str.includes(',')) {
+    str = str.replace(',', '.')
+  } else if (str.includes('.')) {
+    const parts = str.split('.')
+    if (parts.length > 2) {
+      str = str.replace(/\./g, '')
+    } else {
+      if (parts[1].length === 3 && parts[0].length <= 3) {
+        str = str.replace('.', '')
+      }
+    }
+  }
+
+  const num = parseFloat(str)
+  return isNaN(num) ? 0 : num
+}
+
 // Solver for implicit monthly interest rate 'i' in Price table:
 // PMT = PV * [ i * (1 + i)^n ] / [ (1 + i)^n - 1 ]
 function calculateImplicitRate(pv: number, pmt: number, n: number): number {
@@ -106,14 +132,19 @@ export default function CalculadoraPage() {
   const [activeTab, setActiveTab] = useState<string>("liberacao")
 
   // Premissas Inputs
-  const [parcela, setParcela] = useState<number>(0)
+  const [parcelaInput, setParcelaInput] = useState<string>("")
+  const parcela = useMemo(() => parseFormattedFloat(parcelaInput), [parcelaInput])
+
   const [coeficienteInput, setCoeficienteInput] = useState<string>("")
-  const coeficiente = useMemo(() => {
-    return parseFloat(coeficienteInput.replace(",", ".")) || 0
-  }, [coeficienteInput])
-  const [prazo, setPrazo] = useState<number>(0)
+  const coeficiente = useMemo(() => parseFormattedFloat(coeficienteInput), [coeficienteInput])
+
+  const [prazoInput, setPrazoInput] = useState<string>("")
+  const prazo = useMemo(() => parseFormattedFloat(prazoInput), [prazoInput])
+
   const [iofPercent, setIofPercent] = useState<number>(5)
   const [valorBolsoInput, setValorBolsoInput] = useState<string>("")
+  const valorBolso = useMemo(() => parseFormattedFloat(valorBolsoInput), [valorBolsoInput])
+  const [valorLiberadoInput, setValorLiberadoInput] = useState<string>("")
 
   // Selected plan term in grid
   const [selectedPlanTerm, setSelectedPlanTerm] = useState<number | null>(null)
@@ -131,6 +162,10 @@ export default function CalculadoraPage() {
   const [novoPrazoInput, setNovoPrazoInput] = useState<string>("")
   const [amortizacaoPosPort, setAmortizacaoPosPort] = useState<boolean>(false)
   const [valorClientePortInput, setValorClientePortInput] = useState<string>("")
+
+  const novaTaxaDecimal = useMemo(() => parseFormattedFloat(novaTaxaInput) / 100, [novaTaxaInput])
+  const novoPrazo = useMemo(() => parseFormattedFloat(novoPrazoInput), [novoPrazoInput])
+  const valorClientePort = useMemo(() => parseFormattedFloat(valorClientePortInput), [valorClientePortInput])
 
   // Calculadora do Cidadão (BACEN) State
   const [cidadaoPvInput, setCidadaoPvInput] = useState<string>("")
@@ -150,10 +185,10 @@ export default function CalculadoraPage() {
       return { status: "invalid_count" as const }
     }
 
-    const pv = parseFloat(cidadaoPvInput.replace(",", ".")) || 0
-    const pmt = parseFloat(cidadaoPmtInput.replace(",", ".")) || 0
-    const n = parseFloat(cidadaoPrazoInput.replace(",", ".")) || 0
-    const i_perc = parseFloat(cidadaoTaxaInput.replace(",", ".")) || 0
+    const pv = parseFormattedFloat(cidadaoPvInput)
+    const pmt = parseFormattedFloat(cidadaoPmtInput)
+    const n = parseFormattedFloat(cidadaoPrazoInput)
+    const i_perc = parseFormattedFloat(cidadaoTaxaInput)
     const i = i_perc / 100
 
     if (!hasPmt) {
@@ -197,8 +232,8 @@ export default function CalculadoraPage() {
       if (iCalc <= 0) return { status: "error" as const }
       const iPerc = iCalc * 100
       const formattedRate = iPerc.toLocaleString("pt-BR", {
-        minimumFractionDigits: 4,
-        maximumFractionDigits: 4
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       }) + "% a.m."
       return {
         status: "success" as const,
@@ -216,8 +251,6 @@ export default function CalculadoraPage() {
     if (coeficiente <= 0) return 0
     return parcela / coeficiente
   }, [parcela, coeficiente])
-
-  const valorBolso = parseFloat(valorBolsoInput) || 0
 
   const contratoComIof = useMemo(() => {
     return valorLiberado * (1 + iofPercent / 100)
@@ -455,9 +488,6 @@ export default function CalculadoraPage() {
     }
   }, [nAtual])
 
-  const novaTaxaPercent = parseFloat(novaTaxaInput) || 0
-  const novaTaxaDecimal = novaTaxaPercent / 100
-  const novoPrazo = parseInt(novoPrazoInput) || 0
 
   const coefPosPort = useMemo(() => {
     if (novoPrazo <= 0) return 0
@@ -534,7 +564,6 @@ export default function CalculadoraPage() {
       })
   }, [saldoPort, novoPrazo, nAtual, novaTaxaDecimal, pmtNova])
 
-  const valorClientePort = parseFloat(valorClientePortInput) || 0
   const valorLiberadoPort = useMemo(() => {
     if (iofPercent > 0) {
       return saldoPort / (1 + iofPercent / 100)
@@ -1508,15 +1537,19 @@ export default function CalculadoraPage() {
   }
 
   // Event handlers
-  const handleParcelaChange = (v: number) => {
-    setParcela(v)
+  const handleParcelaChange = (vStr: string) => {
+    setParcelaInput(vStr)
+    setValorLiberadoInput("")
   }
 
-  const handleCoeficienteChange = (v: string) => {
-    setCoeficienteInput(v)
+  const handleCoeficienteChange = (vStr: string) => {
+    setCoeficienteInput(vStr)
+    setValorLiberadoInput("")
   }
 
-  const handleLiberadoChange = (v: number) => {
+  const handleLiberadoChange = (vStr: string) => {
+    setValorLiberadoInput(vStr)
+    const v = parseFormattedFloat(vStr)
     if (v > 0 && parcela > 0) {
       const calc = parcela / v
       setCoeficienteInput(Number.isFinite(calc) ? calc.toString() : "")
@@ -1590,9 +1623,10 @@ export default function CalculadoraPage() {
                         PARCELA / MARGEM (R$)
                       </label>
                       <input
-                        type="number"
-                        value={parcela || ""}
-                        onChange={(e) => handleParcelaChange(parseFloat(e.target.value) || 0)}
+                        type="text"
+                        inputMode="decimal"
+                        value={parcelaInput}
+                        onChange={(e) => handleParcelaChange(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                         placeholder="1000"
                       />
@@ -1603,8 +1637,8 @@ export default function CalculadoraPage() {
                         COEFICIENTE
                       </label>
                       <input
-                        type="number"
-                        step="any"
+                        type="text"
+                        inputMode="decimal"
                         value={coeficienteInput}
                         onChange={(e) => handleCoeficienteChange(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
@@ -1617,9 +1651,10 @@ export default function CalculadoraPage() {
                         VALOR LIBERADO (R$)
                       </label>
                       <input
-                        type="number"
-                        value={Math.round(valorLiberado * 100) / 100 || ""}
-                        onChange={(e) => handleLiberadoChange(parseFloat(e.target.value) || 0)}
+                        type="text"
+                        inputMode="decimal"
+                        value={valorLiberadoInput !== "" ? valorLiberadoInput : (valorLiberado > 0 ? (Math.round(valorLiberado * 100) / 100).toString() : "")}
+                        onChange={(e) => handleLiberadoChange(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                         placeholder="50000"
                       />
@@ -1632,9 +1667,10 @@ export default function CalculadoraPage() {
                         PRAZO (MESES)
                       </label>
                       <input
-                        type="number"
-                        value={prazo || ""}
-                        onChange={(e) => setPrazo(parseInt(e.target.value) || 0)}
+                        type="text"
+                        inputMode="decimal"
+                        value={prazoInput}
+                        onChange={(e) => setPrazoInput(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                         placeholder="120"
                       />
@@ -1667,7 +1703,8 @@ export default function CalculadoraPage() {
                         QUANTO O CLIENTE FICA NO BOLSO (R$)
                       </label>
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         value={valorBolsoInput}
                         onChange={(e) => {
                           setValorBolsoInput(e.target.value)
@@ -1991,8 +2028,8 @@ export default function CalculadoraPage() {
                           NOVA TAXA (% A.M.)
                         </label>
                         <input
-                          type="number"
-                          step="0.01"
+                          type="text"
+                          inputMode="decimal"
                           value={novaTaxaInput}
                           onChange={(e) => setNovaTaxaInput(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
@@ -2005,7 +2042,8 @@ export default function CalculadoraPage() {
                           NOVO PRAZO (MESES)
                         </label>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={novoPrazoInput}
                           onChange={(e) => setNovoPrazoInput(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
@@ -2064,7 +2102,8 @@ export default function CalculadoraPage() {
                           VALOR PARA O CLIENTE (R$)
                         </label>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={valorClientePortInput}
                           onChange={(e) => setValorClientePortInput(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
@@ -2334,8 +2373,8 @@ export default function CalculadoraPage() {
                     VALOR FINANCIADO / SALDO (R$)
                   </label>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={cidadaoPvInput}
                     onChange={(e) => setCidadaoPvInput(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
@@ -2348,8 +2387,8 @@ export default function CalculadoraPage() {
                     PARCELA (R$)
                   </label>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={cidadaoPmtInput}
                     onChange={(e) => setCidadaoPmtInput(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
@@ -2362,8 +2401,8 @@ export default function CalculadoraPage() {
                     PRAZO (MESES)
                   </label>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={cidadaoPrazoInput}
                     onChange={(e) => setCidadaoPrazoInput(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
