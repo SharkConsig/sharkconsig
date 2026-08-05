@@ -463,10 +463,22 @@ export default function DashboardPage() {
   const [currentBanner, setCurrentBanner] = useState(0)
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
   const [ticketStats, setTicketStats] = useState<TicketStats | null>(null)
-  const [startDate, setStartDate] = useState<string>("")
-  const [endDate, setEndDate] = useState<string>("")
-  const [tempStartDate, setTempStartDate] = useState<string>("")
-  const [tempEndDate, setTempEndDate] = useState<string>("")
+  const [startDate, setStartDate] = useState<string>(() => {
+    const now = new Date()
+    return format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd")
+  })
+  const [endDate, setEndDate] = useState<string>(() => {
+    const now = new Date()
+    return format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd")
+  })
+  const [tempStartDate, setTempStartDate] = useState<string>(() => {
+    const now = new Date()
+    return format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd")
+  })
+  const [tempEndDate, setTempEndDate] = useState<string>(() => {
+    const now = new Date()
+    return format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd")
+  })
   const [activeTab, setActiveTab] = useState<'propostas' | 'chamados' | 'propostas_comerciais'>('propostas')
   const [dashboardPeriod, setDashboardPeriod] = useState<'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado'>('mes')
 

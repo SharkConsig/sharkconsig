@@ -240,7 +240,7 @@ export function AdminDashboard({
   } | null>(null)
   const [isProposalsStatsLoading, setIsProposalsStatsLoading] = React.useState(false)
   const proposalsCacheRef = React.useRef<Record<string, { data: any; timestamp: number }>>({})
-  const [selectedProposalCard, setSelectedProposalCard] = React.useState<'total' | 'reducao' | 'quitacao' | 'novo_formato'>('total')
+  const [selectedProposalCard, setSelectedProposalCard] = React.useState<'total' | 'reducao' | 'quitacao' | 'novo_formato' | 'personalize'>('total')
   const [proposalsPage, setProposalsPage] = React.useState(1)
   const proposalsPageSize = 15
 
@@ -283,6 +283,9 @@ export function AdminDashboard({
         } else if (selectedProposalCard === 'novo_formato') {
           table = 'historico_proposta_comercial_novo_formato';
           selectStr = 'id, user_id, cliente_cpf, cliente_nome, user_nome, user_email, valor_liberado, created_at, arquivo_url, tipo_arquivo';
+        } else if (selectedProposalCard === 'personalize') {
+          table = 'historico_proposta_comercial_calculadora';
+          selectStr = 'id, user_id, cliente_cpf, cliente_nome, user_nome, user_email, valor_contrato, prazo_estrategia, parcela_media, taxa_am, created_at, arquivo_url, tipo_arquivo';
         }
 
         if (table) {
@@ -297,7 +300,8 @@ export function AdminDashboard({
               const mapped = data.map(item => ({
                 ...item,
                 isNovoFormato: selectedProposalCard === 'novo_formato',
-                isQuitacao: selectedProposalCard === 'quitacao'
+                isQuitacao: selectedProposalCard === 'quitacao',
+                isPersonalize: selectedProposalCard === 'personalize'
               }));
               mapped.sort((a, b) => {
                 const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -533,14 +537,16 @@ export function AdminDashboard({
       let countReducao = 0
       let countNovoFormato = 0
       let countQuitacao = 0
+      let countPersonalize = 0
       let totalReducaoValor = 0
       let totalNovoFormatoValor = 0
       let totalQuitacaoValor = 0
+      let totalPersonalizeValor = 0
 
       // Se temos período, não usamos a RPC padrão pois ela traz o acumulado total sem filtro de data.
       // Em vez disso, fazemos a agregação das somas e counts de forma leve.
       if (startDate && endDate) {
-        const [q1, q2, q3] = await Promise.all([
+        const [q1, q2, q3, q4] = await Promise.all([
           supabase.from('historico_proposta_comercial')
             .select('valor_liberado')
             .gte('created_at', startDate + 'T00:00:00')
@@ -552,16 +558,22 @@ export function AdminDashboard({
           supabase.from('historico_proposta_comercial_quitacao_contrato')
             .select('saldo_quitacao')
             .gte('created_at', startDate + 'T00:00:00')
+            .lte('created_at', endDate + 'T23:59:59'),
+          supabase.from('historico_proposta_comercial_calculadora')
+            .select('valor_contrato')
+            .gte('created_at', startDate + 'T00:00:00')
             .lte('created_at', endDate + 'T23:59:59')
         ])
 
         countReducao = q1.data?.length || 0
         countNovoFormato = q2.data?.length || 0
         countQuitacao = q3.data?.length || 0
+        countPersonalize = q4.data?.length || 0
 
         totalReducaoValor = q1.data?.reduce((sum, item) => sum + (Number(item.valor_liberado) || 0), 0) || 0
         totalNovoFormatoValor = q2.data?.reduce((sum, item) => sum + (Number(item.valor_liberado) || 0), 0) || 0
         totalQuitacaoValor = q3.data?.reduce((sum, item) => sum + (Number(item.saldo_quitacao) || 0), 0) || 0
+        totalPersonalizeValor = q4.data?.reduce((sum, item) => sum + (Number(item.valor_contrato) || 0), 0) || 0
       } else {
         // Sem filtro de período, tentamos usar a RPC de alta performance
         const { data: rpcData, error: rpcError } = await supabase.rpc('get_proposals_stats')
@@ -570,24 +582,28 @@ export function AdminDashboard({
           countReducao = parseInt(rpcData.countReducao) || 0
           countNovoFormato = parseInt(rpcData.countNovoFormato) || 0
           countQuitacao = parseInt(rpcData.countQuitacao) || 0
+          countPersonalize = parseInt(rpcData.countPersonalize) || 0
           totalReducaoValor = parseFloat(rpcData.totalReducaoValor) || 0
           totalNovoFormatoValor = parseFloat(rpcData.totalNovoFormatoValor) || 0
           totalQuitacaoValor = parseFloat(rpcData.totalQuitacaoValor) || 0
+          totalPersonalizeValor = parseFloat(rpcData.totalPersonalizeValor) || 0
         } else {
           console.warn("RPC get_proposals_stats falhou ou não existe, usando fallback leve:", rpcError)
           // Fallback ultra-rápido: Apenas counts exatos (head: true, peso zero no DB)
-          const [c1, c2, c3] = await Promise.all([
+          const [c1, c2, c3, c4] = await Promise.all([
             supabase.from('historico_proposta_comercial').select('*', { count: 'exact', head: true }),
             supabase.from('historico_proposta_comercial_novo_formato').select('*', { count: 'exact', head: true }),
-            supabase.from('historico_proposta_comercial_quitacao_contrato').select('*', { count: 'exact', head: true })
+            supabase.from('historico_proposta_comercial_quitacao_contrato').select('*', { count: 'exact', head: true }),
+            supabase.from('historico_proposta_comercial_calculadora').select('*', { count: 'exact', head: true })
           ])
           countReducao = c1.count || 0
           countNovoFormato = c2.count || 0
           countQuitacao = c3.count || 0
+          countPersonalize = c4.count || 0
         }
       }
 
-      const total = countReducao + countNovoFormato + countQuitacao
+      const total = countReducao + countNovoFormato + countQuitacao + countPersonalize
 
       let combined: any[] = []
 
@@ -603,34 +619,50 @@ export function AdminDashboard({
         let query3 = supabase
           .from('historico_proposta_comercial_quitacao_contrato')
           .select('user_id, user_nome, user_email, saldo_quitacao, created_at')
+        let query4 = supabase
+          .from('historico_proposta_comercial_calculadora')
+          .select('user_id, user_nome, user_email, valor_contrato, created_at')
 
         if (startDate && endDate) {
           query1 = query1.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
           query2 = query2.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
           query3 = query3.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
+          query4 = query4.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
         }
 
-        const [r1, r2, r3] = await Promise.all([query1, query2, query3])
+        const [r1, r2, r3, r4] = await Promise.all([query1, query2, query3, query4])
 
         if (r1.data) {
           combined = combined.concat(r1.data.map((item: any) => ({
             ...item,
             isNovoFormato: false,
-            isQuitacao: false
+            isQuitacao: false,
+            isPersonalize: false
           })))
         }
         if (r2.data) {
           combined = combined.concat(r2.data.map((item: any) => ({
             ...item,
             isNovoFormato: true,
-            isQuitacao: false
+            isQuitacao: false,
+            isPersonalize: false
           })))
         }
         if (r3.data) {
           combined = combined.concat(r3.data.map((item: any) => ({
             ...item,
             isNovoFormato: false,
-            isQuitacao: true
+            isQuitacao: true,
+            isPersonalize: false
+          })))
+        }
+        if (r4.data) {
+          combined = combined.concat(r4.data.map((item: any) => ({
+            ...item,
+            valor_liberado: item.valor_contrato,
+            isNovoFormato: false,
+            isQuitacao: false,
+            isPersonalize: true
           })))
         }
 
@@ -655,7 +687,8 @@ export function AdminDashboard({
           combined = data.map((item: any) => ({
             ...item,
             isNovoFormato: false,
-            isQuitacao: false
+            isQuitacao: false,
+            isPersonalize: false
           }))
         }
       } else if (selectedProposalCard === 'quitacao') {
@@ -674,7 +707,8 @@ export function AdminDashboard({
           combined = data.map((item: any) => ({
             ...item,
             isNovoFormato: false,
-            isQuitacao: true
+            isQuitacao: true,
+            isPersonalize: false
           }))
         }
       } else if (selectedProposalCard === 'novo_formato') {
@@ -693,7 +727,29 @@ export function AdminDashboard({
           combined = data.map((item: any) => ({
             ...item,
             isNovoFormato: true,
-            isQuitacao: false
+            isQuitacao: false,
+            isPersonalize: false
+          }))
+        }
+      } else if (selectedProposalCard === 'personalize') {
+        let query = supabase
+          .from('historico_proposta_comercial_calculadora')
+          .select('id, user_id, user_nome, user_email, valor_contrato, created_at')
+          .order('created_at', { ascending: false })
+
+        if (startDate && endDate) {
+          query = query.gte('created_at', startDate + 'T00:00:00').lte('created_at', endDate + 'T23:59:59')
+        }
+
+        const { data } = await query
+
+        if (data) {
+          combined = data.map((item: any) => ({
+            ...item,
+            valor_liberado: item.valor_contrato,
+            isNovoFormato: false,
+            isQuitacao: false,
+            isPersonalize: true
           }))
         }
       }
@@ -703,10 +759,12 @@ export function AdminDashboard({
         countReducao,
         countNovoFormato,
         countQuitacao,
+        countPersonalize,
         recentProposals: combined,
         totalReducaoValor,
         totalQuitacaoValor,
-        totalNovoFormatoValor
+        totalNovoFormatoValor,
+        totalPersonalizeValor
       };
 
       // Atualiza o cache em memória
@@ -744,6 +802,8 @@ export function AdminDashboard({
       strategyName = "proposta_quitacao"
     } else if (proposal.isNovoFormato) {
       strategyName = "proposta_novo_formato"
+    } else if (proposal.isPersonalize) {
+      strategyName = "proposta_personalizada"
     }
     link.download = `${strategyName}_${safeName}.${extension}`;
     link.click();
@@ -763,7 +823,9 @@ export function AdminDashboard({
         ? 'historico_proposta_comercial_quitacao_contrato'
         : (proposal.isNovoFormato || selectedProposalCard === 'novo_formato'
           ? 'historico_proposta_comercial_novo_formato'
-          : 'historico_proposta_comercial');
+          : (proposal.isPersonalize || selectedProposalCard === 'personalize'
+            ? 'historico_proposta_comercial_calculadora'
+            : 'historico_proposta_comercial'));
 
       const { error } = await supabase
         .from(table)
@@ -3494,13 +3556,16 @@ export function AdminDashboard({
         const filteredProposals = proposalsStats?.recentProposals ? (() => {
           if (selectedProposalCard === 'total') return [];
           if (selectedProposalCard === 'reducao') {
-            return proposalsStats.recentProposals.filter(p => !p.isNovoFormato && !p.isQuitacao);
+            return proposalsStats.recentProposals.filter(p => !p.isNovoFormato && !p.isQuitacao && !p.isPersonalize);
           }
           if (selectedProposalCard === 'quitacao') {
             return proposalsStats.recentProposals.filter(p => p.isQuitacao);
           }
           if (selectedProposalCard === 'novo_formato') {
             return proposalsStats.recentProposals.filter(p => p.isNovoFormato);
+          }
+          if (selectedProposalCard === 'personalize') {
+            return proposalsStats.recentProposals.filter(p => p.isPersonalize);
           }
           return [];
         })() : [];
@@ -3577,11 +3642,11 @@ export function AdminDashboard({
             ) : (
               <>
                 {/* Proposals Cards - Clickable filters */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                   <div
                     onClick={() => setSelectedProposalCard('total')}
                     className={cn(
-                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
+                      "p-5 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
                       selectedProposalCard === 'total'
                         ? "bg-white border-[#1C2643] ring-2 ring-[#1C2643]/10 shadow-md scale-[1.02]"
                         : "bg-white border-slate-100 hover:border-[#1C2643]/30 hover:shadow-sm"
@@ -3602,7 +3667,8 @@ export function AdminDashboard({
                           {formatCurrency(
                             (proposalsStats?.totalReducaoValor || 0) +
                             (proposalsStats?.totalQuitacaoValor || 0) +
-                            (proposalsStats?.totalNovoFormatoValor || 0)
+                            (proposalsStats?.totalNovoFormatoValor || 0) +
+                            (proposalsStats?.totalPersonalizeValor || 0)
                           )}
                         </span>
                       </div>
@@ -3612,7 +3678,7 @@ export function AdminDashboard({
                   <div
                     onClick={() => setSelectedProposalCard('reducao')}
                     className={cn(
-                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
+                      "p-5 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
                       selectedProposalCard === 'reducao'
                         ? "bg-emerald-50/70 border-emerald-500 ring-2 ring-emerald-500/10 shadow-md scale-[1.02]"
                         : "bg-white border-slate-100 hover:border-emerald-300 hover:shadow-sm"
@@ -3641,7 +3707,7 @@ export function AdminDashboard({
                   <div
                     onClick={() => setSelectedProposalCard('quitacao')}
                     className={cn(
-                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
+                      "p-5 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
                       selectedProposalCard === 'quitacao'
                         ? "bg-amber-50/70 border-amber-500 ring-2 ring-amber-500/10 shadow-md scale-[1.02]"
                         : "bg-white border-slate-100 hover:border-amber-300 hover:shadow-sm"
@@ -3670,7 +3736,7 @@ export function AdminDashboard({
                   <div
                     onClick={() => setSelectedProposalCard('novo_formato')}
                     className={cn(
-                      "p-6 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
+                      "p-5 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
                       selectedProposalCard === 'novo_formato'
                         ? "bg-yellow-50/70 border-yellow-500 ring-2 ring-yellow-500/10 shadow-md scale-[1.02]"
                         : "bg-white border-slate-100 hover:border-yellow-300 hover:shadow-sm"
@@ -3695,6 +3761,35 @@ export function AdminDashboard({
                       </div>
                     </div>
                   </div>
+
+                  <div
+                    onClick={() => setSelectedProposalCard('personalize')}
+                    className={cn(
+                      "p-5 border rounded-2xl relative overflow-hidden transition-all duration-300 cursor-pointer select-none flex flex-col justify-between min-h-[140px]",
+                      selectedProposalCard === 'personalize'
+                        ? "bg-purple-50/70 border-purple-500 ring-2 ring-purple-500/10 shadow-md scale-[1.02]"
+                        : "bg-white border-slate-100 hover:border-purple-300 hover:shadow-sm"
+                    )}
+                  >
+                    <div>
+                      <p className="text-[10px] font-black text-purple-600 uppercase tracking-[0.2em] mb-1">Personalize sua Proposta</p>
+                      <p className="text-3xl font-black text-purple-600 tracking-tighter">{proposalsStats?.countPersonalize || 0}</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] font-black text-purple-600 uppercase tracking-tighter">
+                          {proposalsStats?.total ? Math.round((proposalsStats.countPersonalize / proposalsStats.total) * 100) : 0}%
+                        </span>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-purple-100/40">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Total Valor Contrato</span>
+                        <span className="text-sm font-black text-purple-600 font-mono leading-none">
+                          {formatCurrency(proposalsStats?.totalPersonalizeValor || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Proposals History List */}
@@ -3709,7 +3804,8 @@ export function AdminDashboard({
                           ? "Resumo de envios por colaborador" 
                           : `Visualizando histórico da estratégia: ${
                               selectedProposalCard === 'reducao' ? "Redução de Parcela" :
-                              selectedProposalCard === 'quitacao' ? "Quitação de Contrato" : "Novo Formato"
+                              selectedProposalCard === 'quitacao' ? "Quitação de Contrato" :
+                              selectedProposalCard === 'novo_formato' ? "Novo Formato" : "Personalize sua Proposta"
                             }`
                         }
                       </p>
@@ -3726,6 +3822,8 @@ export function AdminDashboard({
                       quitacaoValue: number;
                       novoFormatoCount: number;
                       novoFormatoValue: number;
+                      personalizeCount: number;
+                      personalizeValue: number;
                       totalCount: number;
                       totalValue: number;
                     }> = {};
@@ -3753,6 +3851,8 @@ export function AdminDashboard({
                           quitacaoValue: 0,
                           novoFormatoCount: 0,
                           novoFormatoValue: 0,
+                          personalizeCount: 0,
+                          personalizeValue: 0,
                           totalCount: 0,
                           totalValue: 0
                         };
@@ -3781,6 +3881,13 @@ export function AdminDashboard({
                         userStatItem.novoFormatoValue += validVal;
                         userStatItem.totalCount += 1;
                         userStatItem.totalValue += validVal;
+                      } else if (p.isPersonalize) {
+                        const val = parseFloat(p.valor_contrato || p.valor_liberado);
+                        const validVal = isNaN(val) ? 0 : val;
+                        userStatItem.personalizeCount += 1;
+                        userStatItem.personalizeValue += validVal;
+                        userStatItem.totalCount += 1;
+                        userStatItem.totalValue += validVal;
                       } else {
                         const val = parseFloat(p.valor_liberado);
                         const validVal = isNaN(val) ? 0 : val;
@@ -3806,7 +3913,7 @@ export function AdminDashboard({
 
                     return (
                       <div className="bg-white rounded-2xl border border-slate-100 overflow-x-auto shadow-sm">
-                        <table className="w-full text-left border-collapse min-w-[800px]">
+                        <table className="w-full text-left border-collapse min-w-[900px]">
                           <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-200">
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
@@ -3814,6 +3921,7 @@ export function AdminDashboard({
                               <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-50/20">Redução de Parcela</th>
                               <th className="px-4 py-3 text-[10px] font-black text-amber-600 uppercase tracking-widest text-right bg-amber-50/20">Quitação de Contrato</th>
                               <th className="px-4 py-3 text-[10px] font-black text-yellow-600 uppercase tracking-widest text-right bg-yellow-50/20">Novo Formato</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-purple-600 uppercase tracking-widest text-right bg-purple-50/20">Personalize sua Proposta</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -3878,6 +3986,16 @@ export function AdminDashboard({
                                       </span>
                                     </div>
                                   </td>
+                                  <td className="px-4 py-4 text-right bg-purple-50/20">
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-[14px] font-black text-purple-600">
+                                        {formatCurrency(stats.personalizeValue)}
+                                      </span>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        {stats.personalizeCount} {stats.personalizeCount === 1 ? 'proposta' : 'propostas'}
+                                      </span>
+                                    </div>
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -3906,6 +4024,8 @@ export function AdminDashboard({
                         let sum = 0;
                         if (selectedProposalCard === 'quitacao') {
                           sum = sortedItems.reduce((acc, curr) => acc + (parseFloat(curr.saldo_quitacao) || 0), 0);
+                        } else if (selectedProposalCard === 'personalize') {
+                          sum = sortedItems.reduce((acc, curr) => acc + (parseFloat(curr.valor_contrato) || parseFloat(curr.valor_liberado) || 0), 0);
                         } else {
                           sum = sortedItems.reduce((acc, curr) => acc + (parseFloat(curr.valor_liberado) || 0), 0);
                         }
@@ -3954,6 +4074,7 @@ export function AdminDashboard({
                                   selectedProposalCard === 'reducao' ? "bg-emerald-50/70 border-emerald-500 hover:border-emerald-600" :
                                   selectedProposalCard === 'quitacao' ? "bg-amber-50/70 border-amber-500 hover:border-amber-600" :
                                   selectedProposalCard === 'novo_formato' ? "bg-yellow-50/70 border-yellow-500 hover:border-yellow-600" :
+                                  selectedProposalCard === 'personalize' ? "bg-purple-50/70 border-purple-500 hover:border-purple-600" :
                                   "bg-white border-slate-100 hover:border-[#162546]/20"
                                 )}
                               >
@@ -3982,6 +4103,10 @@ export function AdminDashboard({
                                     <span className="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
                                       NOVO FORMATO
                                     </span>
+                                  ) : selectedProposalCard === 'personalize' ? (
+                                    <span className="text-[10px] font-black text-purple-600 bg-purple-50 border border-purple-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                                      PERSONALIZE SUA PROPOSTA
+                                    </span>
                                   ) : (
                                     <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
                                       REDUÇÃO DE PARCELA
@@ -4001,6 +4126,13 @@ export function AdminDashboard({
                                     <>
                                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Soma dos Valores Atuais</span>
                                       <span className="text-sm font-black text-yellow-600 font-mono leading-none">
+                                        {formatCurrency(sum)}
+                                      </span>
+                                    </>
+                                  ) : selectedProposalCard === 'personalize' ? (
+                                    <>
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Soma dos Valores de Contrato</span>
+                                      <span className="text-sm font-black text-purple-600 font-mono leading-none">
                                         {formatCurrency(sum)}
                                       </span>
                                     </>
@@ -4122,1583 +4254,187 @@ export function AdminDashboard({
                                             </div>
                                           </div>
                                         )
-                                      } else if (selectedProposalCard === 'novo_formato') {
-                                        return (
-                                          <div 
-                                            key={item.id || idx} 
-                                            className={cn(
-                                              "p-5 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm",
-                                              idx % 2 === 0 ? "bg-slate-100" : "bg-white"
-                                            )}
-                                          >
-                                            <div className="flex items-center gap-3 min-w-[200px]">
-                                              <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-[#1C2643]">
-                                                <History className="w-4 h-4" />
-                                              </div>
-                                              <div>
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Cliente</span>
-                                                <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
-                                                  {item.cliente_nome || "Não informado"}
-                                                </span>
-                                                <span className="text-[12px] font-bold text-black/80 mt-1 block leading-none font-mono">
-                                                  {item.cliente_cpf ? item.cliente_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
-                                                </span>
-                                              </div>
-                                            </div>
 
-                                            <div className="flex flex-col min-w-[150px]">
-                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
-                                              <span className="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
-                                                NOVO FORMATO
-                                              </span>
-                                            </div>
 
-                                            <div className="flex flex-col">
-                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Atual</span>
-                                              <span className="text-sm font-black text-yellow-600 font-mono leading-none">
-                                                {item.valor_liberado ? formatCurrency(item.valor_liberado) : "--"}
-                                              </span>
-                                            </div>
+       } else if (selectedProposalCard === "novo_formato" || selectedProposalCard === "personalize") {
+         return (
+           <div 
+             key={item.id || idx} 
+             className={cn(
+               "p-5 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm",
+               idx % 2 === 0 ? "bg-slate-100" : "bg-white"
+             )}
+           >
+             <div className="flex items-center gap-3 min-w-[200px]">
+               <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-[#1C2643]">
+                 <History className="w-4 h-4" />
+               </div>
+               <div>
+                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Cliente</span>
+                 <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
+                   {item.cliente_nome || "Não informado"}
+                 </span>
+                 <span className="text-[12px] font-bold text-black/80 mt-1 block leading-none font-mono">
+                   {item.cliente_cpf ? item.cliente_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
+                 </span>
+               </div>
+             </div>
 
-                                            <div className="flex flex-col">
-                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
-                                              <span className="text-xs font-bold text-slate-500 font-mono leading-none">
-                                                {formattedDate}
-                                              </span>
-                                            </div>
+             <div className="flex flex-col min-w-[150px]">
+               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
+               {selectedProposalCard === "personalize" ? (
+                 <span className="text-[10px] font-black text-purple-600 bg-purple-50 border border-purple-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                   PERSONALIZE SUA PROPOSTA
+                 </span>
+               ) : (
+                 <span className="text-[10px] font-black text-yellow-600 bg-yellow-50 border border-yellow-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                   NOVO FORMATO
+                 </span>
+               )}
+             </div>
 
-                                            <div className="flex items-center gap-2">
-                                              <button
-                                                onClick={() => {
-                                                  if (item.cliente_cpf) {
-                                                    router.push(`/pesquisa?cpf=${item.cliente_cpf}`)
-                                                  } else {
-                                                    toast.error("CPF do cliente não encontrado para esta proposta.")
-                                                  }
-                                                }}
-                                                className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap"
-                                              >
-                                                <ArrowRight className="w-3 h-3" />
-                                                ACESSAR CLIENTE
-                                              </button>
-                                              <button
-                                                onClick={() => handleDeleteProposal(item)}
-                                                className="h-7 w-7 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-all rounded-lg flex items-center justify-center cursor-pointer shadow-sm"
-                                                title="Excluir Proposta"
-                                              >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                              </button>
-                                            </div>
-                                          </div>
-                                        )
-                                      } else {
-                                        // Redução de Parcela
-                                        return (
-                                          <div 
-                                            key={item.id || idx} 
-                                            className={cn(
-                                              "p-5 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm",
-                                              idx % 2 === 0 ? "bg-slate-100" : "bg-white"
-                                            )}
-                                          >
-                                            <div className="flex items-center gap-3 min-w-[200px]">
-                                              <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-[#1C2643]">
-                                                <History className="w-4 h-4" />
-                                              </div>
-                                              <div>
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Cliente</span>
-                                                <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
-                                                  {item.cliente_nome || "Não informado"}
-                                                </span>
-                                                <span className="text-[12px] font-bold text-black/80 mt-1 block leading-none font-mono">
-                                                  {item.cliente_cpf ? item.cliente_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
-                                                </span>
-                                              </div>
-                                            </div>
+             <div className="flex flex-col">
+               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+                 {selectedProposalCard === "personalize" ? "Valor Contrato" : "Valor Atual"}
+               </span>
+               <span className={cn("text-sm font-black font-mono leading-none", selectedProposalCard === "personalize" ? "text-purple-600" : "text-yellow-600")}>
+                 {selectedProposalCard === "personalize"
+                   ? (item.valor_contrato || item.valor_liberado ? formatCurrency(item.valor_contrato || item.valor_liberado) : "--")
+                   : (item.valor_liberado ? formatCurrency(item.valor_liberado) : "--")
+                 }
+               </span>
+             </div>
 
-                                            <div className="flex flex-col min-w-[150px]">
-                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
-                                              <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
-                                                REDUÇÃO DE PARCELA
-                                              </span>
-                                            </div>
+             <div className="flex flex-col">
+               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+               <span className="text-xs font-bold text-slate-500 font-mono leading-none">
+                 {formattedDate}
+               </span>
+             </div>
 
-                                            <div className="flex flex-col">
-                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Liberado</span>
-                                              <span className="text-sm font-black text-emerald-600 font-mono leading-none">
-                                                {item.valor_liberado ? formatCurrency(item.valor_liberado) : "--"}
-                                              </span>
-                                            </div>
+             <div className="flex items-center gap-2">
+               <button
+                 onClick={() => {
+                   if (item.cliente_cpf) {
+                     router.push(`/pesquisa?cpf=${item.cliente_cpf}`)
+                   } else {
+                     toast.error("CPF do cliente não encontrado para esta proposta.")
+                   }
+                 }}
+                 className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap"
+               >
+                 <ArrowRight className="w-3 h-3" />
+                 ACESSAR CLIENTE
+               </button>
+               <button
+                 onClick={() => handleDeleteProposal(item)}
+                 className="h-7 w-7 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-all rounded-lg flex items-center justify-center cursor-pointer shadow-sm"
+                 title="Excluir Proposta"
+               >
+                 <Trash2 className="w-3.5 h-3.5" />
+               </button>
+             </div>
+           </div>
+         )
+       } else {
+         return (
+           <div 
+             key={item.id || idx} 
+             className={cn(
+               "p-5 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#162546]/20 transition-all shadow-sm",
+               idx % 2 === 0 ? "bg-slate-100" : "bg-white"
+             )}
+           >
+             <div className="flex items-center gap-3 min-w-[200px]">
+               <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-[#1C2643]">
+                 <History className="w-4 h-4" />
+               </div>
+               <div>
+                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Cliente</span>
+                 <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
+                   {item.cliente_nome || "Não informado"}
+                 </span>
+                 <span className="text-[12px] font-bold text-black/80 mt-1 block leading-none font-mono">
+                   {item.cliente_cpf ? item.cliente_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
+                 </span>
+               </div>
+             </div>
 
-                                            <div className="flex flex-col">
-                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
-                                              <span className="text-xs font-bold text-slate-500 font-mono leading-none">
-                                                {formattedDate}
-                                              </span>
-                                            </div>
+             <div className="flex flex-col min-w-[150px]">
+               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Estratégia</span>
+               <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-0.5 uppercase tracking-tight w-fit">
+                 REDUÇÃO DE PARCELA
+               </span>
+             </div>
 
-                                            <div className="flex items-center gap-2">
-                                              <button
-                                                onClick={() => {
-                                                  if (item.cliente_cpf) {
-                                                    router.push(`/pesquisa?cpf=${item.cliente_cpf}`)
-                                                  } else {
-                                                    toast.error("CPF do cliente não encontrado para esta proposta.")
-                                                  }
-                                                }}
-                                                className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap"
-                                              >
-                                                <ArrowRight className="w-3 h-3" />
-                                                ACESSAR CLIENTE
-                                              </button>
-                                              <button
-                                                onClick={() => handleDeleteProposal(item)}
-                                                className="h-7 w-7 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-all rounded-lg flex items-center justify-center cursor-pointer shadow-sm"
-                                                title="Excluir Proposta"
-                                              >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                              </button>
-                                            </div>
-                                          </div>
-                                        )
-                                      }
-                                    })
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })() : (
-                    <div className="flex flex-col items-center justify-center py-12 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                        Nenhuma proposta encontrada para esta estratégia
-                      </p>
+             <div className="flex flex-col">
+               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Nova Parcela</span>
+               <span className="text-sm font-black text-emerald-600 font-mono leading-none">
+                 {item.nova_parcela ? formatCurrency(item.nova_parcela) : "--"}
+               </span>
+             </div>
+
+             <div className="flex flex-col">
+               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+               <span className="text-xs font-bold text-slate-500 font-mono leading-none">
+                 {formattedDate}
+               </span>
+             </div>
+
+             <div className="flex items-center gap-2">
+               <button
+                 onClick={() => {
+                   if (item.cliente_cpf) {
+                     router.push(`/pesquisa?cpf=${item.cliente_cpf}`)
+                   } else {
+                     toast.error("CPF do cliente não encontrado para esta proposta.")
+                   }
+                 }}
+                 className="h-7 px-2.5 text-[9px] font-black uppercase tracking-widest bg-[#1C2643] hover:bg-[#1C2643]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap"
+               >
+                 <ArrowRight className="w-3 h-3" />
+                 ACESSAR CLIENTE
+               </button>
+               <button
+                 onClick={() => handleDeleteProposal(item)}
+                 className="h-7 w-7 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-all rounded-lg flex items-center justify-center cursor-pointer shadow-sm"
+                 title="Excluir Proposta"
+               >
+                 <Trash2 className="w-3.5 h-3.5" />
+               </button>
+             </div>
+           </div>
+         )
+       }
+     })
+   )}
+ </div>
+)}
+</div>
+)
+})}
+</div>
+)
+})()
+                : (
+                  <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">
+                    <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-slate-400 shadow-sm mb-4 border border-slate-100">
+                      <History className="w-6 h-6" />
                     </div>
-                  )}
-                </div>
-              </>
-            )}
+                    <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-wide mb-1">
+                      Nenhuma proposta encontrada
+                    </h3>
+                    <p className="text-xs text-slate-400 max-w-sm font-medium">
+                      Não há propostas registradas para os filtros selecionados.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
           </motion.div>
         )
       })()}
-
-      {activeTab === 'financeiro' && (
-        <motion.div
-          key="financeiro"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-6"
-        >
-          {/* Header Row with Period Filter at the top-right (Sticky) */}
-          <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all">
-            {/* Filter controls */}
-            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
-              <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
-                {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
-                  <button
-                    key={period}
-                    onClick={() => handlePeriodChange(period)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
-                      financialPeriod === period
-                        ? "bg-white text-[#1C2643] shadow-sm font-extrabold"
-                        : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    {period === 'mes' ? 'Mês' : period === 'trimestre' ? 'Trimestre' : period}
-                  </button>
-                ))}
-              </div>
-
-              {financialPeriod === 'personalizado' && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mt-1 self-end"
-                >
-                  <div className="flex items-center gap-1">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
-                    <input 
-                      type="date" 
-                      value={financialStartDate}
-                      onChange={(e) => setFinancialStartDate(e.target.value)}
-                      className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
-                    <input 
-                      type="date" 
-                      value={financialEndDate}
-                      onChange={(e) => setFinancialEndDate(e.target.value)}
-                      className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
-                    />
-                  </div>
-                  <button
-                    onClick={fetchFinancialData}
-                    className="px-2.5 py-1 bg-[#1C2643] text-white text-[9px] font-black rounded-md hover:bg-[#1C2643]/90 transition-all active:scale-95"
-                  >
-                    FILTRAR
-                  </button>
-                </motion.div>
-              )}
-            </div>
-          </div>
-
-          {/* Section Title (Static/Non-Sticky) */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2">
-            <div>
-              <h2 className="text-xl font-black text-[#1C2643] tracking-tight mt-1 uppercase">{isCorretorPJ ? "SUSTENTABILIDADE E PRODUÇÃO" : "SUSTENTABILIDADE E RECEITA"}</h2>
-            </div>
-          </div>
-
-          {/* Cards Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-            {/* Column 1: Produção Total + Receita Total stacked vertically */}
-            <div className="flex flex-col gap-6 h-full justify-between">
-              {/* Card: Produção Total do Período */}
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-[#1C2643]/10 transition-all duration-300 flex-1 min-h-[160px]"
-              >
-                <div className="absolute top-0 right-0 w-32 h-32 bg-[#1C2643]/2 rounded-full blur-3xl group-hover:bg-[#1C2643]/5 transition-all duration-300" />
-                <div className="relative z-10 flex flex-col justify-between h-full">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                        Produção Total do Período
-                      </span>
-                      <div className="bg-[#1C2643]/5 p-2 rounded-xl text-[#1C2643]">
-                        <BarChart3 className="w-4 h-4" />
-                      </div>
-                    </div>
-                    
-                    {isFinancialLoading ? (
-                      <div className="h-8 flex items-center">
-                        <Loader2 className="w-5 h-5 animate-spin text-[#1C2643]" />
-                      </div>
-                    ) : (
-                      <h3 className="text-xl sm:text-2xl font-black text-[#1C2643] tracking-tight">
-                        {formatCurrency(totalProduction)}
-                      </h3>
-                    )}
-                  </div>
-                  
-                  <p className="text-[10px] font-bold text-slate-400 mt-2">
-                    Soma de todos os <span className="text-[#1C2643] font-extrabold">Valores do Cliente</span> liberados no período.
-                  </p>
-                </div>
-              </motion.div>
-
-              {/* Card: Receita Total da Empresa */}
-              {!isCorretorPJ && (
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.1 }}
-                  className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/10 transition-all duration-300 flex-1 min-h-[160px]"
-                >
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/2 rounded-full blur-3xl group-hover:bg-emerald-500/5 transition-all duration-300" />
-                  <div className="relative z-10 flex flex-col justify-between h-full">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                          {filterUserId ? "Sua Receita Total" : "Receita Total da Empresa"}
-                        </span>
-                        <div className="bg-emerald-50 text-emerald-600 p-2 rounded-xl">
-                          <TrendingUp className="w-4 h-4" />
-                        </div>
-                      </div>
-                      
-                      {isFinancialLoading ? (
-                        <div className="h-8 flex items-center">
-                          <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
-                        </div>
-                      ) : (
-                        <h3 className="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight">
-                          {formatCurrency(totalRevenue)}
-                        </h3>
-                      )}
-                    </div>
-                    
-                    <p className="text-[10px] font-bold text-slate-400 mt-2">
-                      Soma das comissões faturadas (<span className="text-emerald-600 font-extrabold">Contas a Receber</span>) no período.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-
-            {/* Column 2: Quantidade de Contratos Pagos */}
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.2 }}
-              className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-indigo-500/10 transition-all duration-300 min-h-[340px]"
-            >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/2 rounded-full blur-3xl group-hover:bg-indigo-500/5 transition-all duration-300" />
-              <div className="relative z-10 flex flex-col h-full justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                      Contratos Pagos
-                    </span>
-                    <div className="bg-indigo-50 text-indigo-600 p-2.5 rounded-xl">
-                      <CheckCircle2 className="w-5 h-5" />
-                    </div>
-                  </div>
-                  
-                  {isFinancialLoading ? (
-                    <div className="h-10 flex items-center">
-                      <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
-                    </div>
-                  ) : (
-                    <div>
-                      <h3 className="text-6xl sm:text-7xl lg:text-[8rem] leading-none font-black text-[#1C2643] tracking-tighter mt-4 mb-2">
-                        {filteredFinancialProposals.length}
-                      </h3>
-                      <p className="text-[11px] font-extrabold text-indigo-600 uppercase mt-2 tracking-wider">
-                        Contratos Efetivados
-                      </p>
-                    </div>
-                  )}
-                </div>
-                
-                <p className="text-[11px] font-bold text-slate-400 mt-4 leading-relaxed">
-                  Total de operações efetivadas/pagas no período. Considera exclusivamente propostas com status <span className="text-indigo-600 font-extrabold">‘PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA’</span> e <span className="text-indigo-600 font-extrabold">‘PÓS-VENDA REALIZADA’</span>.
-                </p>
-              </div>
-            </motion.div>
-
-            {/* Column 3: Ticket Médio + Receita Média stacked vertically */}
-            <div className="flex flex-col gap-6 h-full justify-between">
-              {/* Card: Ticket Médio de Produção */}
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.3 }}
-                className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-amber-500/10 transition-all duration-300 flex-1 min-h-[160px]"
-              >
-                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/2 rounded-full blur-3xl group-hover:bg-amber-500/5 transition-all duration-300" />
-                <div className="relative z-10 flex flex-col justify-between h-full">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                        Ticket Médio de Produção
-                      </span>
-                      <div className="bg-amber-50 text-amber-600 p-2 rounded-xl">
-                        <Trophy className="w-4 h-4" />
-                      </div>
-                    </div>
-                    
-                    {isFinancialLoading ? (
-                      <div className="h-8 flex items-center">
-                        <Loader2 className="w-5 h-5 animate-spin text-amber-600" />
-                      </div>
-                    ) : (
-                      <h3 className="text-xl sm:text-2xl font-black text-amber-600 tracking-tight">
-                        {formatCurrency(
-                          filteredFinancialProposals.length === 0
-                            ? 0
-                            : totalProduction / filteredFinancialProposals.length
-                        )}
-                      </h3>
-                    )}
-                  </div>
-                  
-                  <p className="text-[10px] font-bold text-slate-400 mt-2">
-                    Soma da produção total dividida pela <span className="text-amber-600 font-extrabold">quantidade de contratos pagos</span>.
-                  </p>
-                </div>
-              </motion.div>
-
-              {/* Card: Receita Média por Contrato */}
-              {!isCorretorPJ && (
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.4 }}
-                  className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-[#1C2643]/10 transition-all duration-300 flex-1 min-h-[160px]"
-                >
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-[#1C2643]/2 rounded-full blur-3xl group-hover:bg-[#1C2643]/5 transition-all duration-300" />
-                  <div className="relative z-10 flex flex-col justify-between h-full">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                          Receita Média por Contrato
-                        </span>
-                        <div className="bg-[#1C2643]/5 p-2 rounded-xl text-[#1C2643]">
-                          <Target className="w-4 h-4" />
-                        </div>
-                      </div>
-                      
-                      {isFinancialLoading ? (
-                        <div className="h-8 flex items-center">
-                          <Loader2 className="w-5 h-5 animate-spin text-[#1C2643]" />
-                        </div>
-                      ) : (
-                        <h3 className="text-xl sm:text-2xl font-black text-[#1C2643] tracking-tight">
-                          {formatCurrency(
-                            filteredFinancialProposals.length === 0
-                              ? 0
-                              : totalRevenue / filteredFinancialProposals.length
-                          )}
-                        </h3>
-                      )}
-                    </div>
-                    
-                    <p className="text-[10px] font-bold text-slate-400 mt-2">
-                      Soma da receita total dividida pela <span className="text-[#1C2643] font-extrabold">quantidade de contratos pagos</span>.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-          </div>
-
-          {/* COMPARATIVE SECTION: YoY and MoM Comparisons + Recharts Trend Chart */}
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.5 }}
-            className="mt-8 space-y-6"
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-t border-slate-100 pt-6">
-              <div>
-                <h3 className="text-lg font-black text-[#1C2643] tracking-tight mt-1 uppercase">ANALISE COMPARATIVA</h3>
-              </div>
-              
-              {/* Chart Metric Selector */}
-              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 mt-2 sm:mt-0 self-start sm:self-center">
-                <button
-                  onClick={() => setCompareChartMetric('producao')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
-                    compareChartMetric === 'producao'
-                      ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-700"
-                  )}
-                >
-                  Produção (R$)
-                </button>
-                {!isCorretorPJ && (
-                  <button
-                    onClick={() => setCompareChartMetric('receita')}
-                    className={cn(
-                      "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
-                      compareChartMetric === 'receita'
-                        ? "bg-emerald-600 text-white shadow-sm font-extrabold"
-                        : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    Receita (R$)
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Card Comparativo MoM */}
-              <div className="col-span-1">
-                {/* MoM Card */}
-                <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-[#1C2643]/10 transition-all duration-300 h-full min-h-[380px]">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/2 rounded-full blur-2xl" />
-                  <div className="relative z-10 h-full flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                          {dynamicComparisonStats.title}
-                        </span>
-                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md uppercase">
-                          {dynamicComparisonStats.badge}
-                        </span>
-                      </div>
-
-                      <div className="space-y-4">
-                        {/* MoM Produção */}
-                        <div>
-                          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Produção</p>
-                          <div className="flex items-baseline justify-between mt-1">
-                            <p className="text-lg font-black text-[#1C2643]">{formatCurrency(dynamicComparisonStats.prodCurrent)}</p>
-                            <div className={cn(
-                              "flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black",
-                              dynamicComparisonStats.prodPct > 0 
-                                ? "bg-emerald-50 text-emerald-600" 
-                                : dynamicComparisonStats.prodPct < 0 
-                                  ? "bg-rose-50 text-rose-600" 
-                                  : "bg-slate-100 text-slate-500"
-                            )}>
-                              {dynamicComparisonStats.prodPct > 0 ? <ArrowUpRight className="w-3 h-3" /> : dynamicComparisonStats.prodPct < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
-                              {Math.abs(dynamicComparisonStats.prodPct).toFixed(1)}%
-                            </div>
-                          </div>
-                          <p className="text-[9px] font-medium text-slate-400 mt-0.5">
-                            Anterior: {formatCurrency(dynamicComparisonStats.prodPrevious)}
-                          </p>
-                        </div>
-
-                        {/* MoM Receita */}
-                        {!isCorretorPJ && (
-                          <div className="pt-3 border-t border-slate-50">
-                            <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Receita</p>
-                            <div className="flex items-baseline justify-between mt-1">
-                              <p className="text-lg font-black text-emerald-600">{formatCurrency(dynamicComparisonStats.revCurrent)}</p>
-                              <div className={cn(
-                                "flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black",
-                                dynamicComparisonStats.revPct > 0 
-                                  ? "bg-emerald-50 text-emerald-600" 
-                                  : dynamicComparisonStats.revPct < 0 
-                                    ? "bg-rose-50 text-rose-600" 
-                                    : "bg-slate-100 text-slate-500"
-                              )}>
-                                {dynamicComparisonStats.revPct > 0 ? <ArrowUpRight className="w-3 h-3" /> : dynamicComparisonStats.revPct < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
-                                {Math.abs(dynamicComparisonStats.revPct).toFixed(1)}%
-                              </div>
-                            </div>
-                            <p className="text-[9px] font-medium text-slate-400 mt-0.5">
-                              Anterior: {formatCurrency(dynamicComparisonStats.revPrevious)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-4 pt-4 border-t border-slate-100">
-                      <p className="text-[9px] font-medium text-slate-400 leading-normal">
-                        Métricas de desempenho calculadas comparando o período selecionado contra o período equivalente anterior para monitorar evolução.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Chart Card */}
-              <div className="lg:col-span-2 bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <span className="text-[10px] font-black text-[#718198] uppercase tracking-widest">
-                        {financialPeriod === 'dia' ? "Distribuição Diária (Últimos 7 dias)" :
-                         financialPeriod === 'semana' ? "Distribuição Semanal" :
-                         financialPeriod === 'mes' ? "Progresso Semanal do Mês" :
-                         financialPeriod === 'trimestre' ? "Distribuição Trimestral" :
-                         financialPeriod === 'ano' ? "Distribuição Mensal E Tendência Histórica" :
-                         "Distribuição do Período Selecionado"}
-                      </span>
-                      <h4 className="text-xs font-bold text-slate-400 mt-0.5">
-                        {compareChartMetric === 'producao' ? 'Produção Total' : 'Receita Gerada'} {
-                          financialPeriod === 'dia' ? 'nos últimos dias' :
-                          financialPeriod === 'semana' ? 'por dia da semana' :
-                          financialPeriod === 'mes' ? 'por semana do mês' :
-                          financialPeriod === 'trimestre' ? 'por mês do trimestre' :
-                          financialPeriod === 'ano' ? 'por mês' : 'no período'
-                        }
-                      </h4>
-                    </div>
-                  </div>
-
-                  <div className="w-full h-[290px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart
-                        data={dynamicChartData}
-                        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis 
-                          dataKey="name" 
-                          axisLine={false} 
-                          tickLine={false} 
-                          tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
-                        />
-                        <YAxis 
-                          axisLine={false} 
-                          tickLine={false} 
-                          tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
-                          tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`}
-                        />
-                        <Tooltip 
-                          content={({ active, payload, label }) => {
-                            if (active && payload && payload.length) {
-                              const val = payload[0].value;
-                              return (
-                                <div className="bg-[#1c2643] p-3 rounded-xl border-none shadow-md text-white text-xs font-bold">
-                                  <p className="text-white mb-1">{label}</p>
-                                  <p className="text-white text-[13px] font-black">{formatCurrency(Number(val))}</p>
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        <Bar 
-                          name={compareChartMetric === 'producao' ? "Produção" : "Receita"} 
-                          dataKey={compareChartMetric === 'producao' ? "productionCurrent" : "revenueCurrent"} 
-                          radius={[4, 4, 0, 0]} 
-                        >
-                          {dynamicChartData.map((entry: any, index: number) => {
-                            const isCurrent = !!entry.isCurrent
-                            const isPrevious = !!entry.isPrevious
-
-                            let barColor = "#cbd5e1"
-                            if (compareChartMetric === 'producao') {
-                              if (isCurrent) barColor = "#1c2643"
-                              else if (isPrevious) barColor = "#6366f1"
-                            } else {
-                              if (isCurrent) barColor = "#10b981"
-                              else if (isPrevious) barColor = "#34d399"
-                            }
-                            return <Cell key={`cell-${index}`} fill={barColor} />
-                          })}
-                        </Bar>
-                        <Line 
-                          type="linear" 
-                          name="Tendência" 
-                          dataKey={compareChartMetric === 'producao' ? "productionCurrent" : "revenueCurrent"} 
-                          stroke={compareChartMetric === 'producao' ? "#1c2643" : "#10b981"} 
-                          strokeWidth={3}
-                          dot={{ r: 5, strokeWidth: 2, fill: "#ffffff" }}
-                          activeDot={{ r: 7 }}
-                        />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                <p className="text-[10px] font-bold text-slate-400 mt-4 leading-relaxed">
-                  * Os dados mostram a distribuição do período selecionado de propostas efetivadas.{!isCorretorPJ ? <> As barras do momento atual e anterior são destacadas em cores diferentes. Use os botões acima para alternar o foco da análise entre volume de <span className={cn("font-extrabold", compareChartMetric === 'producao' ? "text-[#1C2643]" : "text-emerald-600")}>{compareChartMetric === 'producao' ? 'Produção' : 'Receita'}</span>.</> : <> As barras do momento atual e anterior são destacadas em cores diferentes.</>}
-                </p>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* MIX DE MERCADO & CANAIS */}
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.6 }}
-            className="mt-8 pt-8 border-t border-slate-100 space-y-6"
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-lg font-black text-[#1C2643] tracking-tight mt-1 uppercase">DIAGNÓSTICO DE DESEMPENHO</h3>
-              </div>
-
-              {/* Seletor de abas de canais */}
-              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 mt-3 sm:mt-0 overflow-x-auto max-w-full">
-                <button
-                  onClick={() => setAnalysisTab('produtos')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
-                    analysisTab === 'produtos'
-                      ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-700"
-                  )}
-                >
-                  Produtos
-                </button>
-                <button
-                  onClick={() => setAnalysisTab('convenios')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
-                    analysisTab === 'convenios'
-                      ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-700"
-                  )}
-                >
-                  Convênios
-                </button>
-                <button
-                  onClick={() => setAnalysisTab('bancos')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
-                    analysisTab === 'bancos'
-                      ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-700"
-                  )}
-                >
-                  Bancos
-                </button>
-                {!((perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || perfil?.role?.toLowerCase() === 'pj' || (!!filterUserId && onlyFinanceiro)) && (
-                  <button
-                    onClick={() => setAnalysisTab('comercial')}
-                    className={cn(
-                      "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
-                      analysisTab === 'comercial'
-                        ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
-                        : "text-slate-500 hover:text-slate-[#718198]"
-                    )}
-                  >
-                    Equipe Comercial
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Conteúdo dinâmico da aba de análise */}
-            <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm">
-              {analysisTab === 'produtos' && (
-                <div>
-                  <div className="flex items-center justify-between mb-6">
-                    <h4 className="text-xs font-black text-[#1C2643] uppercase tracking-widest">Participação por Produto</h4>
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                      {businessBreakdown.products.length} produtos ativos
-                    </span>
-                  </div>
-                  {businessBreakdown.products.length === 0 ? (
-                    <div className="text-center py-12 text-slate-400 font-bold text-xs uppercase tracking-widest">
-                      Nenhuma proposta processada neste período
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {businessBreakdown.products.map((p, idx) => {
-                        const prodShare = totalProduction > 0 ? (p.prod / totalProduction) * 100 : 0
-                        const revShare = totalRevenue > 0 ? (p.rev / totalRevenue) * 100 : 0
-                        return (
-                          <div key={idx} className="p-4 border border-slate-50 rounded-2xl bg-slate-50/30 hover:bg-slate-50/60 transition-all">
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <h5 className="text-xs font-black text-[#1C2643] uppercase tracking-tight">{p.name}</h5>
-                                <p className="text-[9px] font-bold text-slate-400 mt-0.5">{p.count} {p.count === 1 ? 'contrato pago' : 'contratos pagos'}</p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-3 mt-3">
-                              <div>
-                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-                                  <span>Produção: {formatCurrency(p.prod)}</span>
-                                  <span className="font-extrabold text-[#1C2643]">{prodShare.toFixed(1)}%</span>
-                                </div>
-                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-[#1C2643] rounded-full transition-all duration-500" style={{ width: `${prodShare}%` }} />
-                                </div>
-                              </div>
-
-                              {!isCorretorPJ && (
-                                <div>
-                                  <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-                                    <span>Receita: {formatCurrency(p.rev)}</span>
-                                    <span className="font-extrabold text-emerald-600">{revShare.toFixed(1)}%</span>
-                                  </div>
-                                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${revShare}%` }} />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {analysisTab === 'convenios' && (
-                <div>
-                  <div className="flex items-center justify-between mb-6">
-                    <h4 className="text-xs font-black text-[#1C2643] uppercase tracking-widest">Participação por Convênio / Órgão</h4>
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                      {businessBreakdown.convenios.length} convênios ativos
-                    </span>
-                  </div>
-                  {businessBreakdown.convenios.length === 0 ? (
-                    <div className="text-center py-12 text-slate-400 font-bold text-xs uppercase tracking-widest">
-                      Nenhuma proposta processada neste período
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {businessBreakdown.convenios.map((c, idx) => {
-                        const prodShare = totalProduction > 0 ? (c.prod / totalProduction) * 100 : 0
-                        const revShare = totalRevenue > 0 ? (c.rev / totalRevenue) * 100 : 0
-                        return (
-                          <div key={idx} className="p-4 border border-slate-50 rounded-2xl bg-slate-50/30 hover:bg-slate-50/60 transition-all">
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <h5 className="text-xs font-black text-[#1C2643] uppercase tracking-tight">{c.name}</h5>
-                                <p className="text-[9px] font-bold text-slate-400 mt-0.5">{c.count} {c.count === 1 ? 'contrato pago' : 'contratos pagos'}</p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-3 mt-3">
-                              <div>
-                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-                                  <span>Produção: {formatCurrency(c.prod)}</span>
-                                  <span className="font-extrabold text-[#1C2643]">{prodShare.toFixed(1)}%</span>
-                                </div>
-                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-[#1C2643] rounded-full transition-all duration-500" style={{ width: `${prodShare}%` }} />
-                                </div>
-                              </div>
-
-                              {!isCorretorPJ && (
-                                <div>
-                                  <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-                                    <span>Receita: {formatCurrency(c.rev)}</span>
-                                    <span className="font-extrabold text-emerald-600">{revShare.toFixed(1)}%</span>
-                                  </div>
-                                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${revShare}%` }} />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {analysisTab === 'bancos' && (
-                <div>
-                  <div className="flex items-center justify-between mb-6">
-                    <h4 className="text-xs font-black text-[#1C2643] uppercase tracking-widest">Participação por Instituição Financeira</h4>
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                      {businessBreakdown.bancos.length} bancos parceiros
-                    </span>
-                  </div>
-                  {businessBreakdown.bancos.length === 0 ? (
-                    <div className="text-center py-12 text-slate-400 font-bold text-xs uppercase tracking-widest">
-                      Nenhuma proposta processada neste período
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {businessBreakdown.bancos.map((b, idx) => {
-                        const prodShare = totalProduction > 0 ? (b.prod / totalProduction) * 100 : 0
-                        const revShare = totalRevenue > 0 ? (b.rev / totalRevenue) * 100 : 0
-                        return (
-                          <div key={idx} className="p-4 border border-slate-50 rounded-2xl bg-slate-50/30 hover:bg-slate-50/60 transition-all">
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <h5 className="text-xs font-black text-[#1C2643] uppercase tracking-tight">{b.name}</h5>
-                                <p className="text-[9px] font-bold text-slate-400 mt-0.5">{b.count} {b.count === 1 ? 'contrato pago' : 'contratos pagos'}</p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-3 mt-3">
-                              <div>
-                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-                                  <span>Produção: {formatCurrency(b.prod)}</span>
-                                  <span className="font-extrabold text-[#1C2643]">{prodShare.toFixed(1)}%</span>
-                                </div>
-                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-[#1C2643] rounded-full transition-all duration-500" style={{ width: `${prodShare}%` }} />
-                                </div>
-                              </div>
-
-                              {!isCorretorPJ && (
-                                <div>
-                                  <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-                                    <span>Receita: {formatCurrency(b.rev)}</span>
-                                    <span className="font-extrabold text-emerald-600">{revShare.toFixed(1)}%</span>
-                                  </div>
-                                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${revShare}%` }} />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {analysisTab === 'comercial' && (
-                <div className="space-y-8">
-                  {/* Broker Breakdown */}
-                  <div>
-                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-                      <h4 className="text-xs font-black text-[#1C2643] uppercase tracking-widest">Participação por Consultor (Corretor)</h4>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Detalhamento Individual</span>
-                    </div>
-                    {businessBreakdown.corretores.length === 0 ? (
-                      <div className="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-widest">
-                        Nenhuma atribuição de corretor identificada
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                        {businessBreakdown.corretores.map((c, idx) => {
-                          const prodShare = totalProduction > 0 ? (c.prod / totalProduction) * 100 : 0
-                          const revShare = totalRevenue > 0 ? (c.rev / totalRevenue) * 100 : 0
-                          return (
-                            <div key={idx} className="p-3 border border-slate-50 rounded-xl bg-slate-50/20 hover:bg-slate-50/50 transition-all">
-                              <div>
-                                <h5 className="text-[11px] font-black text-[#1C2643] uppercase truncate">{c.name}</h5>
-                                <p className="text-[8px] font-bold text-slate-400 mt-0.5">{c.count} {c.count === 1 ? 'contrato' : 'contratos'}</p>
-                              </div>
-
-                              <div className="space-y-1.5 mt-2">
-                                <div className="flex justify-between text-[8.5px] font-bold text-slate-500">
-                                  <span>Prod: {formatCurrency(c.prod)}</span>
-                                  <span>{prodShare.toFixed(1)}%</span>
-                                </div>
-                                {!isCorretorPJ && (
-                                  <div className="flex justify-between text-[8.5px] font-bold text-slate-500">
-                                    <span className="text-emerald-600">Rec: {formatCurrency(c.rev)}</span>
-                                    <span className="text-emerald-600">{revShare.toFixed(1)}%</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
-
-          {/* RANKING DE PERFORMANCE DE CANAIS */}
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.7 }}
-            className="mt-8 pt-8 border-t border-slate-100 space-y-6"
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-black text-[#1C2643] tracking-tight mt-1 uppercase">RANKING DE PERFORMANCE POR CANAL</h3>
-              </div>
-
-              {/* Seletor de métrica do ranking */}
-              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto max-w-full">
-                <button
-                  onClick={() => setRankingMetric('producao')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
-                    rankingMetric === 'producao'
-                      ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-700"
-                  )}
-                >
-                  Produção
-                </button>
-                {!isCorretorPJ && (
-                  <button
-                    onClick={() => setRankingMetric('receita')}
-                    className={cn(
-                      "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
-                      rankingMetric === 'receita'
-                        ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
-                        : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    Receita
-                  </button>
-                )}
-                <button
-                  onClick={() => setRankingMetric('crescimento')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer",
-                    rankingMetric === 'crescimento'
-                      ? "bg-[#1C2643] text-white shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-700"
-                  )}
-                >
-                  Crescimento
-                </button>
-              </div>
-            </div>
-
-            {/* Grid com as 3 tabelas de Rankings */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* CARD 1: BANCOS */}
-              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col">
-                <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-indigo-600" />
-                    <h4 className="text-xs font-black text-[#1C2643] uppercase tracking-wider">Top Bancos</h4>
-                  </div>
-                  <span className="text-[9px] font-black text-[#718198] uppercase tracking-widest">
-                    Por {rankingMetric === 'producao' ? 'Produção' : rankingMetric === 'receita' ? 'Receita' : 'Crescimento'}
-                  </span>
-                </div>
-
-                <div className="space-y-3 flex-1 overflow-y-auto max-h-[360px] pr-1">
-                  {(() => {
-                    const sortedBancos = [...rankingsData.bancos].sort((a, b) => {
-                      if (rankingMetric === 'producao') return b.prod - a.prod
-                      if (rankingMetric === 'receita') return b.rev - a.rev
-                      return b.prodGrowth - a.prodGrowth
-                    })
-
-                    if (sortedBancos.length === 0) {
-                      return (
-                        <div className="text-center py-12 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                          Nenhum banco com volume
-                        </div>
-                      )
-                    }
-
-                    return sortedBancos.map((item, idx) => {
-                      const position = idx + 1
-                      const displayVal = rankingMetric === 'producao' 
-                        ? formatCurrency(item.prod)
-                        : rankingMetric === 'receita'
-                        ? formatCurrency(item.rev)
-                        : `${item.prodGrowth >= 0 ? '+' : ''}${item.prodGrowth.toFixed(1)}%`
-
-                      return (
-                        <div key={item.key} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-50 bg-slate-50/20 hover:bg-slate-50/50 transition-all">
-                          <div className="flex items-center gap-3 truncate max-w-[70%]">
-                            <span className={cn(
-                              "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black",
-                              position === 1 ? "bg-amber-100 text-amber-700" :
-                              position === 2 ? "bg-slate-200 text-slate-700" :
-                              position === 3 ? "bg-orange-100 text-orange-700" :
-                              "bg-slate-100 text-slate-500"
-                            )}>
-                              {position}
-                            </span>
-                            <div className="truncate">
-                              <p className="text-[11px] font-bold text-[#1C2643] truncate uppercase">{item.name}</p>
-                              <p className="text-[8px] font-bold text-slate-400 mt-0.5">{item.count} {item.count === 1 ? 'contrato' : 'contratos'}</p>
-                            </div>
-                          </div>
-
-                          <div className="text-right">
-                            <span className={cn(
-                              "text-[10px] font-black",
-                              rankingMetric === 'crescimento' 
-                                ? (item.prodGrowth >= 0 ? "text-emerald-600" : "text-rose-500")
-                                : "text-[#1C2643]"
-                            )}>
-                              {displayVal}
-                            </span>
-                            {rankingMetric !== 'crescimento' && (
-                              <p className={cn(
-                                "text-[8px] font-extrabold mt-0.5",
-                                item.prodGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
-                              )}>
-                                {item.prodGrowth >= 0 ? '↑' : '↓'} {Math.abs(item.prodGrowth).toFixed(1)}%
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })
-                  })()}
-                </div>
-              </div>
-
-              {/* CARD 2: PRODUTOS */}
-              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col">
-                <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-600" />
-                    <h4 className="text-xs font-black text-[#1C2643] uppercase tracking-wider">Top Produtos</h4>
-                  </div>
-                  <span className="text-[9px] font-black text-[#718198] uppercase tracking-widest">
-                    Por {rankingMetric === 'producao' ? 'Produção' : rankingMetric === 'receita' ? 'Receita' : 'Crescimento'}
-                  </span>
-                </div>
-
-                <div className="space-y-3 flex-1 overflow-y-auto max-h-[360px] pr-1">
-                  {(() => {
-                    const sortedProducts = [...rankingsData.products].sort((a, b) => {
-                      if (rankingMetric === 'producao') return b.prod - a.prod
-                      if (rankingMetric === 'receita') return b.rev - a.rev
-                      return b.prodGrowth - a.prodGrowth
-                    })
-
-                    if (sortedProducts.length === 0) {
-                      return (
-                        <div className="text-center py-12 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                          Nenhum produto com volume
-                        </div>
-                      )
-                    }
-
-                    return sortedProducts.map((item, idx) => {
-                      const position = idx + 1
-                      const displayVal = rankingMetric === 'producao' 
-                        ? formatCurrency(item.prod)
-                        : rankingMetric === 'receita'
-                        ? formatCurrency(item.rev)
-                        : `${item.prodGrowth >= 0 ? '+' : ''}${item.prodGrowth.toFixed(1)}%`
-
-                      return (
-                        <div key={item.key} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-50 bg-slate-50/20 hover:bg-slate-50/50 transition-all">
-                          <div className="flex items-center gap-3 truncate max-w-[70%]">
-                            <span className={cn(
-                              "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black",
-                              position === 1 ? "bg-amber-100 text-amber-700" :
-                              position === 2 ? "bg-slate-200 text-slate-700" :
-                              position === 3 ? "bg-orange-100 text-orange-700" :
-                              "bg-slate-100 text-slate-500"
-                            )}>
-                              {position}
-                            </span>
-                            <div className="truncate">
-                              <p className="text-[11px] font-bold text-[#1C2643] truncate uppercase">{item.name}</p>
-                              <p className="text-[8px] font-bold text-slate-400 mt-0.5">{item.count} {item.count === 1 ? 'contrato' : 'contratos'}</p>
-                            </div>
-                          </div>
-
-                          <div className="text-right">
-                            <span className={cn(
-                              "text-[10px] font-black",
-                              rankingMetric === 'crescimento' 
-                                ? (item.prodGrowth >= 0 ? "text-emerald-600" : "text-rose-500")
-                                : "text-[#1C2643]"
-                            )}>
-                              {displayVal}
-                            </span>
-                            {rankingMetric !== 'crescimento' && (
-                              <p className={cn(
-                                "text-[8px] font-extrabold mt-0.5",
-                                item.prodGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
-                              )}>
-                                {item.prodGrowth >= 0 ? '↑' : '↓'} {Math.abs(item.prodGrowth).toFixed(1)}%
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })
-                  })()}
-                </div>
-              </div>
-
-              {/* CARD 3: CONVÊNIOS */}
-              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col">
-                <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-amber-600" />
-                    <h4 className="text-xs font-black text-[#1C2643] uppercase tracking-wider">Top Convênios</h4>
-                  </div>
-                  <span className="text-[9px] font-black text-[#718198] uppercase tracking-widest">
-                    Por {rankingMetric === 'producao' ? 'Produção' : rankingMetric === 'receita' ? 'Receita' : 'Crescimento'}
-                  </span>
-                </div>
-
-                <div className="space-y-3 flex-1 overflow-y-auto max-h-[360px] pr-1">
-                  {(() => {
-                    const sortedConvenios = [...rankingsData.convenios].sort((a, b) => {
-                      if (rankingMetric === 'producao') return b.prod - a.prod
-                      if (rankingMetric === 'receita') return b.rev - a.rev
-                      return b.prodGrowth - a.prodGrowth
-                    })
-
-                    if (sortedConvenios.length === 0) {
-                      return (
-                        <div className="text-center py-12 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                          Nenhum convênio com volume
-                        </div>
-                      )
-                    }
-
-                    return sortedConvenios.map((item, idx) => {
-                      const position = idx + 1
-                      const displayVal = rankingMetric === 'producao' 
-                        ? formatCurrency(item.prod)
-                        : rankingMetric === 'receita'
-                        ? formatCurrency(item.rev)
-                        : `${item.prodGrowth >= 0 ? '+' : ''}${item.prodGrowth.toFixed(1)}%`
-
-                      return (
-                        <div key={item.key} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-50 bg-slate-50/20 hover:bg-slate-50/50 transition-all">
-                          <div className="flex items-center gap-3 truncate max-w-[70%]">
-                            <span className={cn(
-                              "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black",
-                              position === 1 ? "bg-amber-100 text-amber-700" :
-                              position === 2 ? "bg-slate-200 text-slate-700" :
-                              position === 3 ? "bg-orange-100 text-orange-700" :
-                              "bg-slate-100 text-slate-500"
-                            )}>
-                              {position}
-                            </span>
-                            <div className="truncate">
-                              <p className="text-[11px] font-bold text-[#1C2643] truncate uppercase">{item.name}</p>
-                              <p className="text-[8px] font-bold text-slate-400 mt-0.5">{item.count} {item.count === 1 ? 'contrato' : 'contratos'}</p>
-                            </div>
-                          </div>
-
-                          <div className="text-right">
-                            <span className={cn(
-                              "text-[10px] font-black",
-                              rankingMetric === 'crescimento' 
-                                ? (item.prodGrowth >= 0 ? "text-emerald-600" : "text-rose-500")
-                                : "text-[#1C2643]"
-                            )}>
-                              {displayVal}
-                            </span>
-                            {rankingMetric !== 'crescimento' && (
-                              <p className={cn(
-                                "text-[8px] font-extrabold mt-0.5",
-                                item.prodGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
-                              )}>
-                                {item.prodGrowth >= 0 ? '↑' : '↓'} {Math.abs(item.prodGrowth).toFixed(1)}%
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })
-                  })()}
-                </div>
-              </div>
-
-            </div>
-          </motion.div>
-
-          {/* DIAGNÓSTICO FINANCEIRO E ESTRATÉGICO */}
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.8 }}
-            className="mt-8 pt-8 border-t border-slate-100 space-y-6"
-          >
-            <div>
-              <h3 className="text-lg font-black text-[#1C2643] tracking-tight mt-1 uppercase">DIAGNÓSTICO FINANCEIRO E ESTRATÉGICO</h3>
-              <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">
-                Análise de viabilidade, eficiência e dependência da operação comercial no período selecionado
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">
-              
-              {/* 1. BANCO LÍDER DE RECEITA */}
-              {!isCorretorPJ && (
-                <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                  <div>
-                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
-                      <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">
-                        Maior Receita
-                      </span>
-                      <Trophy className="w-4 h-4 text-amber-500" />
-                    </div>
-                    
-                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      Qual banco gera mais receita?
-                    </h4>
-                    
-                    {strategicDiagnostic.topRevenueBanco ? (
-                      <div className="mt-3">
-                        <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
-                          {strategicDiagnostic.topRevenueBanco.name}
-                        </p>
-                        <p className="text-[11px] font-bold text-slate-400 mt-1">
-                          Gerou <span className="text-emerald-600 font-extrabold">{formatCurrency(strategicDiagnostic.topRevenueBanco.rev)}</span> em comissões
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 mt-3 font-bold">Sem dados no período</p>
-                    )}
-                  </div>
-
-                  {strategicDiagnostic.topRevenueBanco && (
-                    <div className="mt-4 pt-3 border-t border-slate-50">
-                      <div className="flex justify-between text-[10px] font-extrabold text-[#1C2643] uppercase mb-1">
-                        <span>Participação na Receita</span>
-                        <span>{strategicDiagnostic.topBancoShare.toFixed(1)}%</span>
-                      </div>
-                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                        <div 
-                          className="bg-amber-500 h-full rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min(100, strategicDiagnostic.topBancoShare)}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 2. VOLUME VS EFICIÊNCIA */}
-              {!isCorretorPJ && (
-                <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                  <div>
-                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
-                      <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-2 py-1 rounded-lg uppercase tracking-wider">
-                        Eficiência de Margem
-                      </span>
-                      <Percent className="w-4 h-4 text-orange-500" />
-                    </div>
-
-                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
-                      Produz bastante, mas entrega pouca receita?
-                    </h4>
-
-                    {strategicDiagnostic.lowYieldBanco ? (
-                      <div className="mt-3">
-                        <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
-                          {strategicDiagnostic.lowYieldBanco.name}
-                        </p>
-                        <p className="text-[11px] font-bold text-slate-400 mt-1">
-                          Comissionamento médio de <span className="text-orange-600 font-extrabold">
-                            {((strategicDiagnostic.lowYieldBanco.rev / strategicDiagnostic.lowYieldBanco.prod) * 100).toFixed(2)}%
-                          </span>
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 mt-3 font-bold">Sem dados para análise de margem</p>
-                    )}
-                  </div>
-
-                  {strategicDiagnostic.lowYieldBanco && (
-                    <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[10px] font-bold text-slate-500 leading-tight">
-                      <span>Vol. Produção:</span>
-                      <span className="text-[#1C2643] font-black">{formatCurrency(strategicDiagnostic.lowYieldBanco.prod)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 3. PRODUTO COM MELHOR RETORNO */}
-              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                <div>
-                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
-                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-wider">
-                      Melhor Yield
-                    </span>
-                    <Zap className="w-4 h-4 text-emerald-600" />
-                  </div>
-
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
-                    Qual produto tem melhor retorno?
-                  </h4>
-
-                  {strategicDiagnostic.bestReturnProduct ? (
-                    <div className="mt-3">
-                      <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
-                        {strategicDiagnostic.bestReturnProduct.name}
-                      </p>
-                      <p className="text-[11px] font-bold text-slate-400 mt-1">
-                        Taxa média de retorno de <span className="text-emerald-600 font-extrabold">
-                          {((strategicDiagnostic.bestReturnProduct.rev / strategicDiagnostic.bestReturnProduct.prod) * 100).toFixed(2)}%
-                        </span>
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 mt-3 font-bold">Sem dados no período</p>
-                  )}
-                </div>
-
-                {strategicDiagnostic.bestReturnProduct && !isCorretorPJ && (
-                  <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[10px] font-bold text-slate-500">
-                    <span>Receita Total:</span>
-                    <span className="text-emerald-600 font-black">{formatCurrency(strategicDiagnostic.bestReturnProduct.rev)}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* 4. ÂNCORA DA OPERAÇÃO */}
-              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                <div>
-                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
-                    <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg uppercase tracking-wider">
-                      Sustentação
-                    </span>
-                    <Briefcase className="w-4 h-4 text-indigo-600" />
-                  </div>
-
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
-                    Qual convênio sustenta a operação?
-                  </h4>
-
-                  {strategicDiagnostic.mainSustainingConvenio ? (
-                    <div className="mt-3">
-                      <p className="text-lg font-black text-[#1C2643] uppercase tracking-tight truncate">
-                        {strategicDiagnostic.mainSustainingConvenio.name}
-                      </p>
-                      <p className="text-[11px] font-bold text-slate-400 mt-1">
-                        Sustenta <span className="text-indigo-600 font-extrabold">{strategicDiagnostic.topConvenioShare.toFixed(1)}%</span> {isCorretorPJ ? "da sua produção" : (filterUserId ? "da sua receita" : "da receita da empresa")}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 mt-3 font-bold">Sem convênio ativo no período</p>
-                  )}
-                </div>
-
-                {strategicDiagnostic.mainSustainingConvenio && (
-                  <div className="mt-4 pt-3 border-t border-slate-50">
-                    <div className="flex justify-between text-[10px] font-extrabold text-[#1C2643] uppercase mb-1">
-                      <span>Proporção Operacional</span>
-                      <span>{strategicDiagnostic.topConvenioShare.toFixed(1)}%</span>
-                    </div>
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-indigo-600 h-full rounded-full"
-                        style={{ width: `${Math.min(100, strategicDiagnostic.topConvenioShare)}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 5. TENDÊNCIA DOS CONVÊNIOS */}
-              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                <div>
-                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
-                    <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase tracking-wider">
-                      Comportamento
-                    </span>
-                    <TrendingUp className="w-4 h-4 text-blue-600" />
-                  </div>
-
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
-                    Quais convênios estão em destaque?
-                  </h4>
-
-                  <div className="mt-3 space-y-2.5">
-                    <div>
-                      <p className="text-[10px] font-extrabold text-slate-400 uppercase">↑ Destaque Positivo</p>
-                      {strategicDiagnostic.topGrowingConvenio ? (
-                        <p className="text-xs font-black text-emerald-600 uppercase truncate">
-                          {strategicDiagnostic.topGrowingConvenio.name} ({strategicDiagnostic.topGrowingConvenio.prodGrowth >= 0 ? '+' : ''}{strategicDiagnostic.topGrowingConvenio.prodGrowth.toFixed(1)}%)
-                        </p>
-                      ) : (
-                        <p className="text-xs text-slate-400">Nenhum crescimento registrado</p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-extrabold text-slate-400 uppercase">↓ Perda de Ritmo</p>
-                      {strategicDiagnostic.topLosingConvenio ? (
-                        <p className="text-xs font-black text-rose-500 uppercase truncate">
-                          {strategicDiagnostic.topLosingConvenio.name} ({strategicDiagnostic.topLosingConvenio.prodGrowth.toFixed(1)}%)
-                        </p>
-                      ) : (
-                        <p className="text-xs text-slate-400">Nenhum recuo registrado</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-50 text-[9px] font-bold text-slate-400 uppercase">
-                  Comparado ao período anterior
-                </div>
-              </div>
-
-              {/* 6. FATURAMENTO VS PRODUÇÃO */}
-              {!isCorretorPJ && (
-                <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                  <div>
-                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
-                      <span className="text-[10px] font-black text-[#1C2643] bg-slate-100 px-2 py-1 rounded-lg uppercase tracking-wider">
-                        Equilíbrio Financeiro
-                      </span>
-                      <BarChart3 className="w-4 h-4 text-[#1C2643]" />
-                    </div>
-
-                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">
-                      O faturamento acompanha a produção?
-                    </h4>
-
-                    <div className="mt-3 space-y-1.5">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-500 font-bold">Produção:</span>
-                        <span className={cn(
-                          "font-extrabold",
-                          strategicDiagnostic.overallProdGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
-                        )}>
-                          {strategicDiagnostic.overallProdGrowth >= 0 ? '↑' : '↓'} {Math.abs(strategicDiagnostic.overallProdGrowth).toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-500 font-bold">Faturamento (Receita):</span>
-                        <span className={cn(
-                          "font-extrabold",
-                          strategicDiagnostic.overallRevGrowth >= 0 ? "text-emerald-600" : "text-rose-500"
-                        )}>
-                          {strategicDiagnostic.overallRevGrowth >= 0 ? '↑' : '↓'} {Math.abs(strategicDiagnostic.overallRevGrowth).toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-50">
-                    {strategicDiagnostic.isRevenueKeepingUp ? (
-                      <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-emerald-600 uppercase">
-                        <span>✓ Faturamento Saudável (Acima do Vol.)</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-amber-600 uppercase">
-                        <span>⚠️ Alerta: Queda de Margem Média</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* 7. INDICE DE DEPENDÊNCIA (FULL WIDTH CARD) */}
-              <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col md:col-span-2 lg:col-span-3 justify-between hover:shadow-md transition-all">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                  <div className="space-y-2 lg:max-w-[65%]">
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider",
-                        strategicDiagnostic.concentrationRisk 
-                          ? "bg-amber-50 text-amber-600 border border-amber-100" 
-                          : "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                      )}>
-                        {strategicDiagnostic.concentrationRisk ? "Atenção Operacional" : "Operação Saudável"}
-                      </span>
-                      <h4 className="text-sm font-black text-[#1C2643] uppercase tracking-tight">
-                        {filterUserId ? "Sua operação está dependendo demais de um canal ou parceiro?" : "A empresa está dependendo demais de um canal ou parceiro?"}
-                      </h4>
-                    </div>
-
-                    <p className="text-xs font-bold text-slate-500 leading-relaxed">
-                      {strategicDiagnostic.concentrationRisk ? (
-                        <>
-                          Detectamos que o {strategicDiagnostic.concentrationRisk.type.toLowerCase()} <span className="text-amber-600 font-extrabold uppercase">{strategicDiagnostic.concentrationRisk.name}</span> representa <span className="text-[#1C2643] font-extrabold">{strategicDiagnostic.concentrationRisk.share.toFixed(1)}%</span> {isCorretorPJ ? "da produção da operação" : "da receita da operação"}. Recomenda-se diversificar canais para atenuar o risco de dependência em oscilações deste canal.
-                        </>
-                      ) : (
-                        isCorretorPJ ? "Excelente! A sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios." : (filterUserId ? "Excelente! A receita da sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios. Nenhum canal individual representa mais de 40% do seu faturamento." : "Excelente! A receita da sua operação está saudável e equilibrada entre os diferentes parceiros bancários, produtos e convênios. Nenhum canal individual representa mais de 40% do faturamento da empresa.")
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="flex-1 bg-slate-50 rounded-2xl p-4 border border-slate-100/50 min-w-[280px]">
-                    <div className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider mb-2.5">
-                      Distribuição de Riscos (% {isCorretorPJ ? "da Produção Total" : "da Receita Total"})
-                    </div>
-                    <div className="space-y-2">
-                      <div>
-                        <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase mb-0.5">
-                          <span>Banco Principal ({strategicDiagnostic.topRevenueBanco?.name || 'N/A'})</span>
-                          <span>{strategicDiagnostic.topBancoShare.toFixed(1)}%</span>
-                        </div>
-                        <div className="w-full bg-slate-200/50 h-1 rounded-full overflow-hidden">
-                          <div 
-                            className={cn("h-full rounded-full", strategicDiagnostic.topBancoShare > 40 ? "bg-amber-500" : "bg-indigo-600")}
-                            style={{ width: `${Math.min(100, strategicDiagnostic.topBancoShare)}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase mb-0.5">
-                          <span>Convênio Principal ({strategicDiagnostic.mainSustainingConvenio?.name || 'N/A'})</span>
-                          <span>{strategicDiagnostic.topConvenioShare.toFixed(1)}%</span>
-                        </div>
-                        <div className="w-full bg-slate-200/50 h-1 rounded-full overflow-hidden">
-                          <div 
-                            className={cn("h-full rounded-full", strategicDiagnostic.topConvenioShare > 40 ? "bg-amber-500" : "bg-indigo-600")}
-                            style={{ width: `${Math.min(100, strategicDiagnostic.topConvenioShare)}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
     </div>
   )
 }

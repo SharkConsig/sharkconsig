@@ -57,7 +57,7 @@ export interface CourseModule {
   id: string
   title: string
   subtitle: string
-  color: "blue" | "green" | "amber"
+  color: "blue" | "green" | "amber" | "purple"
   pdf_name: string
   pdf_url: string
   lessons: Lesson[]
@@ -464,6 +464,190 @@ const COURSE_DATA: CourseModule[] = [
         }
       }
     ]
+  },
+  {
+    id: "mod_4",
+    title: "Módulo 04: Prospecção e Condução das Conversas",
+    subtitle: "Mensagens práticas por etapa, órgão e oportunidade",
+    color: "purple",
+    pdf_name: "04 - PROSPECCAO INICIAL.pdf",
+    pdf_url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/04%20-%20PROSPECCAO%20INICIAL.pdf",
+    lessons: [
+      {
+        id: "lesson_4_1",
+        title: "4.1 Como Usar o Guia, Mapa da Conversa e Regras de Linguagem",
+        subtitle: "Objetivo, Princípio e Regras do que Evitar e Preferir",
+        pdf_page: 1,
+        duration: "6 min",
+        content: {
+          overview: "Ajudar o parceiro a iniciar conversas com contexto, identificar a necessidade, apresentar a proposta e conduzir o próximo passo sem transformar o atendimento em um texto longo ou genérico.",
+          keyPoints: [
+            "1. Contextualizar: O que mudou ou foi identificado no vínculo do cliente.",
+            "2. Gerar resposta: Pergunta simples e direta que abre o diálogo.",
+            "3. Diagnosticar: Descobrir o que o cliente busca (maior valor, menor parcela, quitação).",
+            "4. Apresentar: Destacar o principal ganho da nova condição.",
+            "5. Conduzir: Deixar o próximo passo claro e objetivo."
+          ],
+          doAndDonts: {
+            dont: [
+              "Começar por margem, taxa, tabela ou parcela isolada",
+              "Perguntar 'Tem interesse?' ou 'Quer empréstimo?'",
+              "Usar termos inseguros como 'Acho', 'Talvez', 'Quem sabe', 'Provavelmente'",
+              "Mandar texto longo no primeiro contato sem pergunta final",
+              "Prometer aprovação ou valor sem validação",
+              "Pressionar o cliente sem fundamento real"
+            ],
+            do: [
+              "Começar pela mudança, condição ou ponto identificado no órgão",
+              "Fazer pergunta ligada ao benefício ou problema do cliente",
+              "Usar linguagem segura baseada no que foi confirmado no sistema",
+              "Enviar uma informação principal acompanhada de uma pergunta",
+              "Explicar que a condição depende de validação e enquadramento",
+              "Informar prazo somente quando ele for real"
+            ]
+          },
+          callout: {
+            type: "info",
+            title: "Princípio Central da Abordagem",
+            text: "A primeira mensagem não precisa explicar tudo de uma vez. Ela precisa apenas dar um motivo legítimo para o cliente continuar a conversa."
+          }
+        }
+      },
+      {
+        id: "lesson_4_2",
+        title: "4.2 Etapa 1: Mensagens Gerais de Abertura e Contorno Inicial",
+        subtitle: "Scripts por contexto, dúvida inicial e receio de golpe",
+        pdf_page: 2,
+        duration: "7 min",
+        content: {
+          overview: "Modelos práticos de mensagens iniciais para abertura de contato, além de respostas para 'Do que se trata?' e clientes com receio de golpes.",
+          keyPoints: [
+            "ATUALIZAÇÃO IDENTIFICADA (A): '[NOME], tudo bem? Atualizou no portal da Prefeitura a nova margem e vi que a sua matrícula teve sinalização positiva. Já viu o demonstrativo do antes e depois de como fica?'",
+            "MENSAGEM INICIAL (B): '[NOME], tudo bem? Identifiquei uma atualização importante no seu vínculo da [ÓRGÃO] que mudou a condição disponível para você. Posso te mostrar o que apareceu?'",
+            "CONTATO DO GESTOR: '[NOME], tudo bem? Aqui é [SEU NOME]. Atendo os teus colegas da [ÓRGÃO] e apareceu uma condição que vale comparar. Posso te explicar em dois pontos?'",
+            "REORGANIZAÇÃO DA FOLHA: '[NOME], como você está? Andei acompanhando e identifiquei que alguns descontos da sua folha podem ser reduzidos agora e entregar valor sem aumentar a tua folha. Isso faz sentido para você analisar?'",
+            "REFINANCIAMENTO: '[NOME], seu contrato apresentou uma possibilidade temporária de refinanciamento. Posso verificar quanto ele gera de novo valor e como ficaria a condição?'"
+          ],
+          exampleText: {
+            label: "Quando o cliente pergunta 'Do que se trata?'",
+            weak: "\"É sobre um empréstimo consignado no seu banco disponível agora.\"",
+            strong: "\"É uma nova condição que abriu ligada à sua matrícula da [ÓRGÃO DO CLIENTE]. Primeiro verifico qual formato entrega mais vantagem no seu caso e depois te apresento o demonstrativo para você comparar com clareza.\""
+          },
+          callout: {
+            type: "warning",
+            title: "Quando o cliente demonstra receio de golpe (Segurança)",
+            text: "\"Entendo a preocupação, até porque tem muito servidor caindo em golpe. Não preciso de senha, código ou pagamento antecipado. Posso te enviar nossos canais oficiais e a proposta completa com banco, valores e identificação para você validar antes de decidir qualquer coisa.\""
+          }
+        }
+      },
+      {
+        id: "lesson_4_3",
+        title: "4.3 Etapa 2: Perguntas Diagnósticas e Apresentação da Proposta",
+        subtitle: "Perguntas investigativas e estrutura ideal para apresentar simulações",
+        pdf_page: 4,
+        duration: "7 min",
+        content: {
+          overview: "Como fazer as perguntas certas para descobrir o objetivo do cliente e como estruturar a apresentação da proposta sem ruídos.",
+          tableData: {
+            headers: ["Situação", "Pergunta Recomendada", "O que descobrir"],
+            rows: [
+              ["Nova liberação", "Hoje sua prioridade seria receber o maior valor possível?", "Objetivo principal"],
+              ["Quitação", "Pelo que vi você não usa esse cartão. Faz sentido quitar e tirar esse desconto?", "Dor principal"],
+              ["Contratos em folha", "Você prefere reduzir o que já paga ou manter a parcela e buscar mais valor?", "Estratégia desejada"],
+              ["Prazo", "Você quer comparar o valor máximo com uma opção de prazo menor?", "Sensibilidade ao prazo"],
+              ["Proposta concorrente", "Nessa outra proposta, qual é o valor líquido, a parcela e o prazo?", "Comparação equivalente"],
+              ["Retomada", "O que faltou ficar claro para você avançar ou descartar essa condição?", "Objeção real"],
+              ["Refinanciamento", "O novo valor seria útil agora ou sua prioridade é reduzir o contrato atual?", "Uso do refin"]
+            ]
+          },
+          checklist: [
+            "Relembre o contexto: o que foi identificado no sistema ou o que o cliente pediu",
+            "Destaque um benefício principal: mais valor, menor desconto, quitação ou reorganização",
+            "Mostre o antes e depois com clareza sempre que houver comparação",
+            "Confirme se o cliente entendeu o ponto principal antes de enviar links",
+            "Indique o próximo passo imediato: envio de documentos, validação ou digitação"
+          ]
+        }
+      },
+      {
+        id: "lesson_4_4",
+        title: "4.4 Etapa 3: Scripts Específicos por Órgão e Oportunidade",
+        subtitle: "Modelos para Governo do PI, P. Velho, SP, SIAPE, S. André e Digio",
+        pdf_page: 5,
+        duration: "10 min",
+        content: {
+          overview: "Cada órgão possui particularidades. Use a abordagem temática correta para aumentar a conversão do atendimento.",
+          keyPoints: [
+            "GOVERNO DO PIAUÍ (Margem Complementar): Foco em transformar a margem complementar em valor na conta corrente em vez de vender apenas o cartão físico.",
+            "PREFEITURA DE PORTO VELHO: Destaque para a alternativa complementar aos servidores que estavam sem margem principal (zerada ou negativa).",
+            "PREFEITURA DE SÃO PAULO: Três perfis (Clientes que voltaram a ter margem positiva com valores altos; Quitação de cartão caro; Apenas margem complementar).",
+            "GOVERNO DO ESTADO DE SP: Raciocínio similar ao da prefeitura, adaptando para reorganização da folha ou substituição de linha cara.",
+            "SIAPE (Celetistas e Secretarias): Foco em atualizações recentes da secretaria, redução de parcela com valor em conta ou margem intermediária/alta com extrato de consignações.",
+            "PREFEITURA DE SANTO ANDRÉ & DIGIO REFIN: Modalidade nova para Santo André com constância e resgate prioritário de valores em contratos Digio existentes."
+          ],
+          callout: {
+            type: "warning",
+            title: "Cuidados Específicos por Órgão",
+            text: "Piauí: Não afirme liberação de 100% sem confirmar o banco | Porto Velho: Não diga que todos são elegíveis | SP: Não informe economia antes de validar o cálculo | SIAPE: Não generalize condições entre secretarias diferentes | Digio: Não trate como produção mensal garantida."
+          }
+        }
+      },
+      {
+        id: "lesson_4_5",
+        title: "4.5 Etapa 4: Contorno de Objeções Frequentes e Respostas Curtas",
+        subtitle: "Como responder 'Taxa alta', 'Prazo longo', 'Não quero cartão' e 'Já recebi outra proposta'",
+        pdf_page: 15,
+        duration: "8 min",
+        content: {
+          overview: "Matriz rápida de contorno das 10 objeções mais comuns enfrentadas no dia a dia da prospecção.",
+          tableData: {
+            headers: ["Objeção do Cliente", "Resposta Sugerida"],
+            rows: [
+              ["\"Não tenho interesse.\"", "Sem problema. Para eu registrar corretamente: hoje não faz sentido por não precisar de valor ou porque a condição ainda não ficou boa?"],
+              ["\"A taxa está alta.\"", "Faz sentido comparar. Vamos colocar lado a lado taxa, valor líquido, parcela e prazo, porque taxas de linhas diferentes não entregam a mesma condição."],
+              ["\"O prazo é muito longo.\"", "Podemos comparar o valor máximo no prazo padrão com uma opção menor. A decisão depende de quanto você quer receber e do impacto da parcela."],
+              ["\"Não quero cartão.\"", "Exatamente por isso que eu tenho uma opção sem ligação alguma com cartão. Eu te explico o formato antes de qualquer decisão."],
+              ["\"Já recebi outra proposta.\"", "Ótimo, assim conseguimos comparar de forma objetiva. Me diga valor líquido, parcela, prazo e o banco, para verificarmos se são condições realmente melhores."],
+              ["\"Vou esperar o fim do mês.\"", "Tudo bem. Vou encerrar a análise por agora para não tomar seu tempo. Quando fizer sentido comparar uma condição completa, me chama. Só lembre que a proposta tem validade dentro do banco."],
+              ["\"Manda tudo por mensagem.\"", "Envio sim. Vou destacar primeiro o ponto principal e depois deixo banco, valor, parcela e prazo para você consultar com calma."],
+              ["\"Não tenho margem.\"", "A margem principal pode estar comprometida, mas agora você possui condição complementar. Vou mostrar como fica no seu caso."],
+              ["\"Tenho medo de fraude.\"", "Você está certo em validar. Não pedimos senha, código ou pagamento antecipado. Envio nossos canais oficiais e a proposta identificada para conferência."],
+              ["\"Vou pensar.\"", "Claro. Qual ponto você precisa avaliar melhor: segurança, valor, parcela, prazo ou comparação com outra proposta?"]
+            ]
+          }
+        }
+      },
+      {
+        id: "lesson_4_6",
+        title: "4.6 Etapa 5: Retomadas, Encerramentos e Checklist Final",
+        subtitle: "Scripts para acompanhamento sem resposta, pós-proposta e protocolo de envio",
+        pdf_page: 16,
+        duration: "6 min",
+        content: {
+          overview: "Como retomar clientes silenciosos de forma elegante, encerrar com posicionamento e validar mensagens antes do envio.",
+          keyPoints: [
+            "RETOMADA SEM RESPOSTA 1: '[NOME], consegui concluir a leitura do seu caso. Existe um ponto muito importante que muda [VALOR/PARCELA/CONDIÇÃO]. Posso te enviar o resumo em uma mensagem?'",
+            "RETOMADA SEM RESPOSTA 2: '[NOME], vou encerrar sua análise por agora para não insistir sem necessidade. Antes disso, quer que eu te envie somente a exceção que consegui para tua matrícula?'",
+            "RETOMADA APÓS PROPOSTA: '[NOME], olhando a proposta, qual ponto ainda precisa ficar mais claro para você: valor, parcela, prazo ou segurança da operação?'",
+            "ENCERRAMENTO COM POSICIONAMENTO: 'Vou encerrar por aqui para não tomar seu tempo. Caso queira voltar a comparar uma proposta completa e validada, fico à disposição para revisar as condições disponíveis naquele momento.'",
+            "CLIENTE QUE PEDIU DATA: 'Combinado. Retomo no dia [DATA] com a condição atualizada, porque valor e tabela podem sofrer alteração até lá, mas farei o melhor para você.'"
+          ],
+          checklist: [
+            "A mensagem corresponde ao órgão e ao perfil correto do cliente?",
+            "A informação principal está confirmada no sistema ou pela operação?",
+            "O texto possui uma pergunta simples e natural no final?",
+            "Existe alguma promessa de aprovação, valor ou prazo sem ter sido validada?",
+            "O próximo passo para o cliente avançar está explícito e claro?",
+            "A interação foi devidamente registrada no sistema para futura retomada?"
+          ],
+          callout: {
+            type: "success",
+            title: "Mensagem de Fechamento",
+            text: "Não existe mensagem perfeita para todos. Existe mensagem coerente com o contexto, enviada para o perfil certo e conduzida com segurança."
+          }
+        }
+      }
+    ]
   }
 ]
 
@@ -475,7 +659,8 @@ export default function CapacitacaoPJPage() {
   const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({
     mod_1: true,
     mod_2: false,
-    mod_3: false
+    mod_3: false,
+    mod_4: false
   })
   const [loading, setLoading] = useState(true)
   const [savingLesson, setSavingLesson] = useState<string | null>(null)
@@ -722,7 +907,9 @@ export default function CapacitacaoPJPage() {
                       ? "bg-blue-50 text-blue-700 border-blue-200" 
                       : module.color === "green" 
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
-                      : "bg-amber-50 text-amber-700 border-amber-200"
+                      : module.color === "amber"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-purple-50 text-purple-700 border-purple-200"
 
                   return (
                     <div 
@@ -737,7 +924,7 @@ export default function CapacitacaoPJPage() {
                       >
                         <div className="space-y-1">
                           <span className={cn("text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border inline-block mb-1", badgeColorClass)}>
-                            {module.id === "mod_1" ? "📘 Módulo 01" : module.id === "mod_2" ? "📗 Módulo 02" : "📙 Módulo 03"}
+                            {module.id === "mod_1" ? "📘 Módulo 01" : module.id === "mod_2" ? "📗 Módulo 02" : module.id === "mod_3" ? "📙 Módulo 03" : "📕 Módulo 04"}
                           </span>
                           <h3 className="text-xs font-bold text-slate-800 leading-snug">
                             {module.title}

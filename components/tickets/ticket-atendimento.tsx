@@ -23,8 +23,10 @@ import {
   Edit2,
   Paperclip,
   LifeBuoy,
-  Check
+  Check,
+  Calculator
 } from "lucide-react"
+import { SimulationModal } from "@/components/simulation/simulation-modal"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
 import Link from "next/link"
@@ -125,6 +127,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
   const router = useRouter()
   const { perfil, user, isEstagio } = useAuth()
   const [isRedirectingProposta, setIsRedirectingProposta] = useState(false)
+  const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false)
   const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
 
   const canEditMargins = useMemo(() => {
@@ -1761,6 +1764,14 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
                 <ImageIcon className="w-3.5 h-3.5" />
                 Anexar Arquivos
               </Button>
+              <Button 
+                type="button"
+                onClick={() => setIsSimulationModalOpen(true)}
+                className="h-[38px] px-6 text-[10px] font-bold text-white uppercase tracking-wider bg-[#162546] hover:bg-[#162546]/90 shadow-md transition-all flex items-center gap-2 rounded-lg"
+              >
+                <Calculator className="w-3.5 h-3.5" />
+                SIMULAR PROPOSTA
+              </Button>
               {!isUserEstagio && (
                 <Button 
                   onClick={handleDigitarProposta}
@@ -1841,6 +1852,34 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
           </div>
         </div>
       )}
+
+      <SimulationModal 
+        isOpen={isSimulationModalOpen} 
+        onClose={() => setIsSimulationModalOpen(false)} 
+        client={{
+          id: ticket.id,
+          nome: ticket.client || "",
+          cpf: ticket.cpf || "",
+          data_nascimento: null,
+          telefone_1: ticket.phone || null,
+          telefone_2: ticket.phone_2 || null,
+          telefone_3: ticket.phone_3 || null,
+        }} 
+        registrations={[{
+          id: ticket.matricula || ticket.id || "1",
+          numero_matricula: ticket.matricula || "",
+          situacao_funcional: null,
+          salario: null,
+          orgao: ticket.origin || ticket.convenio || null,
+          regime_juridico: null,
+          uf: null,
+          margem: ticket.margem ?? null,
+          margem_liquida_5: ticket.margem_liquida_5 ?? null,
+          margem_beneficio_5: ticket.margem_beneficio_5 ?? null,
+        }]} 
+        perfil={perfil} 
+        activeRegIndex={0}
+      />
     </div>
   )
 }
