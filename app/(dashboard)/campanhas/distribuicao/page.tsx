@@ -140,7 +140,8 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
     'base_consulta_prefeitura_contagem',
     'base_consulta_governo_mg',
     'base_consulta_prefeitura_natal',
-    'base_consulta_prefeitura_porto_velho'
+    'base_consulta_prefeitura_porto_velho',
+    'base_consulta_governo_ba'
   ];
 
   const results: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
@@ -275,6 +276,7 @@ export default function DistribuicaoCampanhaPage() {
         'governo_mg': 'base_consulta_governo_mg',
         'prefeitura_natal': 'base_consulta_prefeitura_natal',
         'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
+        'governo_ba': 'base_consulta_governo_ba',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -302,6 +304,8 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_prefeitura_natal';
       } else if (cNameUpper.includes('PORTO VELHO')) {
         targetTable = 'base_consulta_prefeitura_porto_velho';
+      } else if (cNameUpper.includes('GOVERNO BA') || cNameUpper.includes('BAHIA')) {
+        targetTable = 'base_consulta_governo_ba';
       }
 
       let clientsBatchList: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
@@ -485,6 +489,7 @@ export default function DistribuicaoCampanhaPage() {
         'governo_mg': 'base_consulta_governo_mg',
         'prefeitura_natal': 'base_consulta_prefeitura_natal',
         'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
+        'governo_ba': 'base_consulta_governo_ba',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -512,6 +517,8 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_prefeitura_natal';
       } else if (cNameUpper.includes('PORTO VELHO')) {
         targetTable = 'base_consulta_prefeitura_porto_velho';
+      } else if (cNameUpper.includes('GOVERNO BA') || cNameUpper.includes('BAHIA')) {
+        targetTable = 'base_consulta_governo_ba';
       }
 
       let clientDetails: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];

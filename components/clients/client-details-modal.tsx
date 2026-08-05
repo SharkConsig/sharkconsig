@@ -148,7 +148,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -765,6 +765,40 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
             }))
           }
         })
+
+        setRegistrations(mappedRegs as unknown as Registration[])
+        setIsLoading(false)
+        return
+      }
+
+      // 13. Try search in Governo BA Clients
+      const { data: baData } = await withRetry<ClientData | null>(async () => 
+        await supabase.from('governo_ba_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+      )
+
+      if (baData) {
+        setClient(baData)
+        setClientType('governo_ba')
+
+        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
+          await supabase.from('governo_ba_matriculas').select('*').eq('cliente_id', (baData as ClientData).id)
+        )
+        if (regError) console.error("Erro ao buscar matrículas Governo BA:", regError)
+
+        const mappedRegs = (regData || []).map((r: Record<string, unknown>) => ({
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          orgao: r.orgao as string | null,
+          secretaria: r.secretaria as string | null,
+          situacao: r.situacao as string | null,
+          tipo_servidor: r.tipo_servidor as string | null,
+          margem_emprestimo_total: r.margem_emprestimo_total || 0.00,
+          margem_emprestimo_disponivel: r.margem_emprestimo_disponivel || 0.00,
+          uf: 'BA',
+          instituidores: []
+        }))
 
         setRegistrations(mappedRegs as unknown as Registration[])
         setIsLoading(false)
@@ -2046,6 +2080,80 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                       isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
                                     )}>
                                       <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Cartão Consignado</p>
+                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                        {formatCurrency(val)}
+                                      </p>
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </>
+                        ) : clientType === 'governo_ba' ? (
+                          <>
+                            {/* Governo da Bahia */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "---"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Secretaria</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {(activeReg as unknown as Record<string, unknown>).secretaria as string || "---"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação / Tipo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {((activeReg as unknown as Record<string, unknown>).situacao as string || "N/I") + " / " + ((activeReg as unknown as Record<string, unknown>).tipo_servidor as string || "N/I")}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-6 mt-6">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-3.5 bg-teal-600 rounded-full"></div>
+                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens Disponíveis</h4>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_emprestimo_total) || 0;
+                                  const isPositive = val > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Empréstimo Total</p>
+                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                        {formatCurrency(val)}
+                                      </p>
+                                    </div>
+                                  );
+                                })()}
+
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_emprestimo_disponivel) || 0;
+                                  const isPositive = val > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Empréstimo Disponível</p>
                                       <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
                                         {formatCurrency(val)}
                                       </p>

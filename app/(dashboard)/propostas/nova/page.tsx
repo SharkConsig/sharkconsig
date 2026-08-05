@@ -698,6 +698,7 @@ function NewProposalForm() {
         else if (conv.includes('GOVERNO PI') || conv.includes('PIAUÍ')) targetTable = 'base_consulta_governo_pi'
         else if (conv.includes('GOVERNO MA') || conv.includes('MARANHÃO')) targetTable = 'base_consulta_governo_ma'
         else if (conv.includes('GOVERNO RR') || conv.includes('RORAIMA')) targetTable = 'base_consulta_governo_rr'
+        else if (conv.includes('GOVERNO BA') || conv.includes('BAHIA')) targetTable = 'base_consulta_governo_ba'
 
         let data = null
         let error = null
@@ -712,7 +713,7 @@ function NewProposalForm() {
           error = resError
         }
 
-        // Se não encontrou na tabela especializada, tenta uma busca paralela nas 6 split tables
+        // Se não encontrou na tabela especializada, tenta uma busca paralela nas split tables
         if (!data || error) {
           const splitTables = [
             'base_consulta_siape',
@@ -720,7 +721,8 @@ function NewProposalForm() {
             'base_consulta_prefeitura_sp',
             'base_consulta_governo_pi',
             'base_consulta_governo_ma',
-            'base_consulta_governo_rr'
+            'base_consulta_governo_rr',
+            'base_consulta_governo_ba'
           ];
           
           const results = await Promise.all(
