@@ -1870,7 +1870,7 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
           numero_matricula: ticket.matricula || "",
           situacao_funcional: null,
           salario: null,
-          orgao: ticket.origin || ticket.convenio || null,
+          orgao: ticket.convenio || ticket.origin || null,
           regime_juridico: null,
           uf: null,
           margem: ticket.margem ?? null,

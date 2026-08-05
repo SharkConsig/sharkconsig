@@ -379,7 +379,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
     const hasGovRR = activeReg.governo_rr_instituidores !== undefined || activeReg.uf === 'RR';
     if (hasGovRR) {
       const lotacao = activeReg.governo_rr_instituidores?.[0] || {};
-      return lotacao.origem || activeReg.secretaria || activeReg.orgao || "NÃO INFORMADO";
+      return lotacao.orgao || lotacao.secretaria || activeReg.orgao || activeReg.secretaria || "NÃO INFORMADO";
     }
 
     // 2. SIAPE
@@ -933,7 +933,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
       const hasGovRR = activeReg.governo_rr_instituidores !== undefined || activeReg.uf === 'RR';
       const label = hasGovRR 
-        ? "INSTITUIDOR (ORIGEM)" 
+        ? "INSTITUIDOR" 
         : (activeReg.currentInstituidor !== undefined ? "ÓRGÃO (VÍNCULO)" : "ÓRGÃO");
       
       const value = resolveOrgao(activeReg);
