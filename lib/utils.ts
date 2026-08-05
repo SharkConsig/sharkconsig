@@ -54,3 +54,18 @@ export function formatName(name: string | null | undefined): string {
     })
     .join(" ");
 }
+
+export function formatShortName(name: string | null | undefined): string {
+  if (!name) return "Não informado";
+  let cleanName = name.trim();
+  if (cleanName.includes("@")) {
+    cleanName = cleanName.split("@")[0].replace(/[._-]/g, " ");
+  }
+  const parts = cleanName.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "Não informado";
+  if (parts.length === 1) return parts[0].toUpperCase();
+  const firstName = parts[0].toUpperCase();
+  const lastName = parts[parts.length - 1].toUpperCase();
+  return `${firstName} ${lastName.charAt(0)}.`;
+}
+

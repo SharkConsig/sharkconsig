@@ -7,11 +7,8 @@ import { Header } from "@/components/layout/header"
 import { Landmark, Search, Eye, EyeOff, MessageSquare, FileEdit, MessageCircle, Loader2, Calculator, History, Download, FileText, FileImage } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { cn } from "@/lib/utils"
-import { translateOrgao } from "@/lib/orgaos-mapping"
-import { getContractTypeInfo } from "@/lib/contratos-mapping"
+import { cn, withRetry, formatShortName } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
-import { withRetry } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { SimulationModal } from "@/components/simulation/simulation-modal"
 
@@ -268,7 +265,7 @@ export default function SearchClientPage() {
                   </div>
                   <div>
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Corretor</span>
-                    <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block">{chamado.user_nome || "Não informado"}</span>
+                    <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block">{formatShortName(chamado.user_nome)}</span>
                   </div>
                 </div>
                 
@@ -344,7 +341,186 @@ export default function SearchClientPage() {
 
     if (clientProposals.length === 0) return null;
 
+    const generatePersonalizedPdfWindow = (proposal: any) => {
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) return;
+
+      const client = proposal.cliente_nome || clientData?.nome || "CLIENTE";
+      const cpf = proposal.cliente_cpf || clientData?.cpf || "";
+      const consultant = proposal.user_nome || perfil?.nome || "CONSULTOR";
+      const email = proposal.user_email || perfil?.email || "";
+      const phone = proposal.telefone_consultor || (perfil as any)?.telefone || "";
+
+      const vContrato = Number(proposal.valor_contrato) || 0;
+      const przEst = Number(proposal.prazo_estrategia) || 0;
+      const pmMedia = Number(proposal.parcela_media) || 0;
+      const txAm = Number(proposal.taxa_am) || 0;
+
+      const formatBRL = (val: number) => {
+        return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      };
+
+      const formatCPF = (val: string) => {
+        const digits = val.replace(/\D/g, "");
+        if (digits.length === 11) {
+          return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+        }
+        return val;
+      };
+
+      let rowsHtml = "";
+      if (przEst > 0 && pmMedia > 0) {
+        const i = txAm / 100;
+        let saldoDevedor = vContrato;
+        for (let m = 1; m <= Math.min(przEst, 120); m++) {
+          const juros = i > 0 ? saldoDevedor * i : 0;
+          const principal = Math.max(0, pmMedia - juros);
+          saldoDevedor = Math.max(0, saldoDevedor - principal);
+          const isEven = m % 2 === 0;
+          const rowBg = isEven ? "#F8FAFC" : "#FFFFFF";
+          rowsHtml += `
+            <tr style="background-color: ${rowBg}; border-bottom: 1px solid #E2E8F0;">
+              <td style="padding: 8px 12px; text-align: center; font-weight: bold; color: #1E293B;">${m}</td>
+              <td style="padding: 8px 12px; text-align: center; font-weight: bold; color: #1E293B;">${formatBRL(pmMedia)}</td>
+              <td style="padding: 8px 12px; text-align: center; font-weight: bold; color: #475569;">${formatBRL(principal)}</td>
+              <td style="padding: 8px 12px; text-align: center; font-weight: bold; color: #1E293B;">${formatBRL(juros)}</td>
+              <td style="padding: 8px 12px; text-align: right; font-weight: bold; color: #1E293B;">${formatBRL(saldoDevedor)}</td>
+            </tr>
+          `;
+        }
+      }
+
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      const validityDateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Proposta Comercial - ${client}</title>
+            <style>
+              @page { size: A4; margin: 0mm; }
+              * { font-family: Arial, Helvetica, sans-serif !important; box-sizing: border-box; }
+              body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 10mm 12mm; color: #1E293B; background: #FFF; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+              @media print { 
+                .no-print { display: none !important; }
+                body { padding: 10mm 12mm; }
+              }
+              .pdf-header { padding: 10px 0 0 0; }
+              .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+              .metric-card { border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 12px; background: #FFF; }
+              .metric-label { font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; }
+              .metric-value { font-size: 16px; font-weight: 900; color: #0F172A; margin: 6px 0 4px 0; }
+              .metric-highlight { color: #00D492; }
+              .table-container { margin: 20px 0; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; }
+              table { width: 100%; border-collapse: collapse; font-size: 11px; }
+              th { background-color: #111827; color: #00D492; padding: 10px 12px; text-transform: uppercase; font-size: 10px; font-weight: 800; text-align: center; }
+            </style>
+          </head>
+          <body>
+            <div class="pdf-header">
+              <div style="display: flex; align-items: center; justify-content: center; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #E2E8F0; margin-bottom: 24px;">
+                <img src="/logo.png" alt="SharkConsig" style="height: 38px; object-fit: contain;" />
+                <span style="color: #CBD5E1; font-size: 28px; font-weight: 300;">|</span>
+                <div style="display: flex; flex-direction: column; text-align: left;">
+                  <span style="font-size: 10px; color: #64748B; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px;">FORMALIZAÇÃO DE</span>
+                  <span style="font-size: 24px; font-weight: 900; color: #162546; letter-spacing: -0.5px; text-transform: uppercase;">PROPOSTA</span>
+                </div>
+              </div>
+
+              <div style="background-color: #162546 !important; border-radius: 18px; padding: 20px 24px; color: #FFF; display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                  <div style="width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid #F4C600; display: flex; align-items: center; justify-content: center; background: rgba(244, 198, 0, 0.1); color: #F4C600; font-weight: 900; font-size: 15px;">
+                    👤
+                  </div>
+                  <div style="display: flex; flex-direction: column; text-align: left;">
+                    <div style="font-weight: 900; font-size: 14px; text-transform: uppercase; color: #FFFFFF;">${client}</div>
+                    <div style="font-size: 11px; color: #94A3B8; margin-top: 3px; font-weight: 600;">
+                      ${cpf ? 'CPF: ' + formatCPF(cpf) : ''}
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; text-align: right; align-items: flex-end; gap: 4px; border-left: 1px solid rgba(255, 255, 255, 0.15); padding-left: 20px;">
+                  <div style="color: #F4C600; font-weight: 900; font-size: 13px; text-transform: uppercase;">${consultant}</div>
+                  ${email ? `<div style="color: #E2E8F0; font-size: 11px;">${email}</div>` : ''}
+                  ${phone ? `<div style="color: #E2E8F0; font-size: 11px;">${phone}</div>` : ''}
+                </div>
+              </div>
+            </div>
+
+            <div class="metrics-grid">
+              <div class="metric-card">
+                <div class="metric-label">VALOR DO CONTRATO</div>
+                <div class="metric-value metric-highlight">${formatBRL(vContrato)}</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">PRAZO ESTRATÉGIA</div>
+                <div class="metric-value">${przEst}x</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">PARCELA MÉDIA</div>
+                <div class="metric-value metric-highlight">${formatBRL(pmMedia)}</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">TAXA A.M.</div>
+                <div class="metric-value">${txAm.toFixed(2).replace('.', ',')}%</div>
+              </div>
+            </div>
+
+            ${rowsHtml ? `
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nº PMT</th>
+                    <th>PARCELA</th>
+                    <th>PRINCIPAL</th>
+                    <th>JUROS</th>
+                    <th style="text-align: right;">SALDO DEVEDOR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml}
+                </tbody>
+              </table>
+            </div>
+            ` : ''}
+
+            <div style="margin: 24px 0; font-size: 10px; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 12px;">
+              • Cálculos de amortização de parcela são diários e sofrem alteração.<br/>
+              • Proposta válida até ${validityDateStr}, sujeita a alteração sem aviso prévio.<br/>
+              • A taxa de juros final e a redução do valor da parcela poderão sofrer oscilações a critério das instituições bancárias.
+            </div>
+
+            <script>
+              window.onload = function() {
+                setTimeout(function() {
+                  window.print();
+                }, 300);
+              };
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    };
+
     const handleDownloadProposal = (proposal: any) => {
+      if (proposal.isCalculadora || proposal.isPersonalize) {
+        if (proposal.arquivo_url && proposal.arquivo_url.startsWith("http")) {
+          const link = document.createElement("a");
+          link.href = proposal.arquivo_url;
+          const safeName = (proposal.cliente_nome || "Cliente").trim().replace(/\s+/g, "_");
+          link.download = `proposta_personalizada_${safeName}.pdf`;
+          link.click();
+          return;
+        }
+        generatePersonalizedPdfWindow(proposal);
+        return;
+      }
+
       if (!proposal.arquivo_url) return;
       const link = document.createElement("a");
       link.href = proposal.arquivo_url;
@@ -400,7 +576,7 @@ export default function SearchClientPage() {
                   </div>
                   <div>
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
-                    <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block truncate max-w-[140px]">{proposal.user_nome || proposal.user_email || "Não informado"}</span>
+                    <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block truncate max-w-[140px]">{formatShortName(proposal.user_nome || proposal.user_email)}</span>
                   </div>
                 </div>
 

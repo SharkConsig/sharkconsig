@@ -30,7 +30,7 @@ import {
   Trash2
 } from "lucide-react"
 import { format } from "date-fns"
-import { cn, formatName } from "@/lib/utils"
+import { cn, formatName, formatShortName } from "@/lib/utils"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
@@ -4085,7 +4085,7 @@ export function AdminDashboard({
                                   <div>
                                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">USUÁRIO RESPONSÁVEL</span>
                                     <span className="text-sm font-black text-[#1C2643] uppercase truncate max-w-[180px] block leading-none">
-                                      {colaborador}
+                                      {formatShortName(colaborador)}
                                     </span>
                                     <span className="text-[12px] font-bold text-black/80 mt-1 block leading-none">
                                       {items.length} {items.length === 1 ? 'proposta' : 'propostas'}

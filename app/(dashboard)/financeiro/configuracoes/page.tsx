@@ -205,6 +205,7 @@ export default function FinancialSettingsPage() {
   const [isBancoExpanded, setIsBancoExpanded] = useState(false)
   const [isOperacaoExpanded, setIsOperacaoExpanded] = useState(false)
   const [isProdutosExpanded, setIsProdutosExpanded] = useState(false)
+  const [isProdutosPJExpanded, setIsProdutosPJExpanded] = useState(false)
   const [isMetasPremiosExpanded, setIsMetasPremiosExpanded] = useState(false)
   const [isBannersExpanded, setIsBannersExpanded] = useState(false)
   const [isHorariosExpanded, setIsHorariosExpanded] = useState(false)
@@ -1528,12 +1529,292 @@ export default function FinancialSettingsPage() {
                   {isProdutosExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
                 </h2>
               </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Configuração de convênios e operações por banco</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Configuração de produtos, convênios e operações por banco</p>
             </div>
           </div>
 
           <AnimatePresence>
             {isProdutosExpanded && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden space-y-4">
+                {bancos.filter(b => b.ativo !== false).map((banco) => (
+                  <Card key={banco.id} className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm overflow-visible">
+                    <div 
+                      className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => setExpandedBankId(expandedBankId === banco.id ? null : banco.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-[10px]">
+                          {banco.nome.substring(0, 2)}
+                        </div>
+                        <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">{banco.nome}</h3>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                          {produtosConfig.filter(p => p.banco_id === banco.id).length} Convênios
+                        </span>
+                        {expandedBankId === banco.id ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
+                      </div>
+                    </div>
+
+                    <AnimatePresence>
+                      {expandedBankId === banco.id && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-slate-100">
+                          <div className="p-6 bg-slate-50/30 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">TABELAS DE REGRAS</h4>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="h-7 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200"
+                                onClick={() => {
+                                  setSelectedBancoForProd(banco)
+                                  setIsAddConvenioModalOpen(true)
+                                }}
+                              >
+                                <Plus className="w-3 h-3 text-primary" />
+                                Adicionar Convênio
+                              </Button>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4">
+                              {produtosConfig.filter(p => p.banco_id === banco.id).map((prod) => {
+                                const convenio = convenios.find(c => c.id === prod.convenio_id)
+                                if (!convenio) return null
+                                return (
+                                  <div 
+                                    key={prod.id} 
+                                    className="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group"
+                                  >
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                      <div className="space-y-3">
+                                        <div className="flex items-center gap-3">
+                                          <span className="font-bold text-[13px] text-slate-800 uppercase tracking-widest">{prod.nome_tabela || convenio.nome}</span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                              {format(new Date(prod.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                                            </span>
+                                            <span className={cn(
+                                              "px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest",
+                                              prod.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
+                                            )}>
+                                              {prod.ativo !== false ? "ATIVA" : "INATIVA"}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Convênio</span>
+                                          <div className="flex flex-wrap gap-1.5">
+                                            <span className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-tight border border-slate-100">
+                                              {convenio.nome}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Operações Permitidas</span>
+                                          <div className="flex flex-wrap gap-1.5">
+                                          {(prod.operacoes || []).map(opId => {
+                                            const op = tiposOperacao.find(o => o.id === opId)
+                                            return op ? (
+                                              <span key={opId} className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-tight border border-slate-100">
+                                                {op.nome}
+                                              </span>
+                                            ) : null
+                                          })}
+                                          </div>
+                                          {(prod.operacoes || []).length === 0 && (
+                                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest italic">Nenhuma operação selecionada</span>
+                                          )}
+                                        </div>
+
+                                          <div className="flex flex-col gap-1.5 min-w-[200px]">
+                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Tabela de Coeficientes</span>
+                                            {prod.regras && prod.regras.length > 0 ? (
+                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {prod.regras.map((regra, idx) => (
+                                                  <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prazo</span>
+                                                        <span className="text-[10px] font-bold text-slate-700">{regra.prazo}x</span>
+                                                      </div>
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Coef</span>
+                                                        <span className="text-[10px] font-bold text-slate-700">{regra.coeficiente}</span>
+                                                      </div>
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prod</span>
+                                                        <span className="text-[10px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
+                                                      </div>
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <div className="flex flex-col">
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Comissão</span>
+                                                        <span className="text-[10px] font-bold text-sky-600">{regra.percentual_comissao ? `${regra.percentual_comissao}%` : '--'}</span>
+                                                      </div>
+                                                    </div>
+
+                                                    <div className="flex items-center">
+                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => toggleRegraAtiva(prod.id, prod.regras || [], idx)}
+                                                        className={cn(
+                                                          "h-5 px-1.5 rounded text-[8px] font-extrabold uppercase tracking-wide transition-all border",
+                                                          regra.ativo !== false 
+                                                            ? "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100" 
+                                                            : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"
+                                                        )}
+                                                      >
+                                                        {regra.ativo !== false ? "ATIVA" : "INATIVA"}
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <div className="flex gap-6">
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Prazo</span>
+                                                  <span className="text-[10px] font-extrabold text-slate-600">{prod.prazo ? `${prod.prazo}x` : '--'}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente</span>
+                                                  <span className="text-[10px] font-extrabold text-slate-600">{prod.coeficiente || '--'}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Produção</span>
+                                                  <span className="text-[10px] font-extrabold text-emerald-600">{prod.percentual_producao ? `${prod.percentual_producao}%` : '--'}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Comissão</span>
+                                                  <span className="text-[10px] font-extrabold text-sky-600">
+                                                    {(prod.regras && prod.regras[0]?.percentual_comissao) 
+                                                      ? `${prod.regras[0].percentual_comissao}%` 
+                                                      : (prod.percentual_comissao ? `${prod.percentual_comissao}%` : '--')}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                      </div>
+
+                                      <div className="flex items-center justify-end gap-2 border-t md:border-t-0 pt-4 md:pt-0 border-slate-100">
+                                        {/* Botão Ativar/Inativar */}
+                                        <button 
+                                          onClick={() => toggleProdutoAtivo(prod.id, prod.ativo !== false)}
+                                          className={cn(
+                                            "h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border",
+                                            prod.ativo !== false 
+                                              ? "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100" 
+                                              : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"
+                                          )}
+                                        >
+                                          {prod.ativo !== false ? "ATIVA" : "INATIVA"}
+                                        </button>
+
+                                        {/* Botão Editar */}
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm"
+                                          className="h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                          onClick={() => {
+                                            setSelectedProductConfig(prod)
+                                            setSelectedBancoForProd(banco)
+                                            setSelectedConvenioForProd(convenio)
+                                            setTempOperacoes(prod.operacoes || [])
+                                            setTempNomeTabela(prod.nome_tabela || "")
+                                            const initialRegras = []
+                                             if (prod.regras && prod.regras.length > 0) {
+                                               prod.regras.forEach(r => {
+                                                 initialRegras.push({
+                                                   prazo: r.prazo?.toString() || '',
+                                                   coeficiente: r.coeficiente?.toString().replace('.', ',') || '',
+                                                   percentual_producao: r.percentual_producao?.toString().replace('.', ',') || '',
+                                                   percentual_comissao: r.percentual_comissao?.toString().replace('.', ',') || '',
+                                                   ativo: r.ativo !== undefined ? r.ativo : true
+                                                 })
+                                               })
+                                             } else if (prod.prazo || prod.coeficiente || prod.percentual_producao || prod.percentual_comissao) {
+                                               initialRegras.push({
+                                                 prazo: prod.prazo?.toString() || '',
+                                                 coeficiente: prod.coeficiente?.toString().replace('.', ',') || '',
+                                                 percentual_producao: prod.percentual_producao?.toString().replace('.', ',') || '',
+                                                 percentual_comissao: prod.percentual_comissao?.toString().replace('.', ',') || '',
+                                                 ativo: true
+                                               })
+                                             } else {
+                                               initialRegras.push({
+                                                 prazo: '',
+                                                 coeficiente: '',
+                                                 percentual_producao: '',
+                                                 percentual_comissao: '',
+                                                 ativo: false
+                                               })
+                                             }
+                                             setTempRegras(initialRegras as ProdutoRegra[])
+                                            setIsAddOperacaoModalOpen(true)
+                                          }}
+                                        >
+                                          <Pencil className="w-3 h-3" />
+                                          Editar
+                                        </Button>
+
+                                        {/* Botão Excluir */}
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm"
+                                          className="h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-rose-100 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                                          onClick={() => handleRemoveProduto(prod.id)}
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                          Excluir
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                              {produtosConfig.filter(p => p.banco_id === banco.id).length === 0 && (
+                                <div className="col-span-full py-8 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-2">
+                                  <Tag className="w-6 h-6 text-slate-200" />
+                                  <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Nenhum convênio vinculado</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Card>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+
+        {/* GERENCIAR PRODUTOS E COMISSÕES PJ */}
+        <section className="space-y-6">
+          <div 
+            className="flex items-center justify-between cursor-pointer group select-none"
+            onClick={() => setIsProdutosPJExpanded(!isProdutosPJExpanded)}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
+                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                  GERENCIAR PRODUTOS E COMISSÕES PJ
+                  {isProdutosPJExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
+                </h2>
+              </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Configuração de produtos, convênios e operações por banco</p>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {isProdutosPJExpanded && (
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden space-y-4">
                 {bancos.filter(b => b.ativo !== false).map((banco) => (
                   <Card key={banco.id} className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm overflow-visible">
