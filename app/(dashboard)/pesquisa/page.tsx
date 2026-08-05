@@ -11,6 +11,8 @@ import { cn, withRetry, formatShortName } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { Badge } from "@/components/ui/badge"
 import { SimulationModal } from "@/components/simulation/simulation-modal"
+import { translateOrgao } from "@/lib/orgaos-mapping"
+import { getContractTypeInfo } from "@/lib/contratos-mapping"
 
 interface LoanData {
   banco: string;
