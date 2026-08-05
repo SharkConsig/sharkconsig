@@ -9,6 +9,7 @@ import {
   Briefcase, 
   TrendingDown, 
   ArrowRight, 
+  ArrowLeft,
   Eye, 
   EyeOff, 
   Download, 
@@ -26,6 +27,7 @@ import { getContractTypeInfo } from "@/lib/contratos-mapping";
 import { toPng, toJpeg } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { supabase } from "@/lib/supabase";
+import CalculadoraPage from "@/app/(dashboard)/calculadora/page";
 
 const parseCleanFloat = (val: string | number | null | undefined): number | null => {
   if (val === null || val === undefined) return null;
@@ -216,65 +218,145 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
   // Get active registration margins for placeholders
   const getClientMargins = () => {
+    const parseValueToNumber = (val: any): number => {
+      if (val === null || val === undefined || val === "") return 0;
+      if (typeof val === "number") return isNaN(val) ? 0 : val;
+      const str = String(val).trim();
+      if (!str) return 0;
+      if (str.includes(",")) {
+        const cleaned = str.replace(/[^\d,-]/g, "").replace(/\./g, "").replace(",", ".");
+        const num = parseFloat(cleaned);
+        return isNaN(num) ? 0 : num;
+      } else {
+        const cleaned = str.replace(/[^\d.-]/g, "");
+        const num = parseFloat(cleaned);
+        return isNaN(num) ? 0 : num;
+      }
+    };
+
+    const findMarginInObj = (obj: any, keys: string[]): number => {
+      if (!obj || typeof obj !== "object") return 0;
+      for (const k of keys) {
+        if (obj[k] !== undefined && obj[k] !== null && obj[k] !== "") {
+          const num = parseValueToNumber(obj[k]);
+          if (num > 0) return num;
+        }
+      }
+      return 0;
+    };
+
+    const principalKeys = [
+      "margem_35",
+      "margem_35%",
+      "margem_35_porcento",
+      "margem_emprestimo_liquida",
+      "margem_emprestimo",
+      "margem_disponivel_emprestimo",
+      "margem_disponivel",
+      "margem_consignavel",
+      "margem_emprestimo_consignado",
+      "md_consignacoes",
+      "mb_consignacoes",
+      "margem_liquida",
+      "margem_liquida_5",
+      "margem",
+      "margem_bruta"
+    ];
+
+    const cartaoConsignadoKeys = [
+      "liquida_5",
+      "liquida_5%",
+      "margem_cartao_liquida",
+      "margem_liquida_cartao",
+      "margem_cartao_consignado",
+      "md_cartao_credito",
+      "mb_cartao_credito",
+      "md_cartao",
+      "mb_cartao",
+      "margem_cartao",
+      "rcc",
+      "margem_rcc",
+      "margem_cartao_bruta",
+      "margem_5"
+    ];
+
+    const cartaoBeneficioKeys = [
+      "beneficio_liquida_5",
+      "beneficio_liquida_5%",
+      "margem_cartao_beneficio",
+      "margem_beneficio",
+      "margem_cartao_beneficio_liquida",
+      "md_cartao_beneficio",
+      "mb_cartao_beneficio",
+      "beneficio_liquida",
+      "beneficio_bruta_5"
+    ];
+
+    const objectsToSearch: any[] = [];
+
     const activeReg = (activeRegIndex !== undefined && registrations && registrations[activeRegIndex]) 
       ? registrations[activeRegIndex] 
       : (registrations && registrations[0] ? registrations[0] : null);
+
+    if (activeReg) objectsToSearch.push(activeReg);
+
+    if (Array.isArray(registrations)) {
+      for (const r of registrations) {
+        if (r && !objectsToSearch.includes(r)) objectsToSearch.push(r);
+      }
+    }
+
+    if (client && !objectsToSearch.includes(client)) objectsToSearch.push(client);
 
     let principal = 0;
     let cartaoConsignado = 0;
     let cartaoBeneficio = 0;
 
-    if (activeReg) {
-      // 1. Direct properties
-      if (activeReg.margem_35 !== undefined) principal = Number(activeReg.margem_35) || 0;
-      else if (activeReg.margem_emprestimo_liquida !== undefined) principal = Number(activeReg.margem_emprestimo_liquida) || 0;
-      else if (activeReg.margem_emprestimo !== undefined) principal = Number(activeReg.margem_emprestimo) || 0;
-      else if (activeReg.margem_disponivel_emprestimo !== undefined) principal = Number(activeReg.margem_disponivel_emprestimo) || 0;
-      else if (activeReg.margem_consignavel !== undefined) principal = Number(activeReg.margem_consignavel) || 0;
+    for (const item of objectsToSearch) {
+      if (!item || typeof item !== "object") continue;
 
-      if (activeReg.liquida_5 !== undefined) cartaoConsignado = Number(activeReg.liquida_5) || 0;
-      else if (activeReg.margem_liquida_cartao !== undefined) cartaoConsignado = Number(activeReg.margem_liquida_cartao) || 0;
-      else if (activeReg.margem_cartao_consignado !== undefined) cartaoConsignado = Number(activeReg.margem_cartao_consignado) || 0;
-      else if (activeReg.margem_cartao !== undefined) cartaoConsignado = Number(activeReg.margem_cartao) || 0;
+      const subObjs: any[] = [item];
 
-      if (activeReg.beneficio_liquida_5 !== undefined) cartaoBeneficio = Number(activeReg.beneficio_liquida_5) || 0;
-      else if (activeReg.margem_cartao_beneficio !== undefined) cartaoBeneficio = Number(activeReg.margem_cartao_beneficio) || 0;
+      const arrayFields = [
+        "instituidores",
+        "governo_sp_lotacoes",
+        "prefeitura_sp_lotacoes",
+        "governo_pi_lotacoes",
+        "governo_ma_lotacoes",
+        "governo_rr_instituidores",
+        "governo_rr_lotacoes",
+        "prefeitura_sp_identificacoes",
+        "governo_sp_identificacoes",
+        "matriculas",
+        "identificacoes",
+        "lotacoes",
+        "contratos",
+        "itens_credito",
+        "itens",
+        "margens"
+      ];
 
-      // 2. PI lotacoes
-      const piLotacoes = activeReg.governo_pi_lotacoes;
-      if (piLotacoes) {
-        const lotacoes = Array.isArray(piLotacoes) ? piLotacoes : [piLotacoes];
-        if (lotacoes[0]) {
-          const lot = lotacoes[0] as { margem_disponivel_emprestimo?: number; margem_cartao_consignado?: number; margem_cartao_beneficio?: number };
-          if (lot.margem_disponivel_emprestimo !== undefined) principal = Number(lot.margem_disponivel_emprestimo) || principal;
-          if (lot.margem_cartao_consignado !== undefined) cartaoConsignado = Number(lot.margem_cartao_consignado) || cartaoConsignado;
-          if (lot.margem_cartao_beneficio !== undefined) cartaoBeneficio = Number(lot.margem_cartao_beneficio) || cartaoBeneficio;
+      for (const f of arrayFields) {
+        if (item[f]) {
+          const arr = Array.isArray(item[f]) ? item[f] : [item[f]];
+          for (const sub of arr) {
+            if (sub && typeof sub === "object") subObjs.push(sub);
+          }
         }
       }
 
-      // 3. MA lotacoes
-      const maLotacoes = activeReg.governo_ma_lotacoes;
-      if (maLotacoes) {
-        const lotacoes = Array.isArray(maLotacoes) ? maLotacoes : [maLotacoes];
-        if (lotacoes[0]) {
-          const lot = lotacoes[0] as { margem_emprestimo_consignado?: number; margem_cartao_consignado?: number; margem_cartao_beneficio?: number };
-          if (lot.margem_emprestimo_consignado !== undefined) principal = Number(lot.margem_emprestimo_consignado) || principal;
-          if (lot.margem_cartao_consignado !== undefined) cartaoConsignado = Number(lot.margem_cartao_consignado) || cartaoConsignado;
-          if (lot.margem_cartao_beneficio !== undefined) cartaoBeneficio = Number(lot.margem_cartao_beneficio) || cartaoBeneficio;
-        }
+      for (const target of subObjs) {
+        if (!principal) principal = findMarginInObj(target, principalKeys);
+        if (!cartaoConsignado) cartaoConsignado = findMarginInObj(target, cartaoConsignadoKeys);
+        if (!cartaoBeneficio) cartaoBeneficio = findMarginInObj(target, cartaoBeneficioKeys);
       }
 
-      // 4. RR lotacoes
-      const rrLotacoes = activeReg.governo_rr_lotacoes;
-      if (rrLotacoes) {
-        const lotacoes = Array.isArray(rrLotacoes) ? rrLotacoes : [rrLotacoes];
-        if (lotacoes[0]) {
-          const lot = lotacoes[0] as { margem_emprestimo?: number; margem_cartao?: number };
-          if (lot.margem_emprestimo !== undefined) principal = Number(lot.margem_emprestimo) || principal;
-          if (lot.margem_cartao !== undefined) cartaoConsignado = Number(lot.margem_cartao) || cartaoConsignado;
-        }
-      }
+      if (principal > 0 && cartaoConsignado > 0 && cartaoBeneficio > 0) break;
     }
+
+    if (!principal && margemPrincipalVal) principal = parseValueToNumber(margemPrincipalVal);
+    if (!cartaoConsignado && margemCartaoConsignadoVal) cartaoConsignado = parseValueToNumber(margemCartaoConsignadoVal);
+    if (!cartaoBeneficio && margemCartaoBeneficioVal) cartaoBeneficio = parseValueToNumber(margemCartaoBeneficioVal);
 
     return { principal, cartaoConsignado, cartaoBeneficio };
   };
@@ -357,6 +439,16 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         
         const initialOrgao = resolveOrgao(activeReg);
         setOrgaoCliente(String(initialOrgao).toUpperCase());
+
+        const initialMargins = getClientMargins();
+        if (initialMargins.principal > 0) setMargemPrincipalVal(String(initialMargins.principal));
+        else setMargemPrincipalVal("");
+
+        if (initialMargins.cartaoConsignado > 0) setMargemCartaoConsignadoVal(String(initialMargins.cartaoConsignado));
+        else setMargemCartaoConsignadoVal("");
+
+        if (initialMargins.cartaoBeneficio > 0) setMargemCartaoBeneficioVal(String(initialMargins.cartaoBeneficio));
+        else setMargemCartaoBeneficioVal("");
       }
 
       if (perfil && !perfilInitializedRef.current) {
@@ -876,9 +968,9 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
     const totalParcelaAtual = contratos.reduce((acc, c) => acc + (parseFloat(c.parcelaAtual) || 0), 0);
     const totalNovaParcela = contratos.reduce((acc, c) => acc + (parseFloat(c.novaParcela) || 0), 0);
     const economiaMensal = Math.max(0, totalParcelaAtual - totalNovaParcela);
-    const sumOfMargins = (parseFloat(margemPrincipalVal) || 0) + 
-                         (parseFloat(margemCartaoConsignadoVal) || 0) + 
-                         (parseFloat(margemCartaoBeneficioVal) || 0);
+    const sumOfMargins = (parseFloat(margemPrincipalVal) || clientPrincipalMargem || 0) + 
+                         (parseFloat(margemCartaoConsignadoVal) || clientCartaoConsignadoMargem || 0) + 
+                         (parseFloat(margemCartaoBeneficioVal) || clientCartaoBeneficioMargem || 0);
     const valorTotalPosEstrategia = totalNovaParcela + sumOfMargins;
 
     const uniqueDestBanks = Array.from(new Set(contratos.map(c => c.bancoDestino).filter(Boolean)));
@@ -887,9 +979,9 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       ? `Através do ${uniqueDestBanks.join(" e ")}`
       : "";
 
-    const hasMargemPrincipal = margemPrincipalVal !== "" && parseFloat(margemPrincipalVal) > 0;
-    const hasMargemCC = margemCartaoConsignadoVal !== "" && parseFloat(margemCartaoConsignadoVal) > 0;
-    const hasMargemCB = margemCartaoBeneficioVal !== "" && parseFloat(margemCartaoBeneficioVal) > 0;
+    const hasMargemPrincipal = margemPrincipalVal !== "" ? parseFloat(margemPrincipalVal) > 0 : clientPrincipalMargem > 0;
+    const hasMargemCC = margemCartaoConsignadoVal !== "" ? parseFloat(margemCartaoConsignadoVal) > 0 : clientCartaoConsignadoMargem > 0;
+    const hasMargemCB = margemCartaoBeneficioVal !== "" ? parseFloat(margemCartaoBeneficioVal) > 0 : clientCartaoBeneficioMargem > 0;
 
     const numPages = contratos.length >= 4 ? (1 + (contratos.length - 3) * 0.15) : 1;
 
@@ -992,13 +1084,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   
                   <div className="space-y-0.5 text-left pt-1.5 border-t border-slate-100 mt-1.5">
                     {hasMargemPrincipal && (
-                      <p className="text-[9px] text-slate-400 font-normal">Margem*: <span className="text-slate-400 font-normal">{formatBRL(margemPrincipalVal)}</span></p>
+                      <p className="text-[9px] text-slate-400 font-normal">Margem*: <span className="text-slate-400 font-normal">{formatBRL(margemPrincipalVal !== "" ? margemPrincipalVal : clientPrincipalMargem)}</span></p>
                     )}
                     {hasMargemCC && (
-                      <p className="text-[9px] text-slate-400 font-normal">Margem CC*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
+                      <p className="text-[9px] text-slate-400 font-normal">Margem CC*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoConsignadoVal !== "" ? margemCartaoConsignadoVal : clientCartaoConsignadoMargem)}</span></p>
                     )}
                     {hasMargemCB && (
-                      <p className="text-[9px] text-slate-400 font-normal">Margem CB*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
+                      <p className="text-[9px] text-slate-400 font-normal">Margem CB*: <span className="text-slate-400 font-normal">{formatBRL(margemCartaoBeneficioVal !== "" ? margemCartaoBeneficioVal : clientCartaoBeneficioMargem)}</span></p>
                     )}
                     {showBancosLine && (
                       <p className="text-[8px] text-slate-400 italic font-normal mt-0.5">
@@ -1585,13 +1677,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                   
                   <div className={`space-y-0.5 text-left ${cardBorderPadding}`}>
                     {hasMargemPrincipal && (
-                      <p className="text-[8.5px] text-[#162546] font-normal">Margem*: <span className="text-[#162546] font-normal">{formatBRL(margemPrincipalVal)}</span></p>
+                      <p className="text-[8.5px] text-[#162546] font-normal">Margem*: <span className="text-[#162546] font-normal">{formatBRL(margemPrincipalVal !== "" ? margemPrincipalVal : clientPrincipalMargem)}</span></p>
                     )}
                     {hasMargemCC && (
-                      <p className="text-[8.5px] text-[#162546] font-normal">Margem CC*: <span className="text-[#162546] font-normal">{formatBRL(margemCartaoConsignadoVal)}</span></p>
+                      <p className="text-[8.5px] text-[#162546] font-normal">Margem CC*: <span className="text-[#162546] font-normal">{formatBRL(margemCartaoConsignadoVal !== "" ? margemCartaoConsignadoVal : clientCartaoConsignadoMargem)}</span></p>
                     )}
                     {hasMargemCB && (
-                      <p className="text-[8.5px] text-[#162546] font-normal">Margem CB*: <span className="text-[#162546] font-normal">{formatBRL(margemCartaoBeneficioVal)}</span></p>
+                      <p className="text-[8.5px] text-[#162546] font-normal">Margem CB*: <span className="text-[#162546] font-normal">{formatBRL(margemCartaoBeneficioVal !== "" ? margemCartaoBeneficioVal : clientCartaoBeneficioMargem)}</span></p>
                     )}
                     {showBancosLine && (
                       <p className="text-[8px] text-[#162546] italic font-normal mt-0.5">
@@ -1763,13 +1855,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             
             {/* STEP 1: Model Selection */}
             {step === "model-select" && (
-              <div className="space-y-6 max-w-2xl mx-auto py-6">
+              <div className="space-y-6 max-w-5xl mx-auto py-6">
                 <div className="text-center space-y-2">
                   <h4 className="text-[18px] font-bold text-slate-800">Qual estratégia deseja simular?</h4>
                   <p className="text-[13px] text-slate-500">Selecione o modelo matemático e de negócios ideal para a proposta do cliente.</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
                   {/* Option Redução de Parcela */}
                   <div 
                     onClick={() => {
@@ -1835,7 +1927,57 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                       Iniciar Simulação <ArrowRight className="w-4 h-4" />
                     </div>
                   </div>
+
+                  {/* Option Personalize sua Proposta */}
+                  <div 
+                    onClick={() => {
+                      setStep("personalize");
+                    }}
+                    className="p-6 bg-purple-50/50 hover:bg-purple-50 border-2 border-purple-100 hover:border-purple-300 rounded-2xl cursor-pointer transition-all flex flex-col justify-between group min-h-[250px]"
+                  >
+                    <div className="space-y-2">
+                      <div className="w-10 h-10 bg-purple-600 text-white rounded-xl flex items-center justify-center font-bold">
+                        <Calculator className="w-5 h-5" />
+                      </div>
+                      <h5 className="text-[14px] font-bold text-slate-900 uppercase tracking-wider">PERSONALIZE SUA PROPOSTA</h5>
+                      <p className="text-[12px] text-slate-600 leading-relaxed">
+                        Acesse a calculadora financeira e simule condições sob medida com as margens do cliente.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-purple-600 text-[11px] font-bold uppercase tracking-wider group-hover:translate-x-1 transition-transform self-end">
+                      Iniciar Simulação <ArrowRight className="w-4 h-4" />
+                    </div>
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {/* STEP: Personalize sua Proposta (Calculadora) */}
+            {step === "personalize" && (
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => setStep("model-select")}
+                  className="flex items-center gap-1.5 text-slate-500 hover:text-slate-900 text-xs font-bold transition-colors mb-2"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Voltar para seleção de estratégia
+                </button>
+
+                {(() => {
+                  const activeRegForCalc = (activeRegIndex !== undefined && registrations && registrations[activeRegIndex]) 
+                    ? registrations[activeRegIndex] 
+                    : (registrations && registrations[0] ? registrations[0] : null);
+                  const currentOrgaoCalc = orgaoCliente || (activeRegForCalc ? resolveOrgao(activeRegForCalc) : "");
+                  return (
+                    <CalculadoraPage 
+                      clientMargins={getClientMargins()} 
+                      isEmbedded={true} 
+                      client={client}
+                      orgao={currentOrgaoCalc}
+                      onProposalSaved={onProposalSaved}
+                    />
+                  );
+                })()}
               </div>
             )}
 

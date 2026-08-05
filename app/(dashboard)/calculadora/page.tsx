@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { 
   Calculator, 
   DollarSign, 
@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { cn } from "@/lib/utils"
+import { supabase } from "@/lib/supabase"
 
 // Helper function to format BRL currency
 function formatBRL(val: number): string {
@@ -125,9 +126,109 @@ function calculateImplicitRate(pv: number, pmt: number, n: number): number {
   return rate
 }
 
-export default function CalculadoraPage() {
+interface CalculadoraPageProps {
+  clientMargins?: {
+    principal: number;
+    cartaoConsignado: number;
+    cartaoBeneficio: number;
+  };
+  isEmbedded?: boolean;
+  client?: any;
+  orgao?: string;
+  onProposalSaved?: () => void;
+}
+
+export default function CalculadoraPage({ clientMargins, isEmbedded, client: passedClient, orgao: passedOrgao, onProposalSaved }: CalculadoraPageProps = {}) {
   const { perfil, isAdmin } = useAuth()
-  
+
+  const [clienteNome, setClienteNome] = useState<string>(passedClient?.nome || "")
+  const lastSavedProposalRef = useRef<{ key: string; time: number } | null>(null)
+
+  useEffect(() => {
+    if (passedClient?.nome) {
+      setClienteNome(passedClient.nome)
+    }
+  }, [passedClient?.nome])
+
+  useEffect(() => {
+    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("calculator_proposals_channel") : null;
+
+    const saveProposal = async (proposalData: any) => {
+      try {
+        const cleanCpf = proposalData.cliente_cpf ? String(proposalData.cliente_cpf).replace(/\D/g, "") : (passedClient?.cpf ? String(passedClient.cpf).replace(/\D/g, "") : "");
+        const nome = proposalData.cliente_nome || passedClient?.nome || "";
+        const valContrato = Number(proposalData.valor_contrato) || 0;
+        const prazo = Number(proposalData.prazo_estrategia) || 0;
+        const pmMedia = Number(proposalData.parcela_media) || 0;
+        const taxa = Number(proposalData.taxa_am) || 0;
+
+        const dedupeKey = `${cleanCpf}_${nome}_${valContrato}_${prazo}_${pmMedia}_${taxa}`;
+        const now = Date.now();
+
+        if (lastSavedProposalRef.current && lastSavedProposalRef.current.key === dedupeKey && (now - lastSavedProposalRef.current.time) < 4000) {
+          return;
+        }
+
+        lastSavedProposalRef.current = { key: dedupeKey, time: now };
+
+        const { data: authData } = await supabase.auth.getUser();
+        const activeUser = authData?.user;
+
+        const payloadToInsert = {
+          cliente_cpf: cleanCpf,
+          cliente_nome: nome,
+          user_id: activeUser?.id || null,
+          user_nome: perfil?.nome || "",
+          user_email: activeUser?.email || perfil?.email || "",
+          telefone_consultor: (perfil as any)?.telefone || "",
+          valor_contrato: valContrato,
+          prazo_estrategia: prazo,
+          parcela_media: pmMedia,
+          taxa_am: taxa,
+          tipo_arquivo: proposalData.tipo_arquivo || "PDF",
+          arquivo_url: proposalData.arquivo_url || null
+        };
+
+        const { error } = await supabase
+          .from("historico_proposta_comercial_calculadora")
+          .insert(payloadToInsert);
+
+        if (error) {
+          console.error("Erro ao salvar no Supabase (historico_proposta_comercial_calculadora):", error);
+        } else {
+          if (onProposalSaved) {
+            onProposalSaved();
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao salvar histórico de proposta calculadora:", err);
+      }
+    };
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === "SAVE_CALCULATOR_PROPOSAL") {
+        saveProposal(event.data.payload);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    if (channel) {
+      channel.onmessage = (event) => {
+        if (event.data && event.data.type === "SAVE_CALCULATOR_PROPOSAL") {
+          saveProposal(event.data.payload);
+        }
+      };
+    }
+
+    (window as any).saveCalculatorProposal = saveProposal;
+
+    return () => {
+      window.removeEventListener("message", handleMessage);
+      if (channel) channel.close();
+    };
+  }, [perfil, onProposalSaved, passedClient]);
+
   // Active view state
   const [activeTab, setActiveTab] = useState<string>("liberacao")
 
@@ -152,7 +253,6 @@ export default function CalculadoraPage() {
   // Modals state for Plano de Amortização
   const [showPlanModal, setShowPlanModal] = useState<boolean>(false)
   const [showChangePlanModal, setShowChangePlanModal] = useState<boolean>(false)
-  const [clienteNome, setClienteNome] = useState<string>("")
 
   // Show full summary modal state
   const [showSummaryModal, setShowSummaryModal] = useState<boolean>(false)
@@ -604,8 +704,24 @@ export default function CalculadoraPage() {
     }
   }, [amortizacaoPosPort, valorClientePort, tabelaPricePosPort, novoPrazo, saldoPort, valorParaAntecipacaoPort])
 
-  const handleGerarPDF = () => {
-    const client = clienteNome.trim() || "Cliente"
+  const handleGerarPDF = async () => {
+    const vContrato = (activeTab === "port_liberacao" || activeTab === "amort_pos_port")
+      ? (saldoPort || 0)
+      : (contratoComIof || valorLiberado || 0);
+
+    const przEst = (activeTab === "port_liberacao" || activeTab === "amort_pos_port")
+      ? (novoPrazo || 0)
+      : (activeResult?.prazo || 0);
+
+    const pmMedia = (activeTab === "port_liberacao" || activeTab === "amort_pos_port")
+      ? (pmtNova || 0)
+      : (activeResult?.parcela || 0);
+
+    const txAm = (activeTab === "port_liberacao" || activeTab === "amort_pos_port")
+      ? (novaTaxaDecimal ? novaTaxaDecimal * 100 : 0)
+      : (activeResult?.taxa ? activeResult.taxa * 100 : 0);
+
+    const client = clienteNome.trim() || passedClient?.nome || "Cliente"
     const initials = client
       .split(" ")
       .filter(Boolean)
@@ -618,8 +734,18 @@ export default function CalculadoraPage() {
     const email = perfil?.email || "elis_cassol@yahoo.com.br"
     const phone = (perfil as any)?.telefone || ""
     const consultantPhoto = (perfil as any)?.foto_proposta_url || (perfil as any)?.foto_url || ""
-    const cpf = ""
-    const orgao = ""
+
+    const formatFullCPF = (c?: string) => {
+      if (!c) return ""
+      const d = String(c).replace(/\D/g, "")
+      if (d.length === 11) {
+        return `${d.substring(0, 3)}.${d.substring(3, 6)}.${d.substring(6, 9)}-${d.substring(9, 11)}`
+      }
+      return String(c)
+    }
+
+    const cpf = formatFullCPF(passedClient?.cpf)
+    const orgao = passedOrgao || (passedClient?.orgao as string) || ""
     const defaultValidityDays = 1
     const validityDate = new Date()
     validityDate.setDate(validityDate.getDate() + defaultValidityDays)
@@ -1053,6 +1179,39 @@ export default function CalculadoraPage() {
 
                 var footerEl = document.querySelector('.footer-note');
                 if (footerEl) footerEl.style.display = showFooter ? 'flex' : 'none';
+
+                var proposalPayload = {
+                  cliente_cpf: cpfVal ? cpfVal.replace(/\D/g, '') : '',
+                  cliente_nome: clientVal || '',
+                  valor_contrato: ${vContrato},
+                  prazo_estrategia: ${przEst},
+                  parcela_media: ${pmMedia},
+                  taxa_am: ${txAm}
+                };
+
+                var proposalSaved = false;
+                if (window.opener) {
+                  try {
+                    if (typeof window.opener.saveCalculatorProposal === 'function') {
+                      window.opener.saveCalculatorProposal(proposalPayload);
+                      proposalSaved = true;
+                    }
+                  } catch (e) {}
+                  if (!proposalSaved) {
+                    try {
+                      window.opener.postMessage({ type: 'SAVE_CALCULATOR_PROPOSAL', payload: proposalPayload }, '*');
+                      proposalSaved = true;
+                    } catch (e) {}
+                  }
+                }
+                if (!proposalSaved) {
+                  try {
+                    if (typeof BroadcastChannel !== 'undefined') {
+                      var bc = new BroadcastChannel('calculator_proposals_channel');
+                      bc.postMessage({ type: 'SAVE_CALCULATOR_PROPOSAL', payload: proposalPayload });
+                    }
+                  } catch (e) {}
+                }
 
                 closeCustomizeModal();
 
@@ -1523,6 +1682,39 @@ export default function CalculadoraPage() {
               var footerEl = document.querySelector('.footer-note');
               if (footerEl) footerEl.style.display = showFooter ? 'flex' : 'none';
 
+              var proposalPayload = {
+                cliente_cpf: cpfVal ? cpfVal.replace(/\D/g, '') : '',
+                cliente_nome: clientVal || '',
+                valor_contrato: ${vContrato},
+                prazo_estrategia: ${przEst},
+                parcela_media: ${pmMedia},
+                taxa_am: ${txAm}
+              };
+
+              var proposalSaved = false;
+              if (window.opener) {
+                try {
+                  if (typeof window.opener.saveCalculatorProposal === 'function') {
+                    window.opener.saveCalculatorProposal(proposalPayload);
+                    proposalSaved = true;
+                  }
+                } catch (e) {}
+                if (!proposalSaved) {
+                  try {
+                    window.opener.postMessage({ type: 'SAVE_CALCULATOR_PROPOSAL', payload: proposalPayload }, '*');
+                    proposalSaved = true;
+                  } catch (e) {}
+                }
+              }
+              if (!proposalSaved) {
+                try {
+                  if (typeof BroadcastChannel !== 'undefined') {
+                    var bc = new BroadcastChannel('calculator_proposals_channel');
+                    bc.postMessage({ type: 'SAVE_CALCULATOR_PROPOSAL', payload: proposalPayload });
+                  }
+                } catch (e) {}
+              }
+
               closeCustomizeModal();
 
               setTimeout(function() {
@@ -1559,7 +1751,7 @@ export default function CalculadoraPage() {
   }
 
   return (
-    <div className="p-6 md:p-8 lg:p-10 min-h-screen bg-slate-50 text-slate-800">
+    <div className={cn("text-slate-800", isEmbedded ? "p-0 bg-transparent min-h-0" : "p-6 md:p-8 lg:p-10 min-h-screen bg-slate-50")}>
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto space-y-6">
         {/* TOP TABS NAVBAR */}
@@ -1616,6 +1808,43 @@ export default function CalculadoraPage() {
                     <FileText className="w-4 h-4 text-[#00D492]" />
                     <span>PREMISSAS</span>
                   </div>
+
+                  {/* MARGENS DO CLIENTE (quando acessado via simulação do cliente) */}
+                  {clientMargins && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Margens do Cliente (Clique para selecionar)
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleParcelaChange(clientMargins.principal ? clientMargins.principal.toFixed(2).replace(".", ",") : "0,00")}
+                          className="text-left p-2.5 bg-white hover:bg-emerald-50/60 border border-slate-200 hover:border-emerald-300 rounded-lg transition-all group cursor-pointer shadow-2xs"
+                        >
+                          <span className="block text-[10px] font-bold text-slate-400 group-hover:text-emerald-700 uppercase">Margem Principal</span>
+                          <span className="block text-sm font-bold text-slate-800 group-hover:text-emerald-900">{formatBRL(clientMargins.principal || 0)}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleParcelaChange(clientMargins.cartaoConsignado ? clientMargins.cartaoConsignado.toFixed(2).replace(".", ",") : "0,00")}
+                          className="text-left p-2.5 bg-white hover:bg-emerald-50/60 border border-slate-200 hover:border-emerald-300 rounded-lg transition-all group cursor-pointer shadow-2xs"
+                        >
+                          <span className="block text-[10px] font-bold text-slate-400 group-hover:text-emerald-700 uppercase">Cartão Consignado</span>
+                          <span className="block text-sm font-bold text-slate-800 group-hover:text-emerald-900">{formatBRL(clientMargins.cartaoConsignado || 0)}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleParcelaChange(clientMargins.cartaoBeneficio ? clientMargins.cartaoBeneficio.toFixed(2).replace(".", ",") : "0,00")}
+                          className="text-left p-2.5 bg-white hover:bg-emerald-50/60 border border-slate-200 hover:border-emerald-300 rounded-lg transition-all group cursor-pointer shadow-2xs"
+                        >
+                          <span className="block text-[10px] font-bold text-slate-400 group-hover:text-emerald-700 uppercase">Cartão Benefício</span>
+                          <span className="block text-sm font-bold text-slate-800 group-hover:text-emerald-900">{formatBRL(clientMargins.cartaoBeneficio || 0)}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>

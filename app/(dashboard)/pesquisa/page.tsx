@@ -145,7 +145,7 @@ export default function SearchClientPage() {
     try {
       const cleanCpf = client.cpf.replace(/\D/g, "")
       
-      const [p1, p2, p3] = await Promise.all([
+      const [p1, p2, p3, p4] = await Promise.all([
         supabase
           .from('historico_proposta_comercial')
           .select('*')
@@ -157,18 +157,25 @@ export default function SearchClientPage() {
         supabase
           .from('historico_proposta_comercial_quitacao_contrato')
           .select('*')
+          .eq('cliente_cpf', cleanCpf),
+        supabase
+          .from('historico_proposta_comercial_calculadora')
+          .select('*')
           .eq('cliente_cpf', cleanCpf)
       ]);
 
       let combined: Record<string, any>[] = [];
       if (p1.data) {
-        combined = combined.concat(p1.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: false })));
+        combined = combined.concat(p1.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: false, isCalculadora: false })));
       }
       if (p2.data) {
-        combined = combined.concat(p2.data.map((item: any) => ({ ...item, isNovoFormato: true, isQuitacao: false })));
+        combined = combined.concat(p2.data.map((item: any) => ({ ...item, isNovoFormato: true, isQuitacao: false, isCalculadora: false })));
       }
       if (p3.data) {
-        combined = combined.concat(p3.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: true })));
+        combined = combined.concat(p3.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: true, isCalculadora: false })));
+      }
+      if (p4.data) {
+        combined = combined.concat(p4.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: false, isCalculadora: true })));
       }
 
       combined.sort((a, b) => {
@@ -399,7 +406,11 @@ export default function SearchClientPage() {
 
                 <div className="flex flex-col">
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Estratégia</span>
-                  {proposal.isQuitacao ? (
+                  {proposal.isCalculadora ? (
+                    <span className="text-[12px] font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
+                      PERSONALIZADA
+                    </span>
+                  ) : proposal.isQuitacao ? (
                     <span className="text-[12px] font-bold text-[#162546] bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
                       Quitação de Contrato
                     </span>
@@ -414,7 +425,36 @@ export default function SearchClientPage() {
                   )}
                 </div>
 
-                {!proposal.isQuitacao && !proposal.isNovoFormato && (
+                {proposal.isCalculadora && (
+                  <>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor do Contrato</span>
+                      <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                        <span className="text-emerald-600 font-bold">{proposal.valor_contrato ? formatCurrency(proposal.valor_contrato) : "--"}</span>
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Prazo Estratégia</span>
+                      <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                        {proposal.prazo_estrategia ? `${proposal.prazo_estrategia}x` : "--"}
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Parcela Média</span>
+                      <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                        {proposal.parcela_media ? formatCurrency(proposal.parcela_media) : "--"}
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Taxa a.m.</span>
+                      <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                        {proposal.taxa_am !== null && proposal.taxa_am !== undefined ? `${Number(proposal.taxa_am).toFixed(2).replace('.', ',')}%` : "--"}
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {!proposal.isQuitacao && !proposal.isNovoFormato && !proposal.isCalculadora && (
                   <div className="flex flex-col">
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Liberado</span>
                     <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
@@ -452,7 +492,7 @@ export default function SearchClientPage() {
                   </>
                 )}
 
-                {!proposal.isNovoFormato && !proposal.isQuitacao && (
+                {!proposal.isNovoFormato && !proposal.isQuitacao && !proposal.isCalculadora && (
                   <div className="flex flex-col">
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
                       PARCELA ANTIGA {"->"} PARCELA NOVA
@@ -495,7 +535,7 @@ export default function SearchClientPage() {
                   );
                 })()}
 
-                {!proposal.isNovoFormato && !proposal.isQuitacao && (
+                {!proposal.isNovoFormato && !proposal.isQuitacao && !proposal.isCalculadora && (
                   <div className="flex flex-col">
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Diferença nas Parcelas</span>
                     <span className="text-[12px] font-extrabold text-slate-700 leading-none block">

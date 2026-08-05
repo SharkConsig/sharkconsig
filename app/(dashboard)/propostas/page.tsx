@@ -86,6 +86,8 @@ interface Proposal {
   equipe?: string
   ade?: string
   nome_corretor?: string
+  estagiario_colaborador_id?: string
+  estagiario_colaborador_nome?: string
   nome_cliente: string
   cliente_cpf: string
   convenio: string
@@ -225,6 +227,69 @@ export default function ProposalsPage() {
   const [selectedProposalForStatus, setSelectedProposalForStatus] = useState<Proposal | null>(null)
   const [selectedProposalForTransfer, setSelectedProposalForTransfer] = useState<Proposal | null>(null)
   const [isCloning, setIsCloning] = useState<string | null>(null)
+  const [dbEstagiarios, setDbEstagiarios] = useState<{ id: string; nome: string }[]>([])
+
+  useEffect(() => {
+    async function loadEstagiarios() {
+      try {
+        const res = await fetch("/api/usuarios")
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data)) {
+            const activeEst = data
+              .filter((u: any) => {
+                const funcao = (u.funcao || '').toLowerCase()
+                const status = (u.status || '').toUpperCase()
+                return (funcao === 'estágio' || funcao === 'estagio') && status === 'ATIVO'
+              })
+              .map((u: any) => ({ id: u.id, nome: u.nome }))
+              .sort((a: any, b: any) => a.nome.localeCompare(b.nome))
+            setDbEstagiarios(activeEst)
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao carregar estagiários:", err)
+      }
+    }
+    loadEstagiarios()
+  }, [])
+
+  const handleAssignEstagiario = async (idLead: string, selectedEstagiarioId: string) => {
+    const selectedEst = dbEstagiarios.find(e => e.id === selectedEstagiarioId)
+    const newId = selectedEstagiarioId || null
+    const newName = selectedEst ? selectedEst.nome : null
+
+    setProposals(prev => prev.map(p => p.id_lead === idLead ? {
+      ...p,
+      estagiario_colaborador_id: newId || undefined,
+      estagiario_colaborador_nome: newName || undefined
+    } : p))
+
+    try {
+      const { error } = await supabase
+        .from('propostas')
+        .update({
+          estagiario_colaborador_id: newId,
+          estagiario_colaborador_nome: newName,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id_lead', idLead)
+
+      if (error) {
+        toast.error("Erro ao atualizar estagiário: " + error.message)
+        fetchProposals(true)
+      } else {
+        toast.success(newName ? `Estagiário ${newName} atribuído!` : "Atribuição de estagiário removida.")
+      }
+    } catch (err: any) {
+      toast.error("Erro ao atualizar estagiário.")
+      fetchProposals(true)
+    }
+  }
+
+  const userRoleLower = (perfil?.role || (perfil as any)?.funcao || "").toLowerCase().trim()
+  const canEditEstagiario = isOperational || isAdmin || isDeveloper || 
+    ["operacional", "administrativo", "administrador", "desenvolvedor", "dev", "admin"].includes(userRoleLower)
 
   // Estados para filtros avançados
   const [showFilters, setShowFilters] = useState(false)
@@ -1237,7 +1302,33 @@ export default function ProposalsPage() {
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.ade || '-'}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-blue-50/20">{proposal.nome_corretor || '-'}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-indigo-50/20">{proposal.equipe || '-'}</td>
-                          <td className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-amber-50/20">{proposal.estagiario_colaborador_nome || '-'}</td>
+                          <td 
+                            className="px-4 py-4 text-[11px] font-bold text-slate-600 uppercase bg-amber-50/20"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {canEditEstagiario ? (
+                              <select
+                                value={proposal.estagiario_colaborador_id || (dbEstagiarios.find(e => e.nome.toLowerCase() === (proposal.estagiario_colaborador_nome || "").toLowerCase())?.id) || ""}
+                                onChange={(e) => handleAssignEstagiario(proposal.id_lead, e.target.value)}
+                                className="bg-transparent border-0 outline-none focus:outline-none focus:ring-1 focus:ring-amber-400 focus:bg-white focus:border focus:border-amber-300 rounded py-0.5 px-1 -mx-1 text-[11px] font-bold text-slate-600 uppercase cursor-pointer hover:bg-amber-100/60 transition-colors max-w-[180px] truncate"
+                                title="Clique para alterar o estagiário"
+                              >
+                                <option value="">-</option>
+                                {dbEstagiarios.map((est) => (
+                                  <option key={est.id} value={est.id}>
+                                    {est.nome}
+                                  </option>
+                                ))}
+                                {proposal.estagiario_colaborador_nome && !dbEstagiarios.some(e => e.nome.toLowerCase() === (proposal.estagiario_colaborador_nome || "").toLowerCase()) && (
+                                  <option value={proposal.estagiario_colaborador_id || "custom"}>
+                                    {proposal.estagiario_colaborador_nome}
+                                  </option>
+                                )}
+                              </select>
+                            ) : (
+                              <span>{proposal.estagiario_colaborador_nome || '-'}</span>
+                            )}
+                          </td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500">{proposal.cliente_cpf}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-700 uppercase tracking-tight">{proposal.nome_cliente}</td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-500">{proposal.banco}/{proposal.convenio}</td>

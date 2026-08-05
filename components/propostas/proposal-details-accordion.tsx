@@ -124,6 +124,7 @@ interface ProdutoConfig {
 
 export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
   const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor, isSupervisor } = useAuth()
+  const isPJ = (user?.regime_contratacao || "").trim().toUpperCase() === "PJ" || (user?.role || "").trim().toUpperCase() === "PJ" || (user as any)?.funcao?.trim()?.toUpperCase() === "PJ"
   
   const isFinancialEditor = isAdmin || isDeveloper || isOperational || ['Administrativo', 'Admin', 'Administrador'].includes(user?.role || '')
   
@@ -1791,7 +1792,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                                   "text-[9px] font-medium lowercase tracking-normal",
                                   formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
                                 )}>
-                                  Prazo: {option.prazo}x | Coef: {option.coeficiente} | Prod: {option.percentual_producao}%
+                                  Prazo: {option.prazo}x | Coef: {option.coeficiente}{isPJ ? "" : ` | Prod: ${option.percentual_producao}%`}
                                 </span>
                               </div>
                             )

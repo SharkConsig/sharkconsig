@@ -36,6 +36,7 @@ import { useAuth } from "@/context/auth-context"
 
 function NewProposalForm() {
   const { isCorretor, perfil, isEstagio, isMonitoramento } = useAuth()
+  const isPJ = (perfil?.regime_contratacao || "").trim().toUpperCase() === "PJ" || (perfil?.role || "").trim().toUpperCase() === "PJ" || (perfil as any)?.funcao?.trim()?.toUpperCase() === "PJ"
   const roleLower = perfil?.role?.toLowerCase() || ""
   const canEditPreFilled = ["operacional", "monitoramento", "administrador", "desenvolvedor", "admin"].includes(roleLower)
   const router = useRouter()
@@ -1888,7 +1889,7 @@ function NewProposalForm() {
                                 "text-[9px] font-medium lowercase tracking-normal",
                                 formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
                               )}>
-                                Prazo: {option.prazo}x | Coef: {option.coeficiente} | Prod: {option.percentual_producao}%
+                                Prazo: {option.prazo}x | Coef: {option.coeficiente}{isPJ ? "" : ` | Prod: ${option.percentual_producao}%`}
                               </span>
                             </div>
                           );
