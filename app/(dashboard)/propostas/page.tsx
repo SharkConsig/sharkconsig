@@ -320,23 +320,22 @@ export default function ProposalsPage() {
       const proposal = proposals.find(p => p.id_lead === idLead)
       if (!proposal) throw new Error("Proposta não encontrada")
 
-      // Use de data selecionada ou data atual, garantindo que não ocorra problemas de timezone
-      const baseDate = customDate ? (() => {
-        const d = new Date();
+      // Use de data selecionada ou data atual, garantindo que não ocorra problemas de fuso horário
+      const isoDate = customDate ? (() => {
         const parts = customDate.split('-').map(Number);
         if (parts.length === 3 && !parts.some(isNaN)) {
-          d.setFullYear(parts[0]);
-          d.setMonth(parts[1] - 1);
-          d.setDate(parts[2]);
+          const y = parts[0];
+          const m = String(parts[1]).padStart(2, '0');
+          const d = String(parts[2]).padStart(2, '0');
+          return `${y}-${m}-${d}T12:00:00.000Z`;
         }
-        return d;
-      })() : new Date();
-      const isoDate = baseDate.toISOString();
+        return new Date().toISOString();
+      })() : new Date().toISOString();
 
       // Base data that definitely exists
       const baseUpdate = { 
         status: newStatus, 
-        updated_at: isoDate 
+        updated_at: new Date().toISOString() 
       }
 
       // Try with all columns first
@@ -350,14 +349,12 @@ export default function ProposalsPage() {
         actualFullUpdate.data_pago_cliente = isoDate
       }
 
-      // NOVO: Salvar data_digitacao quando a proposta sai de 'AGUARDANDO DIGITAÇÃO OPERACIONAL' e ganha um ADE
-      // Só salva se o campo ainda estiver vazio (não pode sofrer alteração posterior)
-      if (
-        proposal.status === "AGUARDANDO DIGITAÇÃO OPERACIONAL" && 
-        newStatus !== "AGUARDANDO DIGITAÇÃO OPERACIONAL" &&
-        ade && 
-        !proposal.data_digitacao
-      ) {
+      // Salvar data_digitacao quando a proposta ganha um ADE ou é alterado o status/data no modal
+      if (ade || newStatus.includes("ANDAMENTO") || newStatus.includes("DIGITAD") || newStatus.includes("PAGO")) {
+        if (!proposal.data_digitacao || customDate) {
+          actualFullUpdate.data_digitacao = isoDate
+        }
+      } else if (customDate && !proposal.data_digitacao) {
         actualFullUpdate.data_digitacao = isoDate
       }
 

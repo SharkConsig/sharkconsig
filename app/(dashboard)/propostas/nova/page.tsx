@@ -30,6 +30,8 @@ import {
   Paperclip,
   Loader2,
   UploadCloud,
+  CheckCircle2,
+  Phone,
   X
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
@@ -52,6 +54,7 @@ function NewProposalForm() {
     tel_1: !!searchParams.get("tel1"),
     tel_2: !!searchParams.get("tel2"),
     tel_3: !!searchParams.get("tel3"),
+    tel_4: !!searchParams.get("tel4"),
   })
 
   useEffect(() => {
@@ -103,6 +106,8 @@ function NewProposalForm() {
     tel_1: searchParams.get("tel1") || "",
     tel_2: searchParams.get("tel2") || "",
     tel_3: searchParams.get("tel3") || "",
+    tel_4: searchParams.get("tel4") || "",
+    telefone_selecionado: "",
     email: "",
     equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
     cep: "",
@@ -336,6 +341,8 @@ function NewProposalForm() {
               tel_1: prev.tel_1 || ticket.cliente_telefone || "",
               tel_2: prev.tel_2 || ticket.cliente_telefone_2 || "",
               tel_3: prev.tel_3 || ticket.cliente_telefone_3 || "",
+              tel_4: prev.tel_4 || ticket.cliente_telefone_4 || ticket.telefone_4 || "",
+              telefone_selecionado: prev.telefone_selecionado || ticket.telefone_selecionado || "",
             }))
 
             // Se o chamado foi aberto por um estagiário ativo, preenche automaticamente o campo de colaboração
@@ -438,7 +445,7 @@ function NewProposalForm() {
     const requiredFields = [
       'nome', 'cpf', 'nascimento', 'matricula', 'origem', 
       'naturalidade', 'uf_naturalidade', 'identidade', 'orgao_emissor', 'uf_emissao', 'data_emissao',
-      'nome_mae', 'nome_pai', 'tel_1', 'email', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'uf',
+      'nome_mae', 'nome_pai', 'email', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'uf',
       'banco_cliente', 'agencia', 'conta', 'dv', 'tipo_conta', 'valor_parcela', 'valor_producao_corretor',
       'coeficiente_prazo'
     ];
@@ -449,6 +456,10 @@ function NewProposalForm() {
       return typeof val === 'string' ? val.trim() !== "" : !!val;
     });
 
+    // Verifica se o usuário selecionou o telefone de contato com o cliente e o número não está vazio
+    const selectedKey = formData.telefone_selecionado;
+    const hasSelectedPhone = !!selectedKey && !!(formData[selectedKey as keyof typeof formData] as string)?.trim();
+
     // Verifica seleção de convênio, banco e operação (essenciais para a proposta)
     const hasSelection = !!selection.convenio && !!selection.banco && !!selection.operacao;
     
@@ -456,7 +467,7 @@ function NewProposalForm() {
     const hasRgFrente = !!selectedFiles.frente || !!existingAttachments.frente;
     const hasContraCheque = !!selectedFiles.contracheque || !!existingAttachments.contracheque;
 
-    return hasAllFields && hasSelection && hasRgFrente && hasContraCheque;
+    return hasAllFields && hasSelectedPhone && hasSelection && hasRgFrente && hasContraCheque;
   })();
 
   const getMissingFields = () => {
@@ -476,7 +487,6 @@ function NewProposalForm() {
       data_emissao: "Data de emissão do RG",
       nome_mae: "Nome da mãe",
       nome_pai: "Nome do pai",
-      tel_1: "Telefone",
       email: "E-mail",
       cep: "CEP",
       endereco: "Endereço",
@@ -497,7 +507,7 @@ function NewProposalForm() {
     const requiredFields = [
       'nome', 'cpf', 'nascimento', 'matricula', 'origem', 
       'naturalidade', 'uf_naturalidade', 'identidade', 'orgao_emissor', 'uf_emissao', 'data_emissao',
-      'nome_mae', 'nome_pai', 'tel_1', 'email', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'uf',
+      'nome_mae', 'nome_pai', 'email', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'uf',
       'banco_cliente', 'agencia', 'conta', 'dv', 'tipo_conta', 'valor_parcela', 'valor_producao_corretor',
       'coeficiente_prazo'
     ];
@@ -509,6 +519,13 @@ function NewProposalForm() {
         missing.push(fieldLabels[field] || field);
       }
     });
+
+    const selectedKey = formData.telefone_selecionado;
+    if (!selectedKey) {
+      missing.push("Seleção do Telefone em que falou com o cliente (clique no campo do telefone)");
+    } else if (!(formData[selectedKey as keyof typeof formData] as string)?.trim()) {
+      missing.push("Número do Telefone selecionado para contato");
+    }
 
     if (!selection.convenio) missing.push("Convênio");
     if (!selection.banco) missing.push("Banco");
@@ -659,6 +676,8 @@ function NewProposalForm() {
             tel_1: proposal.tel_residencial_1 || prev.tel_1,
             tel_2: proposal.tel_residencial_2 || prev.tel_2,
             tel_3: proposal.tel_comercial || prev.tel_3,
+            tel_4: proposal.tel_4 || proposal.tel_celular || prev.tel_4,
+            telefone_selecionado: proposal.telefone_selecionado || prev.telefone_selecionado || "",
             email: proposal.email || prev.email,
             cep: proposal.cep || prev.cep,
             endereco: proposal.endereco || prev.endereco,
@@ -752,6 +771,7 @@ function NewProposalForm() {
               tel_1: prev.tel_1 || globalData.telefone_1 || "",
               tel_2: prev.tel_2 || globalData.telefone_2 || "",
               tel_3: prev.tel_3 || globalData.telefone_3 || "",
+              tel_4: prev.tel_4 || globalData.telefone_4 || "",
               email: prev.email || (globalData as { email?: string }).email || ""
             }))
             toast.success("Dados básicos encontrados.");
@@ -768,6 +788,7 @@ function NewProposalForm() {
             tel_1: prev.tel_1 || data.telefone_1 || "",
             tel_2: prev.tel_2 || data.telefone_2 || "",
             tel_3: prev.tel_3 || data.telefone_3 || "",
+            tel_4: prev.tel_4 || data.telefone_4 || "",
             email: prev.email || (data as { email?: string }).email || ""
           }))
           toast.success("Dados básicos encontrados.");
@@ -937,6 +958,9 @@ function NewProposalForm() {
         tel_residencial_1: formData.tel_1,
         tel_residencial_2: formData.tel_2,
         tel_comercial: formData.tel_3,
+        tel_4: formData.tel_4,
+        telefone_contato: formData.telefone_selecionado ? (formData[formData.telefone_selecionado as keyof typeof formData] as string) : null,
+        telefone_selecionado: formData.telefone_selecionado || null,
         email: formData.email,
         cep: formData.cep,
         endereco: formData.endereco,
@@ -1063,7 +1087,7 @@ function NewProposalForm() {
       }
     }
     // Phone fields formatting
-    if (["tel_1", "tel_2", "tel_3"].includes(field)) {
+    if (["tel_1", "tel_2", "tel_3", "tel_4"].includes(field)) {
       const digits = value.replace(/\D/g, "")
       if (digits.length <= 11) {
         if (digits.length > 2) {
@@ -1171,9 +1195,21 @@ function NewProposalForm() {
 
   const renderStep1 = () => (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
-        ESCOLHA O <span className="text-slate-900 font-extrabold">CONVÊNIO</span> QUE SERÁ UTILIZADO NO CONTRATO
-      </h2>
+      <div className="flex items-center justify-center gap-4 relative">
+        {step > 1 && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={prevStep}
+            className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
+          </Button>
+        )}
+        <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
+          ESCOLHA O <span className="text-slate-900 font-extrabold">CONVÊNIO</span> QUE SERÁ UTILIZADO NO CONTRATO
+        </h2>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl mx-auto">
         {isLoading ? (
           <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
@@ -1197,14 +1233,16 @@ function NewProposalForm() {
   const renderStep2 = () => (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-center gap-4 relative">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={prevStep}
-          className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
-        >
-          <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
-        </Button>
+        {step > 1 && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={prevStep}
+            className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
+          </Button>
+        )}
         <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
           ESCOLHA O <span className="text-slate-900 font-extrabold">BANCO DE EMPRÉSTIMO</span> QUE SERÁ UTILIZADO NO CONTRATO
         </h2>
@@ -1232,14 +1270,16 @@ function NewProposalForm() {
   const renderStep3 = () => (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-center gap-4 relative">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={prevStep}
-          className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
-        >
-          <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
-        </Button>
+        {step > 1 && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={prevStep}
+            className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
+          </Button>
+        )}
         <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
           ESCOLHA O <span className="text-slate-900 font-extrabold">TIPO DE OPERAÇÃO</span> DESEJADO
         </h2>
@@ -1276,27 +1316,48 @@ function NewProposalForm() {
           <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
         </Button>
         <div className="flex flex-wrap justify-center gap-2 md:gap-8 items-center bg-white py-4 px-8 rounded-2xl border border-slate-200 shadow-sm w-fit mx-auto">
-          <div className="flex flex-col items-center md:items-start">
-            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
-            <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
-          </div>
-          <div className="h-8 w-px bg-slate-100 hidden md:block" />
-          <div className="flex flex-col items-center md:items-start">
-            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
-            <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
-          </div>
-          <div className="h-8 w-px bg-slate-100 hidden md:block" />
-          <div className="flex flex-col items-center md:items-start">
-            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
-            <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
-          </div>
+          {isPJ ? (
+            <>
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       <Card className="card-shadow border border-slate-200 bg-white">
         <CardContent className="p-10 space-y-16">
-          {/* Campo atribuição para Supervisor ou Monitoramento ou Corretor */}
-          {(perfil?.role === 'Supervisor' || isMonitoramento || isCorretor) && (
+          {/* Campo atribuição para Supervisor ou Monitoramento ou Corretor (remover para Corretor PJ) */}
+          {!isPJ && (perfil?.role === 'Supervisor' || isMonitoramento || isCorretor) && (
             <div className="p-5 bg-amber-50/30 border border-amber-100 rounded-xl space-y-2 max-w-md">
               <label className="text-[10px] font-bold text-amber-900 uppercase tracking-widest block">
                 {isMonitoramento 
@@ -1497,41 +1558,76 @@ function NewProposalForm() {
                 />
               </div>
 
-              <div className="md:col-span-1 space-y-2">
-                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 1</label>
-                <Input 
-                  value={formData.tel_1}
-                  onChange={(e) => handleFormChange("tel_1", e.target.value)}
-                  readOnly={initialParams.tel_1 && !canEditPreFilled}
-                  className={cn(
-                    "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
-                    (initialParams.tel_1 && !canEditPreFilled) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+              <div className="md:col-span-4 space-y-2 pt-2 pb-2">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest flex items-center gap-1.5">
+                    Telefones do Cliente <span className="text-red-500">*</span>
+                    <span className="text-[9px] font-semibold text-slate-500 lowercase">
+                      (clique sobre o telefone em que falou com o cliente para selecionar)
+                    </span>
+                  </label>
+                  {formData.telefone_selecionado && (
+                    <span className="text-[10px] font-bold text-[#00a86b] uppercase tracking-wider flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#00b074]" />
+                      Contato: {
+                        formData.telefone_selecionado === 'tel_1' ? 'Telefone 1' :
+                        formData.telefone_selecionado === 'tel_2' ? 'Telefone 2' :
+                        formData.telefone_selecionado === 'tel_3' ? 'Telefone 3' : 'Telefone 4'
+                      }
+                    </span>
                   )}
-                />
-              </div>
-              <div className="md:col-span-1 space-y-2">
-                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 2</label>
-                <Input 
-                  value={formData.tel_2}
-                  onChange={(e) => handleFormChange("tel_2", e.target.value)}
-                  readOnly={initialParams.tel_2 && !canEditPreFilled}
-                  className={cn(
-                    "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
-                    (initialParams.tel_2 && !canEditPreFilled) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
-                  )}
-                />
-              </div>
-              <div className="md:col-span-1 space-y-2">
-                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 3</label>
-                <Input 
-                  value={formData.tel_3}
-                  onChange={(e) => handleFormChange("tel_3", e.target.value)}
-                  readOnly={initialParams.tel_3 && !canEditPreFilled}
-                  className={cn(
-                    "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
-                    (initialParams.tel_3 && !canEditPreFilled) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
-                  )}
-                />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {[
+                    { key: "tel_1", label: "Telefone 1", initial: initialParams.tel_1 },
+                    { key: "tel_2", label: "Telefone 2", initial: initialParams.tel_2 },
+                    { key: "tel_3", label: "Telefone 3", initial: initialParams.tel_3 },
+                    { key: "tel_4", label: "Telefone 4", initial: initialParams.tel_4 },
+                  ].map((item) => {
+                    const isSelected = formData.telefone_selecionado === item.key;
+                    const val = (formData[item.key as keyof typeof formData] as string) || "";
+                    const isReadOnly = item.initial && !canEditPreFilled;
+
+                    return (
+                      <div 
+                        key={item.key}
+                        onClick={() => handleFormChange("telefone_selecionado", item.key)}
+                        className="space-y-1 cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <label className={cn(
+                            "text-[10px] font-bold uppercase tracking-widest cursor-pointer transition-colors",
+                            isSelected ? "text-[#008f5a] font-black" : "text-black/90"
+                          )}>
+                            {item.label}
+                          </label>
+                          {isSelected && (
+                            <span className="text-[9px] font-bold text-[#008f5a] bg-[#e6f7f0] px-1.5 py-0.5 rounded-md border border-[#00b074]/30">
+                              SELECIONADO
+                            </span>
+                          )}
+                        </div>
+                        <Input 
+                          value={val}
+                          onChange={(e) => handleFormChange(item.key, e.target.value)}
+                          onFocus={() => handleFormChange("telefone_selecionado", item.key)}
+                          readOnly={isReadOnly}
+                          placeholder={item.key === 'tel_4' ? "(00) 00000-0000" : ""}
+                          className={cn(
+                            "h-9 transition-all cursor-pointer text-[12px]",
+                            isSelected ? (
+                              "bg-[#e6f7f0] border-2 border-[#00b074] text-[#005c3b] font-bold shadow-sm focus:border-[#00b074] focus:ring-1 focus:ring-[#00b074]"
+                            ) : (
+                              "border-slate-100 bg-[#E8E8E8] focus:border-primary text-slate-800"
+                            ),
+                            isReadOnly && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                          )}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">E-MAIL</label>
@@ -2179,10 +2275,21 @@ function NewProposalForm() {
       
       <main className="flex-1 p-4 lg:p-8 bg-slate-50/50">
         <div className="max-w-[1400px] mx-auto w-full">
-          {step === 1 && renderStep1()}
-          {step === 2 && renderStep2()}
-          {step === 3 && renderStep3()}
-          {step === 4 && renderStep4()}
+          {isPJ ? (
+            <>
+              {step === 1 && renderStep3()}
+              {step === 2 && renderStep1()}
+              {step === 3 && renderStep2()}
+              {step === 4 && renderStep4()}
+            </>
+          ) : (
+            <>
+              {step === 1 && renderStep1()}
+              {step === 2 && renderStep2()}
+              {step === 3 && renderStep3()}
+              {step === 4 && renderStep4()}
+            </>
+          )}
         </div>
       </main>
     </div>
