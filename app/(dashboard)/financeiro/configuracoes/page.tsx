@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import Image from "next/image"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -72,6 +72,8 @@ interface ProdutoRegra {
   coeficiente: string
   percentual_producao: string
   percentual_comissao?: string
+  percentual_comissao_pj?: string
+  comissoes_pj_corretores?: Record<string, string>
   ativo?: boolean
 }
 
@@ -85,6 +87,7 @@ interface ProdutoConfig {
   coeficiente?: number
   percentual_producao?: number
   percentual_comissao?: number
+  percentual_comissao_pj?: number
   regras?: ProdutoRegra[]
   ativo: boolean
   created_at: string
@@ -300,6 +303,22 @@ export default function FinancialSettingsPage() {
   const [tempOperacoes, setTempOperacoes] = useState<string[]>([])
 
   const [tempRegras, setTempRegras] = useState<ProdutoRegra[]>([])
+
+  // Modal de Comissão PJ por Corretor
+  const [isComissaoPJModalOpen, setIsComissaoPJModalOpen] = useState(false)
+  const [editingRuleIndexForPJ, setEditingRuleIndexForPJ] = useState<number | null>(null)
+  const [tempPJPadrao, setTempPJPadrao] = useState<string>("")
+  const [tempPJCorretores, setTempPJCorretores] = useState<Record<string, string>>({})
+
+  const corretoresPJAtivos = useMemo(() => {
+    return systemUsers.filter(u => {
+      const regimeLower = (u.regime_contratacao || "").trim().toLowerCase()
+      const funcaoLower = (u.funcao || "").trim().toLowerCase()
+      const isPJ = regimeLower === 'pj' || funcaoLower === 'pj'
+      const isActive = u.status !== 'Inativo' && (u as any).is_active !== false
+      return isPJ && isActive
+    })
+  }, [systemUsers])
   
   // Generic Modal States
   const [genericType, setGenericType] = useState<'convenio' | 'banco' | 'operacao' | null>(null)
@@ -823,10 +842,12 @@ export default function FinancialSettingsPage() {
           coeficiente: validateNumber(r.coeficiente, true)?.toString() || "",
           percentual_producao: validateNumber(r.percentual_producao, true)?.toString() || "",
           percentual_comissao: validateNumber(r.percentual_comissao, true)?.toString() || "",
+          percentual_comissao_pj: validateNumber(r.percentual_comissao_pj, true)?.toString() || "",
+          comissoes_pj_corretores: r.comissoes_pj_corretores || {},
           ativo: r.ativo !== undefined ? r.ativo : false
         }))
         // Filtra regras que estão totalmente vazias
-        .filter(r => r.prazo !== "" || r.coeficiente !== "" || r.percentual_producao !== "" || r.percentual_comissao !== "")
+        .filter(r => r.prazo !== "" || r.coeficiente !== "" || r.percentual_producao !== "" || r.percentual_comissao !== "" || r.percentual_comissao_pj !== "" || (r.comissoes_pj_corretores && Object.values(r.comissoes_pj_corretores).some(v => !!v)))
 
       const payload = {
         nome_tabela: tempNomeTabela || null,
@@ -1654,285 +1675,16 @@ export default function FinancialSettingsPage() {
                                                         <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Comissão</span>
                                                         <span className="text-[10px] font-bold text-sky-600">{regra.percentual_comissao ? `${regra.percentual_comissao}%` : '--'}</span>
                                                       </div>
-                                                    </div>
-
-                                                    <div className="flex items-center">
-                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => toggleRegraAtiva(prod.id, prod.regras || [], idx)}
-                                                        className={cn(
-                                                          "h-5 px-1.5 rounded text-[8px] font-extrabold uppercase tracking-wide transition-all border",
-                                                          regra.ativo !== false 
-                                                            ? "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100" 
-                                                            : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"
-                                                        )}
-                                                      >
-                                                        {regra.ativo !== false ? "ATIVA" : "INATIVA"}
-                                                      </button>
-                                                    </div>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            ) : (
-                                              <div className="flex gap-6">
-                                                <div className="flex flex-col gap-0.5">
-                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Prazo</span>
-                                                  <span className="text-[10px] font-extrabold text-slate-600">{prod.prazo ? `${prod.prazo}x` : '--'}</span>
-                                                </div>
-                                                <div className="flex flex-col gap-0.5">
-                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente</span>
-                                                  <span className="text-[10px] font-extrabold text-slate-600">{prod.coeficiente || '--'}</span>
-                                                </div>
-                                                <div className="flex flex-col gap-0.5">
-                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Produção</span>
-                                                  <span className="text-[10px] font-extrabold text-emerald-600">{prod.percentual_producao ? `${prod.percentual_producao}%` : '--'}</span>
-                                                </div>
-                                                <div className="flex flex-col gap-0.5">
-                                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Comissão</span>
-                                                  <span className="text-[10px] font-extrabold text-sky-600">
-                                                    {(prod.regras && prod.regras[0]?.percentual_comissao) 
-                                                      ? `${prod.regras[0].percentual_comissao}%` 
-                                                      : (prod.percentual_comissao ? `${prod.percentual_comissao}%` : '--')}
-                                                  </span>
-                                                </div>
-                                              </div>
-                                            )}
-                                          </div>
-                                      </div>
-
-                                      <div className="flex items-center justify-end gap-2 border-t md:border-t-0 pt-4 md:pt-0 border-slate-100">
-                                        {/* Botão Ativar/Inativar */}
-                                        <button 
-                                          onClick={() => toggleProdutoAtivo(prod.id, prod.ativo !== false)}
-                                          className={cn(
-                                            "h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border",
-                                            prod.ativo !== false 
-                                              ? "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100" 
-                                              : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"
-                                          )}
-                                        >
-                                          {prod.ativo !== false ? "ATIVA" : "INATIVA"}
-                                        </button>
-
-                                        {/* Botão Editar */}
-                                        <Button 
-                                          variant="outline" 
-                                          size="sm"
-                                          className="h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                                          onClick={() => {
-                                            setSelectedProductConfig(prod)
-                                            setSelectedBancoForProd(banco)
-                                            setSelectedConvenioForProd(convenio)
-                                            setTempOperacoes(prod.operacoes || [])
-                                            setTempNomeTabela(prod.nome_tabela || "")
-                                            const initialRegras = []
-                                             if (prod.regras && prod.regras.length > 0) {
-                                               prod.regras.forEach(r => {
-                                                 initialRegras.push({
-                                                   prazo: r.prazo?.toString() || '',
-                                                   coeficiente: r.coeficiente?.toString().replace('.', ',') || '',
-                                                   percentual_producao: r.percentual_producao?.toString().replace('.', ',') || '',
-                                                   percentual_comissao: r.percentual_comissao?.toString().replace('.', ',') || '',
-                                                   ativo: r.ativo !== undefined ? r.ativo : true
-                                                 })
-                                               })
-                                             } else if (prod.prazo || prod.coeficiente || prod.percentual_producao || prod.percentual_comissao) {
-                                               initialRegras.push({
-                                                 prazo: prod.prazo?.toString() || '',
-                                                 coeficiente: prod.coeficiente?.toString().replace('.', ',') || '',
-                                                 percentual_producao: prod.percentual_producao?.toString().replace('.', ',') || '',
-                                                 percentual_comissao: prod.percentual_comissao?.toString().replace('.', ',') || '',
-                                                 ativo: true
-                                               })
-                                             } else {
-                                               initialRegras.push({
-                                                 prazo: '',
-                                                 coeficiente: '',
-                                                 percentual_producao: '',
-                                                 percentual_comissao: '',
-                                                 ativo: false
-                                               })
-                                             }
-                                             setTempRegras(initialRegras as ProdutoRegra[])
-                                            setIsAddOperacaoModalOpen(true)
-                                          }}
-                                        >
-                                          <Pencil className="w-3 h-3" />
-                                          Editar
-                                        </Button>
-
-                                        {/* Botão Excluir */}
-                                        <Button 
-                                          variant="outline" 
-                                          size="sm"
-                                          className="h-8 px-3 rounded-xl text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-rose-100 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
-                                          onClick={() => handleRemoveProduto(prod.id)}
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                          Excluir
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                              {produtosConfig.filter(p => p.banco_id === banco.id).length === 0 && (
-                                <div className="col-span-full py-8 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-2">
-                                  <Tag className="w-6 h-6 text-slate-200" />
-                                  <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Nenhum convênio vinculado</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </Card>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
-
-        {/* GERENCIAR PRODUTOS E COMISSÕES PJ */}
-        <section className="space-y-6">
-          <div 
-            className="flex items-center justify-between cursor-pointer group select-none"
-            onClick={() => setIsProdutosPJExpanded(!isProdutosPJExpanded)}
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
-                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                  GERENCIAR PRODUTOS E COMISSÕES PJ
-                  {isProdutosPJExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
-                </h2>
-              </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">Configuração de produtos, convênios e operações por banco</p>
-            </div>
-          </div>
-
-          <AnimatePresence>
-            {isProdutosPJExpanded && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden space-y-4">
-                {bancos.filter(b => b.ativo !== false).map((banco) => (
-                  <Card key={banco.id} className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm overflow-visible">
-                    <div 
-                      className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
-                      onClick={() => setExpandedBankId(expandedBankId === banco.id ? null : banco.id)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-[10px]">
-                          {banco.nome.substring(0, 2)}
-                        </div>
-                        <h3 className="font-bold text-[12px] text-slate-700 uppercase tracking-widest">{banco.nome}</h3>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                          {produtosConfig.filter(p => p.banco_id === banco.id).length} Convênios
-                        </span>
-                        {expandedBankId === banco.id ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
-                      </div>
-                    </div>
-
-                    <AnimatePresence>
-                      {expandedBankId === banco.id && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-slate-100">
-                          <div className="p-6 bg-slate-50/30 space-y-4">
-                            <div className="flex items-center justify-between">
-                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">TABELAS DE REGRAS</h4>
-                              <Button 
-                                size="sm" 
-                                variant="outline" 
-                                className="h-7 text-[9px] font-bold uppercase tracking-widest gap-2 bg-white border-slate-200"
-                                onClick={() => {
-                                  setSelectedBancoForProd(banco)
-                                  setIsAddConvenioModalOpen(true)
-                                }}
-                              >
-                                <Plus className="w-3 h-3 text-primary" />
-                                Adicionar Convênio
-                              </Button>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-4">
-                              {produtosConfig.filter(p => p.banco_id === banco.id).map((prod) => {
-                                const convenio = convenios.find(c => c.id === prod.convenio_id)
-                                if (!convenio) return null
-                                return (
-                                  <div 
-                                    key={prod.id} 
-                                    className="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group"
-                                  >
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                      <div className="space-y-3">
-                                        <div className="flex items-center gap-3">
-                                          <span className="font-bold text-[13px] text-slate-800 uppercase tracking-widest">{prod.nome_tabela || convenio.nome}</span>
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                              {format(new Date(prod.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                                            </span>
-                                            <span className={cn(
-                                              "px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest",
-                                              prod.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
-                                            )}>
-                                              {prod.ativo !== false ? "ATIVA" : "INATIVA"}
-                                            </span>
-                                          </div>
-                                        </div>
-
-                                        <div className="flex flex-col gap-1">
-                                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Convênio</span>
-                                          <div className="flex flex-wrap gap-1.5">
-                                            <span className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-tight border border-slate-100">
-                                              {convenio.nome}
-                                            </span>
-                                          </div>
-                                        </div>
-
-                                        <div className="flex flex-col gap-1">
-                                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Operações Permitidas</span>
-                                          <div className="flex flex-wrap gap-1.5">
-                                          {(prod.operacoes || []).map(opId => {
-                                            const op = tiposOperacao.find(o => o.id === opId)
-                                            return op ? (
-                                              <span key={opId} className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-tight border border-slate-100">
-                                                {op.nome}
-                                              </span>
-                                            ) : null
-                                          })}
-                                          </div>
-                                          {(prod.operacoes || []).length === 0 && (
-                                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest italic">Nenhuma operação selecionada</span>
-                                          )}
-                                        </div>
-
-                                          <div className="flex flex-col gap-1.5 min-w-[200px]">
-                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Tabela de Coeficientes</span>
-                                            {prod.regras && prod.regras.length > 0 ? (
-                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                {prod.regras.map((regra, idx) => (
-                                                  <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                      <div className="flex flex-col">
-                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prazo</span>
-                                                        <span className="text-[10px] font-bold text-slate-700">{regra.prazo}x</span>
-                                                      </div>
                                                       <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                       <div className="flex flex-col">
-                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Coef</span>
-                                                        <span className="text-[10px] font-bold text-slate-700">{regra.coeficiente}</span>
-                                                      </div>
-                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
-                                                      <div className="flex flex-col">
-                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prod</span>
-                                                        <span className="text-[10px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
-                                                      </div>
-                                                      <div className="w-[1px] h-4 bg-slate-200 mx-1" />
-                                                      <div className="flex flex-col">
-                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Comissão</span>
-                                                        <span className="text-[10px] font-bold text-sky-600">{regra.percentual_comissao ? `${regra.percentual_comissao}%` : '--'}</span>
+                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Comissão PJ</span>
+                                                        <span className="text-[10px] font-bold text-purple-600">
+                                                          {regra.percentual_comissao_pj 
+                                                            ? `${regra.percentual_comissao_pj}%` 
+                                                            : (regra.comissoes_pj_corretores && Object.values(regra.comissoes_pj_corretores).some(v => !!v) 
+                                                                ? 'Específica' 
+                                                                : '--')}
+                                                        </span>
                                                       </div>
                                                     </div>
 
@@ -2014,15 +1766,18 @@ export default function FinancialSettingsPage() {
                                                    coeficiente: r.coeficiente?.toString().replace('.', ',') || '',
                                                    percentual_producao: r.percentual_producao?.toString().replace('.', ',') || '',
                                                    percentual_comissao: r.percentual_comissao?.toString().replace('.', ',') || '',
+                                                   percentual_comissao_pj: r.percentual_comissao_pj?.toString().replace('.', ',') || '',
+                                                   comissoes_pj_corretores: r.comissoes_pj_corretores || {},
                                                    ativo: r.ativo !== undefined ? r.ativo : true
                                                  })
                                                })
-                                             } else if (prod.prazo || prod.coeficiente || prod.percentual_producao || prod.percentual_comissao) {
+                                             } else if (prod.prazo || prod.coeficiente || prod.percentual_producao || prod.percentual_comissao || prod.percentual_comissao_pj) {
                                                initialRegras.push({
                                                  prazo: prod.prazo?.toString() || '',
                                                  coeficiente: prod.coeficiente?.toString().replace('.', ',') || '',
                                                  percentual_producao: prod.percentual_producao?.toString().replace('.', ',') || '',
                                                  percentual_comissao: prod.percentual_comissao?.toString().replace('.', ',') || '',
+                                                 percentual_comissao_pj: prod.percentual_comissao_pj?.toString().replace('.', ',') || '',
                                                  ativo: true
                                                })
                                              } else {
@@ -2031,6 +1786,7 @@ export default function FinancialSettingsPage() {
                                                  coeficiente: '',
                                                  percentual_producao: '',
                                                  percentual_comissao: '',
+                                                 percentual_comissao_pj: '',
                                                  ativo: false
                                                })
                                              }
@@ -2074,6 +1830,8 @@ export default function FinancialSettingsPage() {
             )}
           </AnimatePresence>
         </section>
+
+
       </main>
 
       {/* Modal Gerenciar Mês (Central de Comandos) */}
@@ -2600,7 +2358,7 @@ export default function FinancialSettingsPage() {
                   setSelectedProductConfig(null)
                   setTempNomeTabela("")
                   setTempOperacoes([])
-                  setTempRegras([{ prazo: "", coeficiente: "", percentual_producao: "", percentual_comissao: "", ativo: false }])
+                  setTempRegras([{ prazo: "", coeficiente: "", percentual_producao: "", percentual_comissao: "", percentual_comissao_pj: "", ativo: false }])
                   setIsAddConvenioModalOpen(false)
                   setIsAddOperacaoModalOpen(true)
                 }}
@@ -2703,6 +2461,7 @@ export default function FinancialSettingsPage() {
                       coeficiente: "", 
                       percentual_producao: "", 
                       percentual_comissao: "",
+                      percentual_comissao_pj: "",
                       ativo: false
                     }]);
                   }}
@@ -2737,7 +2496,7 @@ export default function FinancialSettingsPage() {
                         )}
                       </div>
                       
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                         <div className="space-y-1">
                           <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-0.5">Prazo</Label>
                           <Input 
@@ -2794,6 +2553,31 @@ export default function FinancialSettingsPage() {
                             className="h-8 bg-white border-slate-100 rounded-lg font-bold text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 uppercase"
                           />
                         </div>
+                        <div className="space-y-1">
+                          <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-0.5">Comissão PJ</Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingRuleIndexForPJ(index)
+                              setTempPJPadrao(regra.percentual_comissao_pj || "")
+                              setTempPJCorretores({ ...(regra.comissoes_pj_corretores || {}) })
+                              setIsComissaoPJModalOpen(true)
+                            }}
+                            className={cn(
+                              "h-8 w-full bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-[10px] rounded-lg uppercase tracking-wider flex items-center justify-between px-2.5 transition-all",
+                              (regra.percentual_comissao_pj || (regra.comissoes_pj_corretores && Object.values(regra.comissoes_pj_corretores).some(v => !!v)))
+                                && "border-purple-300 bg-purple-50/50 text-purple-700 hover:bg-purple-100/50"
+                            )}
+                          >
+                            <span className="truncate">
+                              {regra.percentual_comissao_pj 
+                                ? `${regra.percentual_comissao_pj}%` 
+                                : (regra.comissoes_pj_corretores && Object.values(regra.comissoes_pj_corretores).some(v => !!v) ? "Específica" : "Configurar")}
+                            </span>
+                            <Settings2 className="w-3.5 h-3.5 shrink-0 text-slate-400 group-hover:text-purple-600" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))
@@ -2814,6 +2598,122 @@ export default function FinancialSettingsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* MODAL CONFIGURAÇÃO DE COMISSÃO PJ POR CORRETOR */}
+      <Dialog open={isComissaoPJModalOpen} onOpenChange={setIsComissaoPJModalOpen}>
+        <DialogContent className="max-w-md bg-white p-6 rounded-3xl border border-slate-100 shadow-2xl">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2">
+              <Settings2 className="w-5 h-5 text-purple-600" />
+              Comissão PJ - Regra #{editingRuleIndexForPJ !== null ? editingRuleIndexForPJ + 1 : 1}
+            </DialogTitle>
+            <p className="text-[11px] font-medium text-slate-400">
+              Defina a comissão padrão PJ ou comissões individuais diferenciadas para cada corretor PJ.
+            </p>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2 max-h-[60vh] overflow-y-auto pr-1">
+            {/* Comissão Padrão */}
+            <div className="space-y-1.5 bg-purple-50/40 p-4 rounded-2xl border border-purple-100">
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] font-extrabold text-purple-800 uppercase tracking-wider">
+                  Comissão Padrão PJ (%)
+                </Label>
+                <span className="text-[9px] font-bold text-purple-600 bg-purple-100/60 px-2 py-0.5 rounded-full">
+                  Geral
+                </span>
+              </div>
+              <Input
+                type="text"
+                value={tempPJPadrao}
+                onChange={(e) => setTempPJPadrao(e.target.value)}
+                placeholder="Ex: 10,00"
+                className="h-9 bg-white border-purple-200 rounded-xl font-bold text-[12px] text-slate-800 focus:ring-2 focus:ring-purple-400 uppercase"
+              />
+              <p className="text-[9px] text-slate-500 font-medium pt-0.5">
+                Esta comissão será aplicada a todos os corretores PJ que não possuem comissão diferenciada definida abaixo.
+              </p>
+            </div>
+
+            {/* Corretores Diferenciados */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <Label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                  Comissões Diferenciadas por Corretor PJ
+                </Label>
+                <span className="text-[10px] font-bold text-slate-400">
+                  {corretoresPJAtivos.length} {corretoresPJAtivos.length === 1 ? 'Corretor' : 'Corretores'} Ativos
+                </span>
+              </div>
+
+              {corretoresPJAtivos.length === 0 ? (
+                <div className="text-center py-6 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                  <span className="text-[11px] font-medium text-slate-400">
+                    Nenhum corretor PJ ativo encontrado no sistema.
+                  </span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {corretoresPJAtivos.map((usr) => (
+                    <div key={usr.id} className="flex items-center justify-between p-2.5 bg-slate-50/70 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-[11px] uppercase">
+                          {usr.nome ? usr.nome.substring(0, 2) : 'PJ'}
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-bold text-slate-700 leading-tight">{usr.nome}</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase leading-tight">{usr.funcao || 'Corretor PJ'}</p>
+                        </div>
+                      </div>
+
+                      <div className="w-28 flex items-center gap-1">
+                        <Input
+                          type="text"
+                          value={tempPJCorretores[usr.id] || ""}
+                          onChange={(e) => setTempPJCorretores({ ...tempPJCorretores, [usr.id]: e.target.value })}
+                          placeholder={tempPJPadrao ? `${tempPJPadrao}%` : "Padrão"}
+                          className="h-8 text-right bg-white border-slate-200 rounded-lg font-bold text-[11px] text-slate-800 focus:ring-2 focus:ring-purple-400 uppercase"
+                        />
+                        <span className="text-[11px] font-bold text-slate-400">%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsComissaoPJModalOpen(false)}
+              className="h-9 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:bg-slate-50"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (editingRuleIndexForPJ !== null && tempRegras[editingRuleIndexForPJ]) {
+                  const newRegras = [...tempRegras]
+                  newRegras[editingRuleIndexForPJ] = {
+                    ...newRegras[editingRuleIndexForPJ],
+                    percentual_comissao_pj: tempPJPadrao,
+                    comissoes_pj_corretores: tempPJCorretores
+                  }
+                  setTempRegras(newRegras)
+                }
+                setIsComissaoPJModalOpen(false)
+              }}
+              className="h-9 px-5 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-purple-600 hover:bg-purple-700 text-white shadow-md shadow-purple-200"
+            >
+              Salvar Comissões
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal Meta Anual */}
       <Dialog open={isAnnualGoalModalOpen} onOpenChange={setIsAnnualGoalModalOpen}>
         <DialogContent className="sm:max-w-[400px] border-none rounded-3xl shadow-2xl">
