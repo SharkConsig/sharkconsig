@@ -59,6 +59,11 @@ interface Proposal {
   tel_residencial_1?: string
   tel_residencial_2?: string
   tel_comercial?: string
+  tel_4?: string
+  tel_celular?: string
+  cliente_telefone_4?: string
+  telefone_selecionado?: string
+  telefone_contato?: string
   email?: string
   cep?: string
   endereco?: string
@@ -124,6 +129,32 @@ interface ProdutoConfig {
 
 export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
   const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor, isSupervisor } = useAuth()
+
+  const isSelectedPhone = (phoneKey: "tel_1" | "tel_2" | "tel_3" | "tel_4", phoneValue: string) => {
+    const sel = (formData as any)?.telefone_selecionado || proposal.telefone_selecionado || "";
+    const contato = (proposal as any)?.telefone_contato || "";
+
+    if (sel === phoneKey) return true;
+    if (sel === "tel_residencial_1" && phoneKey === "tel_1") return true;
+    if (sel === "tel_residencial_2" && phoneKey === "tel_2") return true;
+    if (sel === "tel_comercial" && phoneKey === "tel_3") return true;
+    if ((sel === "tel_4" || sel === "tel_celular" || sel === "cliente_telefone_4") && phoneKey === "tel_4") return true;
+
+    if (!phoneValue || !phoneValue.trim()) return false;
+    const cleanVal = phoneValue.replace(/\D/g, "");
+    if (!cleanVal) return false;
+
+    if (sel) {
+      const cleanSel = sel.replace(/\D/g, "");
+      if (cleanSel && cleanSel === cleanVal) return true;
+    }
+    if (contato) {
+      const cleanContato = contato.replace(/\D/g, "");
+      if (cleanContato && cleanContato === cleanVal) return true;
+    }
+
+    return false;
+  };
   const isPJ = (user?.regime_contratacao || "").trim().toUpperCase() === "PJ" || (user?.role || "").trim().toUpperCase() === "PJ" || (user as any)?.funcao?.trim()?.toUpperCase() === "PJ"
   
   const isFinancialEditor = isAdmin || isDeveloper || isOperational || ['Administrativo', 'Admin', 'Administrador'].includes(user?.role || '')
@@ -491,6 +522,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       tel_1: proposal.tel_residencial_1 || "",
       tel_2: proposal.tel_residencial_2 || "",
       tel_3: proposal.tel_comercial || "",
+      tel_4: proposal.tel_4 || (proposal as any).tel_celular || (proposal as any).cliente_telefone_4 || "",
+      telefone_selecionado: proposal.telefone_selecionado || (proposal as any).telefone_contato || "",
       email: proposal.email || "",
       cep: proposal.cep || "",
       endereco: proposal.endereco || "",
@@ -865,8 +898,29 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
 
       const formatDate = (val: string) => {
         if (!val) return null
-        const parts = val.split('/')
-        return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : val
+        const trimmed = val.trim()
+        if (!trimmed) return null
+        const upper = trimmed.toUpperCase()
+        if (upper === "NÃO INFORMADO" || upper === "NAO INFORMADO" || upper === "N/A" || upper === "NULL" || upper === "UNDEFINED") {
+          return null
+        }
+        try {
+          const parts = trimmed.split('/')
+          if (parts.length === 3) {
+            const day = parts[0].padStart(2, '0')
+            const month = parts[1].padStart(2, '0')
+            const year = parts[2]
+            if (year.length === 4 && !isNaN(Number(year)) && !isNaN(Number(month)) && !isNaN(Number(day))) {
+              return `${year}-${month}-${day}`
+            }
+          }
+          if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            return trimmed
+          }
+          return null
+        } catch {
+          return null
+        }
       }
 
       const updateData: Record<string, string | number | null> = {
@@ -894,6 +948,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           tel_residencial_1: formData.tel_1,
           tel_residencial_2: formData.tel_2,
           tel_comercial: formData.tel_3,
+          tel_4: formData.tel_4,
+          telefone_selecionado: (formData as any).telefone_selecionado || null,
+          telefone_contato: (formData as any).telefone_selecionado ? ((formData as any)[(formData as any).telefone_selecionado] || null) : null,
           email: formData.email,
           cep: formData.cep,
           endereco: formData.endereco,
@@ -1059,6 +1116,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               tel_residencial_1: formData.tel_1,
               tel_residencial_2: formData.tel_2,
               tel_comercial: formData.tel_3,
+              tel_4: formData.tel_4,
+              telefone_selecionado: (formData as any).telefone_selecionado || proposal.telefone_selecionado,
+              telefone_contato: (formData as any).telefone_selecionado ? ((formData as any)[(formData as any).telefone_selecionado] || null) : (proposal as any).telefone_contato,
               email: formData.email,
               cep: formData.cep,
               endereco: formData.endereco,
@@ -1407,33 +1467,48 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 1</label>
-                  <Input 
-                    value={formData.tel_1}
-                    onChange={(e) => handleFormChange("tel_1", e.target.value)}
-                    disabled={!canEditFields}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 2</label>
-                  <Input 
-                    value={formData.tel_2}
-                    onChange={(e) => handleFormChange("tel_2", e.target.value)}
-                    disabled={!canEditFields}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Telefone 3</label>
-                  <Input 
-                    value={formData.tel_3}
-                    onChange={(e) => handleFormChange("tel_3", e.target.value)}
-                    disabled={!canEditFields}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
-                  />
-                </div>
+                {[
+                  { key: 'tel_1' as const, label: 'Telefone 1' },
+                  { key: 'tel_2' as const, label: 'Telefone 2' },
+                  { key: 'tel_3' as const, label: 'Telefone 3' },
+                  { key: 'tel_4' as const, label: 'Telefone 4' }
+                ].map((item) => {
+                  const val = formData[item.key] || "";
+                  const selected = isSelectedPhone(item.key, val);
+                  return (
+                    <div key={item.key} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className={cn(
+                          "text-[10px] font-bold uppercase tracking-widest",
+                          selected ? "text-[#00875a]" : "text-black/90"
+                        )}>
+                          {item.label}
+                        </label>
+                        {selected && (
+                          <span className="text-[9px] font-extrabold bg-[#e6f7f0] text-[#00875a] border border-[#00875a] px-2 py-0.5 rounded-full uppercase tracking-wider select-none">
+                            SELECIONADO
+                          </span>
+                        )}
+                      </div>
+                      <Input 
+                        value={val}
+                        onChange={(e) => handleFormChange(item.key, e.target.value)}
+                        onFocus={() => handleFormChange("telefone_selecionado", item.key)}
+                        disabled={!canEditFields}
+                        placeholder={item.key === 'tel_4' ? "(00) 00000-0000" : ""}
+                        className={cn(
+                          "h-9 transition-all text-[12px]",
+                          selected ? (
+                            "bg-[#e6f7f0] border-2 border-[#00b074] text-[#005c3b] font-bold shadow-sm focus:border-[#00b074] focus:ring-1 focus:ring-[#00b074]"
+                          ) : (
+                            "border-slate-100 bg-[#E8E8E8] focus:border-primary text-slate-800"
+                          ),
+                          !canEditFields && "opacity-75 disabled:cursor-not-allowed"
+                        )}
+                      />
+                    </div>
+                  );
+                })}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">E-MAIL</label>
                   <Input 

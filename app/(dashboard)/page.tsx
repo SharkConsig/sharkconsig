@@ -47,6 +47,22 @@ import { DashboardCard, Gauge, formatCurrency } from "@/components/dashboard/das
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard"
 import { HRDashboard } from "@/components/dashboard/hr-dashboard"
 
+const parseDateSafe = (dateVal?: string | Date | null) => {
+  if (!dateVal) return null
+  if (dateVal instanceof Date) return dateVal
+  if (typeof dateVal === 'string') {
+    const trimmed = dateVal.trim()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [y, m, d] = trimmed.split('-').map(Number)
+      return new Date(y, m - 1, d, 12, 0, 0)
+    }
+    const parsed = new Date(trimmed.replace(' ', 'T'))
+    if (!isNaN(parsed.getTime())) return parsed
+  }
+  const d = new Date(dateVal)
+  return isNaN(d.getTime()) ? null : d
+}
+
 interface ProposalSummary {
   id_lead: string
   nome_cliente: string
@@ -904,8 +920,8 @@ export default function DashboardPage() {
           // Fetch proposals for the team (or all if admin/operational)
           let teamProposalsQuery = supabase
             .from("propostas")
-            .select("corretor_id, valor_producao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
-          
+            .select("corretor_id, valor_producao, valor_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
+
           if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos)) {
             teamProposalsQuery = teamProposalsQuery.in("corretor_id", teamIds)
           }
@@ -979,6 +995,15 @@ export default function DashboardPage() {
           }>
         }> = {}
 
+        // Helper to check for PJ regime or funcao
+        const checkUserPJ = (u?: User | null) => {
+          if (!u) return false;
+          const regime = (u.regime_contratacao || "").trim().toLowerCase();
+          const func = (u.funcao || "").trim().toLowerCase();
+          if (func === 'desenvolvedor' || func === 'developer') return false;
+          return regime === 'pj' || func === 'pj';
+        }
+
         // Initialize everyone stable with 0
         allUsers.forEach((u: User) => {
           brokerMetrics[u.id] = { 
@@ -1000,6 +1025,7 @@ export default function DashboardPage() {
         teamProposals?.forEach((curr: { 
           corretor_id: string, 
           valor_producao: string | number, 
+          valor_operacao?: string | number,
           updated_at: string, 
           created_at: string, 
           status: string, 
@@ -1008,6 +1034,7 @@ export default function DashboardPage() {
           estagiario_colaborador_nome?: string
         }) => {
           const numericVal = isNaN(parseCurrency(curr.valor_producao)) ? 0 : parseCurrency(curr.valor_producao)
+          const numericValOp = isNaN(parseCurrency(curr.valor_operacao)) ? 0 : parseCurrency(curr.valor_operacao)
           const brokerId = curr.corretor_id || ""
 
           const brokerUser = allUsers.find((u: User) => u.id === brokerId)
@@ -1020,12 +1047,18 @@ export default function DashboardPage() {
             ? curr.estagiario_colaborador_id
             : brokerId
           const targetBrokerIdForColabs = brokerId
+
+          const targetUserForMetrics = allUsers.find((u: User) => u.id === targetBrokerIdForMetrics)
+          const targetUserIsPJ = checkUserPJ(targetUserForMetrics)
+
+          // For PJ collaborators, metric value is based on valor_operacao. Otherwise, valor_producao.
+          const metricVal = targetUserIsPJ ? numericValOp : numericVal
           
-          const createdDate = new Date(curr.created_at)
-          const updatedDate = new Date(curr.updated_at)
+          const createdDate = parseDateSafe(curr.created_at) || new Date(curr.created_at)
+          const updatedDate = parseDateSafe(curr.updated_at) || new Date(curr.updated_at)
           
           // Use data_pago_cliente if available, otherwise fall back to updated_at for payment date
-          const effectivePaymentDate = curr.data_pago_cliente ? new Date(curr.data_pago_cliente) : updatedDate
+          const effectivePaymentDate = curr.data_pago_cliente ? (parseDateSafe(curr.data_pago_cliente) || updatedDate) : updatedDate
           
           const isPaid = paidStatuses.includes(curr.status)
           const isInProcess = inProcessStatuses.includes(curr.status)
@@ -1049,7 +1082,7 @@ export default function DashboardPage() {
           const isThisWeekCreated = createdDate >= targetWeekStart && createdDate <= targetWeekEnd
           const isThisMonthCreated = createdDate >= targetMonthStart && createdDate <= targetMonthEnd
           
-          const isTodayPaid = (effectivePaymentDate >= startOfToday) && isPaidInRange
+          const isTodayPaid = isPaid && (effectivePaymentDate >= targetDayStart && effectivePaymentDate <= targetDayEnd) && isPaidInRange
           const isMTDPaid = effectivePaymentDate >= startOfCurrentMonth && effectivePaymentDate <= endOfCurrentMonth
 
           const isDigitadaHoje = isTodayCreated && !isCancelled && !isRetroactivePayment && !isPaid
@@ -1067,7 +1100,7 @@ export default function DashboardPage() {
             if (isTodayPaid) teamDailyTotal += numericVal
             
             if (brokerMetrics[targetBrokerIdForMetrics]) {
-              brokerMetrics[targetBrokerIdForMetrics].totalPaid += numericVal
+              brokerMetrics[targetBrokerIdForMetrics].totalPaid += metricVal
               brokerMetrics[targetBrokerIdForMetrics].countPaid += 1
             }
           }
@@ -1080,7 +1113,7 @@ export default function DashboardPage() {
               teamPendingInconsistencyCountCalc += 1
             }
             if (brokerMetrics[targetBrokerIdForMetrics]) {
-              brokerMetrics[targetBrokerIdForMetrics].totalInProcess += numericVal
+              brokerMetrics[targetBrokerIdForMetrics].totalInProcess += metricVal
               brokerMetrics[targetBrokerIdForMetrics].countInProcess += 1
             }
           }
@@ -1094,7 +1127,7 @@ export default function DashboardPage() {
             teamCreatedTodayValue += numericVal
             teamCreatedTodayCount += 1
             if (brokerMetrics[targetBrokerIdForMetrics]) {
-              brokerMetrics[targetBrokerIdForMetrics].totalToday += numericVal
+              brokerMetrics[targetBrokerIdForMetrics].totalToday += metricVal
               brokerMetrics[targetBrokerIdForMetrics].countToday += 1
             }
           }
@@ -1115,6 +1148,10 @@ export default function DashboardPage() {
             const estNome = isIntern ? (brokerUser?.nome || "Estagiário") : curr.estagiario_colaborador_nome
             
             if (estId && estId.trim() !== "") {
+              const estUser = allUsers.find((u: User) => u.id === estId)
+              const estIsPJ = checkUserPJ(estUser)
+              const valForEst = estIsPJ ? numericValOp : numericVal
+
               if (!brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId]) {
                 brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId] = {
                   estagiario_id: estId,
@@ -1124,29 +1161,33 @@ export default function DashboardPage() {
               }
               const est = brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId]
               if (isPaid && isPaidInRange) {
-                est.totalPaid += numericVal
+                est.totalPaid += valForEst
                 est.countPaid += 1
               }
               if (isEffectiveInProcess) {
-                est.totalInProcess += numericVal
+                est.totalInProcess += valForEst
                 est.countInProcess += 1
               }
               if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
-                est.totalToday += numericVal
+                est.totalToday += valForEst
                 est.countToday += 1
               }
             } else {
+              const propUser = allUsers.find((u: User) => u.id === targetBrokerIdForColabs)
+              const propIsPJ = checkUserPJ(propUser)
+              const valForProp = propIsPJ ? numericValOp : numericVal
+
               const prop = brokerColaboracoes[targetBrokerIdForColabs].propria
               if (isPaid && isPaidInRange) {
-                prop.totalPaid += numericVal
+                prop.totalPaid += valForProp
                 prop.countPaid += 1
               }
               if (isEffectiveInProcess) {
-                prop.totalInProcess += numericVal
+                prop.totalInProcess += valForProp
                 prop.countInProcess += 1
               }
               if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
-                prop.totalToday += numericVal
+                prop.totalToday += valForProp
                 prop.countToday += 1
               }
             }
@@ -1950,11 +1991,20 @@ export default function DashboardPage() {
   const dailyProduced = useMemo(() => {
     const startOfToday = new Date()
     startOfToday.setHours(0, 0, 0, 0)
+    const endOfToday = new Date()
+    endOfToday.setHours(23, 59, 59, 999)
+
+    const paidStatuses = [
+      "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", 
+      "PÓS-VENDA REALIZADA"
+    ]
     
     return userProposals
       .filter(p => {
-        const pDate = p.data_pago_cliente ? new Date(p.data_pago_cliente) : new Date(p.updated_at)
-        return pDate >= startOfToday
+        const isPaid = paidStatuses.includes(p.status)
+        if (!isPaid) return false
+        const pDate = p.data_pago_cliente ? parseDateSafe(p.data_pago_cliente) : parseDateSafe(p.updated_at)
+        return pDate ? (pDate >= startOfToday && pDate <= endOfToday) : false
       })
       .reduce((acc, p) => {
         const val = parseCurrency(p.valor_producao)

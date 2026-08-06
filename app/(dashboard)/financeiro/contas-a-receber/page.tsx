@@ -32,7 +32,10 @@ import {
   MoreVertical,
   Check,
   Edit2,
-  MessageSquare
+  MessageSquare,
+  Folder,
+  FolderOpen,
+  X
 } from "lucide-react"
 import {
   Popover,
@@ -453,6 +456,46 @@ export default function ContasAReceberPage() {
   const [receivedProposalIds, setReceivedProposalIds] = useState<Record<string, boolean>>({})
   const [receivedProposalDates, setReceivedProposalDates] = useState<Record<string, string>>({})
   const [customCommissionPercents, setCustomCommissionPercents] = useState<Record<string, number>>({})
+
+  // Active Folder & Subfolder state for PJ
+  type CardFolderType = 'total' | 'comissao' | 'recebida' | 'a_receber' | 'estorno' | null;
+  const [activeCardFolder, setActiveCardFolder] = useState<CardFolderType>(null);
+  const [showPJSubfolder, setShowPJSubfolder] = useState<boolean>(false);
+
+  // Map of PJ Users / Brokers
+  const [pjUsersMap, setPjUsersMap] = useState<Set<string>>(new Set());
+  const [pjUserNames, setPjUserNames] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    async function fetchPjUsers() {
+      try {
+        const res = await fetch("/api/usuarios")
+        if (res.ok) {
+          const users = await res.json()
+          const pjIds = new Set<string>()
+          const pjNames = new Set<string>()
+          if (Array.isArray(users)) {
+            users.forEach((u: any) => {
+              const reg = (u.regime_contratacao || "").trim().toUpperCase()
+              const func = (u.funcao || "").trim().toUpperCase()
+              const role = (u.role || "").trim().toUpperCase()
+              const name = (u.nome || u.nome_completo || "").trim().toUpperCase()
+              if (reg === "PJ" || func === "PJ" || role === "PJ" || name.includes("PJ")) {
+                if (u.id) pjIds.add(String(u.id))
+                if (u.nome) pjNames.add(u.nome.toLowerCase().trim())
+                if (u.nome_completo) pjNames.add(u.nome_completo.toLowerCase().trim())
+              }
+            })
+          }
+          setPjUsersMap(pjIds)
+          setPjUserNames(pjNames)
+        }
+      } catch (e) {
+        console.error("Erro ao carregar usuarios PJ:", e)
+      }
+    }
+    fetchPjUsers()
+  }, [])
 
   const getPaymentStatus = useCallback((idLead: string): "A_RECEBER" | "RECEBIDO" | "ESTORNADO" => {
     if (paymentStatuses[idLead]) return paymentStatuses[idLead]
@@ -954,6 +997,202 @@ export default function ContasAReceberPage() {
     return undefined;
   }, [dbProdutosConfigs, bancosList])
 
+  const isPJProposal = useCallback((proposal: Proposal) => {
+    if (proposal.corretor_id && pjUsersMap.has(String(proposal.corretor_id))) return true
+    const corretorName = (proposal.nome_corretor || proposal.corretor || "").toLowerCase().trim()
+    if (!corretorName) return false
+    if (corretorName.includes("pj") || pjUserNames.has(corretorName)) return true
+    return false
+  }, [pjUsersMap, pjUserNames])
+
+  const getPJCommissionPercentage = useCallback((proposal: Proposal) => {
+    if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
+      return undefined;
+    }
+
+    const parsePercent = (val: string | number | null | undefined) => {
+      if (val === undefined || val === null || val === "") return undefined;
+      const parsed = typeof val === "string" ? parseFloat(val.replace(",", ".")) : parseFloat(val);
+      return isNaN(parsed) ? undefined : parsed;
+    }
+
+    const extractPrazoNum = (label: string | null | undefined): number | null => {
+      if (!label) return null;
+      const match = label.match(/(\d+)\s*x/i);
+      if (match) return parseInt(match[1], 10);
+      const genericMatch = label.match(/\((\d{1,3})\s*\|/);
+      if (genericMatch) return parseInt(genericMatch[1], 10);
+      return null;
+    }
+
+    const extractCoeficienteNum = (label: string | null | undefined): number | null => {
+      if (!label) return null;
+      const match = label.match(/x\s*[| ]\s*([0-9]+[.,][0-9]+)/i);
+      if (match) return parseFloat(match[1].replace(',', '.'));
+      const genericMatch = label.match(/(0[.,][0-9]{2,})/);
+      if (genericMatch) return parseFloat(genericMatch[0].replace(',', '.'));
+      return null;
+    }
+
+    let parsedTableName = "";
+    const cpStr = proposal.coeficiente_prazo.trim();
+    if (cpStr.includes('(')) {
+      parsedTableName = cpStr.split('(')[0].trim();
+    } else if (cpStr.includes('-')) {
+      parsedTableName = cpStr.split('-')[0].trim();
+    } else {
+      parsedTableName = cpStr;
+    }
+
+    const normalizeStr = (s: string | null | undefined) => {
+      if (!s) return "";
+      return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
+    }
+
+    const normParsedName = normalizeStr(parsedTableName);
+    const parsedPrazo = extractPrazoNum(proposal.coeficiente_prazo);
+    const parsedCoef = extractCoeficienteNum(proposal.coeficiente_prazo);
+    const normProposalBanco = normalizeStr(proposal.banco);
+
+    const allOptions = dbProdutosConfigs.flatMap(config => {
+      const getConvenioName = () => {
+        if (!config.convenios) return undefined;
+        if (Array.isArray(config.convenios)) return config.convenios[0]?.nome;
+        return (config.convenios as unknown as { nome: string }).nome;
+      }
+      const convNome = getConvenioName();
+      const foundBanco = config.banco_id && bancosList.length > 0 
+        ? bancosList.find((b: any) => b.id === config.banco_id) 
+        : null;
+      const bancoNome = foundBanco?.nome;
+
+      if (config.regras && config.regras.length > 0) {
+        return config.regras
+          .filter((r: { ativo?: boolean }) => r.ativo !== false)
+          .map((regra: any) => ({
+            nome_tabela: config.nome_tabela,
+            prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo, 10) : regra.prazo,
+            coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+            percentual_producao: parsePercent(regra.percentual_producao),
+            percentual_comissao: parsePercent(regra.percentual_comissao),
+            convenioNome: convNome,
+            bancoNome: bancoNome,
+            banco_id: config.banco_id
+          }));
+      }
+      return [{
+        nome_tabela: config.nome_tabela,
+        prazo: typeof config.prazo === 'string' ? parseInt(config.prazo, 10) : (config.prazo || 0),
+        coeficiente: typeof config.coeficiente === 'string' ? parseFloat(config.coeficiente.replace(',', '.')) : (config.coeficiente || 0),
+        percentual_producao: parsePercent(config.percentual_producao),
+        percentual_comissao: parsePercent(config.percentual_comissao),
+        convenioNome: convNome,
+        bancoNome: bancoNome,
+        banco_id: config.banco_id
+      }];
+    });
+
+    let bestMatch: typeof allOptions[0] | null = null;
+    let highestScore = -1;
+
+    for (const opt of allOptions) {
+      const normOptBanco = normalizeStr(opt.bancoNome);
+      const matchesBanco = normProposalBanco && normOptBanco && (
+        normProposalBanco === normOptBanco ||
+        normProposalBanco.includes(normOptBanco) ||
+        normOptBanco.includes(normProposalBanco)
+      );
+      if (!matchesBanco) continue;
+
+      let score = 0;
+      const matchesPrazo = parsedPrazo !== null && opt.prazo === parsedPrazo;
+      const matchesCoef = parsedCoef !== null && opt.coeficiente !== null && Math.abs(opt.coeficiente - parsedCoef) < 0.0001;
+
+      if (matchesPrazo && matchesCoef) {
+        score += 150;
+      } else if (matchesPrazo) {
+        score += 15;
+      } else if (matchesCoef) {
+        score += 15;
+      }
+
+      const optName = opt.nome_tabela || opt.convenioNome || "";
+      const normOptName = normalizeStr(optName);
+
+      if (normParsedName && normOptName) {
+        if (normOptName === normParsedName) {
+          score += 100;
+        } else if (normParsedName.startsWith(normOptName) || normOptName.startsWith(normParsedName)) {
+          score += 60;
+        } else {
+          const wordsParsed = normParsedName.split(/\s+/).filter(w => w.length > 2);
+          const wordsOpt = normOptName.split(/\s+/).filter(w => w.length > 2);
+          let matchCount = 0;
+          for (const wp of wordsParsed) {
+            if (wordsOpt.includes(wp)) matchCount++;
+          }
+          score += matchCount * 15;
+        }
+      }
+
+      if (score > highestScore) {
+        highestScore = score;
+        bestMatch = opt;
+      }
+    }
+
+    if (bestMatch && highestScore >= 15 && bestMatch.percentual_producao !== undefined) {
+      return bestMatch.percentual_producao;
+    }
+
+    const exactClean = allOptions.find(opt => {
+      const normOptBanco = normalizeStr(opt.bancoNome);
+      const matchesBanco = normProposalBanco && normOptBanco && (
+        normProposalBanco === normOptBanco ||
+        normProposalBanco.includes(normOptBanco) ||
+        normOptBanco.includes(normProposalBanco)
+      );
+      if (!matchesBanco) return false;
+
+      const labelTextDot = opt.nome_tabela 
+        ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
+        : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente}`;
+
+      const labelTextComma = opt.nome_tabela 
+        ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente.toString().replace('.', ',')})`
+        : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente.toString().replace('.', ',')}`;
+
+      const cleanLabel = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+      const cpClean = cleanLabel(proposal.coeficiente_prazo);
+      return cleanLabel(labelTextDot) === cpClean || cleanLabel(labelTextComma) === cpClean;
+    });
+
+    if (exactClean && exactClean.percentual_producao !== undefined) {
+      return exactClean.percentual_producao;
+    }
+
+    return undefined;
+  }, [dbProdutosConfigs, bancosList]);
+
+  const getPJCommissionValue = useCallback((proposal: Proposal) => {
+    const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
+
+    if (proposal.valor_producao && Number(proposal.valor_producao) > 0) {
+      return Number(proposal.valor_producao)
+    }
+
+    const pjPercent = getPJCommissionPercentage(proposal)
+    if (pjPercent !== undefined && !isNaN(pjPercent)) {
+      return (valOp * pjPercent) / 100
+    }
+
+    const comPercent = customCommissionPercents[proposal.id_lead] !== undefined 
+      ? customCommissionPercents[proposal.id_lead] 
+      : getCommissionPercentage(proposal)
+    const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
+    return (valOp * comPercentVal) / 100
+  }, [customCommissionPercents, getCommissionPercentage, getPJCommissionPercentage])
+
   const fetchProposals = async () => {
     setIsLoading(true)
     try {
@@ -1269,8 +1508,8 @@ export default function ContasAReceberPage() {
   const availableBanks = Array.from(new Set(proposals.map(p => p.banco).filter(Boolean)))
   const availableConvenios = Array.from(new Set(proposals.map(p => p.convenio).filter(Boolean)))
 
-  // Filtering Logic
-  const filteredProposals = proposals.filter((proposal) => {
+  // Filtering Logic - Base filters
+  const baseFilteredProposals = proposals.filter((proposal) => {
     const cleanSearch = searchTerm.toLowerCase().replace(/\D/g, "")
     const cleanCpf = (proposal.cliente_cpf || "").replace(/\D/g, "")
 
@@ -1359,6 +1598,19 @@ export default function ContasAReceberPage() {
     return matchesSearch && matchesStatus && matchesBank && matchesConvenio && matchesDate && matchesReceived && matchesValorOperacao && matchesComissaoPercent && matchesComissaoValor
   })
 
+  // Filtered Proposals for Table (Applying Active Card / Folder & Subfolder PJ filters)
+  const filteredProposals = baseFilteredProposals.filter(p => {
+    // If activeCardFolder specifies status:
+    if (activeCardFolder === 'recebida' && getPaymentStatus(p.id_lead) !== 'RECEBIDO') return false
+    if (activeCardFolder === 'a_receber' && getPaymentStatus(p.id_lead) !== 'A_RECEBER') return false
+    if (activeCardFolder === 'estorno' && getPaymentStatus(p.id_lead) !== 'ESTORNADO') return false
+
+    // If Subpasta PJ is selected
+    if (showPJSubfolder && !isPJProposal(p)) return false
+
+    return true
+  })
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(15)
@@ -1368,20 +1620,20 @@ export default function ContasAReceberPage() {
     currentPage * itemsPerPage
   )
 
-  // Calcs for metrics cards
-  const totalOperationSum = filteredProposals.reduce((sum, p) => {
+  // Calcs for metrics cards (General / Pasta Pai)
+  const totalOperationSum = baseFilteredProposals.reduce((sum, p) => {
     const val = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     return sum + val
   }, 0)
   
-  const estimatedComissions = filteredProposals.reduce((sum, p) => {
+  const estimatedComissions = baseFilteredProposals.reduce((sum, p) => {
     const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
     const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
     return sum + (valOp * comPercentVal) / 100
   }, 0)
 
-  const estornadoComissions = filteredProposals.reduce((sum, p) => {
+  const estornadoComissions = baseFilteredProposals.reduce((sum, p) => {
     if (getPaymentStatus(p.id_lead) !== "ESTORNADO") return sum
     const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
@@ -1389,7 +1641,7 @@ export default function ContasAReceberPage() {
     return sum + (valOp * comPercentVal) / 100
   }, 0)
 
-  const rawReceivedComissions = filteredProposals.reduce((sum, p) => {
+  const rawReceivedComissions = baseFilteredProposals.reduce((sum, p) => {
     if (getPaymentStatus(p.id_lead) !== "RECEBIDO") return sum
     const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
@@ -1399,12 +1651,41 @@ export default function ContasAReceberPage() {
 
   const receivedComissions = rawReceivedComissions - estornadoComissions
 
-  const toReceiveComissions = filteredProposals.reduce((sum, p) => {
+  const toReceiveComissions = baseFilteredProposals.reduce((sum, p) => {
     if (getPaymentStatus(p.id_lead) !== "A_RECEBER") return sum
     const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
     const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
     const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
     return sum + (valOp * comPercentVal) / 100
+  }, 0)
+
+  // Calcs for metrics cards (Subpasta Corretores PJ)
+  const pjProposals = baseFilteredProposals.filter(p => isPJProposal(p))
+
+  const pjTotalOperationSum = pjProposals.reduce((sum, p) => {
+    const val = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
+    return sum + val
+  }, 0)
+
+  const pjEstimatedComissions = pjProposals.reduce((sum, p) => {
+    return sum + getPJCommissionValue(p)
+  }, 0)
+
+  const pjEstornadoComissions = pjProposals.reduce((sum, p) => {
+    if (getPaymentStatus(p.id_lead) !== "ESTORNADO") return sum
+    return sum + getPJCommissionValue(p)
+  }, 0)
+
+  const pjRawReceivedComissions = pjProposals.reduce((sum, p) => {
+    if (getPaymentStatus(p.id_lead) !== "RECEBIDO") return sum
+    return sum + getPJCommissionValue(p)
+  }, 0)
+
+  const pjReceivedComissions = pjRawReceivedComissions - pjEstornadoComissions
+
+  const pjToReceiveComissions = pjProposals.reduce((sum, p) => {
+    if (getPaymentStatus(p.id_lead) !== "A_RECEBER") return sum
+    return sum + getPJCommissionValue(p)
   }, 0)
 
   // Exports results to excel
@@ -1497,6 +1778,83 @@ export default function ContasAReceberPage() {
     }
   }
 
+  const getFolderTitle = (card: CardFolderType) => {
+    switch (card) {
+      case 'total': return "VALOR DAS OPERAÇÕES"
+      case 'comissao': return "COMISSÃO ESTIMADA"
+      case 'recebida': return "COMISSÃO RECEBIDA"
+      case 'a_receber': return "COMISSÃO A RECEBER"
+      case 'estorno': return "ESTORNO"
+      default: return ""
+    }
+  }
+
+  const getFolderMainLabel = (card: CardFolderType) => {
+    switch (card) {
+      case 'total': return "Valor das Operações (Todos)"
+      case 'comissao': return "Comissão Estimada (Todos)"
+      case 'recebida': return "Comissão Recebida (Todos)"
+      case 'a_receber': return "Comissão a Receber (Todos)"
+      case 'estorno': return "Estorno (Todos)"
+      default: return ""
+    }
+  }
+
+  const getFolderMainVal = (card: CardFolderType) => {
+    switch (card) {
+      case 'total': return totalOperationSum
+      case 'comissao': return estimatedComissions
+      case 'recebida': return receivedComissions
+      case 'a_receber': return toReceiveComissions
+      case 'estorno': return estornadoComissions
+      default: return 0
+    }
+  }
+
+  const getFolderMainCountStr = (card: CardFolderType) => {
+    switch (card) {
+      case 'total': return `${baseFilteredProposals.length} Contrato(s)`
+      case 'comissao': return `${baseFilteredProposals.length} Proposta(s)`
+      case 'recebida': return `${baseFilteredProposals.filter(p => getPaymentStatus(p.id_lead) === "RECEBIDO").length} Pago(s)`
+      case 'a_receber': return `${baseFilteredProposals.filter(p => getPaymentStatus(p.id_lead) === "A_RECEBER").length} Pendente(s)`
+      case 'estorno': return `${baseFilteredProposals.filter(p => getPaymentStatus(p.id_lead) === "ESTORNADO").length} Estornado(s)`
+      default: return ""
+    }
+  }
+
+  const getFolderPJLabel = (card: CardFolderType) => {
+    switch (card) {
+      case 'total': return "Valor das Operações (Somente PJ)"
+      case 'comissao': return "Comissão a Repassar para Corretores PJ"
+      case 'recebida': return "Comissão Recebida a Repassar para Corretores PJ"
+      case 'a_receber': return "Comissão a Receber a Repassar para Corretores PJ"
+      case 'estorno': return "Estorno a Repassar para Corretores PJ"
+      default: return ""
+    }
+  }
+
+  const getFolderPJVal = (card: CardFolderType) => {
+    switch (card) {
+      case 'total': return pjTotalOperationSum
+      case 'comissao': return pjEstimatedComissions
+      case 'recebida': return pjReceivedComissions
+      case 'a_receber': return pjToReceiveComissions
+      case 'estorno': return pjEstornadoComissions
+      default: return 0
+    }
+  }
+
+  const getFolderPJCountStr = (card: CardFolderType) => {
+    switch (card) {
+      case 'total': return `${pjProposals.length} Contrato(s) PJ`
+      case 'comissao': return `${pjProposals.length} Proposta(s) PJ`
+      case 'recebida': return `${pjProposals.filter(p => getPaymentStatus(p.id_lead) === "RECEBIDO").length} Pago(s) PJ`
+      case 'a_receber': return `${pjProposals.filter(p => getPaymentStatus(p.id_lead) === "A_RECEBER").length} Pendente(s) PJ`
+      case 'estorno': return `${pjProposals.filter(p => getPaymentStatus(p.id_lead) === "ESTORNADO").length} Estornado(s) PJ`
+      default: return ""
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col">
       <Header title="CONTAS A RECEBER" />
@@ -1509,85 +1867,305 @@ export default function ContasAReceberPage() {
         {/* Dashboard Cards Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 relative z-10">
           {/* Valor Total Recebível */}
-          <Card id="card-total-operacoes" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
+          <Card 
+            id="card-total-operacoes" 
+            onClick={() => {
+              if (activeCardFolder === 'total') {
+                setActiveCardFolder(null)
+                setShowPJSubfolder(false)
+              } else {
+                setActiveCardFolder('total')
+                setShowPJSubfolder(false)
+              }
+            }}
+            className={cn(
+              "card-shadow border h-full relative transition-all cursor-pointer hover:scale-[1.02] bg-white group",
+              activeCardFolder === 'total' 
+                ? "border-amber-500 ring-2 ring-amber-400/30 shadow-md" 
+                : "border-slate-200 hover:border-slate-300"
+            )}
+          >
             <CardContent className="p-5">
-              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">VALOR DAS OPERAÇÕES</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">VALOR DAS OPERAÇÕES</p>
+              </div>
               <p className="text-[17px] font-black text-slate-800 tracking-tight mb-3">
                 R$ {totalOperationSum.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </p>
-              <div className="flex items-center gap-2">
-                <div className="bg-[#1e293b] px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
-                  {filteredProposals.length}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="bg-[#1e293b] px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                    {baseFilteredProposals.length}
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest leading-none">Contrato(s)</span>
                 </div>
-                <span className="text-[9px] font-bold text-[#171717]/80 uppercase tracking-widest leading-none">Contrato(s)</span>
+                <span className="text-[9px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Ver Subpasta PJ →
+                </span>
               </div>
             </CardContent>
           </Card>
 
           {/* Comissão Estimada */}
-          <Card id="card-comissoes-estimadas" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
+          <Card 
+            id="card-comissoes-estimadas" 
+            onClick={() => {
+              if (activeCardFolder === 'comissao') {
+                setActiveCardFolder(null)
+                setShowPJSubfolder(false)
+              } else {
+                setActiveCardFolder('comissao')
+                setShowPJSubfolder(false)
+              }
+            }}
+            className={cn(
+              "card-shadow border h-full relative transition-all cursor-pointer hover:scale-[1.02] bg-white group",
+              activeCardFolder === 'comissao' 
+                ? "border-amber-500 ring-2 ring-amber-400/30 shadow-md" 
+                : "border-slate-200 hover:border-slate-300"
+            )}
+          >
             <CardContent className="p-5">
-              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">COMISSÃO</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">COMISSÃO</p>
+              </div>
               <p className="text-[17px] font-black text-emerald-600 tracking-tight mb-3">
                 R$ {estimatedComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </p>
-              <div className="flex items-center gap-2">
-                <div className="bg-[#1e293b] px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
-                  {filteredProposals.length}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="bg-[#1e293b] px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                    {baseFilteredProposals.length}
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest leading-none">Proposta(s)</span>
                 </div>
-                <span className="text-[9px] font-bold text-[#171717]/80 uppercase tracking-widest leading-none">Proposta(s)</span>
+                <span className="text-[9px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Ver Subpasta PJ →
+                </span>
               </div>
             </CardContent>
           </Card>
 
           {/* Comissão Recebida */}
-          <Card id="card-comissoes-recebidas" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
+          <Card 
+            id="card-comissoes-recebidas" 
+            onClick={() => {
+              if (activeCardFolder === 'recebida') {
+                setActiveCardFolder(null)
+                setShowPJSubfolder(false)
+              } else {
+                setActiveCardFolder('recebida')
+                setShowPJSubfolder(false)
+              }
+            }}
+            className={cn(
+              "card-shadow border h-full relative transition-all cursor-pointer hover:scale-[1.02] bg-white group",
+              activeCardFolder === 'recebida' 
+                ? "border-amber-500 ring-2 ring-amber-400/30 shadow-md" 
+                : "border-slate-200 hover:border-slate-300"
+            )}
+          >
             <CardContent className="p-5">
-              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">COMISSÃO RECEBIDA</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">COMISSÃO RECEBIDA</p>
+              </div>
               <p className="text-[17px] font-black text-emerald-700 tracking-tight mb-3">
                 R$ {receivedComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </p>
-              <div className="flex items-center gap-2">
-                <div className="bg-emerald-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
-                  {filteredProposals.filter(p => getPaymentStatus(p.id_lead) === "RECEBIDO").length}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="bg-emerald-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                    {baseFilteredProposals.filter(p => getPaymentStatus(p.id_lead) === "RECEBIDO").length}
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">Pago(s)</span>
                 </div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Pago(s)</span>
+                <span className="text-[9px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Ver Subpasta PJ →
+                </span>
               </div>
             </CardContent>
           </Card>
 
           {/* Comissão A Receber */}
-          <Card id="card-comissoes-a-receber" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
+          <Card 
+            id="card-comissoes-a-receber" 
+            onClick={() => {
+              if (activeCardFolder === 'a_receber') {
+                setActiveCardFolder(null)
+                setShowPJSubfolder(false)
+              } else {
+                setActiveCardFolder('a_receber')
+                setShowPJSubfolder(false)
+              }
+            }}
+            className={cn(
+              "card-shadow border h-full relative transition-all cursor-pointer hover:scale-[1.02] bg-white group",
+              activeCardFolder === 'a_receber' 
+                ? "border-amber-500 ring-2 ring-amber-400/30 shadow-md" 
+                : "border-slate-200 hover:border-slate-300"
+            )}
+          >
             <CardContent className="p-5">
-              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">COMISSÃO A RECEBER</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">COMISSÃO A RECEBER</p>
+              </div>
               <p className="text-[17px] font-black text-sky-600 tracking-tight mb-3">
                 R$ {toReceiveComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </p>
-              <div className="flex items-center gap-2">
-                <div className="bg-sky-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
-                  {filteredProposals.filter(p => getPaymentStatus(p.id_lead) === "A_RECEBER").length}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="bg-sky-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                    {baseFilteredProposals.filter(p => getPaymentStatus(p.id_lead) === "A_RECEBER").length}
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">Pendente(s)</span>
                 </div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Pendente(s)</span>
+                <span className="text-[9px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Ver Subpasta PJ →
+                </span>
               </div>
             </CardContent>
           </Card>
 
           {/* Estorno */}
-          <Card id="card-comissoes-estorno" className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white">
+          <Card 
+            id="card-comissoes-estorno" 
+            onClick={() => {
+              if (activeCardFolder === 'estorno') {
+                setActiveCardFolder(null)
+                setShowPJSubfolder(false)
+              } else {
+                setActiveCardFolder('estorno')
+                setShowPJSubfolder(false)
+              }
+            }}
+            className={cn(
+              "card-shadow border h-full relative transition-all cursor-pointer hover:scale-[1.02] bg-white group",
+              activeCardFolder === 'estorno' 
+                ? "border-amber-500 ring-2 ring-amber-400/30 shadow-md" 
+                : "border-slate-200 hover:border-slate-300"
+            )}
+          >
             <CardContent className="p-5">
-              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">ESTORNO</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">ESTORNO</p>
+              </div>
               <p className="text-[17px] font-black text-amber-700 tracking-tight mb-3">
                 R$ {estornadoComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </p>
-              <div className="flex items-center gap-2">
-                <div className="bg-amber-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
-                  {filteredProposals.filter(p => getPaymentStatus(p.id_lead) === "ESTORNADO").length}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="bg-amber-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                    {baseFilteredProposals.filter(p => getPaymentStatus(p.id_lead) === "ESTORNADO").length}
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">Estornado(s)</span>
                 </div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Estornado(s)</span>
+                <span className="text-[9px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Ver Subpasta PJ →
+                </span>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Subfolder PJ Expansion Panel */}
+        {activeCardFolder && (
+          <div className="bg-gradient-to-r from-amber-500/10 via-amber-50/90 to-blue-50/60 border border-amber-300/80 rounded-2xl p-5 shadow-sm animate-fade-in transition-all">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 mb-4 border-b border-amber-200/80">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm">
+                  <FolderOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-black uppercase text-amber-800 tracking-wider">
+                      ESTRUTURA DE PASTAS • {getFolderTitle(activeCardFolder)}
+                    </span>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-600 mt-0.5">
+                    Selecione abaixo para alternar a visualização da tabela entre o total e o repasse dos Corretores PJ.
+                  </p>
+                </div>
+              </div>
+              <Button 
+                variant="ghost"
+                size="sm"
+                onClick={() => { setActiveCardFolder(null); setShowPJSubfolder(false); }}
+                className="text-xs font-bold text-slate-500 hover:text-slate-800 bg-white/80 hover:bg-white border border-slate-200 rounded-xl px-3"
+              >
+                <X className="w-4 h-4 mr-1 text-slate-400" />
+                <span>Fechar Visão Detalhada</span>
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Pasta Pai Card */}
+              <div 
+                onClick={() => setShowPJSubfolder(false)}
+                className={cn(
+                  "p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between",
+                  !showPJSubfolder 
+                    ? "bg-white border-amber-500 shadow-md ring-2 ring-amber-400/20" 
+                    : "bg-white/70 border-slate-200 hover:bg-white hover:border-slate-300"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn("p-2.5 rounded-xl transition-colors", !showPJSubfolder ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-500")}>
+                    <Folder className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-black text-slate-800">
+                      {getFolderMainLabel(activeCardFolder)}
+                    </span>
+                    <div className="text-[11px] text-slate-500 font-bold mt-0.5">
+                      {getFolderMainCountStr(activeCardFolder)}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-base font-black text-slate-900 block">
+                    R$ {getFolderMainVal(activeCardFolder).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                  <span className={cn("text-[10px] font-extrabold block mt-0.5", !showPJSubfolder ? "text-emerald-600" : "text-slate-400")}>
+                    {!showPJSubfolder ? "✓ Filtro Ativo na Tabela" : "Clique para aplicar"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Subpasta PJ Card */}
+              <div 
+                onClick={() => setShowPJSubfolder(true)}
+                className={cn(
+                  "p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between",
+                  showPJSubfolder 
+                    ? "bg-amber-500/10 border-amber-500 shadow-md ring-2 ring-amber-500/30" 
+                    : "bg-white/70 border-slate-200 hover:bg-white hover:border-slate-300"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn("p-2.5 rounded-xl transition-colors", showPJSubfolder ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-500")}>
+                    <FolderOpen className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-black text-slate-800">
+                      {getFolderPJLabel(activeCardFolder)}
+                    </span>
+                    <div className="text-[11px] text-slate-500 font-bold mt-0.5">
+                      {getFolderPJCountStr(activeCardFolder)}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-base font-black text-amber-700 block">
+                    R$ {getFolderPJVal(activeCardFolder).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                  <span className={cn("text-[10px] font-extrabold block mt-0.5", showPJSubfolder ? "text-amber-700" : "text-slate-400")}>
+                    {showPJSubfolder ? "✓ Filtro Ativo na Tabela" : "Clique para aplicar"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Filters Card */}
         <Card id="card-financeiro-filters" className="card-shadow border border-slate-200 bg-white relative transition-all hover:scale-[1.02] rounded-2xl shadow-sm overflow-hidden">
@@ -1841,13 +2419,19 @@ export default function ContasAReceberPage() {
         {/* Proposals Table Card */}
         <Card id="card-receber-table-wrapper" className="border border-slate-200 bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="p-1 px-2.5 rounded bg-slate-100 text-slate-700 text-[10px] font-extrabold shadow-sm">
                 {filteredProposals.length}
               </span>
               <h2 className="text-xs font-black text-slate-700 tracking-widest uppercase">
                 Propostas Encontradas
               </h2>
+              {activeCardFolder && (
+                <span className="p-1 px-2 rounded bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300 flex items-center gap-1">
+                  <FolderOpen className="w-3 h-3 text-amber-600" />
+                  Filtro: {getFolderTitle(activeCardFolder)} {showPJSubfolder ? "(Somente Corretores PJ)" : "(Geral)"}
+                </span>
+              )}
             </div>
             
             {/* Rows Config */}

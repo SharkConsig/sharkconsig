@@ -37,7 +37,7 @@ import {
 import { useAuth } from "@/context/auth-context"
 
 function NewProposalForm() {
-  const { isCorretor, perfil, isEstagio, isMonitoramento } = useAuth()
+  const { user, isCorretor, perfil, isEstagio, isMonitoramento } = useAuth()
   const isPJ = (perfil?.regime_contratacao || "").trim().toUpperCase() === "PJ" || (perfil?.role || "").trim().toUpperCase() === "PJ" || (perfil as any)?.funcao?.trim()?.toUpperCase() === "PJ"
   const roleLower = perfil?.role?.toLowerCase() || ""
   const canEditPreFilled = ["operacional", "monitoramento", "administrador", "desenvolvedor", "admin"].includes(roleLower)
@@ -85,7 +85,10 @@ function NewProposalForm() {
     banco: "",
     bancoId: "",
     operacao: "",
-    operacaoId: ""
+    operacaoId: "",
+    comissaoDisplay: "",
+    prazoDisplay: "",
+    coefDisplay: ""
   })
 
   const [formData, setFormData] = useState({
@@ -171,13 +174,23 @@ function NewProposalForm() {
     coeficiente: number
     percentual_producao: number
     percentual_comissao?: number
+    percentual_comissao_pj?: number | string
     convenio_id: string
     banco_id: string
     operacoes: string[]
-    regras?: { prazo: string | number, coeficiente: string | number, percentual_producao: string | number, percentual_comissao?: string | number, ativo?: boolean }[]
+    regras?: { 
+      prazo: string | number, 
+      coeficiente: string | number, 
+      percentual_producao: string | number, 
+      percentual_comissao?: string | number, 
+      percentual_comissao_pj?: string | number,
+      comissoes_pj_corretores?: Record<string, string | number>,
+      ativo?: boolean 
+    }[]
     ativo: boolean;
     created_at: string;
     convenios?: { nome: string };
+    bancos?: { id?: string, nome: string };
   }
 
   // Sincronizar selectedCoefValue e selectedPrazoValue quando coeficiente_prazo mudar
@@ -380,19 +393,7 @@ function NewProposalForm() {
       try {
         const { data, error } = await supabase
           .from('produtos_config')
-          .select(`
-            id,
-            nome_tabela,
-            prazo,
-            coeficiente,
-            percentual_producao,
-            convenio_id,
-            banco_id,
-            operacoes,
-            regras,
-            ativo,
-            convenios (nome)
-          `)
+          .select('*, convenios(nome)')
 
         if (error) throw error
 
@@ -908,12 +909,26 @@ function NewProposalForm() {
 
       const formatDate = (val: string) => {
         if (!val) return null
+        const trimmed = val.trim()
+        if (!trimmed) return null
+        const upper = trimmed.toUpperCase()
+        if (upper === "NÃO INFORMADO" || upper === "NAO INFORMADO" || upper === "N/A" || upper === "NULL" || upper === "UNDEFINED") {
+          return null
+        }
         try {
-          const parts = val.split('/')
+          const parts = trimmed.split('/')
           if (parts.length === 3) {
-            return `${parts[2]}-${parts[1]}-${parts[0]}`
+            const day = parts[0].padStart(2, '0')
+            const month = parts[1].padStart(2, '0')
+            const year = parts[2]
+            if (year.length === 4 && !isNaN(Number(year)) && !isNaN(Number(month)) && !isNaN(Number(day))) {
+              return `${year}-${month}-${day}`
+            }
           }
-          return val
+          if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            return trimmed
+          }
+          return null
         } catch {
           return null
         }
@@ -1193,7 +1208,9 @@ function NewProposalForm() {
     nextStep()
   }
 
-  const renderStep1 = () => (
+  const renderStep1 = () => {
+    const sortedConvenios = [...dbConvenios].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+    return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-center gap-4 relative">
         {step > 1 && (
@@ -1213,10 +1230,10 @@ function NewProposalForm() {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl mx-auto">
         {isLoading ? (
           <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
-        ) : dbConvenios.length === 0 ? (
+        ) : sortedConvenios.length === 0 ? (
           <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum convênio cadastrado</div>
         ) : (
-          dbConvenios.map(c => (
+          sortedConvenios.map(c => (
             <button
               key={c.id}
               onClick={() => handleSelect("convenio", c.id, c.nome)}
@@ -1229,45 +1246,53 @@ function NewProposalForm() {
       </div>
     </div>
   )
+}
 
-  const renderStep2 = () => (
-    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center justify-center gap-4 relative">
-        {step > 1 && (
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={prevStep}
-            className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
-          </Button>
-        )}
-        <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
-          ESCOLHA O <span className="text-slate-900 font-extrabold">BANCO DE EMPRÉSTIMO</span> QUE SERÁ UTILIZADO NO CONTRATO
-        </h2>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
-        {isLoading ? (
-          <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
-        ) : dbBancos.length === 0 ? (
-          <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum banco cadastrado</div>
-        ) : (
-          dbBancos.map(b => (
-            <button
-              key={b.id}
-              onClick={() => handleSelect("banco", b.id, b.nome)}
-              className="w-full h-9 px-6 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[10px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider leading-tight shadow-sm"
+  const renderStep2 = () => {
+    const sortedBancos = [...dbBancos].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+
+    return (
+      <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="flex items-center justify-center gap-4 relative">
+          {step > 1 && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={prevStep}
+              className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
             >
-              {b.nome}
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  )
+              <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
+            </Button>
+          )}
+          <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
+            ESCOLHA O <span className="text-slate-900 font-extrabold">BANCO DE EMPRÉSTIMO</span> QUE SERÁ UTILIZADO NO CONTRATO
+          </h2>
+        </div>
 
-  const renderStep3 = () => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
+          {isLoading ? (
+            <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
+          ) : sortedBancos.length === 0 ? (
+            <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum banco cadastrado</div>
+          ) : (
+            sortedBancos.map(b => (
+              <button
+                key={b.id}
+                onClick={() => handleSelect("banco", b.id, b.nome)}
+                className="w-full h-9 px-6 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[10px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider leading-tight shadow-sm"
+              >
+                {b.nome}
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const renderStep3 = () => {
+    const sortedOperacoes = [...dbOperacoes].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+    return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-center gap-4 relative">
         {step > 1 && (
@@ -1287,10 +1312,10 @@ function NewProposalForm() {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
         {isLoading ? (
           <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
-        ) : dbOperacoes.length === 0 ? (
+        ) : sortedOperacoes.length === 0 ? (
           <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum tipo de operação cadastrado</div>
         ) : (
-          dbOperacoes.map(o => (
+          sortedOperacoes.map(o => (
             <button
               key={o.id}
               onClick={() => handleSelect("operacao", o.id, o.nome)}
@@ -1303,6 +1328,7 @@ function NewProposalForm() {
       </div>
     </div>
   )
+}
 
   const renderStep4 = () => (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
@@ -1315,42 +1341,21 @@ function NewProposalForm() {
         >
           <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
         </Button>
-        <div className="flex flex-wrap justify-center gap-2 md:gap-8 items-center bg-white py-4 px-8 rounded-2xl border border-slate-200 shadow-sm w-fit mx-auto">
-          {isPJ ? (
-            <>
-              <div className="flex flex-col items-center md:items-start">
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
-                <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
-              </div>
-              <div className="h-8 w-px bg-slate-100 hidden md:block" />
-              <div className="flex flex-col items-center md:items-start">
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
-                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
-              </div>
-              <div className="h-8 w-px bg-slate-100 hidden md:block" />
-              <div className="flex flex-col items-center md:items-start">
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
-                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex flex-col items-center md:items-start">
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
-                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
-              </div>
-              <div className="h-8 w-px bg-slate-100 hidden md:block" />
-              <div className="flex flex-col items-center md:items-start">
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
-                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
-              </div>
-              <div className="h-8 w-px bg-slate-100 hidden md:block" />
-              <div className="flex flex-col items-center md:items-start">
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
-                <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
-              </div>
-            </>
-          )}
+        <div className="flex flex-wrap md:flex-nowrap justify-center gap-2 md:gap-6 items-center bg-white py-4 px-6 md:px-8 rounded-2xl border border-slate-200 shadow-sm w-full max-w-5xl mx-auto overflow-x-auto">
+          <div className="flex flex-col items-center md:items-start">
+            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
+            <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
+          </div>
+          <div className="h-8 w-px bg-slate-100 hidden md:block" />
+          <div className="flex flex-col items-center md:items-start">
+            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
+            <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
+          </div>
+          <div className="h-8 w-px bg-slate-100 hidden md:block" />
+          <div className="flex flex-col items-center md:items-start">
+            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
+            <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
+          </div>
         </div>
       </div>
 
@@ -1925,6 +1930,12 @@ function NewProposalForm() {
                           }];
                         });
 
+                        options.sort((a, b) => {
+                          const nameA = a.nome_tabela || a.convenioNome || '';
+                          const nameB = b.nome_tabela || b.convenioNome || '';
+                          return nameA.localeCompare(nameB, 'pt-BR', { sensitivity: 'base' });
+                        });
+
                         if (options.length === 0) {
                           return (
                             <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic font-bold uppercase tracking-widest">
@@ -2275,21 +2286,10 @@ function NewProposalForm() {
       
       <main className="flex-1 p-4 lg:p-8 bg-slate-50/50">
         <div className="max-w-[1400px] mx-auto w-full">
-          {isPJ ? (
-            <>
-              {step === 1 && renderStep3()}
-              {step === 2 && renderStep1()}
-              {step === 3 && renderStep2()}
-              {step === 4 && renderStep4()}
-            </>
-          ) : (
-            <>
-              {step === 1 && renderStep1()}
-              {step === 2 && renderStep2()}
-              {step === 3 && renderStep3()}
-              {step === 4 && renderStep4()}
-            </>
-          )}
+          {step === 1 && renderStep1()}
+          {step === 2 && renderStep2()}
+          {step === 3 && renderStep3()}
+          {step === 4 && renderStep4()}
         </div>
       </main>
     </div>

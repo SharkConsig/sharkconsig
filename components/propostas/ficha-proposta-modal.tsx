@@ -15,26 +15,30 @@ interface FichaPropostaModalProps {
 
 interface FieldProps {
   label: string
-  value: string | number | null | undefined
+  value: React.ReactNode
+  textToCopy?: string
   id: string
   className?: string
   onCopy: (text: string, id: string) => void
   isCopied: boolean
 }
 
-const Field = ({ label, value, id, className, onCopy, isCopied }: FieldProps) => {
-  const displayValue = value === null || value === undefined ? "-" : value.toString();
+const Field = ({ label, value, textToCopy, id, className, onCopy, isCopied }: FieldProps) => {
+  const copyStr = textToCopy !== undefined 
+    ? textToCopy 
+    : (typeof value === 'string' || typeof value === 'number' ? String(value) : "-");
+
   return (
     <div 
       className={cn(
         "p-3 space-y-1 group/field relative cursor-pointer hover:bg-slate-50 transition-all active:bg-slate-100", 
         className
       )}
-      onClick={() => onCopy(displayValue, id)}
+      onClick={() => onCopy(copyStr, id)}
     >
       <p className="text-[9px] font-bold text-slate-400 uppercase select-none">{label}</p>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-bold text-slate-800">{displayValue}</p>
+        <div className="text-[11px] font-bold text-slate-800">{value === null || value === undefined ? "-" : value}</div>
         {isCopied && (
           <span className="text-[8px] font-black text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100 animate-in fade-in zoom-in duration-200">
             COPIADO
@@ -111,6 +115,62 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
     
     return "-";
   }
+
+  const phoneList = [
+    { key: "tel_1", val: proposal.tel_residencial_1 },
+    { key: "tel_2", val: proposal.tel_residencial_2 },
+    { key: "tel_3", val: proposal.tel_comercial },
+    { key: "tel_4", val: proposal.tel_4 || (proposal as any).tel_celular || (proposal as any).cliente_telefone_4 }
+  ].filter(p => p.val && p.val.trim() !== "");
+
+  const sel = proposal.telefone_selecionado || "";
+  const contato = (proposal as any).telefone_contato || "";
+
+  const isPhoneSelected = (key: string, val: string) => {
+    if (sel === key) return true;
+    if (sel === "tel_residencial_1" && key === "tel_1") return true;
+    if (sel === "tel_residencial_2" && key === "tel_2") return true;
+    if (sel === "tel_comercial" && key === "tel_3") return true;
+    if ((sel === "tel_4" || sel === "tel_celular" || sel === "cliente_telefone_4") && key === "tel_4") return true;
+
+    if (!val || !val.trim()) return false;
+    const cleanVal = val.replace(/\D/g, "");
+    if (!cleanVal) return false;
+
+    if (sel) {
+      const cleanSel = sel.replace(/\D/g, "");
+      if (cleanSel && cleanSel === cleanVal) return true;
+    }
+    if (contato) {
+      const cleanContato = contato.replace(/\D/g, "");
+      if (cleanContato && cleanContato === cleanVal) return true;
+    }
+
+    return false;
+  };
+
+  const telefonesRendered = phoneList.length === 0 ? "-" : (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {phoneList.map((item, idx) => {
+        const selected = isPhoneSelected(item.key, item.val!);
+        return (
+          <span 
+            key={idx}
+            className={cn(
+              "text-[11px] transition-colors",
+              selected 
+                ? "text-[#00875a] font-extrabold bg-[#e6f7f0] px-1.5 py-0.5 rounded border border-[#00b074] inline-block shadow-xs" 
+                : "text-slate-800 font-bold"
+            )}
+          >
+            {item.val}
+          </span>
+        );
+      })}
+    </div>
+  );
+
+  const telefonesCopyText = phoneList.map(p => p.val).join(" ");
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 print:static print:bg-white print:p-0">
@@ -199,7 +259,7 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
                   <Field label="Número" value={proposal.numero} id="numero" onCopy={copyToClipboard} isCopied={copiedField === "numero"} />
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-slate-300">
-                  <Field label="Telefones" value={`${proposal.tel_residencial_1 || ""} ${proposal.tel_residencial_2 || ""} ${proposal.tel_comercial || ""}`} id="telefones" onCopy={copyToClipboard} isCopied={copiedField === "telefones"} />
+                  <Field label="Telefones" value={telefonesRendered} textToCopy={telefonesCopyText} id="telefones" onCopy={copyToClipboard} isCopied={copiedField === "telefones"} />
                   <Field label="Bairro" value={proposal.bairro} id="bairro" onCopy={copyToClipboard} isCopied={copiedField === "bairro"} />
                 </div>
               </div>

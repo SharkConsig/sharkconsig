@@ -110,6 +110,11 @@ interface Proposal {
   tel_residencial_1?: string
   tel_residencial_2?: string
   tel_comercial?: string
+  tel_4?: string
+  tel_celular?: string
+  cliente_telefone_4?: string
+  telefone_selecionado?: string
+  telefone_contato?: string
   matricula?: string
   data_nascimento?: string
   naturalidade?: string
@@ -721,15 +726,41 @@ export default function ProposalsPage() {
   const itemsPerPage = 10
 
   const filteredProposals = proposals.filter((proposal: Proposal) => {
-    const cleanSearch = searchTerm.toLowerCase().replace(/\D/g, "")
+    const searchLower = searchTerm.toLowerCase()
+    const cleanSearch = searchTerm.replace(/\D/g, "")
     const cleanCpf = (proposal.cliente_cpf || "").replace(/\D/g, "")
 
+    const pAny = proposal as any
+    const allProposalPhones = [
+      proposal.tel_residencial_1,
+      proposal.tel_residencial_2,
+      proposal.tel_comercial,
+      proposal.tel_4,
+      proposal.tel_celular,
+      proposal.cliente_telefone_4,
+      proposal.telefone_contato,
+      pAny.cliente_telefone,
+      pAny.cliente_telefone_1,
+      pAny.cliente_telefone_2,
+      pAny.cliente_telefone_3,
+      pAny.tel_1,
+      pAny.tel_2,
+      pAny.tel_3,
+    ].filter((p): p is string => typeof p === "string" && p.trim() !== "")
+
+    const matchesPhone = allProposalPhones.some(phone => {
+      if (phone.toLowerCase().includes(searchLower)) return true
+      const phoneDigits = phone.replace(/\D/g, "")
+      return cleanSearch !== "" && phoneDigits.includes(cleanSearch)
+    })
+
     const matchesSearch = 
-      (proposal.id_lead?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (proposal.ade?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (proposal.nome_cliente?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (proposal.cliente_cpf?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (cleanSearch !== "" && cleanCpf.includes(cleanSearch))
+      (proposal.id_lead?.toLowerCase() || "").includes(searchLower) ||
+      (proposal.ade?.toLowerCase() || "").includes(searchLower) ||
+      (proposal.nome_cliente?.toLowerCase() || "").includes(searchLower) ||
+      (proposal.cliente_cpf?.toLowerCase() || "").includes(searchLower) ||
+      (cleanSearch !== "" && cleanCpf.includes(cleanSearch)) ||
+      matchesPhone
     
     const matchesStatus = !selectedStatus || 
       TABS_CONFIG.find(t => t.label === selectedStatus)?.subTabs.includes(proposal.status)

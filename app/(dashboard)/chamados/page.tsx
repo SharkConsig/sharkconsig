@@ -741,7 +741,7 @@ export default function TicketsPage() {
       } else if (perfil.role === 'Corretor') {
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
           
           const response = await fetch("/api/usuarios", { signal: controller.signal })
           clearTimeout(timeoutId);
@@ -758,14 +758,17 @@ export default function TicketsPage() {
             query = query.eq('user_id', user.id)
           }
         } catch (err) {
-          console.error("Erro ao buscar estagiários do padrinho:", err)
+          if (err instanceof Error && err.name === 'AbortError') {
+            console.warn("Requisição de usuários para Corretor excedeu timeout")
+          } else {
+            console.error("Erro ao buscar estagiários do padrinho:", err)
+          }
           query = query.eq('user_id', user.id)
         }
       } else if (perfil.role === 'Supervisor') {
         try {
-          // Usar cache ou timeout para evitar Failed to fetch
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
           
           const response = await fetch("/api/usuarios", { signal: controller.signal })
           clearTimeout(timeoutId);
@@ -782,7 +785,11 @@ export default function TicketsPage() {
             query = query.eq('user_id', user.id)
           }
         } catch (err) {
-          console.error("Erro ao buscar subordinados:", err)
+          if (err instanceof Error && err.name === 'AbortError') {
+            console.warn("Requisição de usuários para Supervisor excedeu timeout")
+          } else {
+            console.error("Erro ao buscar subordinados:", err)
+          }
           query = query.eq('user_id', user.id)
         }
       }
@@ -1092,15 +1099,51 @@ export default function TicketsPage() {
       const ticketStatusName = (ticket.status_chamados?.nome || ticket.status || "").toLowerCase()
       
       const ticketCpfDigits = (ticket.cliente_cpf || "").replace(/\D/g, "")
-      const ticketTelDigits = (ticket.cliente_telefone || "").replace(/\D/g, "")
+
+      const tAny = ticket as any
+      const descMeta = parseDescriptionMetadata(ticket.descricao || "") || {}
+
+      const allTicketPhones = [
+        ticket.cliente_telefone,
+        tAny.cliente_telefone_2,
+        tAny.cliente_telefone_3,
+        tAny.cliente_telefone_4,
+        tAny.tel_1,
+        tAny.tel_2,
+        tAny.tel_3,
+        tAny.tel_4,
+        tAny.tel_residencial_1,
+        tAny.tel_residencial_2,
+        tAny.tel_comercial,
+        tAny.tel_celular,
+        tAny.telefone_contato,
+        descMeta.cliente_telefone,
+        descMeta.cliente_telefone_2,
+        descMeta.cliente_telefone_3,
+        descMeta.cliente_telefone_4,
+        descMeta.tel_1,
+        descMeta.tel_2,
+        descMeta.tel_3,
+        descMeta.tel_4,
+        descMeta.tel_residencial_1,
+        descMeta.tel_residencial_2,
+        descMeta.tel_comercial,
+        descMeta.tel_celular,
+        descMeta.telefone_contato,
+      ].filter((p): p is string => typeof p === "string" && p.trim() !== "")
+
+      const matchesPhone = allTicketPhones.some(phone => {
+        if (phone.toLowerCase().includes(searchLower)) return true
+        const phoneDigits = phone.replace(/\D/g, "")
+        return searchDigits !== "" && phoneDigits.includes(searchDigits)
+      })
 
       const matchesSearch = 
         ticket.id.toString().includes(searchTerm) ||
         ticket.cliente_nome.toLowerCase().includes(searchLower) ||
         ticket.cliente_cpf.includes(searchTerm) ||
         (searchDigits !== "" && ticketCpfDigits.includes(searchDigits)) ||
-        ticket.cliente_telefone.toLowerCase().includes(searchLower) ||
-        (searchDigits !== "" && ticketTelDigits.includes(searchDigits)) ||
+        matchesPhone ||
         ticket.origem.toLowerCase().includes(searchLower) ||
         (normalizeConvenioName(ticket.convenio) || "").toLowerCase().includes(searchLower) ||
         ticket.equipe.toLowerCase().includes(searchLower) ||
@@ -1123,18 +1166,17 @@ export default function TicketsPage() {
       if (filterEquipes.length > 0 && !filterEquipes.includes(ticket.equipe)) return false
 
       // Filtro de Encaminhamento
-      const meta = parseDescriptionMetadata(ticket.descricao || "")
-      const isEncaminhado = !!meta?.enviado_para_corretor
+      const isEncaminhado = !!descMeta?.enviado_para_corretor
 
       if (filterEncaminhados === "Sim" && !isEncaminhado) return false
       if (filterEncaminhados === "Não" && isEncaminhado) return false
 
       if (filterEstagiarioForwarded.length > 0) {
-        if (!meta?.estagiario_nome || !filterEstagiarioForwarded.includes(meta.estagiario_nome)) return false
+        if (!descMeta?.estagiario_nome || !filterEstagiarioForwarded.includes(descMeta.estagiario_nome)) return false
       }
 
       if (filterCorretorForwarded.length > 0) {
-        if (!meta?.corretor_nome || !filterCorretorForwarded.includes(meta.corretor_nome)) return false
+        if (!descMeta?.corretor_nome || !filterCorretorForwarded.includes(descMeta.corretor_nome)) return false
       }
 
       // Filtro de Valor Operação
