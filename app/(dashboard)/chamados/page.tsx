@@ -1188,10 +1188,43 @@ export default function TicketsPage() {
         if (minVal !== null && opVal < minVal) return false
         if (maxVal !== null && opVal > maxVal) return false
       }
+
+      // Filtro de Período (Data)
+      if (startDate || endDate) {
+        const ticketDateStr = (() => {
+          const raw = ticket.created_at || ticket.updated_at
+          if (!raw) return null
+          const str = String(raw).trim()
+          if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+            const [day, month, year] = str.split('/')
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+          }
+          if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+            return str.slice(0, 10)
+          }
+          try {
+            const d = new Date(str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str)
+            if (!isNaN(d.getTime())) {
+              const year = d.getFullYear()
+              const month = String(d.getMonth() + 1).padStart(2, '0')
+              const day = String(d.getDate()).padStart(2, '0')
+              return `${year}-${month}-${day}`
+            }
+          } catch {}
+          return null
+        })()
+
+        if (ticketDateStr) {
+          if (startDate && ticketDateStr < startDate) return false
+          if (endDate && ticketDateStr > endDate) return false
+        } else {
+          return false
+        }
+      }
       
       return true
     })
-  }, [tickets, searchTerm, filterCorretores, filterStatusList, filterOrigens, filterCliente, filterConvenios, filterEquipes, filterMargemMin, filterMargemMax, filterEncaminhados, filterEstagiarioForwarded, filterCorretorForwarded])
+  }, [tickets, searchTerm, startDate, endDate, filterCorretores, filterStatusList, filterOrigens, filterCliente, filterConvenios, filterEquipes, filterMargemMin, filterMargemMax, filterEncaminhados, filterEstagiarioForwarded, filterCorretorForwarded])
 
   const partnershipStats = useMemo(() => {
     const forwardedTickets = baseFilteredTickets.filter(t => {

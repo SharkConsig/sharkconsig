@@ -219,7 +219,6 @@ export default function ProposalsPage() {
     }
   }, [perfil, isEstagio, router])
   const [proposals, setProposals] = useState<Proposal[]>([])
-  const [counts, setCounts] = useState<{[key: string]: number}>({})
   const [isLoading, setIsLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
@@ -624,7 +623,6 @@ export default function ProposalsPage() {
 
       if (!data || data.length === 0) {
         setProposals([])
-        setCounts({})
         setIsLoading(false)
         return
       }
@@ -679,13 +677,6 @@ export default function ProposalsPage() {
       })
 
       setProposals(formattedData)
-
-      // Calculate counts based on current accessible proposals
-      const newCounts: {[key: string]: number} = {}
-      formattedData.forEach((p: Proposal) => {
-        newCounts[p.status] = (newCounts[p.status] || 0) + 1
-      })
-      setCounts(newCounts)
     } catch (error: unknown) {
       console.error("Erro geral ao buscar propostas:", error)
       if (!isSilent) toast.error("Falha ao carregar propostas.")
@@ -707,6 +698,102 @@ export default function ProposalsPage() {
   useEffect(() => {
     setExpandedProposalId(null)
   }, [selectedStatus, selectedSecondaryStatus])
+
+  const counts = useMemo(() => {
+    const newCounts: {[key: string]: number} = {}
+    proposals.forEach((proposal: Proposal) => {
+      const searchLower = searchTerm.toLowerCase()
+      const cleanSearch = searchTerm.replace(/\D/g, "")
+      const cleanCpf = (proposal.cliente_cpf || "").replace(/\D/g, "")
+
+      const pAny = proposal as any
+      const allProposalPhones = [
+        proposal.tel_residencial_1,
+        proposal.tel_residencial_2,
+        proposal.tel_comercial,
+        proposal.tel_4,
+        proposal.tel_celular,
+        proposal.cliente_telefone_4,
+        proposal.telefone_contato,
+        pAny.cliente_telefone,
+        pAny.cliente_telefone_1,
+        pAny.cliente_telefone_2,
+        pAny.cliente_telefone_3,
+        pAny.tel_1,
+        pAny.tel_2,
+        pAny.tel_3,
+      ].filter((p): p is string => typeof p === "string" && p.trim() !== "")
+
+      const matchesPhone = allProposalPhones.some(phone => {
+        if (phone.toLowerCase().includes(searchLower)) return true
+        const phoneDigits = phone.replace(/\D/g, "")
+        return cleanSearch !== "" && phoneDigits.includes(cleanSearch)
+      })
+
+      const matchesSearch = 
+        (proposal.id_lead?.toLowerCase() || "").includes(searchLower) ||
+        (proposal.ade?.toLowerCase() || "").includes(searchLower) ||
+        (proposal.nome_cliente?.toLowerCase() || "").includes(searchLower) ||
+        (proposal.cliente_cpf?.toLowerCase() || "").includes(searchLower) ||
+        (cleanSearch !== "" && cleanCpf.includes(cleanSearch)) ||
+        matchesPhone
+
+      const matchesDate = (() => {
+        if (!startDate && !endDate) return true;
+        const proposalDateStr = (() => {
+          const raw = proposal.created_at || proposal.data_digitacao || proposal.updated_at || proposal.data_pago_cliente
+          if (!raw) return null
+          const str = String(raw).trim()
+          if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+            const [day, month, year] = str.split('/')
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+          }
+          if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+            return str.slice(0, 10)
+          }
+          try {
+            const d = new Date(str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str)
+            if (!isNaN(d.getTime())) {
+              const year = d.getFullYear()
+              const month = String(d.getMonth() + 1).padStart(2, '0')
+              const day = String(d.getDate()).padStart(2, '0')
+              return `${year}-${month}-${day}`
+            }
+          } catch {}
+          return null
+        })()
+
+        if (proposalDateStr) {
+          if (startDate && proposalDateStr < startDate) return false;
+          if (endDate && proposalDateStr > endDate) return false;
+          return true;
+        }
+        return false;
+      })();
+
+      const matchesCorretor = filterCorretores.length === 0 || filterCorretores.includes(proposal.nome_corretor || proposal.corretor || "")
+      const matchesEquipe = filterEquipes.length === 0 || filterEquipes.includes(proposal.equipe || "")
+      const matchesEstagiario = filterEstagiarios.length === 0 || filterEstagiarios.includes(proposal.estagiario_colaborador_nome || "")
+      const matchesBanco = filterBancos.length === 0 || filterBancos.includes(proposal.banco || "")
+      const matchesConvenio = filterConvenios.length === 0 || filterConvenios.includes(proposal.convenio || "")
+      const matchesOperacao = filterOperacoes.length === 0 || filterOperacoes.includes(proposal.tipo_operacao || "")
+
+      const matchesValor = (() => {
+        if (!filterValorMin && !filterValorMax) return true;
+        const val = proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0;
+        if (filterValorMin && val < Number(filterValorMin)) return false;
+        if (filterValorMax && val > Number(filterValorMax)) return false;
+        return true;
+      })();
+
+      if (matchesSearch && matchesDate && matchesCorretor && matchesEquipe && matchesEstagiario && matchesBanco && matchesConvenio && matchesOperacao && matchesValor) {
+        if (proposal.status) {
+          newCounts[proposal.status] = (newCounts[proposal.status] || 0) + 1
+        }
+      }
+    })
+    return newCounts
+  }, [proposals, searchTerm, startDate, endDate, filterCorretores, filterEquipes, filterEstagiarios, filterBancos, filterConvenios, filterOperacoes, filterValorMin, filterValorMax])
 
   const statusCards = TABS_CONFIG.map(tab => {
     const total = (tab.subTabs || []).reduce((acc, sub) => acc + (counts[sub] || 0), 0)
@@ -769,21 +856,36 @@ export default function ProposalsPage() {
     const matchesDate = (() => {
       if (!startDate && !endDate) return true;
       
-      try {
-        // Obter a data da proposta em formato YYYY-MM-DD (local) para comparação simples
-        const pDate = new Date(proposal.created_at);
-        if (isNaN(pDate.getTime())) return true;
-        
-        const proposalDateStr = format(pDate, "yyyy-MM-dd");
-        
+      const proposalDateStr = (() => {
+        const raw = proposal.created_at || proposal.data_digitacao || proposal.updated_at || proposal.data_pago_cliente
+        if (!raw) return null
+        const str = String(raw).trim()
+        if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+          const [day, month, year] = str.split('/')
+          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+        }
+        if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+          return str.slice(0, 10)
+        }
+        try {
+          const d = new Date(str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str)
+          if (!isNaN(d.getTime())) {
+            const year = d.getFullYear()
+            const month = String(d.getMonth() + 1).padStart(2, '0')
+            const day = String(d.getDate()).padStart(2, '0')
+            return `${year}-${month}-${day}`
+          }
+        } catch {}
+        return null
+      })()
+
+      if (proposalDateStr) {
         if (startDate && proposalDateStr < startDate) return false;
         if (endDate && proposalDateStr > endDate) return false;
-      } catch (err) {
-        console.error("Erro ao validar data da proposta:", err);
         return true;
       }
-      
-      return true;
+
+      return false;
     })();
 
     const matchesCorretor = filterCorretores.length === 0 || filterCorretores.includes(proposal.nome_corretor || proposal.corretor || "")
