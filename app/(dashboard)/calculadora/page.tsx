@@ -483,16 +483,28 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
 
         const pmtMedia = t > 0 ? sumTotalMes / t : 0
         const rateN = calculateImplicitRate(contratoComIof, pmtMedia, t)
+        const tx2Dec = Math.round(rateN * 10000) / 10000
+
+        let calcParcelaMedia = pmtMedia
+        if (t !== prazo) {
+          const pv = valorLiberado
+          if (tx2Dec > 0 && t > 0) {
+            const compound = Math.pow(1 + tx2Dec, t)
+            calcParcelaMedia = pv * ((tx2Dec * compound) / (compound - 1))
+          } else if (t > 0) {
+            calcParcelaMedia = pv / t
+          }
+        }
 
         return {
           term: t,
           taxa: Math.max(0, rateN),
-          parcelaMedia: pmtMedia,
+          parcelaMedia: calcParcelaMedia,
           totalPagar: sumTotalMes,
           invalido: false
         }
       })
-  }, [contratoComIof, taxaImplicita, parcela, prazo, totalAPagar])
+  }, [valorLiberado, contratoComIof, taxaImplicita, parcela, prazo, totalAPagar])
 
   const selectedPlanObj = useMemo(() => {
     return planosAmortizacao.find(p => p.term === selectedPlanTerm) || planosAmortizacao[0]
@@ -789,54 +801,47 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
 
     let cardsHtml = ""
     selectedPlans.forEach((plan) => {
-      const totJuros = Math.max(0, plan.totalPagar - valorLiberado)
       const economiaTotal = totalAPagar > plan.totalPagar ? totalAPagar - plan.totalPagar : 0
 
       cardsHtml += `
-        <div style="border: 2px solid #1E293B; border-radius: 12px; overflow: hidden; background: #FFFFFF; display: flex; flex-direction: column;">
-          <div style="background-color: #0F172A; color: #FFFFFF; padding: 14px; text-align: center;">
-            <div style="font-size: 24px; font-weight: 900; color: #00D492; tracking-tight: -0.5px;">${plan.term} Meses</div>
-            <div style="font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase; margin-top: 2px;">Plano de Amortização</div>
-          </div>
-          <div style="padding: 16px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
-            <div style="font-size: 12px;">
-              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0;">
-                <span style="color: #64748B; font-weight: 600;">Valor Liberado:</span>
-                <span style="color: #0F172A; font-weight: 800;">${formatBRL(valorLiberado)}</span>
+        <div style="border: 2px solid #0F172A; border-radius: 16px; overflow: hidden; background: #FFFFFF; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="background-color: #0F172A; color: #FFFFFF; padding: 16px; text-align: center;">
+              <div style="font-size: 24px; font-weight: 900; color: #00D492; letter-spacing: -0.5px;">${plan.term} Meses</div>
+              <div style="font-size: 10px; font-weight: 500; color: #94A3B8; letter-spacing: 0.5px; margin-top: 2px;">Plano de Amortização</div>
+            </div>
+            <div style="padding: 16px; font-size: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #F1F5F9;">
+                <span style="color: #64748B; font-weight: 600;">Valor Liberado</span>
+                <span style="color: #00D492; font-weight: 800; font-size: 16px;">${formatBRL(valorLiberado)}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0;">
-                <span style="color: #64748B; font-weight: 600;">Contrato + IOF:</span>
-                <span style="color: #0F172A; font-weight: 800;">${formatBRL(contratoComIof)}</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #F1F5F9;">
+                <span style="color: #64748B; font-weight: 600;">Parcela Média</span>
+                <span style="color: #0F172A; font-weight: 800;">${formatBRL(plan.parcelaMedia)}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0;">
-                <span style="color: #64748B; font-weight: 600;">Parcela Média:</span>
-                <span style="color: #00D492; font-weight: 800;">${formatBRL(plan.parcelaMedia)}</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0;">
-                <span style="color: #64748B; font-weight: 600;">Taxa Mês:</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #F1F5F9;">
+                <span style="color: #64748B; font-weight: 600;">Taxa Mês</span>
                 <span style="color: #0F172A; font-weight: 800;">${formatPercent(plan.taxa, 2)}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0;">
-                <span style="color: #64748B; font-weight: 600;">Total a Pagar:</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0;">
+                <span style="color: #64748B; font-weight: 600;">Total a Pagar</span>
                 <span style="color: #0F172A; font-weight: 800;">${formatBRL(plan.totalPagar)}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-                <span style="color: #64748B; font-weight: 600;">Total de Juros:</span>
-                <span style="color: #0F172A; font-weight: 800;">${formatBRL(totJuros)}</span>
+            </div>
+          </div>
+
+          ${
+            economiaTotal > 0
+              ? `
+            <div style="padding: 16px; padding-top: 0;">
+              <div style="background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; font-weight: 800; color: #065F46; text-transform: uppercase; letter-spacing: 0.5px;">Economia no Total</div>
+                <div style="font-size: 16px; font-weight: 900; color: #059669; margin-top: 2px;">${formatBRL(economiaTotal)}</div>
               </div>
             </div>
-
-            ${
-              economiaTotal > 0
-                ? `
-              <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px; margin-top: 14px; text-align: center;">
-                <div style="font-size: 10px; font-weight: 800; color: #166534; text-transform: uppercase;">Economia no Total</div>
-                <div style="font-size: 15px; font-weight: 900; color: #15803D; margin-top: 2px;">${formatBRL(economiaTotal)}</div>
-              </div>
-            `
-                : ""
-            }
-          </div>
+          `
+              : ""
+          }
         </div>
       `
     })
@@ -3322,7 +3327,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                             <span className="text-2xl font-black text-[#00D492] tracking-tight block">
                               {plan.term} Meses
                             </span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            <span className="text-[10px] font-medium text-slate-400 tracking-wider block">
                               Plano de Amortização
                             </span>
                           </div>
@@ -3331,15 +3336,11 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                           <div className="p-4 space-y-2.5 text-xs divide-y divide-slate-100">
                             <div className="flex justify-between items-center pt-1">
                               <span className="font-semibold text-slate-500">Valor Liberado</span>
-                              <span className="font-extrabold text-slate-900">{formatBRL(valorLiberado)}</span>
-                            </div>
-                            <div className="flex justify-between items-center pt-2.5">
-                              <span className="font-semibold text-slate-500">Contrato + IOF</span>
-                              <span className="font-extrabold text-slate-900">{formatBRL(contratoComIof)}</span>
+                              <span className="font-extrabold text-[#00D492] text-base">{formatBRL(valorLiberado)}</span>
                             </div>
                             <div className="flex justify-between items-center pt-2.5">
                               <span className="font-semibold text-slate-500">Parcela Média</span>
-                              <span className="font-extrabold text-[#00D492] text-sm">{formatBRL(plan.parcelaMedia)}</span>
+                              <span className="font-extrabold text-slate-900">{formatBRL(plan.parcelaMedia)}</span>
                             </div>
                             <div className="flex justify-between items-center pt-2.5">
                               <span className="font-semibold text-slate-500">Taxa Mês</span>
@@ -3348,10 +3349,6 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                             <div className="flex justify-between items-center pt-2.5">
                               <span className="font-semibold text-slate-500">Total a Pagar</span>
                               <span className="font-extrabold text-slate-900">{formatBRL(plan.totalPagar)}</span>
-                            </div>
-                            <div className="flex justify-between items-center pt-2.5">
-                              <span className="font-semibold text-slate-500">Total de Juros</span>
-                              <span className="font-extrabold text-slate-900">{formatBRL(totJuros)}</span>
                             </div>
                           </div>
                         </div>

@@ -1416,6 +1416,7 @@ export default function DashboardPage() {
       }
 
       // 3. Ticket Stats (Chamados) - FETCH FOR EVERYONE
+      let finalTicketStats: any = null
       try {
         interface Ticket {
           id?: string
@@ -1744,7 +1745,7 @@ export default function DashboardPage() {
           groups: Object.values(groups).sort((a: any, b: any) => b.totalValue - a.totalValue)
         };
 
-        const finalTicketStats = {
+        finalTicketStats = {
           total: ticketSummary.total,
           notApproved: ticketSummary.notApproved,
           approved: ticketSummary.approved,
@@ -1766,8 +1767,12 @@ export default function DashboardPage() {
         }
         
         setTicketStats(finalTicketStats)
+      } catch (chamadosErr: any) {
+        console.warn("Tickets stats (chamados) error or restricted access:", chamadosErr?.message || chamadosErr)
+      }
 
-        // 4. Fetch Admin specific stats - Only if Admin, Developer, Recursos Humanos, Supervisor, Monitoramento, or Operacional
+      // 4. Fetch Admin specific stats - Only if Admin, Developer, Recursos Humanos, Supervisor, Monitoramento, or Operacional
+      try {
         const userRoleForStats = perfil?.role?.toUpperCase() || "";
         const showCompleteStats = isAdmin || isDeveloper || isRecursosHumanos || userRoleForStats === 'SUPERVISOR' || userRoleForStats === 'MONITORAMENTO' || userRoleForStats === 'OPERACIONAL';
 

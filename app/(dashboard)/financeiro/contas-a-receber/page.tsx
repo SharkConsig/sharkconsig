@@ -470,15 +470,18 @@ export default function ContasAReceberPage() {
   const [pjUsersMap, setPjUsersMap] = useState<Set<string>>(new Set());
   const [pjUserNames, setPjUserNames] = useState<Set<string>>(new Set());
   const [colaboradoresDocMap, setColaboradoresDocMap] = useState<Map<string, { cpf?: string; cnpj?: string }>>(new Map());
+  const [selectedPjProposalIds, setSelectedPjProposalIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function fetchColaboradoresDocs() {
       try {
-        const { data } = await supabase.from("colaboradores").select("usuario_id, nome, cpf, cnpj")
-        if (data && Array.isArray(data)) {
-          const map = new Map<string, { cpf?: string; cnpj?: string }>()
-          const normStr = (s: string) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
-          data.forEach((item: any) => {
+        const map = new Map<string, { cpf?: string; cnpj?: string }>()
+        const normStr = (s: string) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+
+        // 1. hr_colaboradores (Presenciais / Home Office)
+        const { data: hrData } = await supabase.from("hr_colaboradores").select("usuario_id, nome, cpf, cnpj")
+        if (hrData && Array.isArray(hrData)) {
+          hrData.forEach((item: any) => {
             const doc = { cpf: item.cpf || undefined, cnpj: item.cnpj || undefined }
             if (item.usuario_id) map.set(String(item.usuario_id), doc)
             if (item.nome) {
@@ -486,8 +489,42 @@ export default function ContasAReceberPage() {
               map.set(normStr(item.nome), doc)
             }
           })
-          setColaboradoresDocMap(map)
         }
+
+        // 2. colaboradores
+        const { data: colData } = await supabase.from("colaboradores").select("usuario_id, nome, cpf, cnpj")
+        if (colData && Array.isArray(colData)) {
+          colData.forEach((item: any) => {
+            const doc = { cpf: item.cpf || undefined, cnpj: item.cnpj || undefined }
+            if (item.usuario_id) map.set(String(item.usuario_id), doc)
+            if (item.nome) {
+              if (!map.has(item.nome.trim().toUpperCase())) map.set(item.nome.trim().toUpperCase(), doc)
+              if (!map.has(normStr(item.nome))) map.set(normStr(item.nome), doc)
+            }
+          })
+        }
+
+        // 3. /api/usuarios
+        try {
+          const res = await fetch("/api/usuarios")
+          if (res.ok) {
+            const users = await res.json()
+            if (Array.isArray(users)) {
+              users.forEach((u: any) => {
+                const doc = { cpf: u.cpf || undefined, cnpj: u.cnpj || undefined }
+                if (u.id && !map.has(String(u.id))) map.set(String(u.id), doc)
+                if (u.nome) {
+                  const upper = u.nome.trim().toUpperCase()
+                  const norm = normStr(u.nome)
+                  if (!map.has(upper)) map.set(upper, doc)
+                  if (!map.has(norm)) map.set(norm, doc)
+                }
+              })
+            }
+          }
+        } catch (_) {}
+
+        setColaboradoresDocMap(map)
       } catch (err) {
         console.error("Erro ao buscar colaboradores para extrato:", err)
       }
@@ -508,9 +545,21 @@ export default function ContasAReceberPage() {
         docObj = colaboradoresDocMap.get(normStr(rawName))
       }
     }
-    if (docObj?.cnpj) return docObj.cnpj
-    if (docObj?.cpf) return docObj.cpf
-    return "-"
+
+    const cleanVal = (v?: string) => {
+      if (!v) return ""
+      const s = String(v).trim()
+      if (s === "-" || s === "null" || s === "undefined") return ""
+      return s
+    }
+
+    const cnpj = cleanVal(docObj?.cnpj)
+    if (cnpj) return cnpj
+
+    const cpf = cleanVal(docObj?.cpf)
+    if (cpf) return cpf
+
+    return ""
   }, [colaboradoresDocMap])
 
   useEffect(() => {
@@ -1969,9 +2018,17 @@ export default function ContasAReceberPage() {
 
   // Export Extrato de Comissionamento PJ
   const exportExtratoComissionamentoPJ = async () => {
-    const pjList = baseFilteredProposals.filter((p) => isPJProposal(p))
+    let pjList = baseFilteredProposals.filter((p) => isPJProposal(p))
+    if (selectedPjProposalIds.size > 0) {
+      pjList = pjList.filter((p) => selectedPjProposalIds.has(p.id_lead))
+    }
+
     if (pjList.length === 0) {
-      toast.error("Nenhuma proposta de Corretor PJ encontrada para o extrato.")
+      toast.error(
+        selectedPjProposalIds.size > 0
+          ? "Nenhuma proposta de Corretor PJ selecionada nos filtros atuais."
+          : "Nenhuma proposta de Corretor PJ encontrada para o extrato."
+      )
       return
     }
 
@@ -1984,7 +2041,6 @@ export default function ContasAReceberPage() {
       { header: "Nº Contrato / ADE", key: "contrato", width: 18 },
       { header: "Cliente Averbado", key: "cliente", width: 32 },
       { header: "Valor do Contrato (R$)", key: "valor_contrato", width: 22 },
-      { header: "Margem Gerada (R$)", key: "margem", width: 20 },
       { header: "% Comissão PJ", key: "pct_comissao_pj", width: 18 },
       { header: "Comissão PJ (R$)", key: "val_comissao_pj", width: 24 },
       { header: "Descontos / Estornos (R$)", key: "estorno", width: 24 },
@@ -2005,7 +2061,6 @@ export default function ContasAReceberPage() {
 
     pjList.forEach((p) => {
       const valContrato = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
-      const margemGerada = safeFloat((p as any).margem || (p as any).valor_margem || (p as any).margem_liquida || (p as any).margem_livre || 0)
       const pjPercent = getPJCommissionPercentage(p) || 0
       const pjVal = getPJCommissionValue(p)
       const pStatus = getPaymentStatus(p.id_lead)
@@ -2022,7 +2077,6 @@ export default function ContasAReceberPage() {
         contrato: p.ade || p.numero_contrato || p.id_lead || "-",
         cliente: (p.nome_cliente || "-").trim(),
         valor_contrato: valContrato,
-        margem: margemGerada,
         pct_comissao_pj: pjPercent / 100,
         val_comissao_pj: pjVal,
         estorno: valorEstorno,
@@ -2031,7 +2085,6 @@ export default function ContasAReceberPage() {
       })
 
       row.getCell("valor_contrato").numFmt = '"R$"#,##0.00'
-      row.getCell("margem").numFmt = '"R$"#,##0.00'
       row.getCell("pct_comissao_pj").numFmt = '0.00%'
       row.getCell("val_comissao_pj").numFmt = '"R$"#,##0.00'
       row.getCell("estorno").numFmt = '"R$"#,##0.00'
@@ -2734,7 +2787,9 @@ export default function ContasAReceberPage() {
               className="h-10 px-5 bg-amber-500/10 border-amber-300 text-amber-800 hover:bg-amber-500/20 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-sm cursor-pointer border-2 rounded-lg"
             >
               <FileSpreadsheet className="w-5 h-5 text-amber-700" />
-              EXTRATO DE COMISSIONAMENTO (PJ)
+              {selectedPjProposalIds.size > 0
+                ? `EXTRATO DE COMISSIONAMENTO (PJ) (${selectedPjProposalIds.size})`
+                : "EXTRATO DE COMISSIONAMENTO (PJ)"}
             </Button>
             <Button
               id="btn-exportar-excel-geral"
@@ -2785,6 +2840,30 @@ export default function ContasAReceberPage() {
             <table id="table-contas-a-receber" className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100/80">
+                  <th className="px-3 py-4 w-[40px] text-center">
+                    <input
+                      id="checkbox-select-all-pj-proposals"
+                      type="checkbox"
+                      title="Selecionar / Desmarcar todas as propostas PJ desta página"
+                      checked={
+                        paginatedProposals.filter(p => isPJProposal(p)).length > 0 &&
+                        paginatedProposals.filter(p => isPJProposal(p)).every(p => selectedPjProposalIds.has(p.id_lead))
+                      }
+                      onChange={(e) => {
+                        const pjInPage = paginatedProposals.filter(p => isPJProposal(p)).map(p => p.id_lead)
+                        if (e.target.checked) {
+                          setSelectedPjProposalIds(prev => new Set([...Array.from(prev), ...pjInPage]))
+                        } else {
+                          setSelectedPjProposalIds(prev => {
+                            const next = new Set(prev)
+                            pjInPage.forEach(id => next.delete(id))
+                            return next
+                          })
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ID Lead</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">ADE</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">CPF / Cliente</th>
@@ -2792,6 +2871,7 @@ export default function ContasAReceberPage() {
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Banco / Convênio</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Valor Operação</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-[#171717]/60 uppercase tracking-widest whitespace-nowrap text-center">Comissão (%)</th>
+                  <th className="px-5 py-4 text-[10px] font-bold text-amber-700 uppercase tracking-widest whitespace-nowrap text-center">Comissão PJ</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Pago em</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Comissão ($)</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
@@ -2800,7 +2880,7 @@ export default function ContasAReceberPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-16 text-center text-slate-400 text-xs font-semibold">
+                    <td colSpan={12} className="px-4 py-16 text-center text-slate-400 text-xs font-semibold">
                       <div className="flex items-center justify-center gap-2">
                         <Loader2 className="w-5 h-5 animate-spin text-primary" />
                         Obtendo registros de propostas do Supabase...
@@ -2809,7 +2889,7 @@ export default function ContasAReceberPage() {
                   </tr>
                 ) : paginatedProposals.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-16 text-center text-slate-400 text-xs font-medium">
+                    <td colSpan={12} className="px-4 py-16 text-center text-slate-400 text-xs font-medium">
                       {"Nenhuma proposta correspondente aos critérios no lote \"Pago ao Cliente\"."}
                     </td>
                   </tr>
@@ -2819,6 +2899,9 @@ export default function ContasAReceberPage() {
                     const comPercent = customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead] : getCommissionPercentage(proposal)
                     const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
                     const calculatedCommission = (valOp * comPercentVal) / 100
+                    const isPJ = isPJProposal(proposal)
+                    const pjVal = getPJCommissionValue(proposal)
+                    const pjPct = getPJCommissionPercentage(proposal)
                     
                     return (
                       <React.Fragment key={proposal.id_lead}>
@@ -2839,6 +2922,28 @@ export default function ContasAReceberPage() {
                              }
                            }}
                         >
+                          <td className="px-3 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                            {isPJ ? (
+                              <input
+                                type="checkbox"
+                                id={`checkbox-pj-proposal-${proposal.id_lead}`}
+                                checked={selectedPjProposalIds.has(proposal.id_lead)}
+                                onChange={(e) => {
+                                  const checked = e.target.checked
+                                  setSelectedPjProposalIds(prev => {
+                                    const next = new Set(prev)
+                                    if (checked) {
+                                      next.add(proposal.id_lead)
+                                    } else {
+                                      next.delete(proposal.id_lead)
+                                    }
+                                    return next
+                                  })
+                                }}
+                                className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                              />
+                            ) : null}
+                          </td>
                           <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">
                             {proposal.id_lead}
                           </td>
@@ -2883,6 +2988,22 @@ export default function ContasAReceberPage() {
                               onSave={(val) => handleCommissionPercentChange(proposal.id_lead, val)}
                               id={`input-commission-percent-${proposal.id_lead}`}
                             />
+                          </td>
+                          <td className="px-5 py-4 text-center whitespace-nowrap">
+                            {isPJ ? (
+                              <div className="flex flex-col items-center">
+                                <span className="text-[11px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 rounded-md shadow-2xs">
+                                  {pjVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                </span>
+                                {pjPct !== undefined && pjPct > 0 && (
+                                  <span className="text-[9px] font-black text-amber-600/90 mt-0.5">
+                                    ({pjPct}%)
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-300 font-semibold">-</span>
+                            )}
                           </td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500 whitespace-nowrap">
                             {proposal.data_pago_cliente ? (
