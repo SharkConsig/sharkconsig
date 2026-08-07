@@ -331,19 +331,48 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   useEffect(() => {
     async function fetchUsers() {
       try {
+        const map = new Map<string, string>()
+
+        if (user?.id) {
+          const nameToUse = user.nome || user.username || user.email || 'Usuário'
+          map.set(user.id, nameToUse)
+          map.set(user.id.toLowerCase(), nameToUse)
+        }
+
         const response = await fetch('/api/usuarios')
         if (response.ok) {
           const users = await response.json()
-          const map = new Map<string, string>()
-          users.forEach((u: { id: string; nome?: string; username?: string }) => map.set(u.id, u.nome || u.username || 'Sem Nome'))
-          setUsersMap(map)
+          users.forEach((u: { id: string; nome?: string; username?: string; email?: string }) => {
+            if (u.id) {
+              const nameToUse = u.nome && u.nome !== 'Sem Nome' ? u.nome : (u.username || u.email || 'Usuário')
+              map.set(u.id, nameToUse)
+              map.set(u.id.toLowerCase(), nameToUse)
+            }
+          })
         }
+
+        try {
+          const { data: perfisData } = await supabase.from('perfis').select('id, nome, username, email')
+          if (perfisData) {
+            perfisData.forEach((p: any) => {
+              if (p.id) {
+                const nameToUse = p.nome || p.username || p.email || 'Usuário'
+                map.set(p.id, nameToUse)
+                map.set(p.id.toLowerCase(), nameToUse)
+              }
+            })
+          }
+        } catch {
+          // ignore error if table does not exist
+        }
+
+        setUsersMap(map)
       } catch (err) {
         console.warn("Erro ao buscar usuários para histórico:", err)
       }
     }
     fetchUsers()
-  }, [])
+  }, [user])
 
   useEffect(() => {
     async function fetchHistory() {
@@ -2062,14 +2091,16 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     statusColor = "bg-slate-400"; // Gray for first step
                   }
 
+                  const formattedDate = formatHistoryDate(event.created_at);
+
                   return (
                     <div key={event.id} className="grid grid-cols-[1fr_auto_1fr] items-start w-full">
                       {/* Left Side */}
                       <div className={cn("px-4", isEven ? "text-right" : "")}>
                         {isEven ? (
                           <div className="space-y-0.5">
-                            <p className="text-[11px] font-black text-slate-900">{new Date(event.created_at).toLocaleDateString('pt-BR')}</p>
-                            <p className="text-[10px] font-medium text-slate-500">{new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                            <p className="text-[11px] font-black text-slate-900">{formattedDate.date}</p>
+                            <p className="text-[10px] font-medium text-slate-500">{formattedDate.time}</p>
                           </div>
                         ) : (
                           <HistoryCard 
@@ -2094,8 +2125,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                       <div className={cn("px-4", !isEven ? "text-left" : "")}>
                         {!isEven ? (
                           <div className="space-y-0.5">
-                            <p className="text-[11px] font-black text-slate-900">{new Date(event.created_at).toLocaleDateString('pt-BR')}</p>
-                            <p className="text-[10px] font-medium text-slate-500">{new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                            <p className="text-[11px] font-black text-slate-900">{formattedDate.date}</p>
+                            <p className="text-[10px] font-medium text-slate-500">{formattedDate.time}</p>
                           </div>
                         ) : (
                           <HistoryCard 
@@ -2124,8 +2155,44 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   )
 }
 
+function formatHistoryDate(dateVal: string | Date | undefined | null) {
+  if (!dateVal) return { date: "---", time: "---" };
+  
+  let d: Date;
+  if (typeof dateVal === 'string') {
+    let str = dateVal.trim();
+    if (!str.includes('T') && str.includes(' ')) {
+      str = str.replace(' ', 'T');
+    }
+    if (str.length === 19 && !str.endsWith('Z') && !str.includes('+') && !str.includes('-', 10)) {
+      str = str + '-03:00';
+    }
+    d = new Date(str);
+  } else {
+    d = new Date(dateVal);
+  }
+
+  if (isNaN(d.getTime())) return { date: "---", time: "---" };
+
+  const date = d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const time = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+
+  return { date, time };
+}
+
 function HistoryCard({ event, usersMap, isAuthorized }: { event: HistoryItem; usersMap: Map<string, string>; isAuthorized: boolean }) {
-  const userName = usersMap.get(event.usuario_id) || event.usuario_id || "SISTEMA";
+  const isUuid = (val: string | null | undefined) => !!val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
+
+  let rawName = usersMap.get(event.usuario_id) || usersMap.get(event.usuario_id?.toLowerCase() || "");
+
+  let userName = "SISTEMA";
+  if (rawName && !isUuid(rawName)) {
+    userName = rawName;
+  } else if (event.usuario_id && !isUuid(event.usuario_id) && event.usuario_id !== 'system' && event.usuario_id !== 'sistema') {
+    userName = event.usuario_id;
+  } else if (event.usuario_id && isUuid(event.usuario_id)) {
+    userName = "Usuário";
+  }
   
   // Verificar se a descrição é apenas uma repetição do status_novo
   const isRedundantDescription = event.status_novo && 
