@@ -460,6 +460,8 @@ export default function ContasAReceberPage() {
   const [receivedProposalDates, setReceivedProposalDates] = useState<Record<string, string>>({})
   const [pjPaidProposalIds, setPjPaidProposalIds] = useState<Record<string, boolean>>({})
   const [customCommissionPercents, setCustomCommissionPercents] = useState<Record<string, number>>({})
+  const [customPjCommissionValues, setCustomPjCommissionValues] = useState<Record<string, number>>({})
+  const [customPjCommissionPercents, setCustomPjCommissionPercents] = useState<Record<string, number>>({})
 
   // Active Folder & Subfolder state for PJ
   type CardFolderType = 'total' | 'comissao' | 'recebida' | 'a_receber' | 'estorno' | 'conta_corrente' | null;
@@ -656,6 +658,22 @@ export default function ContasAReceberPage() {
       if (storedPercents) {
         try {
           setCustomCommissionPercents(JSON.parse(storedPercents))
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      const storedPjVals = window.localStorage.getItem("receber_custom_pj_commission_values")
+      if (storedPjVals) {
+        try {
+          setCustomPjCommissionValues(JSON.parse(storedPjVals))
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      const storedPjPercents = window.localStorage.getItem("receber_custom_pj_commission_percents")
+      if (storedPjPercents) {
+        try {
+          setCustomPjCommissionPercents(JSON.parse(storedPjPercents))
         } catch (e) {
           console.error(e)
         }
@@ -872,6 +890,7 @@ export default function ContasAReceberPage() {
 
         if (error) {
           console.error("Erro ao salvar comissão no banco de dados:", error.message)
+          toast.error("Erro ao salvar comissão no banco de dados.")
         } else {
           // Update local proposal items state to reflect saved commission fields
           setProposals(prev => prev.map(p => p.id_lead === idLead ? {
@@ -879,10 +898,110 @@ export default function ContasAReceberPage() {
             comissao_banco_porcentagem: dbValue,
             comissao_banco_valor: dbValor
           } : p))
+          toast.success("Comissão (%) atualizada com sucesso!")
         }
       }
     } catch (err) {
       console.error("Erro ao atualizar comissão no banco:", err)
+      toast.error("Erro ao atualizar comissão.")
+    }
+  }
+
+  const handlePJCommissionValueChange = async (idLead: string, value: number | undefined) => {
+    setCustomPjCommissionValues(prev => {
+      const updated = { ...prev }
+      if (value === undefined || isNaN(value)) {
+        delete updated[idLead]
+      } else {
+        updated[idLead] = value
+      }
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("receber_custom_pj_commission_values", JSON.stringify(updated))
+      }
+      return updated
+    })
+
+    try {
+      const proposal = proposals.find(p => p.id_lead === idLead)
+      if (proposal) {
+        const dbValue = value !== undefined && !isNaN(value) ? value : null
+
+        const { error } = await supabase
+          .from("propostas")
+          .update({
+            valor_producao: dbValue
+          })
+          .eq("id_lead", idLead)
+
+        if (error) {
+          console.error("Erro ao salvar comissão PJ no banco de dados:", error.message)
+          toast.error("Erro ao salvar comissão PJ no banco de dados.")
+        } else {
+          setProposals(prev => prev.map(p => p.id_lead === idLead ? {
+            ...p,
+            valor_producao: dbValue === null ? undefined : dbValue
+          } : p))
+          toast.success("Comissão PJ atualizada com sucesso!")
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar comissão PJ no banco:", err)
+      toast.error("Erro ao atualizar comissão PJ.")
+    }
+  }
+
+  const handlePJCommissionPercentChange = async (idLead: string, value: number | undefined) => {
+    setCustomPjCommissionPercents(prev => {
+      const updated = { ...prev }
+      if (value === undefined || isNaN(value)) {
+        delete updated[idLead]
+      } else {
+        updated[idLead] = value
+      }
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("receber_custom_pj_commission_percents", JSON.stringify(updated))
+      }
+      return updated
+    })
+
+    try {
+      const proposal = proposals.find(p => p.id_lead === idLead)
+      if (proposal) {
+        const valOp = (proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
+        const dbPercent = value !== undefined && !isNaN(value) ? value : null
+        const dbValor = dbPercent !== null && valOp > 0 ? (valOp * dbPercent) / 100 : null
+
+        if (dbValor !== null) {
+          setCustomPjCommissionValues(prev => {
+            const updated = { ...prev, [idLead]: dbValor }
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem("receber_custom_pj_commission_values", JSON.stringify(updated))
+            }
+            return updated
+          })
+        }
+
+        const { error } = await supabase
+          .from("propostas")
+          .update({
+            valor_producao: dbValor
+          })
+          .eq("id_lead", idLead)
+
+        if (error) {
+          console.error("Erro ao salvar comissão PJ no banco de dados:", error.message)
+          toast.error("Erro ao salvar comissão PJ no banco de dados.")
+        } else {
+          setProposals(prev => prev.map(p => p.id_lead === idLead ? {
+            ...p,
+            valor_producao: dbValor === null ? undefined : dbValor
+          } : p))
+          toast.success("Comissão PJ (%) atualizada com sucesso!")
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar comissão PJ no banco:", err)
+      toast.error("Erro ao atualizar comissão PJ.")
     }
   }
 
@@ -1209,6 +1328,17 @@ export default function ContasAReceberPage() {
   }, [pjUsersMap, pjUserNames])
 
   const getPJCommissionPercentage = useCallback((proposal: Proposal) => {
+    if (customPjCommissionPercents[proposal.id_lead] !== undefined && customPjCommissionPercents[proposal.id_lead] !== null) {
+      return customPjCommissionPercents[proposal.id_lead];
+    }
+    const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0);
+    if (customPjCommissionValues[proposal.id_lead] !== undefined && customPjCommissionValues[proposal.id_lead] !== null && valOp > 0) {
+      return (customPjCommissionValues[proposal.id_lead] / valOp) * 100;
+    }
+    if (proposal.valor_producao && Number(proposal.valor_producao) > 0 && valOp > 0) {
+      return (Number(proposal.valor_producao) / valOp) * 100;
+    }
+
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
       return undefined;
     }
@@ -1375,16 +1505,22 @@ export default function ContasAReceberPage() {
     }
 
     return undefined;
-  }, [dbProdutosConfigs, bancosList]);
+  }, [dbProdutosConfigs, bancosList, customPjCommissionPercents, customPjCommissionValues]);
 
   const getPJCommissionValue = useCallback((proposal: Proposal) => {
     const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
+
+    if (customPjCommissionValues[proposal.id_lead] !== undefined && customPjCommissionValues[proposal.id_lead] !== null) {
+      return customPjCommissionValues[proposal.id_lead]
+    }
 
     if (proposal.valor_producao && Number(proposal.valor_producao) > 0) {
       return Number(proposal.valor_producao)
     }
 
-    const pjPercent = getPJCommissionPercentage(proposal)
+    const pjPercent = customPjCommissionPercents[proposal.id_lead] !== undefined
+      ? customPjCommissionPercents[proposal.id_lead]
+      : getPJCommissionPercentage(proposal)
     if (pjPercent !== undefined && !isNaN(pjPercent)) {
       return (valOp * pjPercent) / 100
     }
@@ -1394,7 +1530,7 @@ export default function ContasAReceberPage() {
       : getCommissionPercentage(proposal)
     const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
     return (valOp * comPercentVal) / 100
-  }, [customCommissionPercents, getCommissionPercentage, getPJCommissionPercentage])
+  }, [customCommissionPercents, customPjCommissionValues, customPjCommissionPercents, getCommissionPercentage, getPJCommissionPercentage])
 
   const fetchProposals = async () => {
     setIsLoading(true)
@@ -2982,27 +3118,40 @@ export default function ContasAReceberPage() {
                               fieldName="Valor da Operação"
                             />
                           </td>
-                          <td className="px-5 py-4 text-center whitespace-nowrap">
+                          <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             <EditablePercentCell 
                               initialValue={customCommissionPercents[proposal.id_lead] !== undefined ? customCommissionPercents[proposal.id_lead] : comPercent}
                               onSave={(val) => handleCommissionPercentChange(proposal.id_lead, val)}
                               id={`input-commission-percent-${proposal.id_lead}`}
                             />
                           </td>
-                          <td className="px-5 py-4 text-center whitespace-nowrap">
+                          <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             {isPJ ? (
-                              <div className="flex flex-col items-center">
-                                <span className="text-[11px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 rounded-md shadow-2xs">
-                                  {pjVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                </span>
+                              <div className="flex flex-col items-center justify-center gap-0.5">
+                                <EditableAmountCell 
+                                  initialValue={pjVal}
+                                  onSave={(val) => handlePJCommissionValueChange(proposal.id_lead, val)}
+                                  id={`input-pj-commission-value-${proposal.id_lead}`}
+                                  textClassName="text-amber-800 font-extrabold bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 rounded-md shadow-2xs"
+                                />
                                 {pjPct !== undefined && pjPct > 0 && (
-                                  <span className="text-[9px] font-black text-amber-600/90 mt-0.5">
-                                    ({pjPct}%)
-                                  </span>
+                                  <EditablePercentCell
+                                    initialValue={pjPct}
+                                    onSave={(val) => handlePJCommissionPercentChange(proposal.id_lead, val)}
+                                    id={`input-pj-commission-percent-${proposal.id_lead}`}
+                                    textClassName="text-[9px] font-black text-amber-600/90"
+                                  />
                                 )}
                               </div>
                             ) : (
-                              <span className="text-[10px] text-slate-300 font-semibold">-</span>
+                              <div className="flex flex-col items-center justify-center">
+                                <EditableAmountCell 
+                                  initialValue={pjVal}
+                                  onSave={(val) => handlePJCommissionValueChange(proposal.id_lead, val)}
+                                  id={`input-pj-commission-value-${proposal.id_lead}`}
+                                  textClassName="text-slate-400 font-medium hover:text-amber-700"
+                                />
+                              </div>
                             )}
                           </td>
                           <td className="px-4 py-4 text-[11px] font-medium text-slate-500 whitespace-nowrap">
