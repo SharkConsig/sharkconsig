@@ -462,13 +462,56 @@ export default function ContasAReceberPage() {
   const [customCommissionPercents, setCustomCommissionPercents] = useState<Record<string, number>>({})
 
   // Active Folder & Subfolder state for PJ
-  type CardFolderType = 'total' | 'comissao' | 'recebida' | 'a_receber' | 'estorno' | null;
+  type CardFolderType = 'total' | 'comissao' | 'recebida' | 'a_receber' | 'estorno' | 'conta_corrente' | null;
   const [activeCardFolder, setActiveCardFolder] = useState<CardFolderType>(null);
   const [showPJSubfolder, setShowPJSubfolder] = useState<boolean>(false);
 
   // Map of PJ Users / Brokers
   const [pjUsersMap, setPjUsersMap] = useState<Set<string>>(new Set());
   const [pjUserNames, setPjUserNames] = useState<Set<string>>(new Set());
+  const [colaboradoresDocMap, setColaboradoresDocMap] = useState<Map<string, { cpf?: string; cnpj?: string }>>(new Map());
+
+  useEffect(() => {
+    async function fetchColaboradoresDocs() {
+      try {
+        const { data } = await supabase.from("colaboradores").select("usuario_id, nome, cpf, cnpj")
+        if (data && Array.isArray(data)) {
+          const map = new Map<string, { cpf?: string; cnpj?: string }>()
+          const normStr = (s: string) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+          data.forEach((item: any) => {
+            const doc = { cpf: item.cpf || undefined, cnpj: item.cnpj || undefined }
+            if (item.usuario_id) map.set(String(item.usuario_id), doc)
+            if (item.nome) {
+              map.set(item.nome.trim().toUpperCase(), doc)
+              map.set(normStr(item.nome), doc)
+            }
+          })
+          setColaboradoresDocMap(map)
+        }
+      } catch (err) {
+        console.error("Erro ao buscar colaboradores para extrato:", err)
+      }
+    }
+    fetchColaboradoresDocs()
+  }, [])
+
+  const getBrokerDocument = useCallback((proposal: Proposal) => {
+    const normStr = (s: string) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+    let docObj: { cpf?: string; cnpj?: string } | undefined = undefined
+    if (proposal.corretor_id && colaboradoresDocMap.has(String(proposal.corretor_id))) {
+      docObj = colaboradoresDocMap.get(String(proposal.corretor_id))
+    } else {
+      const rawName = (proposal.nome_corretor || proposal.corretor || "").trim().toUpperCase()
+      if (rawName && colaboradoresDocMap.has(rawName)) {
+        docObj = colaboradoresDocMap.get(rawName)
+      } else if (rawName && colaboradoresDocMap.has(normStr(rawName))) {
+        docObj = colaboradoresDocMap.get(normStr(rawName))
+      }
+    }
+    if (docObj?.cnpj) return docObj.cnpj
+    if (docObj?.cpf) return docObj.cpf
+    return "-"
+  }, [colaboradoresDocMap])
 
   useEffect(() => {
     async function fetchPjUsers() {
@@ -1740,6 +1783,7 @@ export default function ContasAReceberPage() {
     if (activeCardFolder === 'recebida' && getPaymentStatus(p.id_lead) !== 'RECEBIDO') return false
     if (activeCardFolder === 'a_receber' && getPaymentStatus(p.id_lead) !== 'A_RECEBER') return false
     if (activeCardFolder === 'estorno' && getPaymentStatus(p.id_lead) !== 'ESTORNADO') return false
+    if (activeCardFolder === 'conta_corrente' && (!isPJProposal(p) || !pjPaidProposalIds[p.id_lead])) return false
 
     // If Subpasta PJ is selected
     if (showPJSubfolder && !isPJProposal(p)) return false
@@ -1823,6 +1867,15 @@ export default function ContasAReceberPage() {
     if (getPaymentStatus(p.id_lead) !== "A_RECEBER") return sum
     return sum + getPJCommissionValue(p)
   }, 0)
+
+  const totalPjPaidComissions = baseFilteredProposals.reduce((sum, p) => {
+    if (isPJProposal(p) && pjPaidProposalIds[p.id_lead]) {
+      return sum + getPJCommissionValue(p)
+    }
+    return sum
+  }, 0)
+
+  const contaCorrenteValue = receivedComissions - totalPjPaidComissions
 
   // Exports results to excel
   const exportToExcel = async () => {
@@ -1914,6 +1967,93 @@ export default function ContasAReceberPage() {
     }
   }
 
+  // Export Extrato de Comissionamento PJ
+  const exportExtratoComissionamentoPJ = async () => {
+    const pjList = baseFilteredProposals.filter((p) => isPJProposal(p))
+    if (pjList.length === 0) {
+      toast.error("Nenhuma proposta de Corretor PJ encontrada para o extrato.")
+      return
+    }
+
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet("Extrato Comissionamento PJ")
+
+    worksheet.columns = [
+      { header: "Corretor PJ", key: "corretor", width: 28 },
+      { header: "CPF / CNPJ Corretor", key: "doc_corretor", width: 22 },
+      { header: "Nº Contrato / ADE", key: "contrato", width: 18 },
+      { header: "Cliente Averbado", key: "cliente", width: 32 },
+      { header: "Valor do Contrato (R$)", key: "valor_contrato", width: 22 },
+      { header: "Margem Gerada (R$)", key: "margem", width: 20 },
+      { header: "% Comissão PJ", key: "pct_comissao_pj", width: 18 },
+      { header: "Comissão PJ (R$)", key: "val_comissao_pj", width: 24 },
+      { header: "Descontos / Estornos (R$)", key: "estorno", width: 24 },
+      { header: "Status Repasse", key: "status_repasse", width: 18 },
+      { header: "Status Operação", key: "status_operacao", width: 28 },
+    ]
+
+    worksheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFF" } }
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "B45309" }
+      }
+      cell.alignment = { vertical: "middle", horizontal: "center" }
+    })
+    worksheet.getRow(1).height = 28
+
+    pjList.forEach((p) => {
+      const valContrato = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
+      const margemGerada = safeFloat((p as any).margem || (p as any).valor_margem || (p as any).margem_liquida || (p as any).margem_livre || 0)
+      const pjPercent = getPJCommissionPercentage(p) || 0
+      const pjVal = getPJCommissionValue(p)
+      const pStatus = getPaymentStatus(p.id_lead)
+      const isPjPaid = !!pjPaidProposalIds[p.id_lead]
+
+      const isEstornadoOrCancelled = pStatus === "ESTORNADO" || p.status === "CANCELADO" || p.status === "PAGAMENTO DEVOLVIDO"
+      const valorEstorno = isEstornadoOrCancelled ? pjVal : 0
+
+      const docCorretor = getBrokerDocument(p)
+
+      const row = worksheet.addRow({
+        corretor: (p.nome_corretor || p.corretor || "-").trim(),
+        doc_corretor: docCorretor,
+        contrato: p.ade || p.numero_contrato || p.id_lead || "-",
+        cliente: (p.nome_cliente || "-").trim(),
+        valor_contrato: valContrato,
+        margem: margemGerada,
+        pct_comissao_pj: pjPercent / 100,
+        val_comissao_pj: pjVal,
+        estorno: valorEstorno,
+        status_repasse: isPjPaid ? "PAGO" : "PENDENTE",
+        status_operacao: p.status || "-",
+      })
+
+      row.getCell("valor_contrato").numFmt = '"R$"#,##0.00'
+      row.getCell("margem").numFmt = '"R$"#,##0.00'
+      row.getCell("pct_comissao_pj").numFmt = '0.00%'
+      row.getCell("val_comissao_pj").numFmt = '"R$"#,##0.00'
+      row.getCell("estorno").numFmt = '"R$"#,##0.00'
+    })
+
+    worksheet.views = [{ showGridLines: true }]
+
+    setIsLoading(true)
+    const toastLoad = toast.loading("Gerando Extrato de Comissionamento PJ...")
+    try {
+      const buffer = await workbook.xlsx.writeBuffer()
+      const dataBlob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+      saveAs(dataBlob, `Extrato_Comissionamento_PJ_${format(new Date(), "yyyy-MM-dd_HHmm")}.xlsx`)
+      toast.success("Extrato de Comissionamento PJ baixado com sucesso!", { id: toastLoad })
+    } catch (err) {
+      console.error(err)
+      toast.error("Erro ao gerar extrato de comissionamento.", { id: toastLoad })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const getFolderTitle = (card: CardFolderType) => {
     switch (card) {
       case 'total': return "VALOR DAS OPERAÇÕES"
@@ -1921,6 +2061,7 @@ export default function ContasAReceberPage() {
       case 'recebida': return "COMISSÃO RECEBIDA"
       case 'a_receber': return "COMISSÃO A RECEBER"
       case 'estorno': return "ESTORNO"
+      case 'conta_corrente': return "CONTA CORRENTE"
       default: return ""
     }
   }
@@ -1932,6 +2073,7 @@ export default function ContasAReceberPage() {
       case 'recebida': return "Comissão Recebida (Todos)"
       case 'a_receber': return "Comissão a Receber (Todos)"
       case 'estorno': return "Estorno (Todos)"
+      case 'conta_corrente': return "Saldo Conta Corrente (Comissão Recebida - Repasse PJ Pago)"
       default: return ""
     }
   }
@@ -1943,6 +2085,7 @@ export default function ContasAReceberPage() {
       case 'recebida': return receivedComissions
       case 'a_receber': return toReceiveComissions
       case 'estorno': return estornadoComissions
+      case 'conta_corrente': return contaCorrenteValue
       default: return 0
     }
   }
@@ -1954,6 +2097,7 @@ export default function ContasAReceberPage() {
       case 'recebida': return `${baseFilteredProposals.filter(p => getPaymentStatus(p.id_lead) === "RECEBIDO").length} Pago(s)`
       case 'a_receber': return `${baseFilteredProposals.filter(p => getPaymentStatus(p.id_lead) === "A_RECEBER").length} Pendente(s)`
       case 'estorno': return `${baseFilteredProposals.filter(p => getPaymentStatus(p.id_lead) === "ESTORNADO").length} Estornado(s)`
+      case 'conta_corrente': return `${baseFilteredProposals.filter(p => isPJProposal(p) && pjPaidProposalIds[p.id_lead]).length} Pago(s) PJ`
       default: return ""
     }
   }
@@ -1965,6 +2109,7 @@ export default function ContasAReceberPage() {
       case 'recebida': return "Comissão Recebida a Repassar para Corretores PJ"
       case 'a_receber': return "Comissão a Receber a Repassar para Corretores PJ"
       case 'estorno': return "Estorno a Repassar para Corretores PJ"
+      case 'conta_corrente': return "Total Já Repassado para Corretores PJ"
       default: return ""
     }
   }
@@ -1976,6 +2121,7 @@ export default function ContasAReceberPage() {
       case 'recebida': return pjReceivedComissions
       case 'a_receber': return pjToReceiveComissions
       case 'estorno': return pjEstornadoComissions
+      case 'conta_corrente': return totalPjPaidComissions
       default: return 0
     }
   }
@@ -1987,6 +2133,7 @@ export default function ContasAReceberPage() {
       case 'recebida': return `${pjProposals.filter(p => getPaymentStatus(p.id_lead) === "RECEBIDO").length} Pago(s) PJ`
       case 'a_receber': return `${pjProposals.filter(p => getPaymentStatus(p.id_lead) === "A_RECEBER").length} Pendente(s) PJ`
       case 'estorno': return `${pjProposals.filter(p => getPaymentStatus(p.id_lead) === "ESTORNADO").length} Estornado(s) PJ`
+      case 'conta_corrente': return `${baseFilteredProposals.filter(p => isPJProposal(p) && pjPaidProposalIds[p.id_lead]).length} Pago(s) PJ`
       default: return ""
     }
   }
@@ -2001,7 +2148,7 @@ export default function ContasAReceberPage() {
       )}>
         
         {/* Dashboard Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 relative z-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 relative z-10">
           {/* Valor Total Recebível */}
           <Card 
             id="card-total-operacoes" 
@@ -2182,6 +2329,43 @@ export default function ContasAReceberPage() {
                     {baseFilteredProposals.filter(p => getPaymentStatus(p.id_lead) === "ESTORNADO").length}
                   </div>
                   <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">Estornado(s)</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Conta Corrente */}
+          <Card 
+            id="card-conta-corrente" 
+            onClick={() => {
+              if (activeCardFolder === 'conta_corrente') {
+                setActiveCardFolder(null)
+                setShowPJSubfolder(false)
+              } else {
+                setActiveCardFolder('conta_corrente')
+                setShowPJSubfolder(false)
+              }
+            }}
+            className={cn(
+              "card-shadow border h-full relative transition-all cursor-pointer hover:scale-[1.02] bg-white group",
+              activeCardFolder === 'conta_corrente' 
+                ? "border-amber-500 ring-2 ring-amber-400/30 shadow-md" 
+                : "border-slate-200 hover:border-slate-300"
+            )}
+          >
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">CONTA CORRENTE</p>
+              </div>
+              <p className="text-[17px] font-black text-indigo-700 tracking-tight mb-3">
+                R$ {contaCorrenteValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              </p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="bg-indigo-600 px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                    {baseFilteredProposals.filter(p => isPJProposal(p) && pjPaidProposalIds[p.id_lead]).length}
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">PJ Pago(s)</span>
                 </div>
               </div>
             </CardContent>
@@ -2541,8 +2725,19 @@ export default function ContasAReceberPage() {
 
         {/* Export Button Row - For Operacional, Admin, Developer and Supervisor */}
         {(isAdmin || isOperational || isDeveloper || isSupervisor) && (
-          <div className="flex justify-end pt-1">
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-1">
             <Button
+              id="btn-exportar-extrato-pj"
+              variant="outline"
+              size="sm"
+              onClick={exportExtratoComissionamentoPJ}
+              className="h-10 px-5 bg-amber-500/10 border-amber-300 text-amber-800 hover:bg-amber-500/20 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-sm cursor-pointer border-2 rounded-lg"
+            >
+              <FileSpreadsheet className="w-5 h-5 text-amber-700" />
+              EXTRATO DE COMISSIONAMENTO (PJ)
+            </Button>
+            <Button
+              id="btn-exportar-excel-geral"
               variant="outline"
               size="sm"
               onClick={exportToExcel}
@@ -2711,7 +2906,7 @@ export default function ContasAReceberPage() {
                               const pStatus = getPaymentStatus(proposal.id_lead)
                               const isPjPaid = !!pjPaidProposalIds[proposal.id_lead]
                               const isPJ = isPJProposal(proposal)
-                              const isComissaoRecebida = (activeCardFolder === 'recebida' || pStatus === "RECEBIDO") && isPJ
+                              const isComissaoRecebida = (activeCardFolder === 'recebida' || activeCardFolder === 'conta_corrente' || pStatus === "RECEBIDO") && isPJ
 
                               return (
                                 <div className="flex items-center justify-center gap-1.5">

@@ -1679,11 +1679,24 @@ export default function FinancialSettingsPage() {
                                                       <div className="flex flex-col">
                                                         <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Comissão PJ</span>
                                                         <span className="text-[10px] font-bold text-purple-600">
-                                                          {regra.percentual_comissao_pj 
-                                                            ? `${regra.percentual_comissao_pj}%` 
-                                                            : (regra.comissoes_pj_corretores && Object.values(regra.comissoes_pj_corretores).some(v => !!v) 
-                                                                ? 'Específica' 
-                                                                : '--')}
+                                                          {(() => {
+                                                            let valPJ: number | null = null;
+                                                            if (regra.percentual_comissao_pj) {
+                                                              valPJ = typeof regra.percentual_comissao_pj === 'string' ? parseFloat(regra.percentual_comissao_pj.replace(',', '.')) : regra.percentual_comissao_pj;
+                                                            }
+                                                            if (valPJ !== null && !isNaN(valPJ) && regra.percentual_comissao) {
+                                                              const valComissao = typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao;
+                                                              if (!isNaN(valComissao)) {
+                                                                const converted = (valComissao * valPJ) / 100;
+                                                                return `${parseFloat(converted.toFixed(2)).toString().replace('.', ',')}%`;
+                                                              }
+                                                            }
+                                                            return regra.percentual_comissao_pj 
+                                                              ? `${regra.percentual_comissao_pj}%` 
+                                                              : (regra.comissoes_pj_corretores && Object.values(regra.comissoes_pj_corretores).some(v => !!v) 
+                                                                  ? 'Específica' 
+                                                                  : '--');
+                                                          })()}
                                                         </span>
                                                       </div>
                                                     </div>

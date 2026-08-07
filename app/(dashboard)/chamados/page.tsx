@@ -1484,6 +1484,13 @@ export default function TicketsPage() {
   const totalPages = Math.ceil(filteredTickets.length / itemsPerPage)
   const paginatedTickets = filteredTickets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
+  const expandedTicket = useMemo(() => {
+    if (!expandedTicketId) return null
+    return filteredTickets.find(t => t.id.toString() === expandedTicketId) || tickets.find(t => t.id.toString() === expandedTicketId) || null
+  }, [expandedTicketId, filteredTickets, tickets])
+
+  const displayTickets = expandedTicket ? [expandedTicket] : paginatedTickets
+
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page)
@@ -2153,10 +2160,8 @@ export default function TicketsPage() {
                         </div>
                       </td>
                     </tr>
-                  ) : paginatedTickets.length > 0 ? (
-                    paginatedTickets
-                      .filter(t => !expandedTicketId || t.id.toString() === expandedTicketId)
-                      .map((ticket, index) => (
+                  ) : displayTickets.length > 0 ? (
+                    displayTickets.map((ticket, index) => (
                       <React.Fragment key={ticket.id}>
                         <tr 
                           className={cn(
