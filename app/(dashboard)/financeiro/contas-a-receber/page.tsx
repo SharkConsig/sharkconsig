@@ -131,6 +131,8 @@ interface FinanceMetadata {
   received?: boolean
   receivedDate?: string
   paymentStatus?: "A_RECEBER" | "RECEBIDO" | "ESTORNADO"
+  pjPaid?: boolean
+  pjPaidDate?: string
 }
 
 const METADATA_PREFIX = "[FINANCE_METADATA_V1:"
@@ -455,6 +457,7 @@ export default function ContasAReceberPage() {
   const [paymentStatuses, setPaymentStatuses] = useState<Record<string, "A_RECEBER" | "RECEBIDO" | "ESTORNADO">>({})
   const [receivedProposalIds, setReceivedProposalIds] = useState<Record<string, boolean>>({})
   const [receivedProposalDates, setReceivedProposalDates] = useState<Record<string, string>>({})
+  const [pjPaidProposalIds, setPjPaidProposalIds] = useState<Record<string, boolean>>({})
   const [customCommissionPercents, setCustomCommissionPercents] = useState<Record<string, number>>({})
 
   // Active Folder & Subfolder state for PJ
@@ -480,10 +483,37 @@ export default function ContasAReceberPage() {
               const func = (u.funcao || "").trim().toUpperCase()
               const role = (u.role || "").trim().toUpperCase()
               const name = (u.nome || u.nome_completo || "").trim().toUpperCase()
-              if (reg === "PJ" || func === "PJ" || role === "PJ" || name.includes("PJ")) {
-                if (u.id) pjIds.add(String(u.id))
-                if (u.nome) pjNames.add(u.nome.toLowerCase().trim())
-                if (u.nome_completo) pjNames.add(u.nome_completo.toLowerCase().trim())
+              const username = (u.username || "").trim().toUpperCase()
+              
+              if (
+                reg.includes("PJ") || 
+                func.includes("PJ") || 
+                role.includes("PJ") || 
+                name.includes("PJ") || 
+                username.includes("PJ")
+              ) {
+                if (u.id) {
+                  pjIds.add(String(u.id))
+                  pjIds.add(String(u.id).toLowerCase())
+                }
+                if (u.username) {
+                  pjIds.add(String(u.username))
+                  pjIds.add(String(u.username).toLowerCase())
+                }
+                
+                const normName = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+                if (u.nome) {
+                  pjNames.add(u.nome.toLowerCase().trim())
+                  pjNames.add(normName(u.nome))
+                }
+                if (u.nome_completo) {
+                  pjNames.add(u.nome_completo.toLowerCase().trim())
+                  pjNames.add(normName(u.nome_completo))
+                }
+                if (u.username) {
+                  pjNames.add(u.username.toLowerCase().trim())
+                  pjNames.add(normName(u.username))
+                }
               }
             })
           }
@@ -533,6 +563,14 @@ export default function ContasAReceberPage() {
       if (storedPercents) {
         try {
           setCustomCommissionPercents(JSON.parse(storedPercents))
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      const storedPjPaid = window.localStorage.getItem("receber_pj_paid_ids")
+      if (storedPjPaid) {
+        try {
+          setPjPaidProposalIds(JSON.parse(storedPjPaid))
         } catch (e) {
           console.error(e)
         }
@@ -655,6 +693,57 @@ export default function ContasAReceberPage() {
     const currentStatus = getPaymentStatus(idLead)
     const nextStatus = currentStatus === "RECEBIDO" ? "A_RECEBER" : "RECEBIDO"
     await handlePaymentStatusChange(idLead, nextStatus)
+  }
+
+  const handlePjPaidToggle = async (idLead: string) => {
+    const proposal = proposals.find(p => p.id_lead === idLead)
+    if (!proposal) return
+
+    const currentPjPaid = !!pjPaidProposalIds[idLead]
+    const newPjPaid = !currentPjPaid
+    const pjPaidDate = newPjPaid ? new Date().toISOString() : undefined
+
+    setPjPaidProposalIds(prev => ({ ...prev, [idLead]: newPjPaid }))
+
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("receber_pj_paid_ids")
+      const parsed = stored ? JSON.parse(stored) : {}
+      parsed[idLead] = newPjPaid
+      window.localStorage.setItem("receber_pj_paid_ids", JSON.stringify(parsed))
+    }
+
+    try {
+      const currentObs = proposal.observacoes || ""
+      const { notes, metadata } = parseProposalNotesAndMetadata(currentObs)
+      const newMetadata: FinanceMetadata = {
+        ...metadata,
+        pjPaid: newPjPaid,
+        pjPaidDate: pjPaidDate
+      }
+      const newObs = buildProposalNotesAndMetadata(notes, newMetadata)
+
+      const { error } = await supabase
+        .from("propostas")
+        .update({
+          observacoes: newObs,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id_lead", idLead)
+
+      if (error) {
+        console.error("Erro ao salvar status de pagamento PJ:", error.message)
+        toast.error("Erro ao sincronizar pagamento PJ com o servidor.")
+      } else {
+        setProposals(prev => prev.map(p => p.id_lead === idLead ? {
+          ...p,
+          observacoes: newObs
+        } : p))
+        toast.success(newPjPaid ? "Marcado como PAGUEI PJ!" : "Marcado como PAGAR PJ!")
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar pagamento PJ:", err)
+      toast.error("Falha ao atualizar pagamento PJ.")
+    }
   }
 
   const handleCommissionPercentChange = async (idLead: string, value: number | undefined) => {
@@ -998,10 +1087,31 @@ export default function ContasAReceberPage() {
   }, [dbProdutosConfigs, bancosList])
 
   const isPJProposal = useCallback((proposal: Proposal) => {
-    if (proposal.corretor_id && pjUsersMap.has(String(proposal.corretor_id))) return true
-    const corretorName = (proposal.nome_corretor || proposal.corretor || "").toLowerCase().trim()
-    if (!corretorName) return false
-    if (corretorName.includes("pj") || pjUserNames.has(corretorName)) return true
+    // Check direct proposal fields
+    const rawRegime = String((proposal as any).regime_contratacao || (proposal as any).corretor_regime || (proposal as any).origem || "").toUpperCase()
+    if (rawRegime.includes("PJ")) return true
+
+    // Check corretor_id and corretor in pjUsersMap
+    if (proposal.corretor_id && (pjUsersMap.has(String(proposal.corretor_id)) || pjUsersMap.has(String(proposal.corretor_id).toLowerCase()))) return true
+    if (proposal.corretor && (pjUsersMap.has(String(proposal.corretor)) || pjUsersMap.has(String(proposal.corretor).toLowerCase()))) return true
+
+    const rawName = proposal.nome_corretor || proposal.corretor || ""
+    if (!rawName) return false
+    
+    const lowerName = rawName.toLowerCase().trim()
+    if (lowerName.includes("pj")) return true
+
+    const normCorretorName = rawName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+    if (!normCorretorName) return false
+
+    if (pjUserNames.has(lowerName) || pjUserNames.has(normCorretorName)) return true
+
+    for (const pjName of Array.from(pjUserNames)) {
+      if (pjName && pjName.length >= 3 && (normCorretorName.includes(pjName) || pjName.includes(normCorretorName))) {
+        return true
+      }
+    }
+
     return false
   }, [pjUsersMap, pjUserNames])
 
@@ -1294,6 +1404,7 @@ export default function ContasAReceberPage() {
       let localReceivedIds: Record<string, boolean> = {}
       let localReceivedDates: Record<string, string> = {}
       let localPaymentStatuses: Record<string, "A_RECEBER" | "RECEBIDO" | "ESTORNADO"> = {}
+      let localPjPaidIds: Record<string, boolean> = {}
       if (typeof window !== "undefined") {
         try {
           const stored = window.localStorage.getItem("receber_pago_status_ids")
@@ -1302,6 +1413,8 @@ export default function ContasAReceberPage() {
           if (storedDates) localReceivedDates = JSON.parse(storedDates)
           const storedPS = window.localStorage.getItem("receber_payment_statuses")
           if (storedPS) localPaymentStatuses = JSON.parse(storedPS)
+          const storedPjPaid = window.localStorage.getItem("receber_pj_paid_ids")
+          if (storedPjPaid) localPjPaidIds = JSON.parse(storedPjPaid)
         } catch (e) {
           console.error("Erro ao carregar local storage para sincronização:", e)
         }
@@ -1310,6 +1423,7 @@ export default function ContasAReceberPage() {
       const finalPaymentStatuses: Record<string, "A_RECEBER" | "RECEBIDO" | "ESTORNADO"> = {}
       const finalReceivedIds: Record<string, boolean> = {}
       const finalReceivedDates: Record<string, string> = {}
+      const finalPjPaidIds: Record<string, boolean> = {}
 
       const formattedData = data
         .filter((p: Proposal) => {
@@ -1339,6 +1453,9 @@ export default function ContasAReceberPage() {
 
           finalPaymentStatuses[p.id_lead] = effectiveStatus
           finalReceivedIds[p.id_lead] = effectiveStatus === "RECEBIDO"
+
+          const isPjPaid = metadata.pjPaid !== undefined ? metadata.pjPaid : !!localPjPaidIds[p.id_lead]
+          finalPjPaidIds[p.id_lead] = isPjPaid
 
           if (metadata.receivedDate) {
             finalReceivedDates[p.id_lead] = metadata.receivedDate
@@ -1384,6 +1501,7 @@ export default function ContasAReceberPage() {
       setPaymentStatuses(finalPaymentStatuses)
       setReceivedProposalIds(finalReceivedIds)
       setReceivedProposalDates(finalReceivedDates)
+      setPjPaidProposalIds(finalPjPaidIds)
       setProposals(formattedData)
     } catch (err) {
       console.error("Erro geral contas a receber:", err)
@@ -1899,9 +2017,6 @@ export default function ContasAReceberPage() {
                   </div>
                   <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest leading-none">Contrato(s)</span>
                 </div>
-                <span className="text-[9px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                  Ver Subpasta PJ →
-                </span>
               </div>
             </CardContent>
           </Card>
@@ -1939,9 +2054,6 @@ export default function ContasAReceberPage() {
                   </div>
                   <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest leading-none">Proposta(s)</span>
                 </div>
-                <span className="text-[9px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                  Ver Subpasta PJ →
-                </span>
               </div>
             </CardContent>
           </Card>
@@ -1979,9 +2091,6 @@ export default function ContasAReceberPage() {
                   </div>
                   <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">Pago(s)</span>
                 </div>
-                <span className="text-[9px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                  Ver Subpasta PJ →
-                </span>
               </div>
             </CardContent>
           </Card>
@@ -2019,9 +2128,6 @@ export default function ContasAReceberPage() {
                   </div>
                   <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">Pendente(s)</span>
                 </div>
-                <span className="text-[9px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                  Ver Subpasta PJ →
-                </span>
               </div>
             </CardContent>
           </Card>
@@ -2059,9 +2165,6 @@ export default function ContasAReceberPage() {
                   </div>
                   <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">Estornado(s)</span>
                 </div>
-                <span className="text-[9px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                  Ver Subpasta PJ →
-                </span>
               </div>
             </CardContent>
           </Card>
@@ -2078,7 +2181,7 @@ export default function ContasAReceberPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-black uppercase text-amber-800 tracking-wider">
-                      ESTRUTURA DE PASTAS • {getFolderTitle(activeCardFolder)}
+                      {getFolderTitle(activeCardFolder)}
                     </span>
                   </div>
                   <p className="text-xs font-semibold text-slate-600 mt-0.5">
@@ -2426,12 +2529,6 @@ export default function ContasAReceberPage() {
               <h2 className="text-xs font-black text-slate-700 tracking-widest uppercase">
                 Propostas Encontradas
               </h2>
-              {activeCardFolder && (
-                <span className="p-1 px-2 rounded bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300 flex items-center gap-1">
-                  <FolderOpen className="w-3 h-3 text-amber-600" />
-                  Filtro: {getFolderTitle(activeCardFolder)} {showPJSubfolder ? "(Somente Corretores PJ)" : "(Geral)"}
-                </span>
-              )}
             </div>
             
             {/* Rows Config */}
@@ -2577,59 +2674,80 @@ export default function ContasAReceberPage() {
                           <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             {(() => {
                               const pStatus = getPaymentStatus(proposal.id_lead)
+                              const isPjPaid = !!pjPaidProposalIds[proposal.id_lead]
+                              const isPJ = isPJProposal(proposal)
+                              const isComissaoRecebida = (activeCardFolder === 'recebida' || pStatus === "RECEBIDO") && isPJ
+
                               return (
-                                <Popover>
-                                  <PopoverTrigger
-                                    className={cn(
-                                      "px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 mx-auto shadow-sm outline-none focus:ring-1 focus:ring-slate-300",
-                                      pStatus === "RECEBIDO" && "bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100/80",
-                                      pStatus === "A_RECEBER" && "bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100/80",
-                                      pStatus === "ESTORNADO" && "bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100/80"
-                                    )}
-                                  >
-                                    {pStatus === "RECEBIDO" && "RECEBIDO"}
-                                    {pStatus === "A_RECEBER" && "A RECEBER"}
-                                    {pStatus === "ESTORNADO" && "ESTORNADO"}
-                                    <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-40 p-1.5 bg-white border border-slate-200 rounded-xl shadow-lg z-50">
-                                    <div className="flex flex-col gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={() => handlePaymentStatusChange(proposal.id_lead, "A_RECEBER")}
-                                        className={cn(
-                                          "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-between",
-                                          pStatus === "A_RECEBER" ? "bg-rose-50 text-rose-700" : "hover:bg-slate-50 text-slate-600"
-                                        )}
-                                      >
-                                        <span>A RECEBER</span>
-                                        {pStatus === "A_RECEBER" && <Check className="w-3 h-3 text-rose-600" />}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handlePaymentStatusChange(proposal.id_lead, "RECEBIDO")}
-                                        className={cn(
-                                          "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-between",
-                                          pStatus === "RECEBIDO" ? "bg-emerald-50 text-emerald-700" : "hover:bg-slate-50 text-slate-600"
-                                        )}
-                                      >
-                                        <span>RECEBIDO</span>
-                                        {pStatus === "RECEBIDO" && <Check className="w-3 h-3 text-emerald-600" />}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handlePaymentStatusChange(proposal.id_lead, "ESTORNADO")}
-                                        className={cn(
-                                          "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-between",
-                                          pStatus === "ESTORNADO" ? "bg-amber-50 text-amber-800" : "hover:bg-slate-50 text-slate-600"
-                                        )}
-                                      >
-                                        <span>ESTORNADO</span>
-                                        {pStatus === "ESTORNADO" && <Check className="w-3 h-3 text-amber-600" />}
-                                      </button>
-                                    </div>
-                                  </PopoverContent>
-                                </Popover>
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <Popover>
+                                    <PopoverTrigger
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shadow-sm outline-none focus:ring-1 focus:ring-slate-300",
+                                        pStatus === "RECEBIDO" && "bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100/80",
+                                        pStatus === "A_RECEBER" && "bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100/80",
+                                        pStatus === "ESTORNADO" && "bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100/80"
+                                      )}
+                                    >
+                                      {pStatus === "RECEBIDO" && "RECEBIDO"}
+                                      {pStatus === "A_RECEBER" && "A RECEBER"}
+                                      {pStatus === "ESTORNADO" && "ESTORNADO"}
+                                      <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-40 p-1.5 bg-white border border-slate-200 rounded-xl shadow-lg z-50">
+                                      <div className="flex flex-col gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handlePaymentStatusChange(proposal.id_lead, "A_RECEBER")}
+                                          className={cn(
+                                            "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-between",
+                                            pStatus === "A_RECEBER" ? "bg-rose-50 text-rose-700" : "hover:bg-slate-50 text-slate-600"
+                                          )}
+                                        >
+                                          <span>A RECEBER</span>
+                                          {pStatus === "A_RECEBER" && <Check className="w-3 h-3 text-rose-600" />}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handlePaymentStatusChange(proposal.id_lead, "RECEBIDO")}
+                                          className={cn(
+                                            "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-between",
+                                            pStatus === "RECEBIDO" ? "bg-emerald-50 text-emerald-700" : "hover:bg-slate-50 text-slate-600"
+                                          )}
+                                        >
+                                          <span>RECEBIDO</span>
+                                          {pStatus === "RECEBIDO" && <Check className="w-3 h-3 text-emerald-600" />}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handlePaymentStatusChange(proposal.id_lead, "ESTORNADO")}
+                                          className={cn(
+                                            "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-between",
+                                            pStatus === "ESTORNADO" ? "bg-amber-50 text-amber-800" : "hover:bg-slate-50 text-slate-600"
+                                          )}
+                                        >
+                                          <span>ESTORNADO</span>
+                                          {pStatus === "ESTORNADO" && <Check className="w-3 h-3 text-amber-600" />}
+                                        </button>
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+
+                                  {isComissaoRecebida && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePjPaidToggle(proposal.id_lead)}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shadow-sm outline-none border",
+                                        isPjPaid
+                                          ? "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                                          : "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
+                                      )}
+                                    >
+                                      {isPjPaid ? "PAGUEI PJ" : "PAGAR PJ"}
+                                    </button>
+                                  )}
+                                </div>
                               )
                             })()}
                           </td>
