@@ -257,6 +257,11 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
   // Show full summary modal state
   const [showSummaryModal, setShowSummaryModal] = useState<boolean>(false)
 
+  // Modals state for Comparativo de Planos
+  const [showCompareModal, setShowCompareModal] = useState<boolean>(false)
+  const [selectedCompareTerms, setSelectedCompareTerms] = useState<number[]>([24, 48, 72])
+  const [compareWarning, setCompareWarning] = useState<string | null>(null)
+
   // Portabilidade da Liberação Inputs & State
   const [novaTaxaInput, setNovaTaxaInput] = useState<string>("")
   const [novoPrazoInput, setNovoPrazoInput] = useState<string>("")
@@ -703,6 +708,263 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
       remanescentes
     }
   }, [amortizacaoPosPort, valorClientePort, tabelaPricePosPort, novoPrazo, saldoPort, valorParaAntecipacaoPort])
+
+  const handleOpenCompareModal = () => {
+    setCompareWarning(null)
+    const termsAvailable = planosAmortizacao.map((p) => p.term)
+    const validSelected = selectedCompareTerms.filter((t) => termsAvailable.includes(t))
+
+    if (validSelected.length >= 2) {
+      setSelectedCompareTerms(validSelected)
+    } else {
+      if (selectedPlanTerm && termsAvailable.includes(selectedPlanTerm)) {
+        const idx = termsAvailable.indexOf(selectedPlanTerm)
+        const autoSet: number[] = [selectedPlanTerm]
+        if (idx > 0) autoSet.push(termsAvailable[idx - 1])
+        if (idx + 1 < termsAvailable.length && autoSet.length < 3) autoSet.push(termsAvailable[idx + 1])
+        if (autoSet.length < 2 && idx + 2 < termsAvailable.length) autoSet.push(termsAvailable[idx + 2])
+        setSelectedCompareTerms(autoSet.sort((a, b) => a - b))
+      } else {
+        setSelectedCompareTerms(termsAvailable.slice(0, Math.min(3, termsAvailable.length)))
+      }
+    }
+    setShowCompareModal(true)
+  }
+
+  const handleToggleCompareTerm = (term: number) => {
+    setCompareWarning(null)
+    if (selectedCompareTerms.includes(term)) {
+      if (selectedCompareTerms.length <= 2) {
+        setCompareWarning("Selecione pelo menos 2 planos para comparação.")
+        return
+      }
+      setSelectedCompareTerms((prev) => prev.filter((t) => t !== term))
+    } else {
+      if (selectedCompareTerms.length >= 3) {
+        setCompareWarning("Você pode selecionar no máximo 3 planos simultaneamente.")
+        return
+      }
+      setSelectedCompareTerms((prev) => [...prev, term].sort((a, b) => a - b))
+    }
+  }
+
+  const handleGerarPDFComparativo = () => {
+    const selectedPlans = selectedCompareTerms
+      .map((term) => planosAmortizacao.find((p) => p.term === term))
+      .filter(Boolean) as Array<(typeof planosAmortizacao)[0]>
+
+    if (selectedPlans.length < 2) return
+
+    const client = clienteNome.trim() || passedClient?.nome || "Cliente"
+    const initials =
+      client
+        .split(" ")
+        .filter(Boolean)
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase() || "CL"
+
+    const consultant = perfil?.nome || "Consultor"
+    const email = perfil?.email || ""
+    const phone = (perfil as any)?.telefone || ""
+
+    const formatFullCPF = (c?: string) => {
+      if (!c) return ""
+      const d = String(c).replace(/\D/g, "")
+      if (d.length === 11) {
+        return `${d.substring(0, 3)}.${d.substring(3, 6)}.${d.substring(6, 9)}-${d.substring(9, 11)}`
+      }
+      return String(c)
+    }
+
+    const cpf = formatFullCPF(passedClient?.cpf)
+    const orgao = passedOrgao || (passedClient?.orgao as string) || ""
+    const todayStr = new Date().toLocaleDateString("pt-BR")
+
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) return
+
+    const colsCount = selectedPlans.length
+
+    let cardsHtml = ""
+    selectedPlans.forEach((plan) => {
+      const totJuros = Math.max(0, plan.totalPagar - valorLiberado)
+      const economiaTotal = totalAPagar > plan.totalPagar ? totalAPagar - plan.totalPagar : 0
+
+      cardsHtml += `
+        <div style="border: 2px solid #1E293B; border-radius: 12px; overflow: hidden; background: #FFFFFF; display: flex; flex-direction: column;">
+          <div style="background-color: #0F172A; color: #FFFFFF; padding: 14px; text-align: center;">
+            <div style="font-size: 24px; font-weight: 900; color: #00D492; tracking-tight: -0.5px;">${plan.term} Meses</div>
+            <div style="font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase; margin-top: 2px;">Plano de Amortização</div>
+          </div>
+          <div style="padding: 16px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
+            <div style="font-size: 12px;">
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0;">
+                <span style="color: #64748B; font-weight: 600;">Valor Liberado:</span>
+                <span style="color: #0F172A; font-weight: 800;">${formatBRL(valorLiberado)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0;">
+                <span style="color: #64748B; font-weight: 600;">Contrato + IOF:</span>
+                <span style="color: #0F172A; font-weight: 800;">${formatBRL(contratoComIof)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0;">
+                <span style="color: #64748B; font-weight: 600;">Parcela Média:</span>
+                <span style="color: #00D492; font-weight: 800;">${formatBRL(plan.parcelaMedia)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0;">
+                <span style="color: #64748B; font-weight: 600;">Taxa Mês:</span>
+                <span style="color: #0F172A; font-weight: 800;">${formatPercent(plan.taxa, 2)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0;">
+                <span style="color: #64748B; font-weight: 600;">Total a Pagar:</span>
+                <span style="color: #0F172A; font-weight: 800;">${formatBRL(plan.totalPagar)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                <span style="color: #64748B; font-weight: 600;">Total de Juros:</span>
+                <span style="color: #0F172A; font-weight: 800;">${formatBRL(totJuros)}</span>
+              </div>
+            </div>
+
+            ${
+              economiaTotal > 0
+                ? `
+              <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px; margin-top: 14px; text-align: center;">
+                <div style="font-size: 10px; font-weight: 800; color: #166534; text-transform: uppercase;">Economia no Total</div>
+                <div style="font-size: 15px; font-weight: 900; color: #15803D; margin-top: 2px;">${formatBRL(economiaTotal)}</div>
+              </div>
+            `
+                : ""
+            }
+          </div>
+        </div>
+      `
+    })
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Comparativo de Planos de Amortização - ${client}</title>
+          <style>
+            @page { size: A4 landscape; margin: 0mm; }
+            * { font-family: Arial, Helvetica, sans-serif !important; box-sizing: border-box; }
+            body { 
+              font-family: Arial, Helvetica, sans-serif; 
+              margin: 0; 
+              padding: 10mm 12mm; 
+              color: #1E293B; 
+              background: #FFFFFF; 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+            }
+            @media print { 
+              @page { size: A4 landscape; margin: 0mm; }
+              .no-print { display: none !important; }
+            }
+            .title-banner {
+              text-align: center;
+              margin-bottom: 12px;
+            }
+            .main-title {
+              font-size: 22px;
+              font-weight: 900;
+              color: #0F172A;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .green-line {
+              height: 4px;
+              background-color: #00D492;
+              border-radius: 2px;
+              margin: 8px 0 16px 0;
+            }
+            .meta-grid {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              background-color: #F8FAFC;
+              border: 1px solid #E2E8F0;
+              border-radius: 10px;
+              padding: 12px 18px;
+              margin-bottom: 20px;
+              font-size: 12px;
+            }
+            .client-box {
+              display: flex;
+              align-items: center;
+              gap: 10px;
+            }
+            .avatar {
+              width: 36px;
+              height: 36px;
+              border-radius: 50%;
+              background: #00D492;
+              color: #0F172A;
+              font-weight: 900;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 13px;
+            }
+            .consultant-box {
+              text-align: right;
+            }
+            .cards-grid {
+              display: grid;
+              grid-template-columns: repeat(${colsCount}, 1fr);
+              gap: 16px;
+              margin-bottom: 20px;
+            }
+            .footer-info {
+              border-top: 1px solid #E2E8F0;
+              padding-top: 10px;
+              font-size: 10px;
+              color: #64748B;
+              display: flex;
+              justify-content: space-between;
+            }
+          </style>
+        </head>
+        <body>
+          <button onclick="window.print()" class="no-print" style="position: fixed; top: 18px; right: 24px; background-color: #00D492; color: #0F172A; font-weight: 800; font-size: 13px; padding: 10px 18px; border-radius: 10px; border: none; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-family: inherit; z-index: 100;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <span>Imprimir / Salvar PDF (Paisagem)</span>
+          </button>
+
+          <div class="title-banner">
+            <div class="main-title">Comparativo de Planos de Amortização</div>
+          </div>
+          <div class="green-line"></div>
+
+          <div class="meta-grid">
+            <div class="client-box">
+              <div class="avatar">${initials}</div>
+              <div>
+                <div style="font-weight: 900; font-size: 14px; color: #0F172A;">${client}</div>
+                ${cpf ? `<div style="color: #64748B; font-size: 11px;">CPF: ${cpf} ${orgao ? `• ${orgao}` : ""}</div>` : ""}
+              </div>
+            </div>
+            <div class="consultant-box">
+              <div style="font-weight: 800; color: #00D492; font-size: 13px;">${consultant}</div>
+              ${email ? `<div style="color: #64748B; font-size: 11px;">${email}</div>` : ""}
+              ${phone ? `<div style="color: #64748B; font-size: 11px;">${phone}</div>` : ""}
+            </div>
+          </div>
+
+          <div class="cards-grid">
+            ${cardsHtml}
+          </div>
+
+          <div class="footer-info">
+            <span>SharkConsig - Calculadora e Simulação Comercial</span>
+            <span>Data da Simulação: ${todayStr}</span>
+          </div>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+  }
 
   const handleGerarPDF = async () => {
     const vContrato = (activeTab === "port_liberacao" || activeTab === "amort_pos_port")
@@ -2084,28 +2346,36 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                   )}
 
                   {/* Action Buttons */}
-                  <div className="pt-4 flex flex-col sm:flex-row gap-2">
+                  <div className="pt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <button
                       onClick={() => setActiveTab("amort_liberacao")}
-                      className="flex-1 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-3 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5"
+                      className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-3 px-2 rounded-xl transition-all flex items-center justify-center gap-1"
                     >
-                      <TableIcon className="w-4 h-4 text-slate-600" />
-                      <span>Ver amortização</span>
+                      <TableIcon className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Tabela</span>
                     </button>
 
                     <button
                       onClick={() => setShowSummaryModal(true)}
-                      className="flex-1 bg-[#00D492] hover:bg-[#00b87f] text-slate-900 font-bold text-xs py-3 px-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
+                      className="bg-[#00D492] hover:bg-[#00b87f] text-slate-900 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1"
                     >
-                      <FileText className="w-4 h-4" />
+                      <FileText className="w-3.5 h-3.5" />
                       <span>Resumo</span>
                     </button>
 
                     <button
-                      onClick={handleGerarPDF}
-                      className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 border border-slate-800"
+                      onClick={handleOpenCompareModal}
+                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-amber-600 cursor-pointer"
                     >
-                      <FileText className="w-4 h-4 text-[#00D492]" />
+                      <ArrowLeftRight className="w-3.5 h-3.5 text-slate-950" />
+                      <span>Comparar</span>
+                    </button>
+
+                    <button
+                      onClick={handleGerarPDF}
+                      className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-slate-800"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-[#00D492]" />
                       <span>Ver Plano</span>
                     </button>
                   </div>
@@ -2961,6 +3231,168 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                 className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl transition-all font-semibold"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* COMPARATIVE MODAL (COMPARAR PLANOS DE AMORTIZAÇÃO) */}
+      {showCompareModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-5xl w-full p-6 border border-slate-200 shadow-2xl space-y-6 my-auto max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-2 text-slate-900 font-bold text-lg">
+                <ArrowLeftRight className="w-5 h-5 text-[#00D492]" />
+                <span>Comparativo de Planos de Amortização</span>
+              </div>
+              <button
+                onClick={() => setShowCompareModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto pr-1 flex-1">
+              {/* Plan selector chips */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-extrabold text-xs text-slate-700 uppercase tracking-wider">
+                    Selecione 2 ou 3 planos para comparar lado a lado:
+                  </p>
+                  <span className="text-[11px] font-bold text-slate-500">
+                    {selectedCompareTerms.length} selecionado(s) (Máx. 3)
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {planosAmortizacao.map((p) => {
+                    const isSelected = selectedCompareTerms.includes(p.term)
+                    return (
+                      <button
+                        key={p.term}
+                        type="button"
+                        onClick={() => handleToggleCompareTerm(p.term)}
+                        className={cn(
+                          "px-3.5 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                          isSelected
+                            ? "bg-slate-900 text-[#00D492] border-slate-900 shadow-sm ring-1 ring-[#00D492]"
+                            : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-100"
+                        )}
+                      >
+                        {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-[#00D492]" />}
+                        <span>{p.term}x</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {compareWarning && (
+                  <p className="text-xs font-bold text-amber-600 pt-1">
+                    ⚠️ {compareWarning}
+                  </p>
+                )}
+              </div>
+
+              {/* Cards Comparison Grid */}
+              <div
+                className={cn(
+                  "grid gap-4",
+                  selectedCompareTerms.length === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-3"
+                )}
+              >
+                {selectedCompareTerms
+                  .map((term) => planosAmortizacao.find((p) => p.term === term))
+                  .filter(Boolean)
+                  .map((plan) => {
+                    if (!plan) return null
+                    const totJuros = Math.max(0, plan.totalPagar - valorLiberado)
+                    const economiaTotal = totalAPagar > plan.totalPagar ? totalAPagar - plan.totalPagar : 0
+
+                    return (
+                      <div
+                        key={plan.term}
+                        className="bg-white border-2 border-slate-900 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between"
+                      >
+                        <div>
+                          {/* Plan Header */}
+                          <div className="bg-slate-900 text-white p-4 text-center space-y-0.5">
+                            <span className="text-2xl font-black text-[#00D492] tracking-tight block">
+                              {plan.term} Meses
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                              Plano de Amortização
+                            </span>
+                          </div>
+
+                          {/* Metrics List */}
+                          <div className="p-4 space-y-2.5 text-xs divide-y divide-slate-100">
+                            <div className="flex justify-between items-center pt-1">
+                              <span className="font-semibold text-slate-500">Valor Liberado</span>
+                              <span className="font-extrabold text-slate-900">{formatBRL(valorLiberado)}</span>
+                            </div>
+                            <div className="flex justify-between items-center pt-2.5">
+                              <span className="font-semibold text-slate-500">Contrato + IOF</span>
+                              <span className="font-extrabold text-slate-900">{formatBRL(contratoComIof)}</span>
+                            </div>
+                            <div className="flex justify-between items-center pt-2.5">
+                              <span className="font-semibold text-slate-500">Parcela Média</span>
+                              <span className="font-extrabold text-[#00D492] text-sm">{formatBRL(plan.parcelaMedia)}</span>
+                            </div>
+                            <div className="flex justify-between items-center pt-2.5">
+                              <span className="font-semibold text-slate-500">Taxa Mês</span>
+                              <span className="font-extrabold text-slate-900">{formatPercent(plan.taxa, 2)}</span>
+                            </div>
+                            <div className="flex justify-between items-center pt-2.5">
+                              <span className="font-semibold text-slate-500">Total a Pagar</span>
+                              <span className="font-extrabold text-slate-900">{formatBRL(plan.totalPagar)}</span>
+                            </div>
+                            <div className="flex justify-between items-center pt-2.5">
+                              <span className="font-semibold text-slate-500">Total de Juros</span>
+                              <span className="font-extrabold text-slate-900">{formatBRL(totJuros)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Economy Callout */}
+                        {economiaTotal > 0 && (
+                          <div className="p-4 pt-0">
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center space-y-0.5">
+                              <p className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider">
+                                Economia no Total
+                              </p>
+                              <p className="text-base font-black text-emerald-600">
+                                {formatBRL(economiaTotal)}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowCompareModal(false)}
+                className="w-full sm:w-auto bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-xs px-5 py-3 rounded-xl transition-all cursor-pointer"
+              >
+                Fechar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGerarPDFComparativo}
+                disabled={selectedCompareTerms.length < 2}
+                className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-6 py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 border border-slate-800 cursor-pointer disabled:opacity-50"
+              >
+                <Printer className="w-4 h-4 text-[#00D492]" />
+                <span>Gerar PDF Comparativo (Paisagem)</span>
               </button>
             </div>
           </div>
