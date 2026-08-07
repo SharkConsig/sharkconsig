@@ -95,6 +95,7 @@ interface TicketAtendimentoProps {
     convenio?: string | null;
   }
   onMessageSent?: () => void
+  onMarginsSaved?: () => void
 }
 
 // Helper to extract metadata from description
@@ -123,7 +124,7 @@ const updateDescriptionWithMetadata = (desc: string, metadata: Record<string, un
   return cleaned + metadataBlock;
 };
 
-export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoProps) {
+export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: TicketAtendimentoProps) {
   const router = useRouter()
   const { perfil, user, isEstagio } = useAuth()
   const [isRedirectingProposta, setIsRedirectingProposta] = useState(false)
@@ -398,8 +399,8 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
 
       toast.success("Dados de margens salvos com sucesso!");
       setInitialDesc(updatedDescription);
-      if (onMessageSent) {
-        onMessageSent();
+      if (onMarginsSaved) {
+        onMarginsSaved();
       }
     } catch (err: unknown) {
       console.error("Erro ao salvar margens:", err);
