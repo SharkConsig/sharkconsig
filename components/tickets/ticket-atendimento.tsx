@@ -1873,9 +1873,12 @@ export function TicketAtendimento({ ticket, onMessageSent }: TicketAtendimentoPr
           orgao: ticket.convenio || ticket.origin || null,
           regime_juridico: null,
           uf: null,
-          margem: ticket.margem ?? null,
-          margem_liquida_5: ticket.margem_liquida_5 ?? null,
-          margem_beneficio_5: ticket.margem_beneficio_5 ?? null,
+          margem: (selectedOperationType === 'liquida5' ? (ticketMargins.liquida5 || ticket.margem_liquida_5) : selectedOperationType === 'beneficio5' ? (ticketMargins.beneficio5 || ticket.margem_beneficio_5) : (ticketMargins.margem || ticket.margem)) ?? null,
+          margem_35: (ticketMargins.margem || ticket.margem) ?? null,
+          liquida_5: (ticketMargins.liquida5 || ticket.margem_liquida_5) ?? null,
+          margem_liquida_5: (ticketMargins.liquida5 || ticket.margem_liquida_5) ?? null,
+          beneficio_liquida_5: (ticketMargins.beneficio5 || ticket.margem_beneficio_5) ?? null,
+          margem_beneficio_5: (ticketMargins.beneficio5 || ticket.margem_beneficio_5) ?? null,
         }]} 
         perfil={perfil} 
         activeRegIndex={0}

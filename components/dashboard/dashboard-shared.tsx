@@ -48,7 +48,7 @@ export function Gauge({ value, producedValue }: { value: number, producedValue: 
   const needleRotation = 180 + (Math.min(100, value) / 100) * 180
   
   const formattedValue = producedValue >= 1000 
-    ? `${(producedValue / 1000).toFixed(1)}k` 
+    ? `${(producedValue / 1000).toFixed(1).replace('.', ',')}k` 
     : producedValue.toFixed(0)
 
   return (

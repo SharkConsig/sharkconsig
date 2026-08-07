@@ -426,6 +426,7 @@ export default function ContasAReceberPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("TODOS")
   const [selectedBankFilter, setSelectedBankFilter] = useState<string>("TODOS")
   const [selectedConvenioFilter, setSelectedConvenioFilter] = useState<string>("TODOS")
+  const [selectedPjPartnerFilter, setSelectedPjPartnerFilter] = useState<string>("TODOS")
   const [startDate, setStartDate] = useState(() => {
     const now = new Date()
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -1610,6 +1611,7 @@ export default function ContasAReceberPage() {
     setSelectedStatusFilter("TODOS")
     setSelectedBankFilter("TODOS")
     setSelectedConvenioFilter("TODOS")
+    setSelectedPjPartnerFilter("TODOS")
     setStartDate("")
     setEndDate("")
     setReceivedFilter("TODOS")
@@ -1622,9 +1624,17 @@ export default function ContasAReceberPage() {
     toast.success("Filtros limpos.")
   }
 
-  // Unique list of banks and covenants present for quick dropdowns
+  // Unique list of banks, covenants and PJ partners present for quick dropdowns
   const availableBanks = Array.from(new Set(proposals.map(p => p.banco).filter(Boolean)))
   const availableConvenios = Array.from(new Set(proposals.map(p => p.convenio).filter(Boolean)))
+  const availablePjPartners = Array.from(
+    new Set(
+      proposals
+        .filter(p => isPJProposal(p))
+        .map(p => (p.nome_corretor || p.corretor || "").trim())
+        .filter(name => name && name !== "-")
+    )
+  ).sort((a, b) => a.localeCompare(b, "pt-BR"))
 
   // Filtering Logic - Base filters
   const baseFilteredProposals = proposals.filter((proposal) => {
@@ -1642,6 +1652,14 @@ export default function ContasAReceberPage() {
     const matchesStatus = selectedStatusFilter === "TODOS" || proposal.status === selectedStatusFilter
     const matchesBank = selectedBankFilter === "TODOS" || proposal.banco === selectedBankFilter
     const matchesConvenio = selectedConvenioFilter === "TODOS" || proposal.convenio === selectedConvenioFilter
+
+    const matchesPjPartner = (() => {
+      if (selectedPjPartnerFilter === "TODOS") return true
+      if (!isPJProposal(proposal)) return false
+      const corretorName = (proposal.nome_corretor || proposal.corretor || "").trim().toLowerCase()
+      const filterName = selectedPjPartnerFilter.trim().toLowerCase()
+      return corretorName === filterName || corretorName.includes(filterName)
+    })()
 
     const matchesDate = (() => {
       if (!startDate && !endDate) return true
@@ -1713,7 +1731,7 @@ export default function ContasAReceberPage() {
       return true
     })()
 
-    return matchesSearch && matchesStatus && matchesBank && matchesConvenio && matchesDate && matchesReceived && matchesValorOperacao && matchesComissaoPercent && matchesComissaoValor
+    return matchesSearch && matchesStatus && matchesBank && matchesConvenio && matchesPjPartner && matchesDate && matchesReceived && matchesValorOperacao && matchesComissaoPercent && matchesComissaoValor
   })
 
   // Filtered Proposals for Table (Applying Active Card / Folder & Subfolder PJ filters)
@@ -2388,6 +2406,22 @@ export default function ContasAReceberPage() {
                 </select>
               </div>
 
+              {/* Parceiro PJ Selector filter */}
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#171717]/60 uppercase tracking-widest ml-1 block">Filtrar por Parceiro PJ</label>
+                <select
+                  id="select-receber-pj-partner-filter"
+                  value={selectedPjPartnerFilter}
+                  onChange={(e) => setSelectedPjPartnerFilter(e.target.value)}
+                  className="h-[38px] w-full text-[10px] border border-slate-200 rounded-lg bg-white px-3 focus:outline-none focus:ring-1 focus:ring-slate-400 font-semibold text-slate-700 transition-colors uppercase cursor-pointer"
+                >
+                  <option value="TODOS">TODOS OS PARCEIROS PJ ({availablePjPartners.length})</option>
+                  {availablePjPartners.map(pj => (
+                    <option key={pj} value={pj}>{pj}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Filter by A RECEBER/RECEBIDO/ESTORNADO */}
               <div className="space-y-1.5">
                 <label className="text-[9px] font-bold text-[#171717]/60 uppercase tracking-widest ml-1 block">Filtrar por Status do Pagamento</label>
@@ -2487,6 +2521,7 @@ export default function ContasAReceberPage() {
                   onClick={() => {
                     setSelectedBankFilter("TODOS")
                     setSelectedConvenioFilter("TODOS")
+                    setSelectedPjPartnerFilter("TODOS")
                     setReceivedFilter("TODOS")
                     setMinValorOperacao("")
                     setMaxValorOperacao("")

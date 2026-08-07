@@ -67,8 +67,10 @@ interface ProposalSummary {
   id_lead: string
   nome_cliente: string
   valor_producao: string | number
+  valor_operacao?: string | number
   updated_at: string
   data_pago_cliente?: string
+  status?: string
 }
 
 interface InternProposalDetail {
@@ -787,7 +789,7 @@ export default function DashboardPage() {
       
       let userPaidQuery = supabase
         .from("propostas")
-        .select("id_lead, nome_cliente, valor_producao, updated_at, data_pago_cliente")
+        .select("id_lead, nome_cliente, valor_producao, valor_operacao, updated_at, data_pago_cliente, status")
         .in("status", paidStatuses)
         .gte("updated_at", filterStartISO)
       
@@ -819,7 +821,7 @@ export default function DashboardPage() {
 
             internProposals.forEach(p => {
               const updatedDate = new Date(p.updated_at)
-              const effectivePaymentDate = p.data_pago_cliente ? new Date(p.data_pago_cliente) : updatedDate
+              const effectivePaymentDate = p.data_pago_cliente ? (parseDateSafe(p.data_pago_cliente) || updatedDate) : updatedDate
 
               let isPaidInRange = true
               if (customStart || customEnd) {
@@ -1381,7 +1383,7 @@ export default function DashboardPage() {
 
           // For Corretor ranking (when not admin/supervisor), check range here too if needed
           // but normally the query handles it. Let's respect data_pago_cliente if it ever gets used here.
-          const effectiveDate = curr.data_pago_cliente ? new Date(curr.data_pago_cliente) : new Date(curr.updated_at)
+          const effectiveDate = curr.data_pago_cliente ? (parseDateSafe(curr.data_pago_cliente) || new Date(curr.updated_at)) : new Date(curr.updated_at)
           
           let inRange = true
           if (customStart && effectiveDate < customStart) inRange = false
@@ -1795,7 +1797,7 @@ export default function DashboardPage() {
 
           const annualProducedValue = baseAccumulatedPast + (annualProposals || []).reduce((acc, p) => {
             const val = parseCurrency(p.valor_producao)
-            const pDate = p.data_pago_cliente ? new Date(p.data_pago_cliente) : new Date(p.updated_at)
+            const pDate = p.data_pago_cliente ? (parseDateSafe(p.data_pago_cliente) || new Date(p.updated_at)) : new Date(p.updated_at)
             
             // Only count if it is within the target year (e.g. 2026)
             if (pDate.getFullYear() === targetYear) {
@@ -1964,29 +1966,44 @@ export default function DashboardPage() {
   }, [banners.length])
 
   const monthlyProduced = useMemo(() => {
+    if (!startDate && !endDate && monthlyMTDProduced > 0) {
+      return monthlyMTDProduced
+    }
+
     // Respect custom filter if applied, otherwise use current month
-    const startThreshold = (isSupervisor || isAdmin || isOperational || isRecursosHumanos) && startDate 
-      ? new Date(startDate + 'T00:00:00') 
+    const startThreshold = startDate 
+      ? (parseDateSafe(startDate + 'T00:00:00') || new Date(startDate + 'T00:00:00')) 
       : new Date(new Date().getFullYear(), new Date().getMonth(), 1)
     
     startThreshold.setHours(0, 0, 0, 0)
 
-    const endThreshold = (isSupervisor || isAdmin || isOperational || isRecursosHumanos) && endDate 
-      ? new Date(endDate + 'T23:59:59') 
-      : null
+    const endThreshold = endDate 
+      ? (parseDateSafe(endDate + 'T23:59:59') || new Date(endDate + 'T23:59:59')) 
+      : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59, 999)
+
+    const paidStatuses = [
+      "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", 
+      "PÓS-VENDA REALIZADA"
+    ]
+
+    const isPJUser = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj'
 
     return userProposals
       .filter(p => {
-        const pDate = p.data_pago_cliente ? new Date(p.data_pago_cliente) : new Date(p.updated_at)
-        let inRange = pDate >= startThreshold
-        if (endThreshold && pDate > endThreshold) inRange = false
+        if (p.status && !paidStatuses.includes(p.status)) return false
+        const pDate = p.data_pago_cliente 
+          ? (parseDateSafe(p.data_pago_cliente) || parseDateSafe(p.updated_at))
+          : parseDateSafe(p.updated_at)
+        if (!pDate) return false
+        let inRange = pDate >= startThreshold && pDate <= endThreshold
         return inRange
       })
       .reduce((acc, p) => {
-        const val = parseCurrency(p.valor_producao)
+        const rawVal = isPJUser ? ((p as any).valor_operacao || p.valor_producao) : p.valor_producao
+        const val = parseCurrency(rawVal)
         return acc + (isNaN(val) ? 0 : val)
       }, 0)
-  }, [userProposals, startDate, endDate, isSupervisor, isAdmin, isOperational, isDeveloper, isRecursosHumanos])
+  }, [userProposals, startDate, endDate, perfil, monthlyMTDProduced])
 
   const dailyProduced = useMemo(() => {
     const startOfToday = new Date()
@@ -2015,8 +2032,8 @@ export default function DashboardPage() {
   const recentPayments = useMemo(() => {
     return [...userProposals]
       .sort((a, b) => {
-        const dateA = a.data_pago_cliente ? new Date(a.data_pago_cliente) : new Date(a.updated_at)
-        const dateB = b.data_pago_cliente ? new Date(b.data_pago_cliente) : new Date(b.updated_at)
+        const dateA = a.data_pago_cliente ? (parseDateSafe(a.data_pago_cliente) || parseDateSafe(a.updated_at) || new Date(0)) : (parseDateSafe(a.updated_at) || new Date(0))
+        const dateB = b.data_pago_cliente ? (parseDateSafe(b.data_pago_cliente) || parseDateSafe(b.updated_at) || new Date(0)) : (parseDateSafe(b.updated_at) || new Date(0))
         return dateB.getTime() - dateA.getTime()
       })
       .slice(0, 3)
@@ -2024,9 +2041,6 @@ export default function DashboardPage() {
 
 
   
-  const displayMonthlyProduced = (isSupervisor || isOperational || isAdmin) ? teamProduced : monthlyProduced
-  const displayDailyProduced = (isSupervisor || isOperational || isAdmin) ? teamDailyProduced : dailyProduced
-
   const prizeTiers = useMemo(() => [
     { goal: 47000, prize: 400 },
     { goal: 63000, prize: 650 },
@@ -2037,21 +2051,6 @@ export default function DashboardPage() {
     { goal: 180000, prize: 10000 },
     { goal: 200000, prize: 25000 },
   ], [])
-
-  const currentPrize = useMemo(() => {
-    const achieved = [...prizeTiers].reverse().find(tier => monthlyProduced >= tier.goal)
-    return achieved ? achieved.prize : 0
-  }, [monthlyProduced, prizeTiers])
-
-  const nextPrizeTier = useMemo(() => {
-    return prizeTiers.find(tier => monthlyProduced < tier.goal)
-  }, [monthlyProduced, prizeTiers])
-
-  const progressPercent = Math.round((displayMonthlyProduced / monthlyGoal) * 100)
-  const remainingValue = Math.max(0, monthlyGoal - displayMonthlyProduced)
-  
-  const remainingBusinessDays = getRemainingBusinessDays()
-  const dailyGoal = remainingBusinessDays > 0 ? remainingValue / remainingBusinessDays : 0
 
   const userRank = rankings.findIndex(r => r.corretor_id === perfil?.id) + 1
 
@@ -2129,6 +2128,37 @@ export default function DashboardPage() {
       ];
     }
   }, [rankings, perfil, estagioRankingGroup]);
+
+  const userRankingPaid = useMemo(() => {
+    const userRankItem = displayRankings.find(r => r.isUser)
+    if (userRankItem && typeof userRankItem.totalPaid === 'number' && userRankItem.totalPaid > 0) {
+      return userRankItem.totalPaid
+    }
+    const mainRankItem = rankings.find(r => r.corretor_id === perfil?.id)
+    if (mainRankItem && typeof mainRankItem.totalPaid === 'number' && mainRankItem.totalPaid > 0) {
+      return mainRankItem.totalPaid
+    }
+    return 0
+  }, [displayRankings, rankings, perfil])
+
+  const effectiveMonthlyProduced = userRankingPaid > 0 ? userRankingPaid : monthlyProduced
+  const displayMonthlyProduced = (isSupervisor || isOperational || isAdmin) ? teamProduced : effectiveMonthlyProduced
+  const displayDailyProduced = (isSupervisor || isOperational || isAdmin) ? teamDailyProduced : dailyProduced
+
+  const currentPrize = useMemo(() => {
+    const achieved = [...prizeTiers].reverse().find(tier => effectiveMonthlyProduced >= tier.goal)
+    return achieved ? achieved.prize : 0
+  }, [effectiveMonthlyProduced, prizeTiers])
+
+  const nextPrizeTier = useMemo(() => {
+    return prizeTiers.find(tier => effectiveMonthlyProduced < tier.goal)
+  }, [effectiveMonthlyProduced, prizeTiers])
+
+  const progressPercent = Math.round((displayMonthlyProduced / monthlyGoal) * 100)
+  const remainingValue = Math.max(0, monthlyGoal - displayMonthlyProduced)
+  
+  const remainingBusinessDays = getRemainingBusinessDays()
+  const dailyGoal = remainingBusinessDays > 0 ? remainingValue / remainingBusinessDays : 0
   
   const [celTrigger, setCelTrigger] = useState(0)
 

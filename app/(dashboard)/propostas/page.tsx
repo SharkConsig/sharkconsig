@@ -142,6 +142,7 @@ interface Proposal {
   coeficiente_prazo?: string
   data_consulta?: string
   data_digitacao?: string
+  data_pago_cliente?: string
   updated_at?: string
   created_at: string
 }
@@ -225,6 +226,7 @@ export default function ProposalsPage() {
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
+  const [dateFilterType, setDateFilterType] = useState<"DIGITACAO" | "PAGAMENTO">("DIGITACAO")
   const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null)
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false)
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
@@ -741,7 +743,9 @@ export default function ProposalsPage() {
       const matchesDate = (() => {
         if (!startDate && !endDate) return true;
         const proposalDateStr = (() => {
-          const raw = proposal.created_at || proposal.data_digitacao || proposal.updated_at || proposal.data_pago_cliente
+          const raw = dateFilterType === "PAGAMENTO" 
+            ? (proposal.data_pago_cliente || proposal.updated_at)
+            : (proposal.data_digitacao || proposal.created_at || proposal.updated_at)
           if (!raw) return null
           const str = String(raw).trim()
           if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
@@ -793,7 +797,7 @@ export default function ProposalsPage() {
       }
     })
     return newCounts
-  }, [proposals, searchTerm, startDate, endDate, filterCorretores, filterEquipes, filterEstagiarios, filterBancos, filterConvenios, filterOperacoes, filterValorMin, filterValorMax])
+  }, [proposals, searchTerm, startDate, endDate, dateFilterType, filterCorretores, filterEquipes, filterEstagiarios, filterBancos, filterConvenios, filterOperacoes, filterValorMin, filterValorMax])
 
   const statusCards = TABS_CONFIG.map(tab => {
     const total = (tab.subTabs || []).reduce((acc, sub) => acc + (counts[sub] || 0), 0)
@@ -857,7 +861,9 @@ export default function ProposalsPage() {
       if (!startDate && !endDate) return true;
       
       const proposalDateStr = (() => {
-        const raw = proposal.created_at || proposal.data_digitacao || proposal.updated_at || proposal.data_pago_cliente
+        const raw = dateFilterType === "PAGAMENTO" 
+          ? (proposal.data_pago_cliente || proposal.updated_at)
+          : (proposal.data_digitacao || proposal.created_at || proposal.updated_at)
         if (!raw) return null
         const str = String(raw).trim()
         if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
@@ -931,6 +937,7 @@ export default function ProposalsPage() {
     setSearchTerm("")
     setStartDate("")
     setEndDate("")
+    setDateFilterType("DIGITACAO")
     setFilterCorretores([])
     setFilterEquipes([])
     setFilterEstagiarios([])
@@ -1112,6 +1119,32 @@ export default function ProposalsPage() {
                         className="h-[38px] w-[140px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
                       />
                     </div>
+                  </div>
+
+                  {/* Caixas seletoras de tipo de data */}
+                  <div className="flex items-center gap-4 pt-1 ml-1">
+                    <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 cursor-pointer select-none hover:text-slate-900 transition-colors">
+                      <input 
+                        type="radio" 
+                        name="dateFilterType" 
+                        value="DIGITACAO" 
+                        checked={dateFilterType === "DIGITACAO"} 
+                        onChange={() => setDateFilterType("DIGITACAO")}
+                        className="w-3.5 h-3.5 accent-[#171717] cursor-pointer"
+                      />
+                      <span>DATA DE DIGITAÇÃO</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 cursor-pointer select-none hover:text-slate-900 transition-colors">
+                      <input 
+                        type="radio" 
+                        name="dateFilterType" 
+                        value="PAGAMENTO" 
+                        checked={dateFilterType === "PAGAMENTO"} 
+                        onChange={() => setDateFilterType("PAGAMENTO")}
+                        className="w-3.5 h-3.5 accent-[#171717] cursor-pointer"
+                      />
+                      <span>DATA DE PAGAMENTO</span>
+                    </label>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

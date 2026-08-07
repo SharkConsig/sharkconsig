@@ -2471,8 +2471,7 @@ export default function TicketsPage() {
                                     convenio: ticket.convenio
                                   }} 
                                   onMessageSent={() => {
-                                    fetchTickets();
-                                    setExpandedTicketId(null);
+                                    fetchTickets(true);
                                   }}
                                 />
                                 <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
