@@ -24,7 +24,8 @@ import {
   Clock,
   AlertTriangle,
   GraduationCap,
-  Calculator
+  Calculator,
+  Table
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
@@ -108,6 +109,12 @@ const allMenuItems = [
   {
     title: "PROPOSTAS",
     items: [
+      { 
+        name: "TABELAS DE COEFICIENTES", 
+        href: "/propostas/tabelas", 
+        icon: Table, 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional"] 
+      },
       { 
         name: "DIGITAR PROPOSTA", 
         href: "/propostas/nova", 
@@ -240,15 +247,29 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ' && !isAdmin
 
   const processedMenuItems = allMenuItems.map(section => {
+    let items = section.items;
+
+    if (section.title === "PROPOSTAS") {
+      items = items.map(item => {
+        if (item.href === "/propostas/tabelas") {
+          return {
+            ...item,
+            name: "TABELAS DE COEFICIENTES"
+          }
+        }
+        return item
+      })
+    }
+
     if (isCorretorPJ && section.title === "RECURSOS HUMANOS") {
       return {
         title: "",
-        items: section.items
+        items: items
           .filter(item => item.href === "/capacitacao-pj")
           .map(item => ({ ...item, name: "CAPACITAÇÃO" }))
       }
     }
-    return section
+    return { ...section, items }
   })
 
   const filteredMenuItems = processedMenuItems
@@ -257,6 +278,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       items: section.items.filter(item => {
         // Se for o link de capacitação e for Corretor PJ, permite!
         if (item.href === "/capacitacao-pj" && isCorretorPJ) return true
+        if (item.href === "/propostas/tabelas") return true
 
         // Se for admin via email (superadmin), vê tudo
         if (isAdmin) return true

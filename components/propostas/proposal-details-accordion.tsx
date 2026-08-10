@@ -424,7 +424,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                 item.status_anterior.trim().toLowerCase() === other.status_anterior.trim().toLowerCase()
               );
 
-              return sameStatusTransition && timeDiff < 120000;
+              const sameObs = (!item.observacoes && !other.observacoes) ||
+                (item.observacoes && other.observacoes && item.observacoes.trim() === other.observacoes.trim());
+
+              return sameStatusTransition && sameObs && timeDiff < 120000;
             });
 
             if (existingIdx === -1) {
@@ -433,10 +436,19 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               const existingScore = getRichnessScore(filteredList[existingIdx]);
               const itemScore = getRichnessScore(item);
               if (itemScore > existingScore) {
-                filteredList[existingIdx] = item;
+                const newerTimestamp = new Date(filteredList[existingIdx].created_at).getTime() > new Date(item.created_at).getTime()
+                  ? filteredList[existingIdx].created_at
+                  : item.created_at;
+                filteredList[existingIdx] = {
+                  ...item,
+                  created_at: newerTimestamp
+                };
               }
             }
           }
+
+          // Garantir ordenação estrita por data/hora decrescente (mais recente primeiro)
+          filteredList.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
           setHistory(filteredList)
         }
@@ -2164,7 +2176,9 @@ function formatHistoryDate(dateVal: string | Date | undefined | null) {
     if (!str.includes('T') && str.includes(' ')) {
       str = str.replace(' ', 'T');
     }
-    if (str.length === 19 && !str.endsWith('Z') && !str.includes('+') && !str.includes('-', 10)) {
+    // Verificar se possui informação explícita de fuso horário (Z, +, ou - após a parte da data YYYY-MM-DD)
+    const hasTimezone = str.endsWith('Z') || str.includes('+') || (str.indexOf('-', 10) > 10);
+    if (!hasTimezone) {
       str = str + '-03:00';
     }
     d = new Date(str);

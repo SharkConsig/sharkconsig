@@ -1103,7 +1103,7 @@ export default function ContasAReceberPage() {
   const [statusObsOperacional, setObsOperacional] = useState("")
 
   const getCommissionPercentage = useCallback((proposal: Proposal) => {
-    if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null) {
+    if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
       return Number(proposal.comissao_banco_porcentagem);
     }
 
@@ -1186,7 +1186,7 @@ export default function ContasAReceberPage() {
             prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo, 10) : regra.prazo,
             coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
             percentual_producao: parsePercent(regra.percentual_producao),
-            percentual_comissao: parsePercent(regra.percentual_comissao),
+            percentual_comissao: parsePercent(regra.percentual_comissao) ?? parsePercent(config.percentual_comissao),
             convenioNome: convNome,
             bancoNome: bancoNome,
             banco_id: config.banco_id
@@ -1328,17 +1328,6 @@ export default function ContasAReceberPage() {
   }, [pjUsersMap, pjUserNames])
 
   const getPJCommissionPercentage = useCallback((proposal: Proposal) => {
-    if (customPjCommissionPercents[proposal.id_lead] !== undefined && customPjCommissionPercents[proposal.id_lead] !== null) {
-      return customPjCommissionPercents[proposal.id_lead];
-    }
-    const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0);
-    if (customPjCommissionValues[proposal.id_lead] !== undefined && customPjCommissionValues[proposal.id_lead] !== null && valOp > 0) {
-      return (customPjCommissionValues[proposal.id_lead] / valOp) * 100;
-    }
-    if (proposal.valor_producao && Number(proposal.valor_producao) > 0 && valOp > 0) {
-      return (Number(proposal.valor_producao) / valOp) * 100;
-    }
-
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
       return undefined;
     }
@@ -1387,6 +1376,13 @@ export default function ContasAReceberPage() {
     const parsedCoef = extractCoeficienteNum(proposal.coeficiente_prazo);
     const normProposalBanco = normalizeStr(proposal.banco);
 
+    const userId = proposal.corretor_id ? String(proposal.corretor_id) : (perfil?.id ? String(perfil.id) : undefined);
+    const isPosVal = (v: any) => {
+      if (v === null || v === undefined || v === "" || v === "--") return false;
+      const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+      return !isNaN(num) && num > 0;
+    };
+
     const allOptions = dbProdutosConfigs.flatMap(config => {
       const getConvenioName = () => {
         if (!config.convenios) return undefined;
@@ -1402,23 +1398,73 @@ export default function ContasAReceberPage() {
       if (config.regras && config.regras.length > 0) {
         return config.regras
           .filter((r: { ativo?: boolean }) => r.ativo !== false)
-          .map((regra: any) => ({
-            nome_tabela: config.nome_tabela,
-            prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo, 10) : regra.prazo,
-            coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
-            percentual_producao: parsePercent(regra.percentual_producao),
-            percentual_comissao: parsePercent(regra.percentual_comissao),
-            convenioNome: convNome,
-            bancoNome: bancoNome,
-            banco_id: config.banco_id
-          }));
+          .map((regra: any) => {
+            let comissaoPjVal: number | undefined = undefined;
+            if (userId && regra.comissoes_pj_corretores?.[userId] !== undefined && isPosVal(regra.comissoes_pj_corretores[userId])) {
+              const v = regra.comissoes_pj_corretores[userId];
+              comissaoPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+            } else if (isPosVal(regra.percentual_comissao_pj)) {
+              comissaoPjVal = typeof regra.percentual_comissao_pj === 'string' ? parseFloat(regra.percentual_comissao_pj.replace(',', '.')) : regra.percentual_comissao_pj;
+            } else if (userId && config.comissoes_pj_corretores?.[userId] !== undefined && isPosVal(config.comissoes_pj_corretores[userId])) {
+              const v = config.comissoes_pj_corretores[userId];
+              comissaoPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+            } else if (isPosVal(config.percentual_comissao_pj)) {
+              comissaoPjVal = typeof config.percentual_comissao_pj === 'string' ? parseFloat(config.percentual_comissao_pj.replace(',', '.')) : config.percentual_comissao_pj;
+            }
+
+            const rawComEmpresa = parsePercent(regra.percentual_comissao) ?? parsePercent(config.percentual_comissao);
+            let effectivePj: number | undefined = undefined;
+            if (comissaoPjVal !== undefined && !isNaN(comissaoPjVal)) {
+              if (rawComEmpresa !== undefined && rawComEmpresa > 0) {
+                effectivePj = parseFloat(((rawComEmpresa * comissaoPjVal) / 100).toFixed(2));
+              } else {
+                effectivePj = comissaoPjVal;
+              }
+            } else if (rawComEmpresa !== undefined) {
+              effectivePj = rawComEmpresa;
+            }
+
+            return {
+              nome_tabela: config.nome_tabela,
+              prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo, 10) : regra.prazo,
+              coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+              percentual_producao: parsePercent(regra.percentual_producao),
+              percentual_comissao: rawComEmpresa,
+              effectivePjPercent: effectivePj,
+              convenioNome: convNome,
+              bancoNome: bancoNome,
+              banco_id: config.banco_id
+            };
+          });
       }
+
+      let comissaoPjVal: number | undefined = undefined;
+      if (userId && config.comissoes_pj_corretores?.[userId] !== undefined && isPosVal(config.comissoes_pj_corretores[userId])) {
+        const v = config.comissoes_pj_corretores[userId];
+        comissaoPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+      } else if (isPosVal(config.percentual_comissao_pj)) {
+        comissaoPjVal = typeof config.percentual_comissao_pj === 'string' ? parseFloat(config.percentual_comissao_pj.replace(',', '.')) : config.percentual_comissao_pj;
+      }
+
+      const rawComEmpresa = parsePercent(config.percentual_comissao);
+      let effectivePj: number | undefined = undefined;
+      if (comissaoPjVal !== undefined && !isNaN(comissaoPjVal)) {
+        if (rawComEmpresa !== undefined && rawComEmpresa > 0) {
+          effectivePj = parseFloat(((rawComEmpresa * comissaoPjVal) / 100).toFixed(2));
+        } else {
+          effectivePj = comissaoPjVal;
+        }
+      } else if (rawComEmpresa !== undefined) {
+        effectivePj = rawComEmpresa;
+      }
+
       return [{
         nome_tabela: config.nome_tabela,
         prazo: typeof config.prazo === 'string' ? parseInt(config.prazo, 10) : (config.prazo || 0),
         coeficiente: typeof config.coeficiente === 'string' ? parseFloat(config.coeficiente.replace(',', '.')) : (config.coeficiente || 0),
         percentual_producao: parsePercent(config.percentual_producao),
-        percentual_comissao: parsePercent(config.percentual_comissao),
+        percentual_comissao: rawComEmpresa,
+        effectivePjPercent: effectivePj,
         convenioNome: convNome,
         bancoNome: bancoNome,
         banco_id: config.banco_id
@@ -1474,8 +1520,8 @@ export default function ContasAReceberPage() {
       }
     }
 
-    if (bestMatch && highestScore >= 15 && bestMatch.percentual_producao !== undefined) {
-      return bestMatch.percentual_producao;
+    if (bestMatch && highestScore >= 15 && bestMatch.effectivePjPercent !== undefined) {
+      return bestMatch.effectivePjPercent;
     }
 
     const exactClean = allOptions.find(opt => {
@@ -1500,37 +1546,23 @@ export default function ContasAReceberPage() {
       return cleanLabel(labelTextDot) === cpClean || cleanLabel(labelTextComma) === cpClean;
     });
 
-    if (exactClean && exactClean.percentual_producao !== undefined) {
-      return exactClean.percentual_producao;
+    if (exactClean && exactClean.effectivePjPercent !== undefined) {
+      return exactClean.effectivePjPercent;
     }
 
     return undefined;
-  }, [dbProdutosConfigs, bancosList, customPjCommissionPercents, customPjCommissionValues]);
+  }, [dbProdutosConfigs, bancosList, perfil?.id]);
 
   const getPJCommissionValue = useCallback((proposal: Proposal) => {
     const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
 
-    if (customPjCommissionValues[proposal.id_lead] !== undefined && customPjCommissionValues[proposal.id_lead] !== null) {
-      return customPjCommissionValues[proposal.id_lead]
-    }
-
-    if (proposal.valor_producao && Number(proposal.valor_producao) > 0) {
-      return Number(proposal.valor_producao)
-    }
-
-    const pjPercent = customPjCommissionPercents[proposal.id_lead] !== undefined
-      ? customPjCommissionPercents[proposal.id_lead]
-      : getPJCommissionPercentage(proposal)
+    const pjPercent = getPJCommissionPercentage(proposal)
     if (pjPercent !== undefined && !isNaN(pjPercent)) {
       return (valOp * pjPercent) / 100
     }
 
-    const comPercent = customCommissionPercents[proposal.id_lead] !== undefined 
-      ? customCommissionPercents[proposal.id_lead] 
-      : getCommissionPercentage(proposal)
-    const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
-    return (valOp * comPercentVal) / 100
-  }, [customCommissionPercents, customPjCommissionValues, customPjCommissionPercents, getCommissionPercentage, getPJCommissionPercentage])
+    return 0
+  }, [getPJCommissionPercentage])
 
   const fetchProposals = async () => {
     setIsLoading(true)
@@ -3007,9 +3039,9 @@ export default function ContasAReceberPage() {
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Banco / Convênio</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Valor Operação</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-[#171717]/60 uppercase tracking-widest whitespace-nowrap text-center">Comissão (%)</th>
+                  <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Comissão ($)</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-amber-700 uppercase tracking-widest whitespace-nowrap text-center">Comissão PJ</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Pago em</th>
-                  <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Comissão ($)</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
                 </tr>
               </thead>
@@ -3125,32 +3157,24 @@ export default function ContasAReceberPage() {
                               id={`input-commission-percent-${proposal.id_lead}`}
                             />
                           </td>
+                          <td className="px-5 py-4 text-right whitespace-nowrap">
+                            <EditableAmountCell 
+                              initialValue={calculatedCommission} 
+                              onSave={(val) => handleCommissionValueChange(proposal.id_lead, val)}
+                              id={`input-commission-value-${proposal.id_lead}`}
+                              textClassName="text-emerald-600"
+                            />
+                          </td>
                           <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             {isPJ ? (
                               <div className="flex flex-col items-center justify-center gap-0.5">
-                                <EditableAmountCell 
-                                  initialValue={pjVal}
-                                  onSave={(val) => handlePJCommissionValueChange(proposal.id_lead, val)}
-                                  id={`input-pj-commission-value-${proposal.id_lead}`}
-                                  textClassName="text-amber-800 font-extrabold bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 rounded-md shadow-2xs"
-                                />
-                                {pjPct !== undefined && pjPct > 0 && (
-                                  <EditablePercentCell
-                                    initialValue={pjPct}
-                                    onSave={(val) => handlePJCommissionPercentChange(proposal.id_lead, val)}
-                                    id={`input-pj-commission-percent-${proposal.id_lead}`}
-                                    textClassName="text-[9px] font-black text-amber-600/90"
-                                  />
-                                )}
+                                <span className="text-[11px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 rounded-md shadow-2xs">
+                                  R$ {pjVal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
                               </div>
                             ) : (
                               <div className="flex flex-col items-center justify-center">
-                                <EditableAmountCell 
-                                  initialValue={pjVal}
-                                  onSave={(val) => handlePJCommissionValueChange(proposal.id_lead, val)}
-                                  id={`input-pj-commission-value-${proposal.id_lead}`}
-                                  textClassName="text-slate-400 font-medium hover:text-amber-700"
-                                />
+                                <span className="text-slate-300 font-medium text-[11px]">-</span>
                               </div>
                             )}
                           </td>
@@ -3162,14 +3186,6 @@ export default function ContasAReceberPage() {
                             ) : (
                               format(new Date(proposal.created_at), "dd/MM/yyyy")
                             )}
-                          </td>
-                          <td className="px-5 py-4 text-right whitespace-nowrap">
-                            <EditableAmountCell 
-                              initialValue={calculatedCommission} 
-                              onSave={(val) => handleCommissionValueChange(proposal.id_lead, val)}
-                              id={`input-commission-value-${proposal.id_lead}`}
-                              textClassName="text-emerald-600"
-                            />
                           </td>
                           <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             {(() => {

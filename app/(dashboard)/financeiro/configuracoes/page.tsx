@@ -156,12 +156,12 @@ const DEFAULT_HOURS_CLT = {
 }
 
 const DEFAULT_HOURS_PJ = {
-  seg: { enabled: true, start: "08:00", end: "19:00" },
-  ter: { enabled: true, start: "08:00", end: "19:00" },
-  qua: { enabled: true, start: "08:00", end: "19:00" },
-  qui: { enabled: true, start: "08:00", end: "19:00" },
-  sex: { enabled: true, start: "08:00", end: "19:00" },
-  sab: { enabled: true, start: "09:00", end: "15:00" }
+  seg: { enabled: true, start: "08:00", end: "20:00" },
+  ter: { enabled: true, start: "08:00", end: "20:00" },
+  qua: { enabled: true, start: "08:00", end: "20:00" },
+  qui: { enabled: true, start: "08:00", end: "20:00" },
+  sex: { enabled: true, start: "08:00", end: "20:00" },
+  sab: { enabled: true, start: "08:00", end: "15:00" }
 }
 
 const DEFAULT_HOURS_ESTAGIO = {

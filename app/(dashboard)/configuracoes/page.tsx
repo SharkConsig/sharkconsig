@@ -154,12 +154,12 @@ const DEFAULT_HOURS_CLT = {
 }
 
 const DEFAULT_HOURS_PJ = {
-  seg: { enabled: true, start: "08:00", end: "19:00" },
-  ter: { enabled: true, start: "08:00", end: "19:00" },
-  qua: { enabled: true, start: "08:00", end: "19:00" },
-  qui: { enabled: true, start: "08:00", end: "19:00" },
-  sex: { enabled: true, start: "08:00", end: "19:00" },
-  sab: { enabled: true, start: "09:00", end: "15:00" }
+  seg: { enabled: true, start: "08:00", end: "20:00" },
+  ter: { enabled: true, start: "08:00", end: "20:00" },
+  qua: { enabled: true, start: "08:00", end: "20:00" },
+  qui: { enabled: true, start: "08:00", end: "20:00" },
+  sex: { enabled: true, start: "08:00", end: "20:00" },
+  sab: { enabled: true, start: "08:00", end: "15:00" }
 }
 
 const DEFAULT_HOURS_ESTAGIO = {
@@ -1287,7 +1287,7 @@ export default function SettingsPage() {
                         </div>
                       </div>
                       <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 leading-relaxed self-start md:self-auto">
-                        ℹ️ Horários padrão por regime (CLT/PJ: 08:00 - 19:00, Sáb: 09:00 - 15:00 • Estágio: Seg a Sex: 07:45 - 19:45, Sáb: Bloqueado).
+                        ℹ️ Horários padrão por regime (CLT: 08:00 - 19:00, Sáb: 09:00 - 15:00 • PJ: Seg a Sex: 08:00 - 20:00, Sáb: 08:00 - 15:00 • Estágio: Seg a Sex: 07:45 - 19:45, Sáb: Bloqueado).
                       </div>
                     </div>
 
