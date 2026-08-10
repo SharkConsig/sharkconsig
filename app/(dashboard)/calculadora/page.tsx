@@ -444,11 +444,37 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
 
   // 4. Plano de Amortização (Term options: 12x, 24x, 36x, 48x, 60x, 72x, 84x, 96x, 120x)
   const planosAmortizacao = useMemo(() => {
-    const terms = [12, 24, 36, 48, 60, 72, 84, 96, 120]
+    const roundCoef = Math.round(coeficiente * 100000) / 100000
+    const isSpecialCoef = roundCoef >= 0.039 && roundCoef <= 0.0455
+
+    const rawTerms = isSpecialCoef
+      ? [12, 24, prazo]
+      : [12, 24, 36, 48, 60, 72, 84, 96, 120]
     
+    const terms = Array.from(new Set(rawTerms.filter(t => t > 0)))
+
     return terms
       .filter(t => t <= prazo)
       .map(t => {
+        if (isSpecialCoef && (t === 12 || t === 24)) {
+          const specialRate = t === 12 ? 0.0082 : 0.0096
+          let calcParcelaMedia = 0
+          if (t === 12) {
+            calcParcelaMedia = parcela + (parcela * 1.0289)
+          } else if (t === 24) {
+            calcParcelaMedia = parcela + (parcela * 0.0816)
+          }
+          const totalPagar = calcParcelaMedia * t
+
+          return {
+            term: t,
+            taxa: specialRate,
+            parcelaMedia: calcParcelaMedia,
+            totalPagar: totalPagar,
+            invalido: false
+          }
+        }
+
         if (t === prazo) {
           return {
             term: t,
@@ -504,7 +530,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
           invalido: false
         }
       })
-  }, [valorLiberado, contratoComIof, taxaImplicita, parcela, prazo, totalAPagar])
+  }, [valorLiberado, contratoComIof, taxaImplicita, parcela, prazo, totalAPagar, coeficiente])
 
   const selectedPlanObj = useMemo(() => {
     return planosAmortizacao.find(p => p.term === selectedPlanTerm) || planosAmortizacao[0]
@@ -532,12 +558,18 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
       let pmt = selectedPlanObj.term === prazo ? parcela : selectedPlanObj.parcelaMedia
 
       if (prz !== prazo) {
-        const pv = valorLiberado
-        if (tx2Dec > 0 && prz > 0) {
-          const compound = Math.pow(1 + tx2Dec, prz)
-          pmt = pv * ((tx2Dec * compound) / (compound - 1))
-        } else if (prz > 0) {
-          pmt = pv / prz
+        const roundCoef = Math.round(coeficiente * 100000) / 100000
+        const isSpecialCoef = roundCoef >= 0.039 && roundCoef <= 0.0455
+        if (isSpecialCoef) {
+          pmt = selectedPlanObj.parcelaMedia
+        } else {
+          const pv = valorLiberado
+          if (tx2Dec > 0 && prz > 0) {
+            const compound = Math.pow(1 + tx2Dec, prz)
+            pmt = pv * ((tx2Dec * compound) / (compound - 1))
+          } else if (prz > 0) {
+            pmt = pv / prz
+          }
         }
       }
 
@@ -724,6 +756,15 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
   const handleOpenCompareModal = () => {
     setCompareWarning(null)
     const termsAvailable = planosAmortizacao.map((p) => p.term)
+    const roundCoef = Math.round(coeficiente * 100000) / 100000
+    const isSpecialCoef = roundCoef >= 0.039 && roundCoef <= 0.0455
+
+    if (isSpecialCoef) {
+      setSelectedCompareTerms(termsAvailable)
+      setShowCompareModal(true)
+      return
+    }
+
     const validSelected = selectedCompareTerms.filter((t) => termsAvailable.includes(t))
 
     if (validSelected.length >= 2) {
@@ -1494,6 +1535,10 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
       return
     }
 
+    const roundCoef = Math.round(coeficiente * 100000) / 100000
+    const isSpecialCoef = roundCoef >= 0.039 && roundCoef <= 0.0455
+    const rateForAmort = isSpecialCoef ? 0.05 : taxaImplicita
+
     const term = activeResult.prazo
     const pmt = activeResult.parcela
     const tx = activeResult.taxa
@@ -1504,10 +1549,22 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
     let rowsHtml = ""
 
     for (let m = 1; m <= term; m++) {
-      const numAmortThisMonth = Math.min(
-        Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
-        currentBackInstallment - term
-      )
+      let numAmortThisMonth = 0
+      if (isSpecialCoef && term === 24) {
+        if (m >= 1 && m <= 8) {
+          numAmortThisMonth = 7
+        } else if (m >= 9 && m <= 16) {
+          numAmortThisMonth = 2
+        } else {
+          numAmortThisMonth = currentBackInstallment - term
+        }
+        numAmortThisMonth = Math.min(numAmortThisMonth, currentBackInstallment - term)
+      } else {
+        numAmortThisMonth = Math.min(
+          Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
+          currentBackInstallment - term
+        )
+      }
 
       const amortNums: number[] = []
       const amortVals: string[] = []
@@ -1515,7 +1572,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
 
       for (let k = 0; k < numAmortThisMonth && currentBackInstallment > term; k++) {
         amortNums.push(currentBackInstallment)
-        const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, currentBackInstallment))
+        const valAmort = Math.max(0, parcela / Math.pow(1 + rateForAmort, currentBackInstallment))
         sumAmortValsThisMonth += valAmort
         amortVals.push(formatBRL(valAmort))
         currentBackInstallment--
@@ -2232,7 +2289,16 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {planosAmortizacao.map((p) => {
+                    {planosAmortizacao
+                      .filter((p) => {
+                        const roundCoef = Math.round(coeficiente * 100000) / 100000
+                        const isSpecialCoef = roundCoef >= 0.039 && roundCoef <= 0.0455
+                        if (isSpecialCoef) {
+                          return p.term === 12 || p.term === 24
+                        }
+                        return true
+                      })
+                      .map((p) => {
                       const isSelected = selectedPlanTerm === p.term
                       return (
                         <button
