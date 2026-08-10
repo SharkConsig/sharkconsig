@@ -66,8 +66,17 @@ export async function GET(request: Request) {
     }
 
     // List all users with active RH messages
-    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers()
-    if (error) throw error
+    let users: any[] = []
+    let page = 1
+    const perPage = 1000
+    while (true) {
+      const { data: listData, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage })
+      if (error) throw error
+      const pageUsers = listData?.users || []
+      users = users.concat(pageUsers)
+      if (pageUsers.length < perPage) break
+      page++
+    }
 
     const activeMessages = users
       .filter(u => u.user_metadata?.rh_mensagem_destaque)

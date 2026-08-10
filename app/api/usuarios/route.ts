@@ -46,8 +46,20 @@ export async function GET(request: Request) {
       })
     }
 
-    const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers()
-    if (listError) throw listError
+    let users: any[] = []
+    let page = 1
+    const perPage = 1000
+    while (true) {
+      const { data: listData, error: listError } = await supabaseAdmin.auth.admin.listUsers({
+        page,
+        perPage
+      })
+      if (listError) throw listError
+      const pageUsers = listData?.users || []
+      users = users.concat(pageUsers)
+      if (pageUsers.length < perPage) break
+      page++
+    }
 
     // Create a map for quick name lookup
     const nameMap = new Map<string, string>()

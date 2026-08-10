@@ -912,7 +912,9 @@ export default function DashboardPage() {
           const team = (isAdmin || isOperational || isDeveloper || isRecursosHumanos)
             ? allUsers.filter((u: User) => {
                 const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
-                return ((u.funcao === 'Corretor' || u.funcao === 'Supervisor' || u.funcao === 'Estágio' || u.funcao === 'Estagio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO') || isPJ) && u.status?.toUpperCase() !== 'INATIVO'
+                const func = (u.funcao || "").trim().toLowerCase()
+                const isAllowedFuncao = ['corretor', 'supervisor', 'estágio', 'estagio', 'processo seletivo', 'gerente'].includes(func)
+                return (isAllowedFuncao || isPJ) && u.status?.toUpperCase() !== 'INATIVO'
               })
             : allUsers.filter((u: User) => 
                 (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId) && u.status?.toUpperCase() !== 'INATIVO'
