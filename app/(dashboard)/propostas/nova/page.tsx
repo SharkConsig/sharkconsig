@@ -175,6 +175,7 @@ function NewProposalForm() {
     percentual_producao: number
     percentual_comissao?: number
     percentual_comissao_pj?: number | string
+    comissoes_pj_corretores?: Record<string, string | number>
     convenio_id: string
     banco_id: string
     operacoes: string[]
@@ -1208,8 +1209,82 @@ function NewProposalForm() {
     nextStep()
   }
 
+  const calcEffectivePJCommission = (
+    rawPj: number | string | undefined | null,
+    rawComissaoEmpresa: number | string | undefined | null
+  ): number | undefined => {
+    if (rawPj === undefined || rawPj === null || rawPj === "" || rawPj === "--") return undefined;
+    const valPJ = typeof rawPj === 'number' ? rawPj : parseFloat(String(rawPj).replace(',', '.'));
+    if (isNaN(valPJ)) return undefined;
+
+    if (rawComissaoEmpresa !== undefined && rawComissaoEmpresa !== null && rawComissaoEmpresa !== "" && rawComissaoEmpresa !== "--") {
+      const valCom = typeof rawComissaoEmpresa === 'number' ? rawComissaoEmpresa : parseFloat(String(rawComissaoEmpresa).replace(',', '.'));
+      if (!isNaN(valCom) && valCom > 0) {
+        const converted = (valCom * valPJ) / 100;
+        return parseFloat(converted.toFixed(2));
+      }
+    }
+    return valPJ;
+  };
+
+  const hasValidPJCommission = (config: ProdutoConfig): boolean => {
+    if (!config || config.ativo === false) return false
+
+    const isPos = (v: any) => {
+      if (v === null || v === undefined || v === "" || v === "--") return false
+      const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'))
+      return !isNaN(num) && num > 0
+    }
+
+    if (config.regras && config.regras.length > 0) {
+      return config.regras.some(regra => {
+        if (regra.ativo === false) return false
+        if (perfil?.id && regra.comissoes_pj_corretores && isPos(regra.comissoes_pj_corretores[perfil.id])) {
+          return true
+        }
+        if (isPos(regra.percentual_comissao_pj)) return true
+        if (regra.comissoes_pj_corretores && typeof regra.comissoes_pj_corretores === 'object') {
+          return Object.values(regra.comissoes_pj_corretores).some(v => isPos(v))
+        }
+        return false
+      })
+    }
+
+    return isPos(config.percentual_comissao_pj)
+  }
+
+  const matchesOp = (config: ProdutoConfig, opId: string, opNome?: string) => {
+    if (!config.operacoes || !Array.isArray(config.operacoes)) return false
+    return config.operacoes.includes(opId) || (opNome ? config.operacoes.includes(opNome) : false)
+  }
+
+  const matchesConvenio = (config: ProdutoConfig, convId: string, convNome?: string) => {
+    if (config.convenio_id === convId) return true
+    if (convNome && config.convenios?.nome === convNome) return true
+    return false
+  }
+
+  const matchesBanco = (config: ProdutoConfig, bancoId: string, bancoNome?: string) => {
+    if (config.banco_id === bancoId) return true
+    if (config.bancos?.id === bancoId) return true
+    if (bancoNome && config.bancos?.nome === bancoNome) return true
+    return false
+  }
+
   const renderStep1 = () => {
-    const sortedConvenios = [...dbConvenios].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+    let sortedConvenios = [...dbConvenios]
+    if (isPJ) {
+      sortedConvenios = sortedConvenios.filter(c => {
+        return dbProdutosConfigs.some(config => 
+          config.ativo !== false &&
+          matchesConvenio(config, c.id, c.nome) &&
+          (!selection.operacaoId || matchesOp(config, selection.operacaoId, selection.operacao)) &&
+          hasValidPJCommission(config)
+        )
+      })
+    }
+    sortedConvenios.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+
     return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-center gap-4 relative">
@@ -1231,7 +1306,7 @@ function NewProposalForm() {
         {isLoading ? (
           <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
         ) : sortedConvenios.length === 0 ? (
-          <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum convênio cadastrado</div>
+          <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum convênio disponível</div>
         ) : (
           sortedConvenios.map(c => (
             <button
@@ -1249,7 +1324,203 @@ function NewProposalForm() {
 }
 
   const renderStep2 = () => {
-    const sortedBancos = [...dbBancos].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+    if (isPJ) {
+      const isPos = (v: any) => {
+        if (v === null || v === undefined || v === "" || v === "--") return false
+        const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'))
+        return !isNaN(num) && num > 0
+      }
+
+      const pjBankRows: Array<{
+        id: string
+        bancoId: string
+        bancoNome: string
+        nomeTabela?: string
+        comissaoPj: number | string
+        prazo: number | string
+        coeficiente: number | string
+      }> = []
+
+      dbProdutosConfigs.forEach(config => {
+        if (config.ativo === false) return
+        if (selection.convenioId && !matchesConvenio(config, selection.convenioId, selection.convenio)) return
+        if (selection.operacaoId && !matchesOp(config, selection.operacaoId, selection.operacao)) return
+        if (!hasValidPJCommission(config)) return
+
+        const bId = config.banco_id || config.bancos?.id || ''
+        const bNome = config.bancos?.nome || dbBancos.find(b => b.id === bId)?.nome || 'Banco'
+
+        if (config.regras && config.regras.length > 0) {
+          config.regras.forEach((r, idx) => {
+            if (r.ativo === false) return
+            let comPj: any = undefined
+            if (perfil?.id && r.comissoes_pj_corretores?.[perfil.id] && isPos(r.comissoes_pj_corretores[perfil.id])) {
+              comPj = r.comissoes_pj_corretores[perfil.id]
+            } else if (isPos(r.percentual_comissao_pj)) {
+              comPj = r.percentual_comissao_pj
+            } else if (perfil?.id && config.comissoes_pj_corretores?.[perfil.id] && isPos(config.comissoes_pj_corretores[perfil.id])) {
+              comPj = config.comissoes_pj_corretores[perfil.id]
+            } else if (isPos(config.percentual_comissao_pj)) {
+              comPj = config.percentual_comissao_pj
+            }
+
+            if (comPj !== undefined) {
+              const rawComEmpresa = r.percentual_comissao !== undefined ? r.percentual_comissao : config.percentual_comissao;
+              const effectivePj = calcEffectivePJCommission(comPj, rawComEmpresa) ?? comPj;
+
+              pjBankRows.push({
+                id: `${config.id}-rule-${idx}`,
+                bancoId: bId,
+                bancoNome: bNome,
+                nomeTabela: config.nome_tabela,
+                comissaoPj: effectivePj,
+                prazo: r.prazo,
+                coeficiente: r.coeficiente,
+              })
+            }
+          })
+        } else {
+          let comPjRoot: any = undefined
+          if (perfil?.id && config.comissoes_pj_corretores?.[perfil.id] && isPos(config.comissoes_pj_corretores[perfil.id])) {
+            comPjRoot = config.comissoes_pj_corretores[perfil.id]
+          } else if (isPos(config.percentual_comissao_pj)) {
+            comPjRoot = config.percentual_comissao_pj
+          }
+
+          if (comPjRoot !== undefined) {
+            const effectivePj = calcEffectivePJCommission(comPjRoot, config.percentual_comissao) ?? comPjRoot;
+
+            pjBankRows.push({
+              id: config.id,
+              bancoId: bId,
+              bancoNome: bNome,
+              nomeTabela: config.nome_tabela,
+              comissaoPj: effectivePj,
+              prazo: config.prazo,
+              coeficiente: config.coeficiente,
+            })
+          }
+        }
+      })
+
+      pjBankRows.sort((a, b) => {
+        const getNum = (v: any) => {
+          if (typeof v === 'number') return v
+          if (!v) return 0
+          const n = parseFloat(String(v).replace(',', '.').replace('%', ''))
+          return isNaN(n) ? 0 : n
+        }
+        const valA = getNum(a.comissaoPj)
+        const valB = getNum(b.comissaoPj)
+        if (valB !== valA) return valB - valA
+        const comp = a.bancoNome.localeCompare(b.bancoNome, 'pt-BR', { sensitivity: 'base' })
+        if (comp !== 0) return comp
+        return String(a.prazo).localeCompare(String(b.prazo), 'pt-BR', { numeric: true })
+      })
+
+      return (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center justify-center gap-4 relative">
+            {step > 1 && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={prevStep}
+                className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
+              </Button>
+            )}
+            <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
+              ESCOLHA O <span className="text-slate-900 font-extrabold">BANCO DE EMPRÉSTIMO</span> QUE SERÁ UTILIZADO NO CONTRATO
+            </h2>
+          </div>
+
+          <div className="flex flex-col gap-3 max-w-4xl mx-auto w-full">
+            {isLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
+            ) : pjBankRows.length === 0 ? (
+              <div className="text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest py-8">Nenhum banco com comissão PJ disponível</div>
+            ) : (
+              pjBankRows.map(row => {
+                const comPjFormatted = typeof row.comissaoPj === 'number' ? `${row.comissaoPj.toString().replace('.', ',')}%` : `${row.comissaoPj}`.includes('%') ? row.comissaoPj : `${row.comissaoPj}%`
+                const prazoFormatted = typeof row.prazo === 'number' || !isNaN(Number(row.prazo)) ? `${row.prazo}x` : row.prazo
+                const coefFormatted = typeof row.coeficiente === 'number' ? row.coeficiente.toFixed(5).replace('.', ',') : row.coeficiente
+
+                return (
+                  <button
+                    key={row.id}
+                    onClick={() => {
+                      const comPjFormatted = typeof row.comissaoPj === 'number' ? `${row.comissaoPj.toString().replace('.', ',')}%` : `${row.comissaoPj}`.includes('%') ? row.comissaoPj : `${row.comissaoPj}%`
+                      const prazoFormatted = typeof row.prazo === 'number' || !isNaN(Number(row.prazo)) ? `${row.prazo}x` : String(row.prazo)
+                      const coefFormatted = typeof row.coeficiente === 'number' ? row.coeficiente.toFixed(5).replace('.', ',') : String(row.coeficiente)
+
+                      setSelection(prev => ({ 
+                        ...prev, 
+                        banco: row.bancoNome,
+                        bancoId: row.bancoId,
+                        comissaoDisplay: comPjFormatted,
+                        prazoDisplay: prazoFormatted,
+                        coefDisplay: coefFormatted,
+                      }))
+
+                      const numComissao = typeof row.comissaoPj === 'number' ? row.comissaoPj : parseFloat(String(row.comissaoPj).replace(',', '.'))
+                      if (!isNaN(numComissao)) setSelectedComissaoPercent(numComissao)
+
+                      const numCoef = typeof row.coeficiente === 'number' ? row.coeficiente : parseFloat(String(row.coeficiente).replace(',', '.'))
+                      if (!isNaN(numCoef)) setSelectedCoefValue(numCoef)
+
+                      if (row.prazo) setFormData(prev => ({ ...prev, prazo: String(row.prazo) }))
+
+                      nextStep()
+                    }}
+                    className="w-full p-3.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-amber-400/80 rounded-xl transition-all shadow-xs flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 text-left group"
+                  >
+                    <div className="flex flex-col min-w-[180px]">
+                      <span className="text-xs font-black text-slate-800 group-hover:text-amber-800 uppercase tracking-wide">
+                        {row.bancoNome}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 sm:gap-6 flex-wrap sm:flex-nowrap">
+                      <div className="flex flex-col items-center bg-amber-50/80 border border-amber-200/60 px-3 py-1 rounded-lg">
+                        <span className="text-[9px] font-bold text-amber-700/80 uppercase tracking-wider">
+                          Comissão
+                        </span>
+                        <span className="text-xs font-black text-amber-900">
+                          {comPjFormatted}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col items-center bg-slate-100/80 border border-slate-200/60 px-3 py-1 rounded-lg min-w-[70px]">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                          Prazo
+                        </span>
+                        <span className="text-xs font-bold text-slate-800">
+                          {prazoFormatted}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col items-center bg-slate-100/80 border border-slate-200/60 px-3 py-1 rounded-lg min-w-[90px]">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                          COEF
+                        </span>
+                        <span className="text-xs font-mono font-extrabold text-slate-800">
+                          {coefFormatted}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    let sortedBancos = [...dbBancos]
+    sortedBancos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
 
     return (
       <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1273,7 +1544,7 @@ function NewProposalForm() {
           {isLoading ? (
             <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
           ) : sortedBancos.length === 0 ? (
-            <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum banco cadastrado</div>
+            <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum banco disponível</div>
           ) : (
             sortedBancos.map(b => (
               <button
@@ -1291,7 +1562,18 @@ function NewProposalForm() {
   }
 
   const renderStep3 = () => {
-    const sortedOperacoes = [...dbOperacoes].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+    let sortedOperacoes = [...dbOperacoes]
+    if (isPJ) {
+      sortedOperacoes = sortedOperacoes.filter(op => {
+        return dbProdutosConfigs.some(config => 
+          config.ativo !== false &&
+          matchesOp(config, op.id, op.nome) &&
+          hasValidPJCommission(config)
+        )
+      })
+    }
+    sortedOperacoes.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+
     return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-center gap-4 relative">
@@ -1313,7 +1595,7 @@ function NewProposalForm() {
         {isLoading ? (
           <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
         ) : sortedOperacoes.length === 0 ? (
-          <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum tipo de operação cadastrado</div>
+          <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum tipo de operação disponível</div>
         ) : (
           sortedOperacoes.map(o => (
             <button
@@ -1330,7 +1612,20 @@ function NewProposalForm() {
   )
 }
 
-  const renderStep4 = () => (
+  const renderStep4 = () => {
+    const comissaoVal = selectedComissaoPercent !== null 
+      ? `${selectedComissaoPercent.toString().replace('.', ',')}%` 
+      : selection.comissaoDisplay || ""
+
+    const prazoVal = formData.prazo 
+      ? (formData.prazo.endsWith('x') ? formData.prazo : `${formData.prazo}x`) 
+      : selection.prazoDisplay || ""
+
+    const coefVal = selectedCoefValue !== null 
+      ? (typeof selectedCoefValue === 'number' ? selectedCoefValue.toFixed(5).replace('.', ',') : String(selectedCoefValue))
+      : selection.coefDisplay || ""
+
+    return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
       <div className="flex flex-col items-center gap-4">
         <Button 
@@ -1342,20 +1637,68 @@ function NewProposalForm() {
           <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
         </Button>
         <div className="flex flex-wrap md:flex-nowrap justify-center gap-2 md:gap-6 items-center bg-white py-4 px-6 md:px-8 rounded-2xl border border-slate-200 shadow-sm w-full max-w-5xl mx-auto overflow-x-auto">
-          <div className="flex flex-col items-center md:items-start">
-            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
-            <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
-          </div>
-          <div className="h-8 w-px bg-slate-100 hidden md:block" />
-          <div className="flex flex-col items-center md:items-start">
-            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
-            <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
-          </div>
-          <div className="h-8 w-px bg-slate-100 hidden md:block" />
-          <div className="flex flex-col items-center md:items-start">
-            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
-            <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
-          </div>
+          {isPJ ? (
+            <>
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
+              </div>
+              {comissaoVal && (
+                <>
+                  <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                  <div className="flex flex-col items-center md:items-start bg-amber-50/80 border border-amber-200/60 px-3 py-1 rounded-lg">
+                    <span className="text-[8px] font-bold text-amber-700/80 uppercase tracking-[0.2em] mb-0.5">Comissão</span>
+                    <span className="text-[11px] font-black text-amber-900">{comissaoVal}</span>
+                  </div>
+                </>
+              )}
+              {prazoVal && (
+                <>
+                  <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                  <div className="flex flex-col items-center md:items-start bg-slate-100/80 border border-slate-200/60 px-3 py-1 rounded-lg">
+                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-0.5">Prazo</span>
+                    <span className="text-[11px] font-black text-slate-800">{prazoVal}</span>
+                  </div>
+                </>
+              )}
+              {coefVal && (
+                <>
+                  <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                  <div className="flex flex-col items-center md:items-start bg-slate-100/80 border border-slate-200/60 px-3 py-1 rounded-lg">
+                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-0.5">COEF</span>
+                    <span className="text-[11px] font-mono font-extrabold text-slate-800">{coefVal}</span>
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -1891,11 +2234,12 @@ function NewProposalForm() {
                       {(() => {
                         const filteredConfigs = dbProdutosConfigs
                           .filter(config => {
-                            const matchBanco = config.banco_id === selection.bancoId;
+                            const matchBanco = config.banco_id === selection.bancoId || config.bancos?.id === selection.bancoId;
                             const matchConvenio = config.convenio_id === selection.convenioId;
-                            const matchOperacao = config.operacoes && config.operacoes.includes(selection.operacaoId);
+                            const matchOperacao = config.operacoes && (config.operacoes.includes(selection.operacaoId) || config.operacoes.includes(selection.operacao));
                             
                             if (!matchBanco || !matchConvenio || !matchOperacao) return false;
+                            if (isPJ && !hasValidPJCommission(config)) return false;
 
                             const rulesStr = config.regras?.map(r => `${r.prazo} ${r.coeficiente}`).join(' ') || '';
                             const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''} ${rulesStr}`.toLowerCase()
@@ -1906,18 +2250,71 @@ function NewProposalForm() {
                         const options = filteredConfigs.flatMap(config => {
                           if (config.regras && config.regras.length > 0) {
                             return config.regras
-                              .filter((r: { ativo?: boolean }) => r.ativo !== false)
-                              .map((regra, idx) => ({
-                                id: `${config.id}-rule-${idx}`,
-                                parentConfig: config,
-                                nome_tabela: config.nome_tabela,
-                                convenioNome: config.convenios?.nome,
-                                prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
-                                coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
-                                percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
-                                percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao) : undefined,
-                              }));
+                              .filter((r: { ativo?: boolean; percentual_comissao_pj?: any; comissoes_pj_corretores?: any }) => {
+                                if (r.ativo === false) return false;
+                                if (isPJ) {
+                                  const isPos = (v: any) => {
+                                    if (v === null || v === undefined || v === "" || v === "--") return false;
+                                    const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+                                    return !isNaN(num) && num > 0;
+                                  };
+                                  const hasRulePJ = isPos(r.percentual_comissao_pj) || 
+                                    (perfil?.id && r.comissoes_pj_corretores && isPos(r.comissoes_pj_corretores[perfil.id])) ||
+                                    (r.comissoes_pj_corretores && Object.values(r.comissoes_pj_corretores).some(v => isPos(v))) ||
+                                    isPos(config.percentual_comissao_pj);
+                                  if (!hasRulePJ) return false;
+                                }
+                                return true;
+                              })
+                              .map((regra, idx) => {
+                                let comissaoPjVal: number | undefined = undefined;
+                                const isPosVal = (v: any) => {
+                                  if (v === null || v === undefined || v === "" || v === "--") return false;
+                                  const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+                                  return !isNaN(num) && num > 0;
+                                };
+                                if (perfil?.id && regra.comissoes_pj_corretores?.[perfil.id] !== undefined && isPosVal(regra.comissoes_pj_corretores[perfil.id])) {
+                                  const v = regra.comissoes_pj_corretores[perfil.id];
+                                  comissaoPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+                                } else if (regra.percentual_comissao_pj !== undefined && regra.percentual_comissao_pj !== null && regra.percentual_comissao_pj !== "" && isPosVal(regra.percentual_comissao_pj)) {
+                                  comissaoPjVal = typeof regra.percentual_comissao_pj === 'string' ? parseFloat(regra.percentual_comissao_pj.replace(',', '.')) : regra.percentual_comissao_pj;
+                                } else if (perfil?.id && config.comissoes_pj_corretores?.[perfil.id] !== undefined && isPosVal(config.comissoes_pj_corretores[perfil.id])) {
+                                  const v = config.comissoes_pj_corretores[perfil.id];
+                                  comissaoPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+                                } else if (config.percentual_comissao_pj !== undefined && config.percentual_comissao_pj !== null && config.percentual_comissao_pj !== "") {
+                                  comissaoPjVal = typeof config.percentual_comissao_pj === 'string' ? parseFloat(config.percentual_comissao_pj.replace(',', '.')) : config.percentual_comissao_pj;
+                                }
+
+                                const rawComEmpresa = regra.percentual_comissao !== undefined ? regra.percentual_comissao : config.percentual_comissao;
+                                const effectivePj = calcEffectivePJCommission(comissaoPjVal, rawComEmpresa);
+
+                                return {
+                                  id: `${config.id}-rule-${idx}`,
+                                  parentConfig: config,
+                                  nome_tabela: config.nome_tabela,
+                                  convenioNome: config.convenios?.nome,
+                                  prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+                                  coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+                                  percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
+                                  percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao) : undefined,
+                                  percentual_comissao_pj: effectivePj,
+                                };
+                              });
                           }
+                          let rootPjVal: number | undefined = undefined;
+                          const isPosValRoot = (v: any) => {
+                            if (v === null || v === undefined || v === "" || v === "--") return false;
+                            const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+                            return !isNaN(num) && num > 0;
+                          };
+                          if (perfil?.id && config.comissoes_pj_corretores?.[perfil.id] !== undefined && isPosValRoot(config.comissoes_pj_corretores[perfil.id])) {
+                            const v = config.comissoes_pj_corretores[perfil.id];
+                            rootPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+                          } else if (config.percentual_comissao_pj !== undefined && config.percentual_comissao_pj !== null && config.percentual_comissao_pj !== "") {
+                            rootPjVal = typeof config.percentual_comissao_pj === 'string' ? parseFloat(config.percentual_comissao_pj.replace(',', '.')) : config.percentual_comissao_pj;
+                          }
+                          const effectiveRootPj = calcEffectivePJCommission(rootPjVal, config.percentual_comissao);
+
                           return [{
                             id: config.id,
                             parentConfig: config,
@@ -1927,6 +2324,7 @@ function NewProposalForm() {
                             coeficiente: config.coeficiente,
                             percentual_producao: config.percentual_producao,
                             percentual_comissao: config.percentual_comissao,
+                            percentual_comissao_pj: effectiveRootPj,
                           }];
                         });
 
@@ -1945,9 +2343,17 @@ function NewProposalForm() {
                         }
 
                         return options.map((option) => {
-                          const label = option.nome_tabela 
-                            ? `${option.nome_tabela} (${option.prazo}x | ${option.coeficiente})`
-                            : `${option.convenioNome || 'Tabela'} - ${option.prazo}x ${option.coeficiente}`;
+                          const comPjFormatted = option.percentual_comissao_pj !== undefined && option.percentual_comissao_pj !== null
+                            ? (typeof option.percentual_comissao_pj === 'number' ? `${option.percentual_comissao_pj.toString().replace('.', ',')}%` : `${option.percentual_comissao_pj}`.includes('%') ? option.percentual_comissao_pj : `${option.percentual_comissao_pj}%`)
+                            : '';
+
+                          const label = isPJ
+                            ? (option.nome_tabela 
+                                ? `${option.nome_tabela} (${comPjFormatted ? `Comissão: ${comPjFormatted} | ` : ''}${option.prazo}x | ${option.coeficiente})`
+                                : `${option.convenioNome || 'Tabela'} - ${comPjFormatted ? `Comissão: ${comPjFormatted} | ` : ''}${option.prazo}x ${option.coeficiente}`)
+                            : (option.nome_tabela 
+                                ? `${option.nome_tabela} (${option.prazo}x | ${option.coeficiente})`
+                                : `${option.convenioNome || 'Tabela'} - ${option.prazo}x ${option.coeficiente}`);
                           
                           return (
                             <div
@@ -1956,7 +2362,10 @@ function NewProposalForm() {
                                 handleFormChange("coeficiente_prazo", label)
                                 setSelectedCoefValue(option.coeficiente)
                                 setSelectedProdPercent(option.percentual_producao)
-                                setSelectedComissaoPercent(option.percentual_comissao !== undefined ? option.percentual_comissao : null)
+                                const comissaoFinal = isPJ
+                                  ? (option.percentual_comissao_pj !== undefined ? option.percentual_comissao_pj : null)
+                                  : (option.percentual_comissao !== undefined ? option.percentual_comissao : null)
+                                setSelectedComissaoPercent(comissaoFinal)
                                 setFormData(prev => ({ ...prev, prazo: option.prazo.toString() }))
                                 
                                 // Auto-calculate Valor Operação (Margin / Coef)
@@ -1998,7 +2407,11 @@ function NewProposalForm() {
                                 "text-[9px] font-medium lowercase tracking-normal",
                                 formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
                               )}>
-                                Prazo: {option.prazo}x | Coef: {option.coeficiente}{isPJ ? "" : ` | Prod: ${option.percentual_producao}%`}
+                                {isPJ ? (
+                                  <>comissão: {comPjFormatted || '0%'} | prazo: {option.prazo}x | coef: {option.coeficiente}</>
+                                ) : (
+                                  <>prazo: {option.prazo}x | coef: {option.coeficiente} | prod: {option.percentual_producao}%</>
+                                )}
                               </span>
                             </div>
                           );
@@ -2279,6 +2692,7 @@ function NewProposalForm() {
       </Card>
     </div>
   )
+}
 
   return (
     <div className="flex-1 flex flex-col">
@@ -2286,10 +2700,21 @@ function NewProposalForm() {
       
       <main className="flex-1 p-4 lg:p-8 bg-slate-50/50">
         <div className="max-w-[1400px] mx-auto w-full">
-          {step === 1 && renderStep1()}
-          {step === 2 && renderStep2()}
-          {step === 3 && renderStep3()}
-          {step === 4 && renderStep4()}
+          {isPJ ? (
+            <>
+              {step === 1 && renderStep3()}
+              {step === 2 && renderStep1()}
+              {step === 3 && renderStep2()}
+              {step === 4 && renderStep4()}
+            </>
+          ) : (
+            <>
+              {step === 1 && renderStep1()}
+              {step === 2 && renderStep2()}
+              {step === 3 && renderStep3()}
+              {step === 4 && renderStep4()}
+            </>
+          )}
         </div>
       </main>
     </div>
