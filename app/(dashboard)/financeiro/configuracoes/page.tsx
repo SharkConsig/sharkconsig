@@ -1650,35 +1650,35 @@ export default function FinancialSettingsPage() {
                                         </div>
 
                                           <div className="flex flex-col gap-1.5 min-w-[200px]">
-                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Tabela de Coeficientes</span>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tabela de Coeficientes</span>
                                             {prod.regras && prod.regras.length > 0 ? (
-                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                              <div className="grid grid-cols-1 gap-2">
                                                 {prod.regras.map((regra, idx) => (
                                                   <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 justify-between">
                                                     <div className="flex items-center gap-2">
                                                       <div className="flex flex-col">
-                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prazo</span>
-                                                        <span className="text-[10px] font-bold text-slate-700">{regra.prazo}x</span>
+                                                        <span className="text-[9px] font-bold text-slate-400 uppercase leading-none">Prazo</span>
+                                                        <span className="text-[12px] font-bold text-slate-700">{regra.prazo}x</span>
                                                       </div>
                                                       <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                       <div className="flex flex-col">
-                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Coef</span>
-                                                        <span className="text-[10px] font-bold text-slate-700">{regra.coeficiente}</span>
+                                                        <span className="text-[9px] font-bold text-slate-400 uppercase leading-none">Coef</span>
+                                                        <span className="text-[12px] font-bold text-slate-700">{regra.coeficiente}</span>
                                                       </div>
                                                       <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                       <div className="flex flex-col">
-                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prod</span>
-                                                        <span className="text-[10px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
+                                                        <span className="text-[9px] font-bold text-slate-400 uppercase leading-none">Prod</span>
+                                                        <span className="text-[12px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
                                                       </div>
                                                       <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                       <div className="flex flex-col">
-                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Comissão</span>
-                                                        <span className="text-[10px] font-bold text-sky-600">{regra.percentual_comissao ? `${regra.percentual_comissao}%` : '--'}</span>
+                                                        <span className="text-[9px] font-bold text-slate-400 uppercase leading-none">Comissão</span>
+                                                        <span className="text-[12px] font-bold text-sky-600">{regra.percentual_comissao ? `${regra.percentual_comissao}%` : '--'}</span>
                                                       </div>
                                                       <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                       <div className="flex flex-col">
-                                                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Comissão PJ</span>
-                                                        <span className="text-[10px] font-bold text-purple-600">
+                                                        <span className="text-[9px] font-bold text-slate-400 uppercase leading-none">Comissão PJ</span>
+                                                        <span className="text-[12px] font-bold text-purple-600">
                                                           {(() => {
                                                             let valPJ: number | null = null;
                                                             if (regra.percentual_comissao_pj) {
@@ -1707,7 +1707,7 @@ export default function FinancialSettingsPage() {
                                                         type="button"
                                                         onClick={() => toggleRegraAtiva(prod.id, prod.regras || [], idx)}
                                                         className={cn(
-                                                          "h-5 px-1.5 rounded text-[8px] font-extrabold uppercase tracking-wide transition-all border",
+                                                          "h-6 px-2 rounded text-[10px] font-extrabold uppercase tracking-wide transition-all border",
                                                           regra.ativo !== false 
                                                             ? "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100" 
                                                             : "bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100"

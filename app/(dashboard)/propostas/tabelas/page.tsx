@@ -11,7 +11,8 @@ import {
   Search, 
   ChevronDown, 
   ChevronUp, 
-  Building2
+  Building2,
+  X
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { format } from "date-fns"
@@ -128,26 +129,39 @@ export default function TabelasRegrasPage() {
     return valPJRaw ? `${valPJRaw}%` : '--'
   }
 
+  // Termos de busca informados
+  const searchTerms = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean)
+
+  // Função para verificar se uma tabela/produto corresponde à busca
+  const matchesProduct = (prod: ProdutoConfig, banco: Banco) => {
+    if (searchTerms.length === 0) return true
+
+    const conv = convenios.find(c => c.id === prod.convenio_id)
+    const convName = (conv?.nome || '').toLowerCase()
+    const tableName = (prod.nome_tabela || '').toLowerCase()
+    const bankName = (banco.nome || '').toLowerCase()
+
+    const opNames = (prod.operacoes || [])
+      .map(opId => tiposOperacao.find(o => o.id === opId)?.nome.toLowerCase() || '')
+      .join(' ')
+
+    const regrasText = (prod.regras || [])
+      .map(r => `${r.prazo} ${r.prazo}x ${r.coeficiente}`)
+      .join(' ')
+
+    const prodText = `${prod.prazo || ''} ${prod.prazo ? prod.prazo + 'x' : ''} ${prod.coeficiente || ''}`
+
+    const searchableStr = `${bankName} ${convName} ${tableName} ${opNames} ${regrasText} ${prodText}`.toLowerCase()
+
+    return searchTerms.every(term => searchableStr.includes(term))
+  }
+
   // Filtragem de bancos e produtos ativas
   const activeBancos = bancos.filter(b => b.ativo !== false)
 
   const filteredBancos = activeBancos.filter(banco => {
-    const bankProds = produtosConfig.filter(p => p.banco_id === banco.id && p.ativo !== false)
-    if (bankProds.length === 0) return false
-
-    if (!searchQuery.trim()) return true
-
-    const query = searchQuery.toLowerCase()
-    const matchBanco = banco.nome.toLowerCase().includes(query)
-    
-    const matchProds = bankProds.some(prod => {
-      const conv = convenios.find(c => c.id === prod.convenio_id)
-      const convName = conv?.nome.toLowerCase() || ''
-      const tableName = (prod.nome_tabela || '').toLowerCase()
-      return convName.includes(query) || tableName.includes(query)
-    })
-
-    return matchBanco || matchProds
+    const bankProds = produtosConfig.filter(p => p.banco_id === banco.id && p.ativo !== false && matchesProduct(p, banco))
+    return bankProds.length > 0
   })
 
   return (
@@ -160,11 +174,21 @@ export default function TabelasRegrasPage() {
         <div className="relative w-full">
           <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <Input
-            placeholder="Buscar banco, convênio, tabela..."
+            placeholder="Buscar por banco, convênio, tabela, operação ou prazo (ex: Itaú SIAPE Novo 84x)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-10 text-[11px] font-bold bg-white border-slate-200 rounded-xl uppercase placeholder:normal-case placeholder:font-normal shadow-sm"
+            className="pl-9 pr-9 h-10 text-[11px] font-bold bg-white border-slate-200 rounded-xl uppercase placeholder:normal-case placeholder:font-normal shadow-sm"
           />
+          {searchQuery && (
+            <button 
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
+              title="Limpar busca"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Conteúdo Principal */}
@@ -184,7 +208,7 @@ export default function TabelasRegrasPage() {
         ) : (
           <div className="space-y-4">
             {filteredBancos.map((banco) => {
-              const bankProducts = produtosConfig.filter(p => p.banco_id === banco.id && p.ativo !== false)
+              const bankProducts = produtosConfig.filter(p => p.banco_id === banco.id && p.ativo !== false && matchesProduct(p, banco))
               const isExpanded = expandedBankId === banco.id || !!searchQuery.trim()
 
               return (
@@ -256,9 +280,9 @@ export default function TabelasRegrasPage() {
 
                                     {/* Convênio */}
                                     <div className="flex flex-col gap-1">
-                                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Convênio</span>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Convênio</span>
                                       <div className="flex flex-wrap gap-1.5">
-                                        <span className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-tight border border-slate-100">
+                                        <span className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[11px] font-bold uppercase tracking-tight border border-slate-100">
                                           {convenio.nome}
                                         </span>
                                       </div>
@@ -266,19 +290,19 @@ export default function TabelasRegrasPage() {
 
                                     {/* Operações Permitidas */}
                                     <div className="flex flex-col gap-1">
-                                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Operações Permitidas</span>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Operações Permitidas</span>
                                       <div className="flex flex-wrap gap-1.5">
                                         {(prod.operacoes || []).map(opId => {
                                           const op = tiposOperacao.find(o => o.id === opId)
                                           return op ? (
-                                            <span key={opId} className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-bold uppercase tracking-tight border border-slate-100">
+                                            <span key={opId} className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[11px] font-bold uppercase tracking-tight border border-slate-100">
                                               {op.nome}
                                             </span>
                                           ) : null
                                         })}
                                       </div>
                                       {(prod.operacoes || []).length === 0 && (
-                                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest italic">
+                                        <span className="text-[11px] font-bold text-slate-300 uppercase tracking-widest italic">
                                           Nenhuma operação selecionada
                                         </span>
                                       )}
@@ -286,27 +310,27 @@ export default function TabelasRegrasPage() {
 
                                     {/* Tabela de Coeficientes */}
                                     <div className="flex flex-col gap-1.5 min-w-[200px]">
-                                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                         Tabela de Coeficientes
                                       </span>
 
                                       {activeRegras.length > 0 ? (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                        <div className="grid grid-cols-1 gap-2">
                                           {activeRegras.map((regra, idx) => (
                                             <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 justify-between">
                                               <div className="flex items-center gap-2">
                                                 {/* Prazo */}
                                                 <div className="flex flex-col">
-                                                  <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prazo</span>
-                                                  <span className="text-[10px] font-bold text-slate-700">{regra.prazo}x</span>
+                                                  <span className="text-[9px] font-bold text-slate-400 uppercase leading-none">Prazo</span>
+                                                  <span className="text-[12px] font-bold text-slate-700">{regra.prazo}x</span>
                                                 </div>
 
                                                 <div className="w-[1px] h-4 bg-slate-200 mx-1" />
 
                                                 {/* Coef */}
                                                 <div className="flex flex-col">
-                                                  <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Coef</span>
-                                                  <span className="text-[10px] font-bold text-slate-700">{regra.coeficiente}</span>
+                                                  <span className="text-[9px] font-bold text-slate-400 uppercase leading-none">Coef</span>
+                                                  <span className="text-[12px] font-bold text-slate-700">{regra.coeficiente}</span>
                                                 </div>
 
                                                 {/* Visualizações Condicionais conforme perfil */}
@@ -314,8 +338,8 @@ export default function TabelasRegrasPage() {
                                                   <>
                                                     <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                     <div className="flex flex-col">
-                                                      <span className="text-[7px] font-bold text-purple-600 uppercase leading-none">Comissão</span>
-                                                      <span className="text-[10px] font-bold text-purple-700">
+                                                      <span className="text-[9px] font-bold text-purple-600 uppercase leading-none">Comissão</span>
+                                                      <span className="text-[12px] font-bold text-purple-700">
                                                         {getPJCommissionDisplay(regra)}
                                                       </span>
                                                     </div>
@@ -324,22 +348,22 @@ export default function TabelasRegrasPage() {
                                                   <>
                                                     <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                     <div className="flex flex-col">
-                                                      <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prod</span>
-                                                      <span className="text-[10px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
+                                                      <span className="text-[9px] font-bold text-slate-400 uppercase leading-none">Prod</span>
+                                                      <span className="text-[12px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
                                                     </div>
 
                                                     <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                     <div className="flex flex-col">
-                                                      <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Comissão</span>
-                                                      <span className="text-[10px] font-bold text-sky-600">
+                                                      <span className="text-[9px] font-bold text-slate-400 uppercase leading-none">Comissão</span>
+                                                      <span className="text-[12px] font-bold text-sky-600">
                                                         {regra.percentual_comissao ? `${regra.percentual_comissao}%` : '--'}
                                                       </span>
                                                     </div>
 
                                                     <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                     <div className="flex flex-col">
-                                                      <span className="text-[7px] font-bold text-purple-600 uppercase leading-none">Comissão PJ</span>
-                                                      <span className="text-[10px] font-bold text-purple-700">
+                                                      <span className="text-[9px] font-bold text-purple-600 uppercase leading-none">Comissão PJ</span>
+                                                      <span className="text-[12px] font-bold text-purple-700">
                                                         {getPJCommissionDisplay(regra)}
                                                       </span>
                                                     </div>
@@ -348,8 +372,8 @@ export default function TabelasRegrasPage() {
                                                   <>
                                                     <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                     <div className="flex flex-col">
-                                                      <span className="text-[7px] font-bold text-slate-400 uppercase leading-none">Prod</span>
-                                                      <span className="text-[10px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
+                                                      <span className="text-[9px] font-bold text-slate-400 uppercase leading-none">Prod</span>
+                                                      <span className="text-[12px] font-bold text-emerald-600">{regra.percentual_producao}%</span>
                                                     </div>
                                                   </>
                                                 )}
@@ -358,7 +382,7 @@ export default function TabelasRegrasPage() {
                                               <div className="flex items-center">
                                                 <div className="w-[1px] h-4 bg-slate-200 mx-1" />
                                                 <span className={cn(
-                                                  "h-5 px-1.5 rounded text-[8px] font-extrabold uppercase tracking-wide flex items-center justify-center border",
+                                                  "h-6 px-2 rounded text-[10px] font-extrabold uppercase tracking-wide flex items-center justify-center border",
                                                   regra.ativo !== false 
                                                     ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
                                                     : "bg-rose-50 text-rose-600 border-rose-100"
@@ -372,24 +396,24 @@ export default function TabelasRegrasPage() {
                                       ) : (
                                         <div className="flex gap-6 p-2 bg-slate-50 border border-slate-100 rounded-lg">
                                           <div className="flex flex-col gap-0.5">
-                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Prazo</span>
-                                            <span className="text-[10px] font-extrabold text-slate-600">{prod.prazo ? `${prod.prazo}x` : '--'}</span>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Prazo</span>
+                                            <span className="text-[12px] font-extrabold text-slate-600">{prod.prazo ? `${prod.prazo}x` : '--'}</span>
                                           </div>
                                           <div className="flex flex-col gap-0.5">
-                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente</span>
-                                            <span className="text-[10px] font-extrabold text-slate-600">{prod.coeficiente || '--'}</span>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Coeficiente</span>
+                                            <span className="text-[12px] font-extrabold text-slate-600">{prod.coeficiente || '--'}</span>
                                           </div>
                                           {isPJ ? (
                                             <div className="flex flex-col gap-0.5">
-                                              <span className="text-[8px] font-bold text-purple-600 uppercase tracking-widest">Comissão</span>
-                                              <span className="text-[10px] font-extrabold text-purple-700">
+                                              <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">Comissão</span>
+                                              <span className="text-[12px] font-extrabold text-purple-700">
                                                 {prod.percentual_comissao_pj ? `${prod.percentual_comissao_pj}%` : '--'}
                                               </span>
                                             </div>
                                           ) : (
                                             <div className="flex flex-col gap-0.5">
-                                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Produção</span>
-                                              <span className="text-[10px] font-extrabold text-emerald-600">{prod.percentual_producao ? `${prod.percentual_producao}%` : '--'}</span>
+                                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Produção</span>
+                                              <span className="text-[12px] font-extrabold text-emerald-600">{prod.percentual_producao ? `${prod.percentual_producao}%` : '--'}</span>
                                             </div>
                                           )}
                                         </div>
