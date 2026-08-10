@@ -1559,6 +1559,21 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
           numAmortThisMonth = currentBackInstallment - term
         }
         numAmortThisMonth = Math.min(numAmortThisMonth, currentBackInstallment - term)
+      } else if (isSpecialCoef && term === 12) {
+        if (m >= 1 && m <= 4) {
+          numAmortThisMonth = 10
+        } else if (m === 5 || m === 6) {
+          numAmortThisMonth = 9
+        } else if (m === 7) {
+          numAmortThisMonth = 8
+        } else if (m === 8) {
+          numAmortThisMonth = 6
+        } else if (m >= 9 && m <= 12) {
+          numAmortThisMonth = 3
+        } else {
+          numAmortThisMonth = currentBackInstallment - term
+        }
+        numAmortThisMonth = Math.min(numAmortThisMonth, currentBackInstallment - term)
       } else {
         numAmortThisMonth = Math.min(
           Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
