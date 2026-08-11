@@ -448,7 +448,7 @@ export default function ProposalsPage() {
           observacoes: histObs.join(' | '),
           descricao: `Status alterado de "${proposal.status}" para "${newStatus}"`,
           tipo: 'alteracao_status',
-          created_at: isoDate
+          created_at: new Date().toISOString()
         })
       } catch (histErr) {
         console.warn("Erro ao gravar histórico (não letal):", histErr)

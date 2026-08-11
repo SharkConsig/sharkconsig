@@ -401,6 +401,21 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         } else {
           // Remover duplicatas e eventos redundantes de alteração de status
           // Ocorre duplicidade quando o trigger do banco e o frontend registram a mesma mudança de status
+          // Helper para parsing seguro de datas do histórico sem falhar em strings sem 'T'
+          const parseHistoryTime = (dateVal: any) => {
+            if (!dateVal) return 0;
+            let str = String(dateVal).trim();
+            if (!str.includes('T') && str.includes(' ')) {
+              str = str.replace(' ', 'T');
+            }
+            const hasTimezone = str.endsWith('Z') || str.includes('+') || (str.indexOf('-', 10) > 10);
+            if (!hasTimezone) {
+              str = str + '-03:00';
+            }
+            const t = new Date(str).getTime();
+            return isNaN(t) ? 0 : t;
+          };
+
           const getRichnessScore = (item: any) => {
             let score = 0;
             if (item.observacoes && item.observacoes.trim().length > 0) score += 10;
@@ -414,8 +429,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           const filteredList: typeof rawList = [];
 
           for (const item of rawList) {
+            const itemTime = parseHistoryTime(item.created_at);
             const existingIdx = filteredList.findIndex(other => {
-              const timeDiff = Math.abs(new Date(other.created_at).getTime() - new Date(item.created_at).getTime());
+              const otherTime = parseHistoryTime(other.created_at);
+              const timeDiff = Math.abs(otherTime - itemTime);
               const sameStatusNew = item.status_novo && other.status_novo && 
                 item.status_novo.trim().toLowerCase() === other.status_novo.trim().toLowerCase();
               
@@ -424,10 +441,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                 item.status_anterior.trim().toLowerCase() === other.status_anterior.trim().toLowerCase()
               );
 
-              const sameObs = (!item.observacoes && !other.observacoes) ||
-                (item.observacoes && other.observacoes && item.observacoes.trim() === other.observacoes.trim());
-
-              return sameStatusTransition && sameObs && timeDiff < 120000;
+              return sameStatusTransition && timeDiff < 120000;
             });
 
             if (existingIdx === -1) {
@@ -435,20 +449,34 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
             } else {
               const existingScore = getRichnessScore(filteredList[existingIdx]);
               const itemScore = getRichnessScore(item);
+              const existingTime = parseHistoryTime(filteredList[existingIdx].created_at);
+
+              let mergedObs = filteredList[existingIdx].observacoes || "";
+              if (item.observacoes && item.observacoes.trim().length > 0) {
+                if (!mergedObs) {
+                  mergedObs = item.observacoes;
+                } else if (!mergedObs.includes(item.observacoes.trim())) {
+                  mergedObs = `${mergedObs} | ${item.observacoes}`;
+                }
+              }
+
               if (itemScore > existingScore) {
-                const newerTimestamp = new Date(filteredList[existingIdx].created_at).getTime() > new Date(item.created_at).getTime()
+                const newerTimestamp = existingTime > itemTime
                   ? filteredList[existingIdx].created_at
                   : item.created_at;
                 filteredList[existingIdx] = {
                   ...item,
+                  observacoes: mergedObs,
                   created_at: newerTimestamp
                 };
+              } else {
+                filteredList[existingIdx].observacoes = mergedObs;
               }
             }
           }
 
           // Garantir ordenação estrita por data/hora decrescente (mais recente primeiro)
-          filteredList.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          filteredList.sort((a, b) => parseHistoryTime(b.created_at) - parseHistoryTime(a.created_at));
 
           setHistory(filteredList)
         }
@@ -1901,14 +1929,14 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                                 )}
                               >
                                 <div className="flex items-center justify-between">
-                                  <span>{label}</span>
+                                  <span>{option.nome_tabela || option.convenioNome || 'Tabela'}</span>
                                   {formData.coeficiente_prazo === label && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                                 </div>
                                 <span className={cn(
                                   "text-[9px] font-medium lowercase tracking-normal",
                                   formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
                                 )}>
-                                  Prazo: {option.prazo}x | Coef: {option.coeficiente}{isPJ ? "" : ` | Prod: ${option.percentual_producao}%`}
+                                  prazo: {option.prazo}x | coef: {option.coeficiente}
                                 </span>
                               </div>
                             )
@@ -1918,16 +1946,18 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     </div>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Produção</label>
-                  <Input 
-                    value={formData.valor_producao}
-                    onChange={(e) => handleFormChange("valor_producao", e.target.value)}
-                    disabled={!isFinancialEditor && (!isCorretor ? true : !canEditFields)}
-                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
-                    placeholder="R$ 0,00" 
-                  />
-                </div>
+                {!isPJ && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Produção</label>
+                    <Input 
+                      value={formData.valor_producao}
+                      onChange={(e) => handleFormChange("valor_producao", e.target.value)}
+                      disabled={!isFinancialEditor && (!isCorretor ? true : !canEditFields)}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors disabled:opacity-75" 
+                      placeholder="R$ 0,00" 
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-8">

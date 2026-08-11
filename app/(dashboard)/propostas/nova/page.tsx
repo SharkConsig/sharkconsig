@@ -2347,13 +2347,9 @@ function NewProposalForm() {
                             ? (typeof option.percentual_comissao_pj === 'number' ? `${option.percentual_comissao_pj.toString().replace('.', ',')}%` : `${option.percentual_comissao_pj}`.includes('%') ? option.percentual_comissao_pj : `${option.percentual_comissao_pj}%`)
                             : '';
 
-                          const label = isPJ
-                            ? (option.nome_tabela 
-                                ? `${option.nome_tabela} (${comPjFormatted ? `Comissão: ${comPjFormatted} | ` : ''}${option.prazo}x | ${option.coeficiente})`
-                                : `${option.convenioNome || 'Tabela'} - ${comPjFormatted ? `Comissão: ${comPjFormatted} | ` : ''}${option.prazo}x ${option.coeficiente}`)
-                            : (option.nome_tabela 
-                                ? `${option.nome_tabela} (${option.prazo}x | ${option.coeficiente})`
-                                : `${option.convenioNome || 'Tabela'} - ${option.prazo}x ${option.coeficiente}`);
+                          const label = option.nome_tabela 
+                            ? `${option.nome_tabela} (${option.prazo}x | ${option.coeficiente})`
+                            : `${option.convenioNome || 'Tabela'} - ${option.prazo}x ${option.coeficiente}`;
                           
                           return (
                             <div
@@ -2400,18 +2396,14 @@ function NewProposalForm() {
                               )}
                             >
                               <div className="flex items-center justify-between">
-                                <span>{label}</span>
+                                <span>{option.nome_tabela || option.convenioNome || 'Tabela'}</span>
                                 {formData.coeficiente_prazo === label && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                               </div>
                               <span className={cn(
                                 "text-[9px] font-medium lowercase tracking-normal",
                                 formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
                               )}>
-                                {isPJ ? (
-                                  <>comissão: {comPjFormatted || '0%'} | prazo: {option.prazo}x | coef: {option.coeficiente}</>
-                                ) : (
-                                  <>prazo: {option.prazo}x | coef: {option.coeficiente} | prod: {option.percentual_producao}%</>
-                                )}
+                                prazo: {option.prazo}x | coef: {option.coeficiente}
                               </span>
                             </div>
                           );
@@ -2421,15 +2413,17 @@ function NewProposalForm() {
                   </div>
                 )}
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Produção</label>
-                <Input 
-                  value={formData.valor_producao_corretor}
-                  onChange={(e) => handleFormChange("valor_producao_corretor", e.target.value)}
-                  className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
-                  placeholder="R$ 0,00" 
-                />
-              </div>
+              {!isPJ && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Produção</label>
+                  <Input 
+                    value={formData.valor_producao_corretor}
+                    onChange={(e) => handleFormChange("valor_producao_corretor", e.target.value)}
+                    className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
+                    placeholder="R$ 0,00" 
+                  />
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">

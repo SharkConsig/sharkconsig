@@ -83,27 +83,8 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
       
       setSelectedStatus("")
 
-      // Resetar à data local atual, ou usar data de pagamento/digitação prévia se existir
-      let initialDateStr = getLocalDateString();
-      if (
-        (proposal.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA" || proposal.status === "PÓS-VENDA REALIZADA") &&
-        proposal.data_pago_cliente
-      ) {
-        try {
-          const d = new Date(proposal.data_pago_cliente as string);
-          initialDateStr = getLocalDateString(d);
-        } catch (e) {
-          console.error("Erro ao converter data_pago_cliente:", e);
-        }
-      } else if (proposal.data_digitacao) {
-        try {
-          const d = new Date(proposal.data_digitacao as string);
-          initialDateStr = getLocalDateString(d);
-        } catch (e) {
-          console.error("Erro ao converter data_digitacao:", e);
-        }
-      }
-      setDataStatus(initialDateStr);
+      // Resetar à data local atual (hoje) para o novo status
+      setDataStatus(getLocalDateString());
     }
   }, [proposal])
 
