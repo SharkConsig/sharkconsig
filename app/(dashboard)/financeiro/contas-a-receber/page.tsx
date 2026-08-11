@@ -3040,7 +3040,8 @@ export default function ContasAReceberPage() {
                   <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Valor Operação</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-[#171717]/60 uppercase tracking-widest whitespace-nowrap text-center">Comissão (%)</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Comissão ($)</th>
-                  <th className="px-5 py-4 text-[10px] font-bold text-amber-700 uppercase tracking-widest whitespace-nowrap text-center">Comissão PJ</th>
+                  <th className="px-5 py-4 text-[10px] font-bold text-amber-700 uppercase tracking-widest whitespace-nowrap text-center">Comissão PJ (%)</th>
+                  <th className="px-5 py-4 text-[10px] font-bold text-amber-700 uppercase tracking-widest whitespace-nowrap text-center">Comissão PJ ($)</th>
                   <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Pago em</th>
                   <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
                 </tr>
@@ -3048,7 +3049,7 @@ export default function ContasAReceberPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-16 text-center text-slate-400 text-xs font-semibold">
+                    <td colSpan={13} className="px-4 py-16 text-center text-slate-400 text-xs font-semibold">
                       <div className="flex items-center justify-center gap-2">
                         <Loader2 className="w-5 h-5 animate-spin text-primary" />
                         Obtendo registros de propostas do Supabase...
@@ -3057,7 +3058,7 @@ export default function ContasAReceberPage() {
                   </tr>
                 ) : paginatedProposals.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-16 text-center text-slate-400 text-xs font-medium">
+                    <td colSpan={13} className="px-4 py-16 text-center text-slate-400 text-xs font-medium">
                       {"Nenhuma proposta correspondente aos critérios no lote \"Pago ao Cliente\"."}
                     </td>
                   </tr>
@@ -3069,7 +3070,7 @@ export default function ContasAReceberPage() {
                     const calculatedCommission = (valOp * comPercentVal) / 100
                     const isPJ = isPJProposal(proposal)
                     const pjVal = getPJCommissionValue(proposal)
-                    const pjPct = getPJCommissionPercentage(proposal)
+                    const pjPct = customPjCommissionPercents[proposal.id_lead] !== undefined ? customPjCommissionPercents[proposal.id_lead] : getPJCommissionPercentage(proposal)
                     
                     return (
                       <React.Fragment key={proposal.id_lead}>
@@ -3167,11 +3168,26 @@ export default function ContasAReceberPage() {
                           </td>
                           <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             {isPJ ? (
-                              <div className="flex flex-col items-center justify-center gap-0.5">
-                                <span className="text-[11px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 rounded-md shadow-2xs">
-                                  R$ {pjVal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
+                              <EditablePercentCell 
+                                initialValue={pjPct}
+                                onSave={(val) => handlePJCommissionPercentChange(proposal.id_lead, val)}
+                                id={`input-pj-commission-percent-${proposal.id_lead}`}
+                                textClassName="text-amber-800 font-extrabold"
+                              />
+                            ) : (
+                              <div className="flex flex-col items-center justify-center">
+                                <span className="text-slate-300 font-medium text-[11px]">-</span>
                               </div>
+                            )}
+                          </td>
+                          <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            {isPJ ? (
+                              <EditableAmountCell 
+                                initialValue={pjVal}
+                                onSave={(val) => handlePJCommissionValueChange(proposal.id_lead, val)}
+                                id={`input-pj-commission-value-${proposal.id_lead}`}
+                                textClassName="text-amber-800 font-extrabold"
+                              />
                             ) : (
                               <div className="flex flex-col items-center justify-center">
                                 <span className="text-slate-300 font-medium text-[11px]">-</span>

@@ -71,6 +71,7 @@ export default function TabelasRegrasPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [expandedBankId, setExpandedBankId] = useState<string | null>(null)
+  const [collapsedBankIds, setCollapsedBankIds] = useState<Record<string, boolean>>({})
 
   // Identificação do Regime/Função do Usuário
   const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
@@ -176,13 +177,19 @@ export default function TabelasRegrasPage() {
           <Input
             placeholder="Buscar por banco, convênio, tabela, operação ou prazo (ex: Itaú SIAPE Novo 84x)..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setCollapsedBankIds({})
+            }}
             className="pl-9 pr-9 h-10 text-[11px] font-bold bg-white border-slate-200 rounded-xl uppercase placeholder:normal-case placeholder:font-normal shadow-sm"
           />
           {searchQuery && (
             <button 
               type="button"
-              onClick={() => setSearchQuery("")}
+              onClick={() => {
+                setSearchQuery("")
+                setCollapsedBankIds({})
+              }}
               className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
               title="Limpar busca"
             >
@@ -209,14 +216,20 @@ export default function TabelasRegrasPage() {
           <div className="space-y-4">
             {filteredBancos.map((banco) => {
               const bankProducts = produtosConfig.filter(p => p.banco_id === banco.id && p.ativo !== false && matchesProduct(p, banco))
-              const isExpanded = expandedBankId === banco.id || !!searchQuery.trim()
+              const isExpanded = searchQuery.trim() ? !collapsedBankIds[banco.id] : expandedBankId === banco.id
 
               return (
                 <Card key={banco.id} className="border border-slate-200 overflow-hidden rounded-2xl bg-white shadow-sm overflow-visible">
                   {/* Topo do Banco com estilo idêntico ao Administrador */}
                   <div 
                     className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
-                    onClick={() => setExpandedBankId(expandedBankId === banco.id ? null : banco.id)}
+                    onClick={() => {
+                      if (searchQuery.trim()) {
+                        setCollapsedBankIds(prev => ({ ...prev, [banco.id]: !prev[banco.id] }))
+                      } else {
+                        setExpandedBankId(expandedBankId === banco.id ? null : banco.id)
+                      }
+                    }}
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-[10px]">

@@ -35,6 +35,7 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
 import { supabase } from "@/lib/supabase"
+import { RankingContractsModal, RankingContractModalParams } from "./ranking-contracts-modal"
 import { toast } from "sonner"
 import {
   ResponsiveContainer,
@@ -205,6 +206,18 @@ export function AdminDashboard({
   const [tempStartDate, setTempStartDate] = React.useState(startDate)
   const [tempEndDate, setTempEndDate] = React.useState(endDate)
   const [dashboardPeriod, setDashboardPeriod] = React.useState<'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado'>('mes')
+
+  const [rankingModalParams, setRankingModalParams] = React.useState<RankingContractModalParams | null>(null)
+  const [isRankingModalOpen, setIsRankingModalOpen] = React.useState<boolean>(false)
+
+  const handleOpenRankingModal = (params: RankingContractModalParams) => {
+    setRankingModalParams({
+      startDate: params.startDate || startDate,
+      endDate: params.endDate || endDate,
+      ...params,
+    })
+    setIsRankingModalOpen(true)
+  }
 
   React.useEffect(() => {
     if (startDate) setTempStartDate(startDate)
@@ -1066,8 +1079,8 @@ export function AdminDashboard({
     return financialProposals.filter((proposal) => {
       if (filterUserId && proposal.corretor_id !== filterUserId) return false
       if (!financialStartDate && !financialEndDate) return true
-      const compareDate = proposal.data_pago_cliente || proposal.updated_at || proposal.created_at
-      if (!compareDate) return true
+      const compareDate = proposal.data_pago_cliente
+      if (!compareDate) return false
 
       try {
         const pDate = new Date(compareDate)
@@ -1152,7 +1165,7 @@ export function AdminDashboard({
     if (!prevStart || !prevEnd) return []
     return financialProposals.filter((proposal) => {
       if (filterUserId && proposal.corretor_id !== filterUserId) return false
-      const compareDate = proposal.data_pago_cliente || proposal.updated_at || proposal.created_at
+      const compareDate = proposal.data_pago_cliente
       if (!compareDate) return false
 
       try {
@@ -1403,7 +1416,7 @@ export function AdminDashboard({
     let revPreviousMonth = 0
 
     financialProposals.forEach((p) => {
-      const compareDateStr = p.data_pago_cliente || p.updated_at || p.created_at
+      const compareDateStr = p.data_pago_cliente
       if (!compareDateStr) return
 
       const pDate = new Date(compareDateStr)
@@ -1481,7 +1494,7 @@ export function AdminDashboard({
 
   const dynamicChartData = React.useMemo(() => {
     const getProposalDate = (p: any) => {
-      const dStr = p.data_pago_cliente || p.updated_at || p.created_at
+      const dStr = p.data_pago_cliente
       if (!dStr) return null
       try {
         const d = new Date(dStr)
@@ -2480,9 +2493,21 @@ export function AdminDashboard({
                             )}>
                               <div className="flex flex-col items-end">
                                 <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenRankingModal({
+                                      personId: rank.corretor_id,
+                                      personName: rank.name,
+                                      category: 'paid',
+                                      categoryLabel: 'Produção (Pagos)'
+                                    });
+                                  }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                  title="Clique para ver contratos"
+                                >
                                   {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                                </span>
+                                </button>
                               </div>
                             </td>
                             <td className={cn(
@@ -2491,9 +2516,21 @@ export function AdminDashboard({
                             )}>
                               <div className="flex flex-col items-end">
                                 <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenRankingModal({
+                                      personId: rank.corretor_id,
+                                      personName: rank.name,
+                                      category: 'in_process',
+                                      categoryLabel: 'Em Andamento'
+                                    });
+                                  }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                  title="Clique para ver contratos"
+                                >
                                   {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                                </span>
+                                </button>
                               </div>
                             </td>
                             <td className={cn(
@@ -2507,9 +2544,21 @@ export function AdminDashboard({
                                 )}>
                                   {formatCurrency(rank.totalToday)}
                                 </span>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenRankingModal({
+                                      personId: rank.corretor_id,
+                                      personName: rank.name,
+                                      category: 'today',
+                                      categoryLabel: 'Digitadas Hoje'
+                                    });
+                                  }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                  title="Clique para ver contratos"
+                                >
                                   {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
-                                </span>
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -2666,17 +2715,41 @@ export function AdminDashboard({
                                 <td className="px-4 py-4 text-right bg-emerald-100/25">
                                   <div className="flex flex-col items-end">
                                     <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'paid',
+                                          categoryLabel: 'Produção (Pagos)'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                                 <td className="px-4 py-4 text-right bg-orange-100/25">
                                   <div className="flex flex-col items-end">
                                     <span className="text-[14px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'in_process',
+                                          categoryLabel: 'Em Andamento'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                                 <td className="px-4 py-4 text-right bg-blue-100/25">
@@ -2687,9 +2760,21 @@ export function AdminDashboard({
                                     )}>
                                       {formatCurrency(est.totalToday)}
                                     </span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'today',
+                                          categoryLabel: 'Digitadas Hoje'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -2769,17 +2854,41 @@ export function AdminDashboard({
                                 <td className="px-4 py-4 text-right bg-emerald-100/25">
                                   <div className="flex flex-col items-end">
                                     <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'paid',
+                                          categoryLabel: 'Produção (Pagos)'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                                 <td className="px-4 py-4 text-right bg-orange-100/25">
                                   <div className="flex flex-col items-end">
                                     <span className="text-[14px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'in_process',
+                                          categoryLabel: 'Em Andamento'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                                 <td className="px-4 py-4 text-right bg-blue-100/25">
@@ -2790,9 +2899,21 @@ export function AdminDashboard({
                                     )}>
                                       {formatCurrency(est.totalToday)}
                                     </span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'today',
+                                          categoryLabel: 'Digitadas Hoje'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -5935,6 +6056,11 @@ export function AdminDashboard({
           </motion.div>
         </motion.div>
       )}
+      <RankingContractsModal
+        isOpen={isRankingModalOpen}
+        onClose={() => setIsRankingModalOpen(false)}
+        params={rankingModalParams}
+      />
     </div>
   )
 }

@@ -64,6 +64,7 @@ interface TicketStatus {
   nome: string
   cor: string
   cor_texto: string
+  grupo?: string
   ativo: boolean
   created_at: string
 }
@@ -327,6 +328,7 @@ export default function SettingsPage() {
   const [nome, setNome] = useState("")
   const [cor, setCor] = useState("#171717")
   const [corTexto, setCorTexto] = useState("#ffffff")
+  const [grupo, setGrupo] = useState<string>("PROPOSTA ENVIADA / EM NEGOCIAÇÃO")
   const [showPickerFundo, setShowPickerFundo] = useState(false)
   const [showPickerTexto, setShowPickerTexto] = useState(false)
 
@@ -668,6 +670,7 @@ export default function SettingsPage() {
     setNome("")
     setCor("#171717")
     setCorTexto("#ffffff")
+    setGrupo("PROPOSTA ENVIADA / EM NEGOCIAÇÃO")
     setShowPickerFundo(false)
     setShowPickerTexto(false)
   }
@@ -678,6 +681,7 @@ export default function SettingsPage() {
       setNome(status.nome)
       setCor(status.cor || "#171717")
       setCorTexto(status.cor_texto || "#ffffff")
+      setGrupo(status.grupo || "PROPOSTA ENVIADA / EM NEGOCIAÇÃO")
     } else {
       resetForm()
     }
@@ -1147,28 +1151,49 @@ export default function SettingsPage() {
     try {
       if (currentStatusId) {
         // Update
-        const { error } = await supabase
+        let { error } = await supabase
           .from('status_chamados')
           .update({ 
             nome: nome.toUpperCase(), 
             cor,
-            cor_texto: corTexto
+            cor_texto: corTexto,
+            grupo
           })
           .eq('id', currentStatusId)
         
-        if (error) throw error
+        if (error) {
+          const fallback = await supabase
+            .from('status_chamados')
+            .update({ 
+              nome: nome.toUpperCase(), 
+              cor,
+              cor_texto: corTexto
+            })
+            .eq('id', currentStatusId)
+          if (fallback.error) throw fallback.error
+        }
         toast.success("Status atualizado com sucesso")
       } else {
         // Create
-        const { error } = await supabase
+        let { error } = await supabase
           .from('status_chamados')
           .insert({ 
             nome: nome.toUpperCase(), 
             cor,
-            cor_texto: corTexto
+            cor_texto: corTexto,
+            grupo
           })
         
-        if (error) throw error
+        if (error) {
+          const fallback = await supabase
+            .from('status_chamados')
+            .insert({ 
+              nome: nome.toUpperCase(), 
+              cor,
+              cor_texto: corTexto
+            })
+          if (fallback.error) throw fallback.error
+        }
         toast.success("Status criado com sucesso")
       }
       
@@ -2301,6 +2326,20 @@ export default function SettingsPage() {
                 onChange={(e) => setNome(e.target.value)}
                 className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 focus-visible:ring-primary/20 transition-all uppercase placeholder:text-slate-400/60"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="grupo" className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Grupo do Status</Label>
+              <select
+                id="grupo"
+                value={grupo}
+                onChange={(e) => setGrupo(e.target.value)}
+                className="w-full h-10 bg-slate-50 border border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 focus-visible:ring-primary/20 transition-all uppercase px-3 cursor-pointer"
+              >
+                <option value="APROVADOS">APROVADOS</option>
+                <option value="PROPOSTA ENVIADA / EM NEGOCIAÇÃO">PROPOSTA ENVIADA / EM NEGOCIAÇÃO</option>
+                <option value="NÃO APROVADOS">NÃO APROVADOS</option>
+              </select>
             </div>
 
             

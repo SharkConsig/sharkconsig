@@ -347,11 +347,58 @@ export default function SearchClientPage() {
       const printWindow = window.open("", "_blank");
       if (!printWindow) return;
 
-      const client = proposal.cliente_nome || clientData?.nome || "CLIENTE";
-      const cpf = proposal.cliente_cpf || clientData?.cpf || "";
+      const clientName = proposal.cliente_nome || client?.nome || "CLIENTE";
+      const cpf = proposal.cliente_cpf || client?.cpf || "";
+      const getOrgao = () => {
+        if (proposal.orgao) return proposal.orgao;
+        if (proposal.cliente_orgao) return proposal.cliente_orgao;
+        if (proposal.orgao_nome) return proposal.orgao_nome;
+        if (proposal.secretaria) return proposal.secretaria;
+
+        if (registrations && registrations.length > 0) {
+          for (const reg of registrations) {
+            if (reg.orgao) return reg.orgao;
+            if ((reg as any).secretaria) return (reg as any).secretaria;
+            
+            const gLotacoes = (reg as any).governo_sp_lotacoes;
+            if (Array.isArray(gLotacoes) && gLotacoes.length > 0) {
+              if (gLotacoes[0]?.orgao) return gLotacoes[0].orgao;
+              if (gLotacoes[0]?.secretaria) return gLotacoes[0].secretaria;
+              if (gLotacoes[0]?.lotacao) return gLotacoes[0].lotacao;
+            }
+
+            const pLotacoes = (reg as any).prefeitura_sp_lotacoes;
+            if (Array.isArray(pLotacoes) && pLotacoes.length > 0) {
+              if (pLotacoes[0]?.orgao) return pLotacoes[0].orgao;
+              if (pLotacoes[0]?.secretaria) return pLotacoes[0].secretaria;
+              if (pLotacoes[0]?.lotacao) return pLotacoes[0].lotacao;
+            }
+          }
+        }
+
+        if (client) {
+          if ((client as any).orgao) return (client as any).orgao;
+          if ((client as any).orgao_nome) return (client as any).orgao_nome;
+          if ((client as any).cliente_orgao) return (client as any).cliente_orgao;
+          if ((client as any).secretaria) return (client as any).secretaria;
+        }
+
+        if (clientType) {
+          if (clientType === 'governo_sp') return 'SPPREV';
+          if (clientType === 'prefeitura_sp') return 'PREFEITURA SP';
+          if (clientType === 'siape') return 'SIAPE';
+          return clientType.toUpperCase().replace(/_/g, ' ');
+        }
+
+        return "";
+      };
+
+      const rawOrgao = getOrgao();
+      const orgao = rawOrgao ? (typeof translateOrgao === 'function' ? translateOrgao(rawOrgao) : rawOrgao) : "";
       const consultant = proposal.user_nome || perfil?.nome || "CONSULTOR";
       const email = proposal.user_email || perfil?.email || "";
       const phone = proposal.telefone_consultor || (perfil as any)?.telefone || "";
+      const consultantPhoto = proposal.consultantPhoto || proposal.foto_proposta_url || proposal.foto_url || (perfil as any)?.foto_proposta_url || (perfil as any)?.foto_url || "";
 
       const vContrato = Number(proposal.valor_contrato) || 0;
       const przEst = Number(proposal.prazo_estrategia) || 0;
@@ -362,31 +409,100 @@ export default function SearchClientPage() {
         return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
       };
 
-      const formatCPF = (val: string) => {
-        const digits = val.replace(/\D/g, "");
+      const formatMaskedCPF = (val: string) => {
+        if (!val) return "";
+        if (val.includes("*")) return val;
+        const digits = String(val).replace(/\D/g, "");
         if (digits.length === 11) {
-          return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+          return `${digits.slice(0, 3)}.***.***-${digits.slice(9)}`;
         }
         return val;
       };
 
       let rowsHtml = "";
       if (przEst > 0 && pmMedia > 0) {
-        const i = txAm / 100;
-        let saldoDevedor = vContrato;
-        for (let m = 1; m <= Math.min(przEst, 120); m++) {
-          const juros = i > 0 ? saldoDevedor * i : 0;
-          const principal = Math.max(0, pmMedia - juros);
-          saldoDevedor = Math.max(0, saldoDevedor - principal);
+        const term = przEst;
+        const isSpecialCoef =
+          (term === 12 && (Math.abs(txAm - 0.82) < 0.15 || txAm < 1.0)) ||
+          (term === 24 && (Math.abs(txAm - 0.96) < 0.15 || txAm < 1.0));
+
+        const rateForAmort = isSpecialCoef ? 0.05 : (txAm > 0 ? txAm / 100 : 0.0165);
+        const originalPrazo = 96;
+
+        let parcela = pmMedia;
+        if (isSpecialCoef) {
+          if (term === 24) {
+            parcela = pmMedia / 1.0816;
+          } else if (term === 12) {
+            parcela = pmMedia / 2.0289;
+          }
+        }
+
+        const totalExtraAmort = Math.max(0, originalPrazo - term);
+        const extraPerMonth = term > 0 ? totalExtraAmort / term : 0;
+
+        let currentBackInstallment = originalPrazo;
+
+        for (let m = 1; m <= term; m++) {
+          let numAmortThisMonth = 0;
+
+          if (isSpecialCoef && term === 24) {
+            if (m >= 1 && m <= 8) {
+              numAmortThisMonth = 7;
+            } else if (m >= 9 && m <= 16) {
+              numAmortThisMonth = 2;
+            } else {
+              numAmortThisMonth = currentBackInstallment - term;
+            }
+            numAmortThisMonth = Math.min(numAmortThisMonth, currentBackInstallment - term);
+          } else if (isSpecialCoef && term === 12) {
+            if (m >= 1 && m <= 4) {
+              numAmortThisMonth = 10;
+            } else if (m === 5 || m === 6) {
+              numAmortThisMonth = 9;
+            } else if (m === 7) {
+              numAmortThisMonth = 8;
+            } else if (m === 8) {
+              numAmortThisMonth = 6;
+            } else if (m >= 9 && m <= 12) {
+              numAmortThisMonth = 3;
+            } else {
+              numAmortThisMonth = currentBackInstallment - term;
+            }
+            numAmortThisMonth = Math.min(numAmortThisMonth, currentBackInstallment - term);
+          } else {
+            numAmortThisMonth = Math.min(
+              Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
+              currentBackInstallment - term
+            );
+          }
+
+          const amortNums: number[] = [];
+          const amortVals: string[] = [];
+          let sumAmortValsThisMonth = 0;
+
+          for (let k = 0; k < numAmortThisMonth && currentBackInstallment > term; k++) {
+            amortNums.push(currentBackInstallment);
+            const valAmort = Math.max(0, parcela / Math.pow(1 + rateForAmort, currentBackInstallment));
+            sumAmortValsThisMonth += valAmort;
+            amortVals.push(formatBRL(valAmort));
+            currentBackInstallment--;
+          }
+
           const isEven = m % 2 === 0;
           const rowBg = isEven ? "#F8FAFC" : "#FFFFFF";
+
+          const amortNumsStr = amortNums.length > 0 ? amortNums.join(", ") : "-";
+          const amortValsStr = amortVals.length > 0 ? amortVals.join("<br/>") : formatBRL(0);
+          const totalMes = parcela + sumAmortValsThisMonth;
+
           rowsHtml += `
             <tr style="background-color: ${rowBg}; border-bottom: 1px solid #E2E8F0;">
-              <td style="padding: 8px 12px; text-align: center; font-weight: bold; color: #1E293B;">${m}</td>
-              <td style="padding: 8px 12px; text-align: center; font-weight: bold; color: #1E293B;">${formatBRL(pmMedia)}</td>
-              <td style="padding: 8px 12px; text-align: center; font-weight: bold; color: #475569;">${formatBRL(principal)}</td>
-              <td style="padding: 8px 12px; text-align: center; font-weight: bold; color: #1E293B;">${formatBRL(juros)}</td>
-              <td style="padding: 8px 12px; text-align: right; font-weight: bold; color: #1E293B;">${formatBRL(saldoDevedor)}</td>
+              <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${m}</td>
+              <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(parcela)}</td>
+              <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #475569; vertical-align: top;">${amortNumsStr}</td>
+              <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${amortValsStr}</td>
+              <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(totalMes)}</td>
             </tr>
           `;
         }
@@ -400,7 +516,7 @@ export default function SearchClientPage() {
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Proposta Comercial - ${client}</title>
+            <title>Proposta Comercial - ${clientName}</title>
             <style>
               @page { size: A4; margin: 0mm; }
               * { font-family: Arial, Helvetica, sans-serif !important; box-sizing: border-box; }
@@ -431,23 +547,42 @@ export default function SearchClientPage() {
                 </div>
               </div>
 
-              <div style="background-color: #162546 !important; border-radius: 18px; padding: 20px 24px; color: #FFF; display: flex; justify-content: space-between; align-items: center;">
+              <div style="background-color: #162546 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; border-radius: 18px; padding: 20px 24px; color: #FFF; display: flex; justify-content: space-between; align-items: center; position: relative; overflow: visible;">
                 <div style="display: flex; align-items: center; gap: 16px;">
-                  <div style="width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid #F4C600; display: flex; align-items: center; justify-content: center; background: rgba(244, 198, 0, 0.1); color: #F4C600; font-weight: 900; font-size: 15px;">
-                    👤
+                  <div style="width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid #F4C600; display: flex; align-items: center; justify-content: center; background: rgba(244, 198, 0, 0.1); color: #F4C600; font-weight: 900; font-size: 15px; flex-shrink: 0;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F4C600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
                   </div>
                   <div style="display: flex; flex-direction: column; text-align: left;">
-                    <div style="font-weight: 900; font-size: 14px; text-transform: uppercase; color: #FFFFFF;">${client}</div>
-                    <div style="font-size: 11px; color: #94A3B8; margin-top: 3px; font-weight: 600;">
-                      ${cpf ? 'CPF: ' + formatCPF(cpf) : ''}
+                    <div style="font-weight: 900; font-size: 14px; text-transform: uppercase; color: #FFFFFF; letter-spacing: 0.5px; line-height: 1.2;">${clientName}</div>
+                    <div style="font-size: 11px; color: #94A3B8; margin-top: 3px; font-weight: 600; display: flex; flex-direction: column; gap: 2px;">
+                      <span class="cpf-display">${cpf ? 'CPF: ' + formatMaskedCPF(cpf) : ''}</span>
+                      ${orgao ? `<span class="orgao-display">Órgão: ${orgao}</span>` : ''}
                     </div>
                   </div>
                 </div>
 
                 <div style="display: flex; flex-direction: column; text-align: right; align-items: flex-end; gap: 4px; border-left: 1px solid rgba(255, 255, 255, 0.15); padding-left: 20px;">
-                  <div style="color: #F4C600; font-weight: 900; font-size: 13px; text-transform: uppercase;">${consultant}</div>
-                  ${email ? `<div style="color: #E2E8F0; font-size: 11px;">${email}</div>` : ''}
-                  ${phone ? `<div style="color: #E2E8F0; font-size: 11px;">${phone}</div>` : ''}
+                  <div style="color: #F4C600; font-weight: 900; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">${consultant}</div>
+                  ${email ? `
+                  <div style="display: flex; align-items: center; gap: 6px; color: #E2E8F0; font-size: 11px; font-weight: 500;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F4C600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect width="20" height="16" x="2" y="4" rx="2"></rect>
+                      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                    </svg>
+                    <span>${email}</span>
+                  </div>
+                  ` : ''}
+                  ${phone ? `
+                  <div style="display: flex; align-items: center; gap: 6px; color: #E2E8F0; font-size: 11px; font-weight: 500;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F4C600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                    </svg>
+                    <span>${phone}</span>
+                  </div>
+                  ` : ''}
                 </div>
               </div>
             </div>
@@ -455,15 +590,15 @@ export default function SearchClientPage() {
             <div class="metrics-grid">
               <div class="metric-card">
                 <div class="metric-label">VALOR DO CONTRATO</div>
-                <div class="metric-value metric-highlight">${formatBRL(vContrato)}</div>
+                <div class="metric-value">${formatBRL(vContrato)}</div>
               </div>
               <div class="metric-card">
                 <div class="metric-label">PRAZO ESTRATÉGIA</div>
-                <div class="metric-value">${przEst}x</div>
+                <div class="metric-value metric-highlight">${przEst} parcelas</div>
               </div>
               <div class="metric-card">
                 <div class="metric-label">PARCELA MÉDIA</div>
-                <div class="metric-value metric-highlight">${formatBRL(pmMedia)}</div>
+                <div class="metric-value">${formatBRL(pmMedia)}</div>
               </div>
               <div class="metric-card">
                 <div class="metric-label">TAXA A.M.</div>
@@ -476,11 +611,11 @@ export default function SearchClientPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Nº PMT</th>
-                    <th>PARCELA</th>
-                    <th>PRINCIPAL</th>
-                    <th>JUROS</th>
-                    <th style="text-align: right;">SALDO DEVEDOR</th>
+                    <th>PRAZO</th>
+                    <th>FIXA EM FOLHA</th>
+                    <th>AMORTIZADAS</th>
+                    <th>VALOR AMORTIZAÇÕES</th>
+                    <th>TOTAL MÊS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4446,23 +4581,13 @@ export default function SearchClientPage() {
                               {/* Margem Empréstimo Total */}
                               {(() => {
                                 const val = Number(regObj.margem_emprestimo_total) || 0;
-                                const isPositive = val > 0;
                                 return (
-                                  <div className={cn(
-                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
-                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
-                                  )}>
+                                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200">
                                     <div>
-                                      <p className={cn(
-                                        "text-[9px] font-bold uppercase tracking-widest",
-                                        isPositive ? "text-emerald-700/60" : "text-red-700/60"
-                                      )}>
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                                         Margem Empréstimo Total
                                       </p>
-                                      <p className={cn(
-                                        "text-lg font-black tracking-tight leading-none mt-1",
-                                        isPositive ? "text-emerald-950" : "text-red-950"
-                                      )}>
+                                      <p className="text-lg font-black text-slate-900 tracking-tight leading-none mt-1">
                                         {formatCurrency(val)}
                                       </p>
                                     </div>
