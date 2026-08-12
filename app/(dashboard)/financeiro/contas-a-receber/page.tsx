@@ -255,7 +255,7 @@ const EditableAmountCell = ({ initialValue, onSave, id, textClassName, confirmNe
           }}
         >
           <span className={cn("text-[11px] font-bold group-hover/cell:text-primary transition-colors", textClassName || "text-slate-700")}>
-            R$ {initialValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            R$ {initialValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
           <Edit2 className="w-3 h-3 text-slate-400 opacity-0 group-hover/cell:opacity-100 transition-opacity ml-1" />
         </div>
@@ -287,11 +287,11 @@ const EditableAmountCell = ({ initialValue, onSave, id, textClassName, confirmNe
               <div className="bg-slate-50 border border-slate-150 rounded-xl p-4 space-y-2">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-semibold text-slate-400">Valor Anterior:</span>
-                  <span className="font-extrabold text-slate-700">R$ {initialValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="font-extrabold text-slate-700">R$ {initialValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs border-t border-slate-200/60 pt-2">
                   <span className="font-semibold text-slate-400">Novo Valor:</span>
-                  <span className="font-black text-amber-600 text-sm">R$ {pendingValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="font-black text-amber-600 text-sm">R$ {pendingValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
 
@@ -381,7 +381,7 @@ const EditablePercentCell = ({ initialValue, onSave, id, textClassName }: Editab
     )
   }
 
-  const displayValue = initialValue !== undefined && initialValue !== null ? `${initialValue.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} %` : "0,00 %"
+  const displayValue = initialValue !== undefined && initialValue !== null ? `${initialValue.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %` : "0 %"
 
   return (
     <div 
@@ -2485,7 +2485,7 @@ export default function ContasAReceberPage() {
                 <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">VALOR DAS OPERAÇÕES</p>
               </div>
               <p className="text-[17px] font-black text-slate-800 tracking-tight mb-3">
-                R$ {totalOperationSum.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                R$ {totalOperationSum.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2522,7 +2522,7 @@ export default function ContasAReceberPage() {
                 <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">COMISSÃO</p>
               </div>
               <p className="text-[17px] font-black text-emerald-600 tracking-tight mb-3">
-                R$ {estimatedComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                R$ {estimatedComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2559,7 +2559,7 @@ export default function ContasAReceberPage() {
                 <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">COMISSÃO RECEBIDA</p>
               </div>
               <p className="text-[17px] font-black text-emerald-700 tracking-tight mb-3">
-                R$ {receivedComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                R$ {receivedComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2596,7 +2596,7 @@ export default function ContasAReceberPage() {
                 <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">COMISSÃO A RECEBER</p>
               </div>
               <p className="text-[17px] font-black text-sky-600 tracking-tight mb-3">
-                R$ {toReceiveComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                R$ {toReceiveComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2633,7 +2633,7 @@ export default function ContasAReceberPage() {
                 <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">ESTORNO</p>
               </div>
               <p className="text-[17px] font-black text-amber-700 tracking-tight mb-3">
-                R$ {estornadoComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                R$ {estornadoComissions.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2670,7 +2670,7 @@ export default function ContasAReceberPage() {
                 <p className="text-[9px] font-bold uppercase h-5 leading-tight tracking-widest text-slate-600">CONTA CORRENTE</p>
               </div>
               <p className="text-[17px] font-black text-indigo-700 tracking-tight mb-3">
-                R$ {contaCorrenteValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                R$ {contaCorrenteValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2740,7 +2740,7 @@ export default function ContasAReceberPage() {
                 </div>
                 <div className="text-right">
                   <span className="text-base font-black text-slate-900 block">
-                    R$ {getFolderMainVal(activeCardFolder).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    R$ {getFolderMainVal(activeCardFolder).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                   <span className={cn("text-[10px] font-extrabold block mt-0.5", !showPJSubfolder ? "text-emerald-600" : "text-slate-400")}>
                     {!showPJSubfolder ? "✓ Filtro Ativo na Tabela" : "Clique para aplicar"}
@@ -2773,7 +2773,7 @@ export default function ContasAReceberPage() {
                 </div>
                 <div className="text-right">
                   <span className="text-base font-black text-amber-700 block">
-                    R$ {getFolderPJVal(activeCardFolder).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    R$ {getFolderPJVal(activeCardFolder).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                   <span className={cn("text-[10px] font-extrabold block mt-0.5", showPJSubfolder ? "text-amber-700" : "text-slate-400")}>
                     {showPJSubfolder ? "✓ Filtro Ativo na Tabela" : "Clique para aplicar"}
@@ -3504,7 +3504,7 @@ export default function ContasAReceberPage() {
                 <div>
                   <h4 className="text-xs font-black text-slate-700 uppercase">{statusTargetProposal.nome_cliente}</h4>
                   <p className="text-[10px] text-slate-400 font-bold mt-0.5">CPF: {statusTargetProposal.cliente_cpf} | ID Lead: {statusTargetProposal.id_lead}</p>
-                  <p className="text-[10px] text-indigo-600 font-black mt-1 uppercase">VALOR OPERAÇÃO: R$ {(statusTargetProposal.valor_operacao || statusTargetProposal.valor_cliente || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+                  <p className="text-[10px] text-indigo-600 font-black mt-1 uppercase">VALOR OPERAÇÃO: R$ {(statusTargetProposal.valor_operacao || statusTargetProposal.valor_cliente || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
               </div>
 
