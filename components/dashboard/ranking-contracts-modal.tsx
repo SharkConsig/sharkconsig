@@ -13,6 +13,7 @@ export interface RankingContractModalParams {
   categoryLabel: string
   startDate?: string
   endDate?: string
+  isPJ?: boolean
 }
 
 interface RankingContractsModalProps {
@@ -34,6 +35,39 @@ const IN_PROCESS_STATUSES = [
   "COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL"
 ]
 
+const parseDateSafe = (dateVal?: string | Date | null) => {
+  if (!dateVal) return null
+  if (dateVal instanceof Date) return dateVal
+  if (typeof dateVal === 'string') {
+    const trimmed = dateVal.trim()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [y, m, d] = trimmed.split('-').map(Number)
+      return new Date(y, m - 1, d, 12, 0, 0)
+    }
+    const parsed = new Date(trimmed.replace(' ', 'T'))
+    if (!isNaN(parsed.getTime())) return parsed
+  }
+  const d = new Date(dateVal)
+  return isNaN(d.getTime()) ? null : d
+}
+
+function parseVal(val: any): number {
+  if (val === null || val === undefined || val === "") return 0
+  if (typeof val === "number") return isNaN(val) ? 0 : val
+  if (typeof val === "string") {
+    const cleaned = val.replace(/[R$\s]/g, "")
+    if (cleaned.includes(",")) {
+      const normalized = cleaned.replace(/\./g, "").replace(",", ".")
+      const num = parseFloat(normalized)
+      return isNaN(num) ? 0 : num
+    } else {
+      const num = parseFloat(cleaned)
+      return isNaN(num) ? 0 : num
+    }
+  }
+  return 0
+}
+
 export function RankingContractsModal({ isOpen, onClose, params }: RankingContractsModalProps) {
   const [proposals, setProposals] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -45,16 +79,52 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
     if (!u) return false
     const regime = (u.regime_contratacao || "").trim().toLowerCase()
     const func = (u.funcao || "").trim().toLowerCase()
+    const role = (u.role || "").trim().toLowerCase()
     if (func === "desenvolvedor" || func === "developer") return false
-    return regime === "pj" || func === "pj"
+    return regime === "pj" || func === "pj" || role === "pj" || func.includes("pj") || role.includes("pj") || regime.includes("pj")
   }
 
   const isSelectedPersonPJ = useMemo(() => {
-    if (selectedPersonUser) {
-      return checkUserPJ(selectedPersonUser)
+    if (params?.isPJ === true) return true
+    if (params?.isPJ === false) return false
+    // 1. Direct user object check
+    if (selectedPersonUser && checkUserPJ(selectedPersonUser)) {
+      return true
+    }
+    // 2. Name match in usersMap
+    if (params?.personName) {
+      const cleanName = params.personName.trim().toLowerCase()
+      const matched = Array.from(usersMap.values()).find(
+        (u) => (u.nome || "").trim().toLowerCase() === cleanName
+      )
+      if (matched && checkUserPJ(matched)) {
+        return true
+      }
+    }
+    // 3. Category label check if contains PJ
+    if (params?.categoryLabel?.toLowerCase().includes("pj")) {
+      return true
+    }
+    // 4. Check if proposals belong to a PJ user
+    if (proposals.length > 0) {
+      const isPJFromProposals = proposals.some((p) => {
+        const targetUserId = (p.estagiario_colaborador_id && p.estagiario_colaborador_id.trim() !== "")
+          ? p.estagiario_colaborador_id
+          : p.corretor_id
+        if (targetUserId && usersMap.has(targetUserId)) {
+          if (checkUserPJ(usersMap.get(targetUserId))) return true
+        }
+        const cName = (p.estagiario_colaborador_nome || p.nome_corretor || "").trim().toLowerCase()
+        if (cName) {
+          const match = Array.from(usersMap.values()).find((u) => (u.nome || "").trim().toLowerCase() === cName)
+          if (match && checkUserPJ(match)) return true
+        }
+        return false
+      })
+      if (isPJFromProposals) return true
     }
     return false
-  }, [selectedPersonUser])
+  }, [params?.isPJ, selectedPersonUser, params?.personName, params?.categoryLabel, usersMap, proposals])
 
   useEffect(() => {
     if (!isOpen || !params) {
@@ -70,7 +140,7 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
         // Fetch users to accurately distinguish Corretores PJ vs CLT/Supervisor/Estágio
         const { data: usersData } = await supabase
           .from("usuarios")
-          .select("id, regime_contratacao, funcao, nome")
+          .select("id, regime_contratacao, funcao, role, nome")
 
         const newUsersMap = new Map<string, any>()
         if (usersData) {
@@ -79,11 +149,17 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
         setUsersMap(newUsersMap)
 
         const cleanId = (params.personId || "").trim()
+        const cleanNameLower = (params.personName || "").trim().toLowerCase()
+        let foundUser = null
         if (cleanId && cleanId !== "ESTAGIL_AND_PJ") {
-          setSelectedPersonUser(newUsersMap.get(cleanId) || null)
-        } else {
-          setSelectedPersonUser(null)
+          foundUser = newUsersMap.get(cleanId) || null
         }
+        if (!foundUser && cleanNameLower) {
+          foundUser = Array.from(newUsersMap.values()).find(
+            (u) => (u.nome || "").trim().toLowerCase() === cleanNameLower
+          ) || null
+        }
+        setSelectedPersonUser(foundUser)
 
         let query = supabase
           .from("propostas")
@@ -92,12 +168,8 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
         // Status Filter
         if (params.category === "paid") {
           query = query.in("status", PAID_STATUSES)
-        } else if (params.category === "in_process") {
-          query = query.in("status", IN_PROCESS_STATUSES)
-        } else if (params.category === "today") {
-          const now = new Date()
-          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
-          query = query.gte("created_at", startOfToday.toISOString()).neq("status", "CANCELADO")
+        } else {
+          query = query.neq("status", "CANCELADO")
         }
 
         // Person Filter
@@ -137,42 +209,59 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
             if (!str) return null
             const p = str.split("-")
             if (p.length === 3) return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 0, 0, 0, 0)
-            const d = new Date(str)
-            return isNaN(d.getTime()) ? null : d
+            const d = parseDateSafe(str)
+            if (d) {
+              const copy = new Date(d)
+              copy.setHours(0, 0, 0, 0)
+              return copy
+            }
+            return null
           }
 
           const parseEnd = (str?: string) => {
             if (!str) return null
             const p = str.split("-")
             if (p.length === 3) return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 23, 59, 59, 999)
-            const d = new Date(str)
-            return isNaN(d.getTime()) ? null : d
+            const d = parseDateSafe(str)
+            if (d) {
+              const copy = new Date(d)
+              copy.setHours(23, 59, 59, 999)
+              return copy
+            }
+            return null
           }
 
           const now = new Date()
           const rangeStart = parseStart(params.startDate) || new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
           const rangeEnd = parseEnd(params.endDate) || new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
-          if (params.category === "paid") {
-            results = results.filter((p) => {
-              let effectiveDate = p.updated_at ? new Date(p.updated_at) : new Date(p.created_at || Date.now())
-              if (p.data_pago_cliente) {
-                const parsed = new Date(p.data_pago_cliente)
-                if (!isNaN(parsed.getTime())) {
-                  effectiveDate = parsed
-                }
-              }
-              return effectiveDate >= rangeStart && effectiveDate <= rangeEnd
-            })
-          } else if (params.category === "today") {
-            const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-            const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+          const startOfMonth = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1, 0, 0, 0, 0)
+          const targetDayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+          const targetDayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
 
-            results = results.filter((p) => {
-              const createdDate = p.created_at ? new Date(p.created_at) : new Date()
-              return createdDate >= startOfToday && createdDate <= endOfToday
-            })
-          }
+          results = results.filter((p) => {
+            const createdDate = parseDateSafe(p.created_at) || new Date()
+            const updatedDate = parseDateSafe(p.updated_at) || new Date()
+            const effectivePaymentDate = p.data_pago_cliente ? (parseDateSafe(p.data_pago_cliente) || updatedDate) : updatedDate
+
+            const isPaid = PAID_STATUSES.includes(p.status)
+            const isInProcess = IN_PROCESS_STATUSES.includes(p.status)
+            const isCancelled = p.status === "CANCELADO"
+
+            const isRetroactivePayment = isPaid && (effectivePaymentDate < startOfMonth)
+            const isTodayCreated = createdDate >= targetDayStart && createdDate <= targetDayEnd
+            const isDigitadaHoje = isTodayCreated && !isCancelled && !isRetroactivePayment && !isPaid
+
+            if (params.category === "paid") {
+              return isPaid && (effectivePaymentDate >= rangeStart && effectivePaymentDate <= rangeEnd)
+            } else if (params.category === "in_process") {
+              return isInProcess || isDigitadaHoje
+            } else if (params.category === "today") {
+              return isTodayCreated && !isCancelled && !isRetroactivePayment
+            }
+
+            return true
+          })
 
           setProposals(results)
         }
@@ -186,37 +275,24 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
     fetchContracts()
   }, [isOpen, params])
 
-  const parseVal = (val: any): number => {
-    if (val === null || val === undefined || val === "") return 0
-    if (typeof val === "number") return isNaN(val) ? 0 : val
-    if (typeof val === "string") {
-      const cleaned = val.replace(/[R$\s]/g, "")
-      if (cleaned.includes(",")) {
-        const normalized = cleaned.replace(/\./g, "").replace(",", ".")
-        const num = parseFloat(normalized)
-        return isNaN(num) ? 0 : num
-      } else {
-        const num = parseFloat(cleaned)
-        return isNaN(num) ? 0 : num
-      }
-    }
-    return 0
-  }
-
   const getProposalValue = (p: any): number => {
     let isRowPJ = isSelectedPersonPJ
-    if (!selectedPersonUser) {
-      const targetUserId = (p.estagiario_colaborador_id && p.estagiario_colaborador_id.trim() !== "")
-        ? p.estagiario_colaborador_id
-        : p.corretor_id
-      if (targetUserId && usersMap.has(targetUserId)) {
-        isRowPJ = checkUserPJ(usersMap.get(targetUserId))
+    if (!isRowPJ) {
+      if (!params?.personId || params.personId === "ESTAGIL_AND_PJ") {
+        const targetUserId = (p.estagiario_colaborador_id && p.estagiario_colaborador_id.trim() !== "")
+          ? p.estagiario_colaborador_id
+          : p.corretor_id
+        if (targetUserId && usersMap.has(targetUserId)) {
+          isRowPJ = checkUserPJ(usersMap.get(targetUserId))
+        }
       }
     }
 
     if (isRowPJ) {
       // Corretores PJ: VALOR OPERAÇÃO
-      return parseVal(p.valor_operacao) || parseVal(p.valor_cliente) || parseVal(p.valor_cliente_operacional) || parseVal(p.valor_base) || 0
+      const opVal = parseVal(p.valor_operacao) || parseVal(p.valor_cliente) || parseVal(p.valor_cliente_operacional) || parseVal(p.valor_base)
+      if (opVal > 0) return opVal
+      return parseVal(p.valor_producao) || 0
     } else {
       // Corretores internos (CLT, Supervisor) e estagiários: VALOR PRODUÇÃO
       const prodVal = parseVal(p.valor_producao)

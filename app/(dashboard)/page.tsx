@@ -800,7 +800,7 @@ export default function DashboardPage() {
       }
 
       if (isCorretor) {
-        userPaidQuery = userPaidQuery.eq("corretor_id", perfil?.id)
+        userPaidQuery = userPaidQuery.or(`corretor_id.eq.${perfil?.id},estagiario_colaborador_id.eq.${perfil?.id}`)
       }
 
       const userPaid = await fetchAll(userPaidQuery)
@@ -929,7 +929,7 @@ export default function DashboardPage() {
             .select("corretor_id, valor_producao, valor_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
 
           if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos)) {
-            teamProposalsQuery = teamProposalsQuery.in("corretor_id", teamIds)
+            teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${teamIds.join(",")}),estagiario_colaborador_id.in.(${teamIds.join(",")})`)
           }
 
           // Ensure we always fetch at least the full current month for MTD calculations, and the week and month of the selected filter to avoid missing entries
@@ -1006,8 +1006,9 @@ export default function DashboardPage() {
           if (!u) return false;
           const regime = (u.regime_contratacao || "").trim().toLowerCase();
           const func = (u.funcao || "").trim().toLowerCase();
+          const role = (u.role || "").trim().toLowerCase();
           if (func === 'desenvolvedor' || func === 'developer') return false;
-          return regime === 'pj' || func === 'pj';
+          return regime === 'pj' || func === 'pj' || role === 'pj' || func.includes('corretor pj') || role.includes('corretor pj');
         }
 
         // Initialize everyone stable with 0
@@ -1040,7 +1041,8 @@ export default function DashboardPage() {
           estagiario_colaborador_nome?: string
         }) => {
           const numericVal = isNaN(parseCurrency(curr.valor_producao)) ? 0 : parseCurrency(curr.valor_producao)
-          const numericValOp = isNaN(parseCurrency(curr.valor_operacao)) ? 0 : parseCurrency(curr.valor_operacao)
+          const rawOpVal = (curr.valor_operacao !== null && curr.valor_operacao !== undefined && curr.valor_operacao !== "") ? curr.valor_operacao : curr.valor_producao
+          const numericValOp = isNaN(parseCurrency(rawOpVal)) || parseCurrency(rawOpVal) === 0 ? numericVal : parseCurrency(rawOpVal)
           const brokerId = curr.corretor_id || ""
 
           const brokerUser = allUsers.find((u: User) => u.id === brokerId)
@@ -1048,17 +1050,14 @@ export default function DashboardPage() {
                            brokerUser?.funcao === 'Estagio' || 
                            brokerUser?.funcao === 'Processo Seletivo' || 
                            brokerUser?.funcao === 'PROCESSO SELETIVO'
-          // Individual-first attribution: no rerouting interns to supervisors (use collaborator ID if present)
-          const targetBrokerIdForMetrics = (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "")
-            ? curr.estagiario_colaborador_id
-            : brokerId
+          // List of beneficiary user IDs that should receive credit for this proposal in brokerMetrics:
+          // Both the primary broker (brokerId) and the intern/collaborator (if present) get full credit.
+          const beneficiaryIds: string[] = []
+          if (brokerId) beneficiaryIds.push(brokerId)
+          if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== brokerId) {
+            beneficiaryIds.push(curr.estagiario_colaborador_id.trim())
+          }
           const targetBrokerIdForColabs = brokerId
-
-          const targetUserForMetrics = allUsers.find((u: User) => u.id === targetBrokerIdForMetrics)
-          const targetUserIsPJ = checkUserPJ(targetUserForMetrics)
-
-          // For PJ collaborators, metric value is based on valor_operacao. Otherwise, valor_producao.
-          const metricVal = targetUserIsPJ ? numericValOp : numericVal
           
           const createdDate = parseDateSafe(curr.created_at) || new Date(curr.created_at)
           const updatedDate = parseDateSafe(curr.updated_at) || new Date(curr.updated_at)
@@ -1096,7 +1095,7 @@ export default function DashboardPage() {
 
           if (isPaid && isMTDPaid) {
             teamMTDTotal += numericVal
-            if (brokerId === perfil?.id) {
+            if (beneficiaryIds.includes(perfil?.id || '')) {
               userMTDTotal += numericVal
             }
           }
@@ -1105,10 +1104,15 @@ export default function DashboardPage() {
             teamTotal += numericVal
             if (isTodayPaid) teamDailyTotal += numericVal
             
-            if (brokerMetrics[targetBrokerIdForMetrics]) {
-              brokerMetrics[targetBrokerIdForMetrics].totalPaid += metricVal
-              brokerMetrics[targetBrokerIdForMetrics].countPaid += 1
-            }
+            beneficiaryIds.forEach((bId) => {
+              if (brokerMetrics[bId]) {
+                const bUser = allUsers.find((u: User) => u.id === bId)
+                const bIsPJ = checkUserPJ(bUser)
+                const bVal = bIsPJ ? numericValOp : numericVal
+                brokerMetrics[bId].totalPaid += bVal
+                brokerMetrics[bId].countPaid += 1
+              }
+            })
           }
 
           if (isEffectiveInProcess) {
@@ -1118,10 +1122,15 @@ export default function DashboardPage() {
               teamPendingInconsistencyValueCalc += numericVal
               teamPendingInconsistencyCountCalc += 1
             }
-            if (brokerMetrics[targetBrokerIdForMetrics]) {
-              brokerMetrics[targetBrokerIdForMetrics].totalInProcess += metricVal
-              brokerMetrics[targetBrokerIdForMetrics].countInProcess += 1
-            }
+            beneficiaryIds.forEach((bId) => {
+              if (brokerMetrics[bId]) {
+                const bUser = allUsers.find((u: User) => u.id === bId)
+                const bIsPJ = checkUserPJ(bUser)
+                const bVal = bIsPJ ? numericValOp : numericVal
+                brokerMetrics[bId].totalInProcess += bVal
+                brokerMetrics[bId].countInProcess += 1
+              }
+            })
           }
 
           if (isOpInProcess) {
@@ -1132,10 +1141,15 @@ export default function DashboardPage() {
           if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
             teamCreatedTodayValue += numericVal
             teamCreatedTodayCount += 1
-            if (brokerMetrics[targetBrokerIdForMetrics]) {
-              brokerMetrics[targetBrokerIdForMetrics].totalToday += metricVal
-              brokerMetrics[targetBrokerIdForMetrics].countToday += 1
-            }
+            beneficiaryIds.forEach((bId) => {
+              if (brokerMetrics[bId]) {
+                const bUser = allUsers.find((u: User) => u.id === bId)
+                const bIsPJ = checkUserPJ(bUser)
+                const bVal = bIsPJ ? numericValOp : numericVal
+                brokerMetrics[bId].totalToday += bVal
+                brokerMetrics[bId].countToday += 1
+              }
+            })
           }
 
           if (isThisWeekCreated && !isCancelled && !isRetroactivePayment) {
@@ -1221,8 +1235,9 @@ export default function DashboardPage() {
         const isUserPJ = (u: User) => {
           const regime = (u.regime_contratacao || "").trim().toLowerCase();
           const func = (u.funcao || "").trim().toLowerCase();
+          const role = (u.role || "").trim().toLowerCase();
           if (func === 'desenvolvedor' || func === 'developer') return false;
-          return regime === 'pj' || func === 'pj';
+          return regime === 'pj' || func === 'pj' || role === 'pj' || func.includes('corretor pj') || role.includes('corretor pj');
         }
 
         // Helper to check for Intern regime or funcao
