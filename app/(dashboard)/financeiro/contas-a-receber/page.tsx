@@ -876,7 +876,7 @@ export default function ContasAReceberPage() {
     try {
       const proposal = proposals.find(p => p.id_lead === idLead)
       if (proposal) {
-        const valOp = (proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
+        const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
         const dbValue = value !== undefined && !isNaN(value) ? value : null
         const dbValor = dbValue !== null ? (valOp * dbValue) / 100 : null
 
@@ -895,8 +895,8 @@ export default function ContasAReceberPage() {
           // Update local proposal items state to reflect saved commission fields
           setProposals(prev => prev.map(p => p.id_lead === idLead ? {
             ...p,
-            comissao_banco_porcentagem: dbValue,
-            comissao_banco_valor: dbValor
+            comissao_banco_porcentagem: dbValue !== null ? dbValue : undefined,
+            comissao_banco_valor: dbValor !== null ? dbValor : undefined
           } : p))
           toast.success("Comissão (%) atualizada com sucesso!")
         }
@@ -924,12 +924,29 @@ export default function ContasAReceberPage() {
     try {
       const proposal = proposals.find(p => p.id_lead === idLead)
       if (proposal) {
+        const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
         const dbValue = value !== undefined && !isNaN(value) ? value : null
+        let dbPercent: number | null = null
+        if (dbValue !== null && valOp > 0) {
+          dbPercent = (dbValue / valOp) * 100
+          dbPercent = Math.round(dbPercent * 10000) / 10000
+        }
+
+        if (dbPercent !== null) {
+          setCustomPjCommissionPercents(prev => {
+            const updated = { ...prev, [idLead]: dbPercent! }
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem("receber_custom_pj_commission_percents", JSON.stringify(updated))
+            }
+            return updated
+          })
+        }
 
         const { error } = await supabase
           .from("propostas")
           .update({
-            valor_producao: dbValue
+            valor_producao: dbValue,
+            comissao_corretor_porcentagem: dbPercent
           })
           .eq("id_lead", idLead)
 
@@ -939,9 +956,10 @@ export default function ContasAReceberPage() {
         } else {
           setProposals(prev => prev.map(p => p.id_lead === idLead ? {
             ...p,
-            valor_producao: dbValue === null ? undefined : dbValue
+            valor_producao: dbValue === null ? undefined : dbValue,
+            comissao_corretor_porcentagem: dbPercent === null ? undefined : dbPercent
           } : p))
-          toast.success("Comissão PJ atualizada com sucesso!")
+          toast.success("Comissão PJ ($) atualizada com sucesso!")
         }
       }
     } catch (err) {
@@ -967,23 +985,27 @@ export default function ContasAReceberPage() {
     try {
       const proposal = proposals.find(p => p.id_lead === idLead)
       if (proposal) {
-        const valOp = (proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
+        const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
         const dbPercent = value !== undefined && !isNaN(value) ? value : null
         const dbValor = dbPercent !== null && valOp > 0 ? (valOp * dbPercent) / 100 : null
 
-        if (dbValor !== null) {
-          setCustomPjCommissionValues(prev => {
-            const updated = { ...prev, [idLead]: dbValor }
-            if (typeof window !== "undefined") {
-              window.localStorage.setItem("receber_custom_pj_commission_values", JSON.stringify(updated))
-            }
-            return updated
-          })
-        }
+        setCustomPjCommissionValues(prev => {
+          const updated = { ...prev }
+          if (dbValor !== null) {
+            updated[idLead] = dbValor
+          } else {
+            delete updated[idLead]
+          }
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("receber_custom_pj_commission_values", JSON.stringify(updated))
+          }
+          return updated
+        })
 
         const { error } = await supabase
           .from("propostas")
           .update({
+            comissao_corretor_porcentagem: dbPercent,
             valor_producao: dbValor
           })
           .eq("id_lead", idLead)
@@ -994,6 +1016,7 @@ export default function ContasAReceberPage() {
         } else {
           setProposals(prev => prev.map(p => p.id_lead === idLead ? {
             ...p,
+            comissao_corretor_porcentagem: dbPercent === null ? undefined : dbPercent,
             valor_producao: dbValor === null ? undefined : dbValor
           } : p))
           toast.success("Comissão PJ (%) atualizada com sucesso!")
@@ -1103,10 +1126,11 @@ export default function ContasAReceberPage() {
   const [statusObsOperacional, setObsOperacional] = useState("")
 
   const getCommissionPercentage = useCallback((proposal: Proposal) => {
+    if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && !isNaN(Number(proposal.comissao_banco_porcentagem))) {
+      return Number(proposal.comissao_banco_porcentagem);
+    }
+
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
-      if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
-        return Number(proposal.comissao_banco_porcentagem);
-      }
       return undefined;
     }
 
@@ -1331,6 +1355,10 @@ export default function ContasAReceberPage() {
   }, [pjUsersMap, pjUserNames])
 
   const getPJCommissionPercentage = useCallback((proposal: Proposal) => {
+    if (proposal.comissao_corretor_porcentagem !== undefined && proposal.comissao_corretor_porcentagem !== null && !isNaN(Number(proposal.comissao_corretor_porcentagem))) {
+      return Number(proposal.comissao_corretor_porcentagem);
+    }
+
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
       return undefined;
     }
@@ -1564,15 +1592,26 @@ export default function ContasAReceberPage() {
   }, [dbProdutosConfigs, bancosList, perfil?.id]);
 
   const getPJCommissionValue = useCallback((proposal: Proposal) => {
+    if (proposal.id_lead && customPjCommissionValues[proposal.id_lead] !== undefined && customPjCommissionValues[proposal.id_lead] !== null) {
+      return customPjCommissionValues[proposal.id_lead]
+    }
+
     const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
 
-    const pjPercent = getPJCommissionPercentage(proposal)
-    if (pjPercent !== undefined && !isNaN(pjPercent)) {
-      return (valOp * pjPercent) / 100
+    const pjPercent = customPjCommissionPercents[proposal.id_lead] !== undefined 
+      ? customPjCommissionPercents[proposal.id_lead] 
+      : getPJCommissionPercentage(proposal)
+
+    if (pjPercent !== undefined && pjPercent !== null && !isNaN(Number(pjPercent))) {
+      return (valOp * Number(pjPercent)) / 100
+    }
+
+    if (proposal.valor_producao !== undefined && proposal.valor_producao !== null && !isNaN(Number(proposal.valor_producao))) {
+      return Number(proposal.valor_producao)
     }
 
     return 0
-  }, [getPJCommissionPercentage])
+  }, [customPjCommissionValues, customPjCommissionPercents, getPJCommissionPercentage])
 
   const fetchProposals = async () => {
     setIsLoading(true)
@@ -1773,6 +1812,27 @@ export default function ContasAReceberPage() {
       setReceivedProposalIds(finalReceivedIds)
       setReceivedProposalDates(finalReceivedDates)
       setPjPaidProposalIds(finalPjPaidIds)
+
+      const initialCustomComPercents: Record<string, number> = {}
+      const initialCustomPjComPercents: Record<string, number> = {}
+      const initialCustomPjComValues: Record<string, number> = {}
+
+      formattedData.forEach((p: Proposal) => {
+        if (p.comissao_banco_porcentagem !== undefined && p.comissao_banco_porcentagem !== null && !isNaN(Number(p.comissao_banco_porcentagem))) {
+          initialCustomComPercents[p.id_lead] = Number(p.comissao_banco_porcentagem)
+        }
+        if (p.comissao_corretor_porcentagem !== undefined && p.comissao_corretor_porcentagem !== null && !isNaN(Number(p.comissao_corretor_porcentagem))) {
+          initialCustomPjComPercents[p.id_lead] = Number(p.comissao_corretor_porcentagem)
+        }
+        if (p.valor_producao !== undefined && p.valor_producao !== null && !isNaN(Number(p.valor_producao))) {
+          initialCustomPjComValues[p.id_lead] = Number(p.valor_producao)
+        }
+      })
+
+      setCustomCommissionPercents(prev => ({ ...initialCustomComPercents, ...prev }))
+      setCustomPjCommissionPercents(prev => ({ ...initialCustomPjComPercents, ...prev }))
+      setCustomPjCommissionValues(prev => ({ ...initialCustomPjComValues, ...prev }))
+
       setProposals(formattedData)
     } catch (err) {
       console.error("Erro geral contas a receber:", err)
