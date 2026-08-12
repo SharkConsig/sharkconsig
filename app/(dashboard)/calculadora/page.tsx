@@ -1841,7 +1841,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
             </div>
             <div class="metric-card" id="metric-card-prazo">
               <div class="metric-label">${resumoAmortizacao ? 'PRAZO REMANESCENTE' : 'PRAZO ESTRATÉGIA'}</div>
-              <div class="metric-value metric-highlight">${term} parcelas</div>
+              <div class="metric-value metric-highlight">${term} meses</div>
             </div>
             <div class="metric-card" id="metric-card-parcela">
               <div class="metric-label">${resumoAmortizacao ? 'PARCELA' : 'PARCELA MÉDIA'}</div>

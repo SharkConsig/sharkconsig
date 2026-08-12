@@ -368,8 +368,6 @@ export function AdminDashboard({
   const [isFinancialLoading, setIsFinancialLoading] = React.useState(false)
   const [customCommissionPercents, setCustomCommissionPercents] = React.useState<Record<string, number>>({})
   const [customPjCommissionPercents, setCustomPjCommissionPercents] = React.useState<Record<string, number>>({})
-  const [receivedProposalIds, setReceivedProposalIds] = React.useState<Record<string, boolean>>({})
-  const [receivedProposalDates, setReceivedProposalDates] = React.useState<Record<string, string>>({})
   const [compareChartMetric, setCompareChartMetric] = React.useState<'producao' | 'receita'>('producao')
 
   // Load localstorage values on mount
@@ -387,22 +385,6 @@ export function AdminDashboard({
       if (storedPjPercents) {
         try {
           setCustomPjCommissionPercents(JSON.parse(storedPjPercents))
-        } catch (e) {
-          console.error(e)
-        }
-      }
-      const storedIds = window.localStorage.getItem("receber_pago_status_ids")
-      if (storedIds) {
-        try {
-          setReceivedProposalIds(JSON.parse(storedIds))
-        } catch (e) {
-          console.error(e)
-        }
-      }
-      const storedDates = window.localStorage.getItem("receber_pago_dates")
-      if (storedDates) {
-        try {
-          setReceivedProposalDates(JSON.parse(storedDates))
         } catch (e) {
           console.error(e)
         }
@@ -500,41 +482,14 @@ export function AdminDashboard({
     setEndDate(tempEndDate)
   }
 
-  const METADATA_PREFIX = "[FINANCE_METADATA_V1:"
-  const METADATA_SUFFIX = "]"
-
-  const parseProposalNotesAndMetadata = (observacoes: string | undefined): { notes: string; metadata: any } => {
-    if (!observacoes) {
-      return { notes: "", metadata: {} }
-    }
-    const startIndex = observacoes.indexOf(METADATA_PREFIX)
-    if (startIndex === -1) {
-      return { notes: observacoes, metadata: {} }
-    }
-    const endIndex = observacoes.indexOf(METADATA_SUFFIX, startIndex)
-    if (endIndex === -1) {
-      return { notes: observacoes, metadata: {} }
-    }
-    
-    const notes = (observacoes.substring(0, startIndex) + observacoes.substring(endIndex + METADATA_SUFFIX.length)).trim()
-    const metadataStr = observacoes.substring(startIndex + METADATA_PREFIX.length, endIndex)
-    try {
-      const metadata = JSON.parse(metadataStr)
-      return { notes, metadata }
-    } catch (err) {
-      return { notes: observacoes, metadata: {} }
-    }
-  }
-
   const fetchFinancialData = React.useCallback(async () => {
     setIsFinancialLoading(true)
     try {
-      // 1. Fetch proposals matching Contas a Receber status filter
+      // 1. Fetch proposals with status in ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA']
       let propQuery = supabase
         .from("propostas")
         .select("*")
-        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA", "PAGAMENTO DEVOLVIDO", "CANCELADO"])
-        .order("updated_at", { ascending: false })
+        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA"])
 
       if (filterUserId) {
         propQuery = propQuery.eq("corretor_id", filterUserId)
@@ -543,52 +498,7 @@ export function AdminDashboard({
       const { data: propData, error: propErr } = await propQuery
 
       if (propErr) throw propErr
-
-      // Read local storage states (identical to Contas a Receber)
-      let localReceivedIds: Record<string, boolean> = {}
-      let localReceivedDates: Record<string, string> = {}
-      let localPaymentStatuses: Record<string, "A_RECEBER" | "RECEBIDO" | "ESTORNADO"> = {}
-
-      if (typeof window !== "undefined") {
-        try {
-          const stored = window.localStorage.getItem("receber_pago_status_ids")
-          if (stored) localReceivedIds = JSON.parse(stored)
-          const storedDates = window.localStorage.getItem("receber_pago_dates")
-          if (storedDates) localReceivedDates = JSON.parse(storedDates)
-          const storedPS = window.localStorage.getItem("receber_payment_statuses")
-          if (storedPS) localPaymentStatuses = JSON.parse(storedPS)
-        } catch (e) {
-          console.error("Erro ao carregar local storage:", e)
-        }
-      }
-
-      const formattedData = (propData || [])
-        .filter((p: any) => {
-          if (p.status === "CANCELADO") {
-            const { metadata } = parseProposalNotesAndMetadata(p.observacoes)
-            const isEstornado = metadata.paymentStatus === "ESTORNADO" || localPaymentStatuses[p.id_lead] === "ESTORNADO"
-            return isEstornado
-          }
-          return true
-        })
-        .map((p: any) => {
-          const { metadata } = parseProposalNotesAndMetadata(p.observacoes)
-          const effectiveStatus: "A_RECEBER" | "RECEBIDO" | "ESTORNADO" = 
-            metadata.paymentStatus || 
-            (metadata.received !== undefined ? (metadata.received ? "RECEBIDO" : "A_RECEBER") : undefined) ||
-            localPaymentStatuses[p.id_lead] ||
-            (localReceivedIds[p.id_lead] ? "RECEBIDO" : "A_RECEBER")
-
-          const receivedDate = metadata.receivedDate || localReceivedDates[p.id_lead]
-
-          return {
-            ...p,
-            _effectiveStatus: effectiveStatus,
-            _receivedDate: receivedDate
-          }
-        })
-
-      setFinancialProposals(formattedData)
+      setFinancialProposals(propData || [])
 
       // 2. Fetch products config table regras
       let configsData = null
@@ -986,9 +896,6 @@ export function AdminDashboard({
       if (idLead && customCommissionPercents[idLead] !== undefined && customCommissionPercents[idLead] !== null) {
         return customCommissionPercents[idLead]
       }
-      if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && !isNaN(Number(proposal.comissao_banco_porcentagem)) && Number(proposal.comissao_banco_porcentagem) > 0) {
-        return Number(proposal.comissao_banco_porcentagem)
-      }
     }
 
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
@@ -1210,106 +1117,47 @@ export function AdminDashboard({
     return commissionRate
   }, [dbProdutosConfigs, isCorretorPJ, filterUserId, perfil?.id, customCommissionPercents, customPjCommissionPercents])
 
-  // Helper to safely parse proposal dates to yyyy-MM-dd
-  const parseProposalDateToYmd = (raw: any): string | null => {
-    if (!raw) return null
-    const str = String(raw).trim()
-    if (!str) return null
-
-    // 1) DD/MM/YYYY or DD/MM/YYYY HH:mm:ss
-    if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
-      const parts = str.split('/')
-      if (parts.length >= 3) {
-        const day = parts[0].padStart(2, '0')
-        const month = parts[1].padStart(2, '0')
-        const year = parts[2].substring(0, 4)
-        return `${year}-${month}-${day}`
-      }
-    }
-
-    // 2) YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss
-    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-      return str.substring(0, 10)
-    }
-
-    // 3) Standard JS Date parse fallback
-    try {
-      const d = new Date(str)
-      if (!isNaN(d.getTime())) {
-        const year = d.getFullYear()
-        const month = String(d.getMonth() + 1).padStart(2, '0')
-        const day = String(d.getDate()).padStart(2, '0')
-        return `${year}-${month}-${day}`
-      }
-    } catch {}
-
-    return null
-  }
-
-  const isExcludedProposalStatus = (status: any): boolean => {
-    const s = String(status || "").trim().toUpperCase()
-    if (!s) return false
-    return (
-      s.includes("CANCELAD") ||
-      s.includes("RECUSAD") ||
-      s.includes("DEVOLVID") ||
-      s.includes("ESTORNAD") ||
-      s.includes("DESISTEN")
-    )
-  }
-
-  // Get effective date for a proposal matching Contas a Receber logic
-  const getProposalEffectiveDate = React.useCallback((proposal: any): string | null => {
-    if (!proposal) return null
-    const idLead = proposal.id_lead
-    const isReceived = proposal._effectiveStatus === "RECEBIDO" || (idLead ? !!receivedProposalIds[idLead] : false)
-    const receivedDate = proposal._receivedDate || (idLead ? receivedProposalDates[idLead] : null)
-
-    const compareDate = (isReceived && receivedDate)
-      ? receivedDate
-      : (proposal.data_pago_cliente || proposal.updated_at || proposal.created_at)
-
-    return parseProposalDateToYmd(compareDate)
-  }, [receivedProposalIds, receivedProposalDates])
-
   // Memoized filter of proposals by active date range
   const filteredFinancialProposals = React.useMemo(() => {
     return financialProposals.filter((proposal) => {
       if (filterUserId && proposal.corretor_id !== filterUserId) return false
+      if (!financialStartDate && !financialEndDate) return true
+      const compareDate = proposal.data_pago_cliente
+      if (!compareDate) return false
 
-      const formattedCompare = getProposalEffectiveDate(proposal)
-      if (!formattedCompare) return false
+      try {
+        const pDate = new Date(compareDate)
+        if (isNaN(pDate.getTime())) return true
+        const formattedCompare = format(pDate, "yyyy-MM-dd")
 
-      if (financialStartDate && formattedCompare < financialStartDate) return false
-      if (financialEndDate && formattedCompare > financialEndDate) return false
-
+        if (financialStartDate && formattedCompare < financialStartDate) return false
+        if (financialEndDate && formattedCompare > financialEndDate) return false
+      } catch (err) {
+        console.error("Erro data filtro financeiro:", err)
+        return true
+      }
       return true
     })
-  }, [financialProposals, financialStartDate, financialEndDate, filterUserId, getProposalEffectiveDate])
+  }, [financialProposals, financialStartDate, financialEndDate, filterUserId])
 
-  // Calculate Produção Total: sum of operation value (matching Contas a Receber totalOperationSum)
+  // Calculate Produção Total: sum of p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
   const totalProduction = React.useMemo(() => {
     return filteredFinancialProposals.reduce((sum, p) => {
-      const val = Number(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
-      return sum + (isNaN(val) ? 0 : val)
+      const val = isCorretorPJ 
+        ? (p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || 0)
+        : (p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0)
+      return sum + val
     }, 0)
-  }, [filteredFinancialProposals])
+  }, [filteredFinancialProposals, isCorretorPJ])
 
-  // Calculate Receita Total: sum of (val * comPercent) / 100 or comissao_banco_valor (matching Contas a Receber estimatedComissions)
+  // Calculate Receita Total: sum of (val * comPercent) / 100
   const totalRevenue = React.useMemo(() => {
     return filteredFinancialProposals.reduce((sum, p) => {
-      if (p.comissao_banco_valor !== undefined && p.comissao_banco_valor !== null && !isNaN(Number(p.comissao_banco_valor))) {
-        return sum + Number(p.comissao_banco_valor)
-      }
-      const val = Number(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
-      const valOp = isNaN(val) ? 0 : val
-      const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-        ? customCommissionPercents[p.id_lead] 
-        : getCommissionPercentage(p)
-      const comPercentVal = (comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent))) ? Number(comPercent) : 0
-      return sum + (valOp * comPercentVal) / 100
+      const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+      const comPercent = getCommissionPercentage(p)
+      return sum + (val * comPercent) / 100
     }, 0)
-  }, [filteredFinancialProposals, customCommissionPercents, getCommissionPercentage])
+  }, [filteredFinancialProposals, getCommissionPercentage])
 
   // Previous equivalent period dates based on financial filter dates
   const prevPeriodDates = React.useMemo(() => {
@@ -1360,16 +1208,22 @@ export function AdminDashboard({
     if (!prevStart || !prevEnd) return []
     return financialProposals.filter((proposal) => {
       if (filterUserId && proposal.corretor_id !== filterUserId) return false
+      const compareDate = proposal.data_pago_cliente
+      if (!compareDate) return false
 
-      const formattedCompare = getProposalEffectiveDate(proposal)
-      if (!formattedCompare) return false
+      try {
+        const pDate = new Date(compareDate)
+        if (isNaN(pDate.getTime())) return false
+        const formattedCompare = format(pDate, "yyyy-MM-dd")
 
-      if (formattedCompare < prevStart) return false
-      if (formattedCompare > prevEnd) return false
-
+        if (formattedCompare < prevStart) return false
+        if (formattedCompare > prevEnd) return false
+      } catch {
+        return false
+      }
       return true
     })
-  }, [financialProposals, prevPeriodDates, filterUserId, getProposalEffectiveDate])
+  }, [financialProposals, prevPeriodDates])
 
   // Ranking data for top banks, products and agreements
   const rankingsData = React.useMemo(() => {
@@ -1605,37 +1459,34 @@ export function AdminDashboard({
     let revPreviousMonth = 0
 
     financialProposals.forEach((p) => {
-      const ymd = getProposalEffectiveDate(p)
-      if (!ymd) return
+      const compareDateStr = p.data_pago_cliente
+      if (!compareDateStr) return
 
-      const parts = ymd.split('-').map(Number)
-      if (parts.length < 3) return
-      const year = parts[0]
-      const month = parts[1] - 1
+      const pDate = new Date(compareDateStr)
+      if (isNaN(pDate.getTime())) return
 
-      const val = Number(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
-      const valOp = isNaN(val) ? 0 : val
-      const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-        ? customCommissionPercents[p.id_lead] 
-        : getCommissionPercentage(p)
-      const comPercentVal = (comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent))) ? Number(comPercent) : 0
-      const rev = (valOp * comPercentVal) / 100
+      const year = pDate.getFullYear()
+      const month = pDate.getMonth()
+
+      const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+      const comPercent = getCommissionPercentage(p)
+      const rev = (val * comPercent) / 100
 
       // Year comparisons
       if (year === currentYear) {
-        prodCurrentYear += valOp
+        prodCurrentYear += val
         revCurrentYear += rev
       } else if (year === previousYear) {
-        prodPreviousYear += valOp
+        prodPreviousYear += val
         revPreviousYear += rev
       }
 
       // Month comparisons
       if (year === currentYear && month === currentMonthIdx) {
-        prodCurrentMonth += valOp
+        prodCurrentMonth += val
         revCurrentMonth += rev
       } else if (year === prevMonthYear && month === prevMonthIdx) {
-        prodPreviousMonth += valOp
+        prodPreviousMonth += val
         revPreviousMonth += rev
       }
     })
@@ -1684,11 +1535,14 @@ export function AdminDashboard({
 
   const dynamicChartData = React.useMemo(() => {
     const getProposalDate = (p: any) => {
-      const ymd = getProposalEffectiveDate(p)
-      if (!ymd) return null
-      const parts = ymd.split('-').map(Number)
-      if (parts.length < 3) return null
-      return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0)
+      const dStr = p.data_pago_cliente
+      if (!dStr) return null
+      try {
+        const d = new Date(dStr)
+        return isNaN(d.getTime()) ? null : d
+      } catch {
+        return null
+      }
     }
 
     const start = financialStartDate ? new Date(financialStartDate + "T12:00:00") : new Date()
@@ -5020,7 +4874,7 @@ export function AdminDashboard({
                 </div>
                 
                 <p className="text-[11px] font-bold text-slate-400 mt-4 leading-relaxed">
-                  Total de operações efetivadas/pagas no período. Considera exclusivamente propostas com data de pagamento ao cliente preenchida no período.
+                  Total de operações efetivadas/pagas no período. Considera exclusivamente propostas com status <span className="text-indigo-600 font-extrabold">‘PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA’</span> e <span className="text-indigo-600 font-extrabold">‘PÓS-VENDA REALIZADA’</span>.
                 </p>
               </div>
             </motion.div>
