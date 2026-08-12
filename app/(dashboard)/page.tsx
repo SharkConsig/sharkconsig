@@ -46,6 +46,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { DashboardCard, Gauge, formatCurrency } from "@/components/dashboard/dashboard-shared"
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard"
 import { HRDashboard } from "@/components/dashboard/hr-dashboard"
+import { RankingContractsModal, RankingContractModalParams } from "@/components/dashboard/ranking-contracts-modal"
 
 const parseDateSafe = (dateVal?: string | Date | null) => {
   if (!dateVal) return null
@@ -501,6 +502,11 @@ export default function DashboardPage() {
   })
   const [activeTab, setActiveTab] = useState<'propostas' | 'chamados' | 'propostas_comerciais'>('propostas')
   const [dashboardPeriod, setDashboardPeriod] = useState<'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado'>('mes')
+  const [rankingModalParams, setRankingModalParams] = useState<RankingContractModalParams | null>(null)
+
+  const handleOpenRankingModal = (params: RankingContractModalParams) => {
+    setRankingModalParams(params)
+  }
 
   const handleDashboardPeriodChange = (period: 'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado') => {
     setDashboardPeriod(period)
@@ -3451,9 +3457,23 @@ export default function DashboardPage() {
                                     )}>
                                       <div className="flex flex-col items-end">
                                         <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
-                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: rank.corretor_id,
+                                              personName: rank.nome,
+                                              category: 'paid',
+                                              categoryLabel: 'Produção (Pagos)',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
                                           {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                                        </span>
+                                        </button>
                                       </div>
                                     </td>
                                     <td className={cn(
@@ -3462,9 +3482,23 @@ export default function DashboardPage() {
                                     )}>
                                       <div className="flex flex-col items-end">
                                         <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
-                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: rank.corretor_id,
+                                              personName: rank.nome,
+                                              category: 'in_process',
+                                              categoryLabel: 'Em Andamento',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
                                           {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                                        </span>
+                                        </button>
                                       </div>
                                     </td>
                                     <td className={cn(
@@ -3478,9 +3512,23 @@ export default function DashboardPage() {
                                         )}>
                                           {formatCurrency(rank.totalToday)}
                                         </span>
-                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: rank.corretor_id,
+                                              personName: rank.nome,
+                                              category: 'today',
+                                              categoryLabel: 'Digitadas Hoje',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
                                           {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
-                                        </span>
+                                        </button>
                                       </div>
                                     </td>
                                   </tr>
@@ -3527,17 +3575,65 @@ export default function DashboardPage() {
                                                     <div className="text-[9.5px] text-[#1C2643] font-extrabold">{est.approvedTicketsCount || 0}</div>
                                                     <div className="text-[7.5px] text-slate-400 font-bold uppercase">Chamados</div>
                                                   </div>
-                                                  <div className="text-right">
+                                                  <div className="text-right flex flex-col items-end">
                                                     <div className="text-[9.5px] text-emerald-600 font-extrabold">{formatCurrency(est.totalPaid)}</div>
-                                                    <div className="text-[7.5px] text-slate-400 font-bold uppercase">{est.countPaid} PG</div>
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenRankingModal({
+                                                          personId: est.estagiario_id,
+                                                          personName: est.nome,
+                                                          category: 'paid',
+                                                          categoryLabel: 'Produção (Pagos)',
+                                                          startDate,
+                                                          endDate
+                                                        });
+                                                      }}
+                                                      className="text-[7.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase transition-colors"
+                                                      title="Clique para ver contratos"
+                                                    >
+                                                      {est.countPaid} PG
+                                                    </button>
                                                   </div>
-                                                  <div className="text-right">
+                                                  <div className="text-right flex flex-col items-end">
                                                     <div className="text-[9.5px] text-orange-600 font-extrabold">{formatCurrency(est.totalInProcess)}</div>
-                                                    <div className="text-[7.5px] text-slate-400 font-bold uppercase">{est.countInProcess} AND</div>
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenRankingModal({
+                                                          personId: est.estagiario_id,
+                                                          personName: est.nome,
+                                                          category: 'in_process',
+                                                          categoryLabel: 'Em Andamento',
+                                                          startDate,
+                                                          endDate
+                                                        });
+                                                      }}
+                                                      className="text-[7.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase transition-colors"
+                                                      title="Clique para ver contratos"
+                                                    >
+                                                      {est.countInProcess} AND
+                                                    </button>
                                                   </div>
-                                                  <div className="text-right">
+                                                  <div className="text-right flex flex-col items-end">
                                                     <div className="text-[9.5px] text-blue-600 font-extrabold">{formatCurrency(est.totalToday)}</div>
-                                                    <div className="text-[7.5px] text-slate-400 font-bold uppercase">{est.countToday} DIG</div>
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenRankingModal({
+                                                          personId: est.estagiario_id,
+                                                          personName: est.nome,
+                                                          category: 'today',
+                                                          categoryLabel: 'Digitadas Hoje',
+                                                          startDate,
+                                                          endDate
+                                                        });
+                                                      }}
+                                                      className="text-[7.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase transition-colors"
+                                                      title="Clique para ver contratos"
+                                                    >
+                                                      {est.countToday} DIG
+                                                    </button>
                                                   </div>
                                                 </div>
                                               ))}
@@ -3705,17 +3801,45 @@ export default function DashboardPage() {
                                     <td className="px-3 py-3 text-right bg-emerald-100/25">
                                       <div className="flex flex-col items-end">
                                         <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
-                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'paid',
+                                              categoryLabel: 'Produção (Pagos)',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
                                           {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                                        </span>
+                                        </button>
                                       </div>
                                     </td>
                                     <td className="px-3 py-3 text-right bg-orange-100/25">
                                       <div className="flex flex-col items-end">
                                         <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
-                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'in_process',
+                                              categoryLabel: 'Em Andamento',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
                                           {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                                        </span>
+                                        </button>
                                       </div>
                                     </td>
                                     <td className="px-3 py-3 text-right bg-blue-100/25">
@@ -3726,9 +3850,23 @@ export default function DashboardPage() {
                                         )}>
                                           {formatCurrency(est.totalToday)}
                                         </span>
-                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'today',
+                                              categoryLabel: 'Digitadas Hoje',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
                                           {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
-                                        </span>
+                                        </button>
                                       </div>
                                     </td>
                                   </tr>
@@ -3742,7 +3880,7 @@ export default function DashboardPage() {
                   )}
 
                   {/* RANKING COLABORADORES PJ */}
-                  {colaboradoresPJList.length > 0 && (
+                  {(isAdmin || isDeveloper) && colaboradoresPJList.length > 0 && (
                     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.6 }}>
                       <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px]">
                         <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">
@@ -3808,17 +3946,45 @@ export default function DashboardPage() {
                                     <td className="px-3 py-3 text-right bg-emerald-100/25">
                                       <div className="flex flex-col items-end">
                                         <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
-                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'paid',
+                                              categoryLabel: 'Produção (Pagos)',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
                                           {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                                        </span>
+                                        </button>
                                       </div>
                                     </td>
                                     <td className="px-3 py-3 text-right bg-orange-100/25">
                                       <div className="flex flex-col items-end">
                                         <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
-                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'in_process',
+                                              categoryLabel: 'Em Andamento',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
                                           {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                                        </span>
+                                        </button>
                                       </div>
                                     </td>
                                     <td className="px-3 py-3 text-right bg-blue-100/25">
@@ -3829,9 +3995,23 @@ export default function DashboardPage() {
                                         )}>
                                           {formatCurrency(est.totalToday)}
                                         </span>
-                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'today',
+                                              categoryLabel: 'Digitadas Hoje',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
                                           {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
-                                        </span>
+                                        </button>
                                       </div>
                                     </td>
                                   </tr>
@@ -4876,6 +5056,12 @@ export default function DashboardPage() {
         </div>
       )}
     </AnimatePresence>
+
+    <RankingContractsModal
+      isOpen={!!rankingModalParams}
+      onClose={() => setRankingModalParams(null)}
+      params={rankingModalParams}
+    />
   </div>
 )
 }

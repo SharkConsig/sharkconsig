@@ -25,6 +25,7 @@ import { cn, formatName } from "@/lib/utils"
 import Image from "next/image"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
 import { format } from "date-fns"
+import { RankingContractsModal, RankingContractModalParams } from "./ranking-contracts-modal"
 
 interface Interview {
   id: string
@@ -180,7 +181,13 @@ export function HRDashboard({
   estagioRankingGroup
 }: HRDashboardProps) {
   const { perfil } = useAuth()
+  const isOnlyAdmin = perfil?.role?.toLowerCase() === 'administrador' || perfil?.role?.toLowerCase() === 'desenvolvedor'
+  const [rankingModalParams, setRankingModalParams] = useState<RankingContractModalParams | null>(null)
   const [colaboradoresCount, setColaboradoresCount] = useState(0)
+
+  const handleOpenRankingModal = (params: RankingContractModalParams) => {
+    setRankingModalParams(params)
+  }
   const [expandedSupervisorIds, setExpandedSupervisorIds] = useState<Record<string, boolean>>({})
   const [entrevistasCount, setEntrevistasCount] = useState(0)
   const [advertenciasCount, setAdvertenciasCount] = useState(0)
@@ -884,9 +891,21 @@ export function HRDashboard({
                             )}>
                               <div className="flex flex-col items-end">
                                 <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenRankingModal({
+                                      personId: rank.corretor_id,
+                                      personName: rank.nome,
+                                      category: 'paid',
+                                      categoryLabel: 'Produção (Pagos)'
+                                    });
+                                  }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                  title="Clique para ver contratos"
+                                >
                                   {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                                </span>
+                                </button>
                               </div>
                             </td>
                             <td className={cn(
@@ -895,9 +914,21 @@ export function HRDashboard({
                             )}>
                               <div className="flex flex-col items-end">
                                 <span className="text-[14px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenRankingModal({
+                                      personId: rank.corretor_id,
+                                      personName: rank.nome,
+                                      category: 'in_process',
+                                      categoryLabel: 'Em Andamento'
+                                    });
+                                  }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                  title="Clique para ver contratos"
+                                >
                                   {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                                </span>
+                                </button>
                               </div>
                             </td>
                             <td className={cn(
@@ -911,9 +942,21 @@ export function HRDashboard({
                                 )}>
                                   {formatCurrency(rank.totalToday)}
                                 </span>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenRankingModal({
+                                      personId: rank.corretor_id,
+                                      personName: rank.nome,
+                                      category: 'today',
+                                      categoryLabel: 'Digitadas Hoje'
+                                    });
+                                  }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                  title="Clique para ver contratos"
+                                >
                                   {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
-                                </span>
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -1068,17 +1111,41 @@ export function HRDashboard({
                                 <td className="px-4 py-4 text-right bg-emerald-100/25">
                                   <div className="flex flex-col items-end">
                                     <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'paid',
+                                          categoryLabel: 'Produção (Pagos)'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                                 <td className="px-4 py-4 text-right bg-orange-100/25">
                                   <div className="flex flex-col items-end">
                                     <span className="text-[14px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'in_process',
+                                          categoryLabel: 'Em Andamento'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                                 <td className="px-4 py-4 text-right bg-blue-100/25">
@@ -1089,9 +1156,21 @@ export function HRDashboard({
                                     )}>
                                       {formatCurrency(est.totalToday)}
                                     </span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'today',
+                                          categoryLabel: 'Digitadas Hoje'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -1105,7 +1184,7 @@ export function HRDashboard({
               )}
 
               {/* RANKING COLABORADORES PJ */}
-              {colaboradoresPJList.length > 0 && (
+              {isOnlyAdmin && colaboradoresPJList.length > 0 && (
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
                   <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px] border border-slate-100">
                     <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
@@ -1171,17 +1250,41 @@ export function HRDashboard({
                                 <td className="px-4 py-4 text-right bg-emerald-100/25">
                                   <div className="flex flex-col items-end">
                                     <span className="text-[14px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'paid',
+                                          categoryLabel: 'Produção (Pagos)'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                                 <td className="px-4 py-4 text-right bg-orange-100/25">
                                   <div className="flex flex-col items-end">
                                     <span className="text-[14px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'in_process',
+                                          categoryLabel: 'Em Andamento'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                                 <td className="px-4 py-4 text-right bg-blue-100/25">
@@ -1192,9 +1295,21 @@ export function HRDashboard({
                                     )}>
                                       {formatCurrency(est.totalToday)}
                                     </span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRankingModal({
+                                          personId: est.estagiario_id,
+                                          personName: est.nome,
+                                          category: 'today',
+                                          categoryLabel: 'Digitadas Hoje'
+                                        });
+                                      }}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                      title="Clique para ver contratos"
+                                    >
                                       {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
-                                    </span>
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -1210,6 +1325,14 @@ export function HRDashboard({
           )
         })()}
       </div>
+
+      {rankingModalParams && (
+        <RankingContractsModal
+          isOpen={!!rankingModalParams}
+          onClose={() => setRankingModalParams(null)}
+          params={rankingModalParams}
+        />
+      )}
     </div>
   )
 }

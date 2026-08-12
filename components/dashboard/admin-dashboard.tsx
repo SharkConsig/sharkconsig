@@ -187,6 +187,7 @@ export function AdminDashboard({
   } = stats || {}
 
   const userRole = perfil?.role?.toLowerCase() || "";
+  const isOnlyAdmin = userRole === 'administrador' || userRole === 'desenvolvedor';
   const isEstagio = userRole === 'estágio' || userRole === 'estagio';
   const isCorretor = userRole === 'corretor';
   const isCorretorPJ = (perfil as any)?.regime_contratacao?.trim().toLowerCase() === 'pj' || 
@@ -880,6 +881,9 @@ export function AdminDashboard({
     if (isCorretorPJ) {
       if (idLead && customPjCommissionPercents[idLead] !== undefined && customPjCommissionPercents[idLead] !== null) {
         return customPjCommissionPercents[idLead]
+      }
+      if (proposal.comissao_pj_porcentagem !== undefined && proposal.comissao_pj_porcentagem !== null && Number(proposal.comissao_pj_porcentagem) > 0) {
+        return Number(proposal.comissao_pj_porcentagem)
       }
       if (proposal.comissao_corretor_porcentagem !== undefined && proposal.comissao_corretor_porcentagem !== null && Number(proposal.comissao_corretor_porcentagem) > 0) {
         return Number(proposal.comissao_corretor_porcentagem)
@@ -2809,7 +2813,7 @@ export function AdminDashboard({
               )}
 
               {/* RANKING COLABORADORES PJ */}
-              {colaboradoresPJList.length > 0 && (
+              {isOnlyAdmin && colaboradoresPJList.length > 0 && (
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
                   <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px] border-slate-100">
                     <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">

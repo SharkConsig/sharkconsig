@@ -532,25 +532,6 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
           </div>
         </div>
 
-        <div class="summary-cards">
-          <div class="card">
-            <span class="card-label">Colaborador / Corretor</span>
-            <span class="card-value">${params?.personName || "Geral"}</span>
-          </div>
-          <div class="card">
-            <span class="card-label">Categoria</span>
-            <span class="card-value">${params?.categoryLabel || "-"}</span>
-          </div>
-          <div class="card">
-            <span class="card-label">Total de Contratos</span>
-            <span class="card-value">${filteredProposals.length}</span>
-          </div>
-          <div class="card">
-            <span class="card-label">Valor Total</span>
-            <span class="card-value">${formatCurrency(totalValue)}</span>
-          </div>
-        </div>
-
         <table>
           <thead>
             <tr>
@@ -655,15 +636,7 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
             />
           </div>
 
-          <div className="flex items-center gap-4 text-[12px] font-bold text-slate-600">
-            <div>
-              Total: <span className="text-[#1C2643] font-black">{filteredProposals.length}</span> {filteredProposals.length === 1 ? "contrato" : "contratos"}
-            </div>
-            <div className="w-px h-4 bg-slate-200" />
-            <div>
-              Valor Total: <span className="text-emerald-600 font-black">{formatCurrency(totalValue)}</span>
-            </div>
-          </div>
+
         </div>
 
         {/* Table Content */}

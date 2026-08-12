@@ -292,6 +292,9 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   )
   const [selectedProdPercent, setSelectedProdPercent] = useState<number | null>(null)
   const [selectedComissaoPercent, setSelectedComissaoPercent] = useState<number | null>(() => {
+    if (proposal.comissao_pj_porcentagem !== undefined && proposal.comissao_pj_porcentagem !== null) {
+      return Number(proposal.comissao_pj_porcentagem)
+    }
     if (proposal.comissao_corretor_porcentagem !== undefined && proposal.comissao_corretor_porcentagem !== null) {
       return Number(proposal.comissao_corretor_porcentagem)
     }
@@ -1537,6 +1540,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         if (comPjEfetivaPercent === undefined) {
           if (selectedComissaoPercent !== null && selectedComissaoPercent !== undefined && selectedComissaoPercent > 0) {
             comPjEfetivaPercent = selectedComissaoPercent;
+          } else if (proposal.comissao_pj_porcentagem !== undefined && proposal.comissao_pj_porcentagem !== null && Number(proposal.comissao_pj_porcentagem) > 0) {
+            comPjEfetivaPercent = Number(proposal.comissao_pj_porcentagem);
           } else if (proposal.comissao_corretor_porcentagem !== undefined && proposal.comissao_corretor_porcentagem !== null && Number(proposal.comissao_corretor_porcentagem) > 0) {
             comPjEfetivaPercent = Number(proposal.comissao_corretor_porcentagem);
           } else if (!isPJ && proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
