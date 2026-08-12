@@ -291,11 +291,15 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     (proposal.prazo !== undefined && proposal.prazo !== null) ? Number(proposal.prazo) : null
   )
   const [selectedProdPercent, setSelectedProdPercent] = useState<number | null>(null)
-  const [selectedComissaoPercent, setSelectedComissaoPercent] = useState<number | null>(
-    (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null) 
-      ? Number(proposal.comissao_banco_porcentagem) 
-      : null
-  )
+  const [selectedComissaoPercent, setSelectedComissaoPercent] = useState<number | null>(() => {
+    if (proposal.comissao_corretor_porcentagem !== undefined && proposal.comissao_corretor_porcentagem !== null) {
+      return Number(proposal.comissao_corretor_porcentagem)
+    }
+    if (!isPJ && proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null) {
+      return Number(proposal.comissao_banco_porcentagem)
+    }
+    return null
+  })
   const [isCoefDropdownOpen, setIsCoefDropdownOpen] = useState(false)
   const [coefSearchTerm, setCoefSearchTerm] = useState("")
   const coefDropdownRef = useRef<HTMLDivElement>(null)
@@ -647,18 +651,101 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   // Sincronizar selectedCoefValue e selectedPrazoValue quando coeficiente_prazo mudar
   useEffect(() => {
     if (dbProdutosConfigs.length > 0 && formData.coeficiente_prazo) {
-      const allOptions = (dbProdutosConfigs as ProdutoConfig[]).flatMap(config => {
+      const curBanco = selection.banco || proposal.banco || "";
+      const curConvenio = selection.convenio || proposal.convenio || "";
+      const curOperacao = selection.operacao || proposal.tipo_operacao || "";
+
+      const candidateUserIds = [
+        proposal.corretor_id ? String(proposal.corretor_id) : null,
+        (proposal as any).estagiario_colaborador_id ? String((proposal as any).estagiario_colaborador_id) : null,
+        user?.id ? String(user.id) : null
+      ].filter(Boolean) as string[];
+
+      const isPosVal = (v: any) => {
+        if (v === null || v === undefined || v === "" || v === "--") return false;
+        const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+        return !isNaN(num) && num > 0;
+      };
+
+      const getSpecificPJCom = (mapObj: Record<string, any> | undefined) => {
+        if (!mapObj) return undefined;
+        for (const uid of candidateUserIds) {
+          if (mapObj[uid] !== undefined && isPosVal(mapObj[uid])) {
+            const v = mapObj[uid];
+            return typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+          }
+        }
+        return undefined;
+      };
+
+      const filtered = (dbProdutosConfigs as ProdutoConfig[]).filter(config => {
+        if (config.ativo === false) return false;
+        const matchBanco = !curBanco || 
+          dbBancos.find(b => b.id === config.banco_id || b.nome === config.banco_id)?.nome === curBanco ||
+          dbBancos.find(b => b.nome === curBanco)?.id === config.banco_id ||
+          config.banco_id === curBanco;
+        const matchConvenio = !curConvenio || 
+          dbConvenios.find(c => c.id === config.convenio_id || c.nome === config.convenio_id)?.nome === curConvenio ||
+          dbConvenios.find(c => c.id === curConvenio)?.id === config.convenio_id ||
+          config.convenios?.nome === curConvenio ||
+          config.convenio_id === curConvenio;
+        const matchOperacao = !curOperacao || 
+          (config.operacoes && Array.isArray(config.operacoes) && config.operacoes.some((op: string) => 
+            op === curOperacao || 
+            dbOperacoes.find(o => o.id === op)?.nome === curOperacao
+          ));
+        return matchBanco && matchConvenio && matchOperacao;
+      });
+
+      const configsToUse = filtered.length > 0 ? filtered : (dbProdutosConfigs as ProdutoConfig[]);
+
+      const allOptions = configsToUse.flatMap(config => {
         if (config.regras && config.regras.length > 0) {
           return config.regras
             .filter((r: Regra) => r.ativo !== false)
-            .map((regra) => ({
-              nome_tabela: config.nome_tabela,
-              prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : (regra.prazo as number),
-              coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : (regra.coeficiente as number),
-              percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : (regra.percentual_producao as number),
-              percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : (regra.percentual_comissao as number)) : undefined,
-              convenioNome: config.convenios?.nome
-            }));
+            .map((regra) => {
+              let comPjVal = getSpecificPJCom(regra.comissoes_pj_corretores);
+              if (comPjVal === undefined && isPosVal(regra.percentual_comissao_pj)) {
+                comPjVal = typeof regra.percentual_comissao_pj === 'string' ? parseFloat(regra.percentual_comissao_pj.replace(',', '.')) : regra.percentual_comissao_pj;
+              }
+              if (comPjVal === undefined) comPjVal = getSpecificPJCom(config.comissoes_pj_corretores);
+              if (comPjVal === undefined && isPosVal(config.percentual_comissao_pj)) {
+                comPjVal = typeof config.percentual_comissao_pj === 'string' ? parseFloat(config.percentual_comissao_pj.replace(',', '.')) : config.percentual_comissao_pj;
+              }
+              let efPj: number | undefined = undefined;
+              if (comPjVal !== undefined) {
+                const rawComEmpresa = regra.percentual_comissao !== undefined ? regra.percentual_comissao : config.percentual_comissao;
+                if (rawComEmpresa !== undefined && rawComEmpresa !== null && isPosVal(rawComEmpresa)) {
+                  const valCom = typeof rawComEmpresa === 'number' ? rawComEmpresa : parseFloat(String(rawComEmpresa).replace(',', '.'));
+                  efPj = parseFloat(((valCom * comPjVal) / 100).toFixed(2));
+                } else {
+                  efPj = comPjVal;
+                }
+              }
+              return {
+                nome_tabela: config.nome_tabela,
+                prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : (regra.prazo as number),
+                coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : (regra.coeficiente as number),
+                percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : (regra.percentual_producao as number),
+                percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : (regra.percentual_comissao as number)) : undefined,
+                percentual_comissao_pj: efPj,
+                convenioNome: config.convenios?.nome
+              };
+            });
+        }
+        let rootPjVal = getSpecificPJCom(config.comissoes_pj_corretores);
+        if (rootPjVal === undefined && isPosVal(config.percentual_comissao_pj)) {
+          rootPjVal = typeof config.percentual_comissao_pj === 'string' ? parseFloat(config.percentual_comissao_pj.replace(',', '.')) : config.percentual_comissao_pj;
+        }
+        let efRootPj: number | undefined = undefined;
+        if (rootPjVal !== undefined) {
+          const rawComEmpresa = config.percentual_comissao;
+          if (rawComEmpresa !== undefined && rawComEmpresa !== null && isPosVal(rawComEmpresa)) {
+            const valCom = typeof rawComEmpresa === 'number' ? rawComEmpresa : parseFloat(String(rawComEmpresa).replace(',', '.'));
+            efRootPj = parseFloat(((valCom * rootPjVal) / 100).toFixed(2));
+          } else {
+            efRootPj = rootPjVal;
+          }
         }
         return [{
           nome_tabela: config.nome_tabela,
@@ -666,6 +753,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           coeficiente: typeof config.coeficiente === 'number' ? config.coeficiente : (config.coeficiente ? parseFloat(config.coeficiente.toString().replace(',', '.')) : 0),
           percentual_producao: typeof config.percentual_producao === 'number' ? config.percentual_producao : (config.percentual_producao ? parseFloat(config.percentual_producao.toString().replace(',', '.')) : 0),
           percentual_comissao: typeof config.percentual_comissao === 'number' ? config.percentual_comissao : (config.percentual_comissao ? parseFloat(config.percentual_comissao.toString().replace(',', '.')) : undefined),
+          percentual_comissao_pj: efRootPj,
           convenioNome: config.convenios?.nome
         }];
       });
@@ -683,12 +771,16 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         setSelectedCoefValue(option.coeficiente);
         setSelectedPrazoValue(option.prazo);
         setSelectedProdPercent(option.percentual_producao);
-        if (option.percentual_comissao !== undefined) {
+        if (isPJ) {
+          if (option.percentual_comissao_pj !== undefined) {
+            setSelectedComissaoPercent(option.percentual_comissao_pj);
+          }
+        } else if (option.percentual_comissao !== undefined) {
           setSelectedComissaoPercent(option.percentual_comissao);
         }
       }
     }
-  }, [dbProdutosConfigs, formData.coeficiente_prazo]);
+  }, [dbProdutosConfigs, formData.coeficiente_prazo, selection, isPJ]);
 
   const fileRefs = {
     frente: useRef<HTMLInputElement>(null),
@@ -1295,71 +1387,339 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         </div>
       )}
 
-      {(activeTab === "visualizar" || activeTab === "anexos") && (
+      {(activeTab === "visualizar" || activeTab === "anexos") && (() => {
+        const isPosVal = (v: any) => {
+          if (v === null || v === undefined || v === "" || v === "--") return false;
+          const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+          return !isNaN(num) && num > 0;
+        };
+
+        const candidateUserIds = [
+          proposal.corretor_id ? String(proposal.corretor_id) : null,
+          (proposal as any).estagiario_colaborador_id ? String((proposal as any).estagiario_colaborador_id) : null,
+          user?.id ? String(user.id) : null
+        ].filter(Boolean) as string[];
+
+        const getSpecificPJCom = (mapObj: Record<string, any> | undefined) => {
+          if (!mapObj) return undefined;
+          for (const uid of candidateUserIds) {
+            if (mapObj[uid] !== undefined && isPosVal(mapObj[uid])) {
+              const v = mapObj[uid];
+              return typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+            }
+          }
+          return undefined;
+        };
+
+        let comPjEfetivaPercent: number | undefined = undefined;
+        let foundPrazo: number | undefined = selectedPrazoValue ?? (proposal.prazo ? Number(proposal.prazo) : undefined);
+        let foundCoef: number | undefined = selectedCoefValue ?? (proposal.coeficiente ? Number(proposal.coeficiente) : undefined);
+
+        const curBanco = selection.banco || proposal.banco || "";
+        const curConvenio = selection.convenio || proposal.convenio || "";
+        const curOperacao = selection.operacao || proposal.tipo_operacao || "";
+        const curCoefPrazoStr = formData.coeficiente_prazo || proposal.coeficiente_prazo || "";
+
+        if (dbProdutosConfigs.length > 0) {
+          const filteredConfigs = (dbProdutosConfigs as ProdutoConfig[]).filter(config => {
+            if (config.ativo === false) return false;
+            const matchBanco = !curBanco || 
+              dbBancos.find(b => b.id === config.banco_id || b.nome === config.banco_id)?.nome === curBanco ||
+              dbBancos.find(b => b.nome === curBanco)?.id === config.banco_id ||
+              config.banco_id === curBanco;
+            const matchConvenio = !curConvenio || 
+              dbConvenios.find(c => c.id === config.convenio_id || c.nome === config.convenio_id)?.nome === curConvenio ||
+              dbConvenios.find(c => c.id === curConvenio)?.id === config.convenio_id ||
+              config.convenios?.nome === curConvenio ||
+              config.convenio_id === curConvenio;
+            const matchOperacao = !curOperacao || 
+              (config.operacoes && Array.isArray(config.operacoes) && config.operacoes.some((op: string) => 
+                op === curOperacao || 
+                dbOperacoes.find(o => o.id === op)?.nome === curOperacao
+              ));
+            return matchBanco && matchConvenio && matchOperacao;
+          });
+
+          const configsToUse = filteredConfigs.length > 0 ? filteredConfigs : (dbProdutosConfigs as ProdutoConfig[]);
+
+          let matchedRegra: any = null;
+          let matchedConfig: any = null;
+
+          if (curCoefPrazoStr) {
+            for (const config of configsToUse) {
+              if (config.regras && config.regras.length > 0) {
+                for (const r of config.regras) {
+                  if (r.ativo === false) continue;
+                  const pVal = typeof r.prazo === 'string' ? parseInt(r.prazo) : Number(r.prazo);
+                  const cVal = typeof r.coeficiente === 'string' ? parseFloat(r.coeficiente.replace(',', '.')) : Number(r.coeficiente);
+                  const label1 = config.nome_tabela 
+                    ? `${config.nome_tabela} (${pVal}x | ${cVal})`
+                    : `${config.convenios?.nome || 'Tabela'} - ${pVal}x ${cVal}`;
+                  const label2 = `${config.convenios?.nome || 'Tabela'} - ${pVal}x ${cVal}`;
+
+                  if (
+                    curCoefPrazoStr === label1 ||
+                    curCoefPrazoStr === label2 ||
+                    (config.nome_tabela && curCoefPrazoStr.startsWith(config.nome_tabela)) ||
+                    (foundPrazo && foundCoef && pVal === foundPrazo && Math.abs(cVal - foundCoef) < 0.0001)
+                  ) {
+                    matchedRegra = r;
+                    matchedConfig = config;
+                    break;
+                  }
+                }
+              } else {
+                const pVal = typeof config.prazo === 'string' ? parseInt(config.prazo) : Number(config.prazo);
+                const cVal = typeof config.coeficiente === 'string' ? parseFloat(config.coeficiente.toString().replace(',', '.')) : Number(config.coeficiente);
+                const label1 = config.nome_tabela 
+                  ? `${config.nome_tabela} (${pVal}x | ${cVal})`
+                  : `${config.convenios?.nome || 'Tabela'} - ${pVal}x ${cVal}`;
+                const label2 = `${config.convenios?.nome || 'Tabela'} - ${pVal}x ${cVal}`;
+
+                if (
+                  curCoefPrazoStr === label1 ||
+                  curCoefPrazoStr === label2 ||
+                  (config.nome_tabela && curCoefPrazoStr.startsWith(config.nome_tabela)) ||
+                  (foundPrazo && foundCoef && pVal === foundPrazo && Math.abs(cVal - foundCoef) < 0.0001)
+                ) {
+                  matchedConfig = config;
+                }
+              }
+              if (matchedConfig) break;
+            }
+          }
+
+          if (matchedConfig) {
+            if (!foundPrazo && matchedRegra?.prazo) foundPrazo = typeof matchedRegra.prazo === 'string' ? parseInt(matchedRegra.prazo) : Number(matchedRegra.prazo);
+            if (!foundPrazo && matchedConfig?.prazo) foundPrazo = typeof matchedConfig.prazo === 'string' ? parseInt(matchedConfig.prazo) : Number(matchedConfig.prazo);
+
+            if (!foundCoef && matchedRegra?.coeficiente) foundCoef = typeof matchedRegra.coeficiente === 'string' ? parseFloat(matchedRegra.coeficiente.replace(',', '.')) : Number(matchedRegra.coeficiente);
+            if (!foundCoef && matchedConfig?.coeficiente) foundCoef = typeof matchedConfig.coeficiente === 'string' ? parseFloat(matchedConfig.coeficiente.toString().replace(',', '.')) : Number(matchedConfig.coeficiente);
+
+            let comPjVal = matchedRegra ? getSpecificPJCom(matchedRegra.comissoes_pj_corretores) : undefined;
+            if (comPjVal === undefined && matchedRegra && isPosVal(matchedRegra.percentual_comissao_pj)) {
+              comPjVal = typeof matchedRegra.percentual_comissao_pj === 'string' ? parseFloat(matchedRegra.percentual_comissao_pj.replace(',', '.')) : matchedRegra.percentual_comissao_pj;
+            }
+            if (comPjVal === undefined) {
+              comPjVal = getSpecificPJCom(matchedConfig.comissoes_pj_corretores);
+            }
+            if (comPjVal === undefined && isPosVal(matchedConfig.percentual_comissao_pj)) {
+              comPjVal = typeof matchedConfig.percentual_comissao_pj === 'string' ? parseFloat(matchedConfig.percentual_comissao_pj.replace(',', '.')) : matchedConfig.percentual_comissao_pj;
+            }
+
+            if (comPjVal !== undefined) {
+              const rawComEmpresa = matchedRegra?.percentual_comissao !== undefined ? matchedRegra.percentual_comissao : matchedConfig.percentual_comissao;
+              if (rawComEmpresa !== undefined && rawComEmpresa !== null && isPosVal(rawComEmpresa)) {
+                const valCom = typeof rawComEmpresa === 'number' ? rawComEmpresa : parseFloat(String(rawComEmpresa).replace(',', '.'));
+                comPjEfetivaPercent = parseFloat(((valCom * comPjVal) / 100).toFixed(2));
+              } else {
+                comPjEfetivaPercent = comPjVal;
+              }
+            }
+          }
+        }
+
+        // Additional regex fallbacks if foundPrazo or foundCoef are missing
+        if (!foundPrazo && curCoefPrazoStr) {
+          const matchP = curCoefPrazoStr.match(/(\d+)x/i);
+          if (matchP && matchP[1]) {
+            foundPrazo = parseInt(matchP[1]);
+          }
+        }
+
+        if (!foundCoef && curCoefPrazoStr) {
+          const matchC = curCoefPrazoStr.match(/(?:\||\s|-)([0-9]+[.,][0-9]+)/);
+          if (matchC && matchC[1]) {
+            foundCoef = parseFloat(matchC[1].replace(',', '.'));
+          }
+        }
+
+        if (comPjEfetivaPercent === undefined) {
+          if (selectedComissaoPercent !== null && selectedComissaoPercent !== undefined && selectedComissaoPercent > 0) {
+            comPjEfetivaPercent = selectedComissaoPercent;
+          } else if (proposal.comissao_corretor_porcentagem !== undefined && proposal.comissao_corretor_porcentagem !== null && Number(proposal.comissao_corretor_porcentagem) > 0) {
+            comPjEfetivaPercent = Number(proposal.comissao_corretor_porcentagem);
+          } else if (!isPJ && proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
+            comPjEfetivaPercent = Number(proposal.comissao_banco_porcentagem);
+          }
+        }
+
+        const comissaoVal = comPjEfetivaPercent !== undefined ? `${comPjEfetivaPercent.toString().replace('.', ',')}%` : null;
+        const prazoVal = foundPrazo ? `${foundPrazo}x` : null;
+        const coefVal = foundCoef ? String(foundCoef).replace('.', ',') : null;
+
+        return (
         <div className="space-y-12 animate-in fade-in duration-500 pb-10 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar" onPaste={handlePaste}>
-          <div className="flex flex-wrap justify-center gap-2 md:gap-8 items-center bg-white py-4 px-8 rounded-2xl border border-slate-200 shadow-sm w-fit mx-auto mb-6 text-left">
-            <div className="flex flex-col items-center md:items-start">
-              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
-              {canEditHeaderSelection ? (
-                <select
-                  value={selection.convenio}
-                  onChange={(e) => setSelection(prev => ({ ...prev, convenio: e.target.value }))}
-                  className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
-                >
-                  <option value="">Selecione Convênio</option>
-                  {dbConvenios.map(c => (
-                    <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
-                  ))}
-                  {selection.convenio && !dbConvenios.some(c => c.nome === selection.convenio) && (
-                    <option value={selection.convenio}>{selection.convenio}</option>
+          <div className="flex flex-wrap md:flex-nowrap justify-center gap-2 md:gap-6 items-center bg-white py-4 px-6 md:px-8 rounded-2xl border border-slate-200 shadow-sm w-full max-w-5xl mx-auto overflow-x-auto mb-6 text-left">
+            {isPJ ? (
+              <>
+                <div className="flex flex-col items-center md:items-start transition-all">
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
+                  {canEditHeaderSelection ? (
+                    <select
+                      value={selection.operacao}
+                      onChange={(e) => setSelection(prev => ({ ...prev, operacao: e.target.value }))}
+                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[280px]"
+                    >
+                      <option value="">Selecione a Operação</option>
+                      {dbOperacoes.map(o => (
+                        <option key={o.id || o.nome} value={o.nome}>{o.nome}</option>
+                      ))}
+                      {selection.operacao && !dbOperacoes.some(o => o.nome === selection.operacao) && (
+                        <option value={selection.operacao}>{selection.operacao}</option>
+                      )}
+                    </select>
+                  ) : (
+                    <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao || "-"}</span>
                   )}
-                </select>
-              ) : (
-                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio || "-"}</span>
-              )}
-            </div>
-            <div className="h-8 w-px bg-slate-100 hidden md:block" />
-            <div className="flex flex-col items-center md:items-start">
-              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
-              {canEditHeaderSelection ? (
-                <select
-                  value={selection.banco}
-                  onChange={(e) => setSelection(prev => ({ ...prev, banco: e.target.value }))}
-                  className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
-                >
-                  <option value="">Selecione o Banco</option>
-                  {dbBancos.map(b => (
-                    <option key={b.id || b.nome} value={b.nome}>{b.nome}</option>
-                  ))}
-                  {selection.banco && !dbBancos.some(b => b.nome === selection.banco) && (
-                    <option value={selection.banco}>{selection.banco}</option>
+                </div>
+
+                <div className="h-8 w-px bg-slate-100 hidden md:block" />
+
+                <div className="flex flex-col items-center md:items-start">
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
+                  {canEditHeaderSelection ? (
+                    <select
+                      value={selection.convenio}
+                      onChange={(e) => setSelection(prev => ({ ...prev, convenio: e.target.value }))}
+                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
+                    >
+                      <option value="">Selecione Convênio</option>
+                      {dbConvenios.map(c => (
+                        <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                      ))}
+                      {selection.convenio && !dbConvenios.some(c => c.nome === selection.convenio) && (
+                        <option value={selection.convenio}>{selection.convenio}</option>
+                      )}
+                    </select>
+                  ) : (
+                    <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio || "-"}</span>
                   )}
-                </select>
-              ) : (
-                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco || "-"}</span>
-              )}
-            </div>
-            <div className="h-8 w-px bg-slate-100 hidden md:block" />
-            <div className="flex flex-col items-center md:items-start transition-all">
-              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
-              {canEditHeaderSelection ? (
-                <select
-                  value={selection.operacao}
-                  onChange={(e) => setSelection(prev => ({ ...prev, operacao: e.target.value }))}
-                  className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[280px]"
-                >
-                  <option value="">Selecione a Operação</option>
-                  {dbOperacoes.map(o => (
-                    <option key={o.id || o.nome} value={o.nome}>{o.nome}</option>
-                  ))}
-                  {selection.operacao && !dbOperacoes.some(o => o.nome === selection.operacao) && (
-                    <option value={selection.operacao}>{selection.operacao}</option>
+                </div>
+
+                <div className="h-8 w-px bg-slate-100 hidden md:block" />
+
+                <div className="flex flex-col items-center md:items-start">
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
+                  {canEditHeaderSelection ? (
+                    <select
+                      value={selection.banco}
+                      onChange={(e) => setSelection(prev => ({ ...prev, banco: e.target.value }))}
+                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
+                    >
+                      <option value="">Selecione o Banco</option>
+                      {dbBancos.map(b => (
+                        <option key={b.id || b.nome} value={b.nome}>{b.nome}</option>
+                      ))}
+                      {selection.banco && !dbBancos.some(b => b.nome === selection.banco) && (
+                        <option value={selection.banco}>{selection.banco}</option>
+                      )}
+                    </select>
+                  ) : (
+                    <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco || "-"}</span>
                   )}
-                </select>
-              ) : (
-                <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao || "-"}</span>
-              )}
-            </div>
+                </div>
+
+                {comissaoVal && (
+                  <>
+                    <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                    <div className="flex flex-col items-center md:items-start bg-amber-50/80 border border-amber-200/60 px-3 py-1 rounded-lg">
+                      <span className="text-[8px] font-bold text-amber-700/80 uppercase tracking-[0.2em] mb-0.5">Comissão</span>
+                      <span className="text-[11px] font-black text-amber-900">{comissaoVal}</span>
+                    </div>
+                  </>
+                )}
+
+                {prazoVal && (
+                  <>
+                    <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                    <div className="flex flex-col items-center md:items-start bg-slate-100/80 border border-slate-200/60 px-3 py-1 rounded-lg">
+                      <span className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-0.5">Prazo</span>
+                      <span className="text-[11px] font-black text-slate-800">{prazoVal}</span>
+                    </div>
+                  </>
+                )}
+
+                {coefVal && (
+                  <>
+                    <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                    <div className="flex flex-col items-center md:items-start bg-slate-100/80 border border-slate-200/60 px-3 py-1 rounded-lg">
+                      <span className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-0.5">COEF</span>
+                      <span className="text-[11px] font-mono font-extrabold text-slate-800">{coefVal}</span>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex flex-col items-center md:items-start">
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
+                  {canEditHeaderSelection ? (
+                    <select
+                      value={selection.convenio}
+                      onChange={(e) => setSelection(prev => ({ ...prev, convenio: e.target.value }))}
+                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
+                    >
+                      <option value="">Selecione Convênio</option>
+                      {dbConvenios.map(c => (
+                        <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                      ))}
+                      {selection.convenio && !dbConvenios.some(c => c.nome === selection.convenio) && (
+                        <option value={selection.convenio}>{selection.convenio}</option>
+                      )}
+                    </select>
+                  ) : (
+                    <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio || "-"}</span>
+                  )}
+                </div>
+
+                <div className="h-8 w-px bg-slate-100 hidden md:block" />
+
+                <div className="flex flex-col items-center md:items-start">
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
+                  {canEditHeaderSelection ? (
+                    <select
+                      value={selection.banco}
+                      onChange={(e) => setSelection(prev => ({ ...prev, banco: e.target.value }))}
+                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
+                    >
+                      <option value="">Selecione o Banco</option>
+                      {dbBancos.map(b => (
+                        <option key={b.id || b.nome} value={b.nome}>{b.nome}</option>
+                      ))}
+                      {selection.banco && !dbBancos.some(b => b.nome === selection.banco) && (
+                        <option value={selection.banco}>{selection.banco}</option>
+                      )}
+                    </select>
+                  ) : (
+                    <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco || "-"}</span>
+                  )}
+                </div>
+
+                <div className="h-8 w-px bg-slate-100 hidden md:block" />
+
+                <div className="flex flex-col items-center md:items-start transition-all">
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
+                  {canEditHeaderSelection ? (
+                    <select
+                      value={selection.operacao}
+                      onChange={(e) => setSelection(prev => ({ ...prev, operacao: e.target.value }))}
+                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[280px]"
+                    >
+                      <option value="">Selecione a Operação</option>
+                      {dbOperacoes.map(o => (
+                        <option key={o.id || o.nome} value={o.nome}>{o.nome}</option>
+                      ))}
+                      {selection.operacao && !dbOperacoes.some(o => o.nome === selection.operacao) && (
+                        <option value={selection.operacao}>{selection.operacao}</option>
+                      )}
+                    </select>
+                  ) : (
+                    <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao || "-"}</span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl p-8 space-y-12 shadow-sm text-left">
@@ -2096,7 +2456,8 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {activeTab === "historico" && (
         <div className="space-y-8 animate-in fade-in duration-500 max-h-[700px] overflow-y-auto pb-10 px-4 custom-scrollbar border-t border-slate-100 pt-8">

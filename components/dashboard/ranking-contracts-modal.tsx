@@ -305,8 +305,12 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
     if (!raw) return ""
     let cleaned = String(raw)
       .replace(/\[FINANCE_METADATA_V1:[\s\S]*?\]/gi, "")
-      .replace(/\[[A-Z0-9_]+_METADATA[A-Z0-9_]*:[\s\S]*?\]/gi, "")
+      .replace(/\[[A-Z0-9_]*METADATA[A-Z0-9_]*:[\s\S]*?\]/gi, "")
       .replace(/\[METADATA:[\s\S]*?\]/gi, "")
+      .replace(/\[ADE\]:.*?(?:\n|$)/gi, "")
+      .replace(/\[Clonado do ID #[0-9]+\]/gi, "")
+      .replace(/--- IMAGENS EM ANEXO ---[\s\S]*/gi, "")
+      .replace(/!\[.*?\]\(.*?\)/gi, "")
       .trim()
 
     cleaned = cleaned

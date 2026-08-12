@@ -975,20 +975,42 @@ export default function ProposalsPage() {
     setExpandedProposalId(expandedProposalId === proposalId ? null : proposalId)
   }
 
+  const cleanObservationText = (raw?: string): string => {
+    if (!raw) return ""
+    let cleaned = String(raw)
+      .replace(/\[FINANCE_METADATA_V1:[\s\S]*?\]/gi, "")
+      .replace(/\[[A-Z0-9_]*METADATA[A-Z0-9_]*:[\s\S]*?\]/gi, "")
+      .replace(/\[METADATA:[\s\S]*?\]/gi, "")
+      .replace(/\[ADE\]:.*?(?:\n|$)/gi, "")
+      .replace(/\[Clonado do ID #[0-9]+\]/gi, "")
+      .replace(/--- IMAGENS EM ANEXO ---[\s\S]*/gi, "")
+      .replace(/!\[.*?\]\(.*?\)/gi, "")
+      .trim()
+
+    cleaned = cleaned
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .join('\n')
+      .trim()
+
+    return cleaned
+  }
+
   const getFormattedObservation = (p: Proposal) => {
     const isAuthorized = isAdmin || isDeveloper || isOperational;
-    let obsCorr = p.obs_corretor || "";
-    let obsOper = p.obs_operacional || "";
+    let obsCorr = cleanObservationText(p.obs_corretor || "");
+    let obsOper = cleanObservationText(p.obs_operacional || "");
 
     // Fallback extraction if columns are empty but combined field exists
     if (!obsCorr && !obsOper && p.observacoes) {
       const obs = p.observacoes;
       const corretorMatch = obs.match(/\[CORRETOR\]: ([\s\S]*?)(?=\n\[OPERACIONAL\]|$)/);
       const operacionalMatch = obs.match(/\[OPERACIONAL\]: ([\s\S]*?)$/);
-      if (corretorMatch) obsCorr = corretorMatch[1].trim();
-      if (operacionalMatch) obsOper = operacionalMatch[1].trim();
+      if (corretorMatch) obsCorr = cleanObservationText(corretorMatch[1]);
+      if (operacionalMatch) obsOper = cleanObservationText(operacionalMatch[1]);
       if (!obsCorr && !obsOper) {
-        return obs;
+        return cleanObservationText(obs) || "-";
       }
     }
 

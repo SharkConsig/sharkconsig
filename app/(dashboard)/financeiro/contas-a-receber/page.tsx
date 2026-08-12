@@ -1103,11 +1103,10 @@ export default function ContasAReceberPage() {
   const [statusObsOperacional, setObsOperacional] = useState("")
 
   const getCommissionPercentage = useCallback((proposal: Proposal) => {
-    if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
-      return Number(proposal.comissao_banco_porcentagem);
-    }
-
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
+      if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
+        return Number(proposal.comissao_banco_porcentagem);
+      }
       return undefined;
     }
 
@@ -1295,6 +1294,10 @@ export default function ContasAReceberPage() {
       return exactClean.percentual_comissao;
     }
 
+    if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
+      return Number(proposal.comissao_banco_porcentagem);
+    }
+
     return undefined;
   }, [dbProdutosConfigs, bancosList])
 
@@ -1376,11 +1379,27 @@ export default function ContasAReceberPage() {
     const parsedCoef = extractCoeficienteNum(proposal.coeficiente_prazo);
     const normProposalBanco = normalizeStr(proposal.banco);
 
-    const userId = proposal.corretor_id ? String(proposal.corretor_id) : (perfil?.id ? String(perfil.id) : undefined);
+    const candidateUserIds = [
+      proposal.corretor_id ? String(proposal.corretor_id) : null,
+      (proposal as any).estagiario_colaborador_id ? String((proposal as any).estagiario_colaborador_id) : null,
+      perfil?.id ? String(perfil.id) : null
+    ].filter(Boolean) as string[];
+
     const isPosVal = (v: any) => {
       if (v === null || v === undefined || v === "" || v === "--") return false;
       const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
       return !isNaN(num) && num > 0;
+    };
+
+    const getSpecificPJCom = (mapObj: Record<string, any> | undefined) => {
+      if (!mapObj) return undefined;
+      for (const uid of candidateUserIds) {
+        if (mapObj[uid] !== undefined && isPosVal(mapObj[uid])) {
+          const v = mapObj[uid];
+          return typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+        }
+      }
+      return undefined;
     };
 
     const allOptions = dbProdutosConfigs.flatMap(config => {
@@ -1399,16 +1418,14 @@ export default function ContasAReceberPage() {
         return config.regras
           .filter((r: { ativo?: boolean }) => r.ativo !== false)
           .map((regra: any) => {
-            let comissaoPjVal: number | undefined = undefined;
-            if (userId && regra.comissoes_pj_corretores?.[userId] !== undefined && isPosVal(regra.comissoes_pj_corretores[userId])) {
-              const v = regra.comissoes_pj_corretores[userId];
-              comissaoPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
-            } else if (isPosVal(regra.percentual_comissao_pj)) {
+            let comissaoPjVal: number | undefined = getSpecificPJCom(regra.comissoes_pj_corretores);
+            if (comissaoPjVal === undefined && isPosVal(regra.percentual_comissao_pj)) {
               comissaoPjVal = typeof regra.percentual_comissao_pj === 'string' ? parseFloat(regra.percentual_comissao_pj.replace(',', '.')) : regra.percentual_comissao_pj;
-            } else if (userId && config.comissoes_pj_corretores?.[userId] !== undefined && isPosVal(config.comissoes_pj_corretores[userId])) {
-              const v = config.comissoes_pj_corretores[userId];
-              comissaoPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
-            } else if (isPosVal(config.percentual_comissao_pj)) {
+            }
+            if (comissaoPjVal === undefined) {
+              comissaoPjVal = getSpecificPJCom(config.comissoes_pj_corretores);
+            }
+            if (comissaoPjVal === undefined && isPosVal(config.percentual_comissao_pj)) {
               comissaoPjVal = typeof config.percentual_comissao_pj === 'string' ? parseFloat(config.percentual_comissao_pj.replace(',', '.')) : config.percentual_comissao_pj;
             }
 
@@ -1420,8 +1437,6 @@ export default function ContasAReceberPage() {
               } else {
                 effectivePj = comissaoPjVal;
               }
-            } else if (rawComEmpresa !== undefined) {
-              effectivePj = rawComEmpresa;
             }
 
             return {
@@ -1438,11 +1453,8 @@ export default function ContasAReceberPage() {
           });
       }
 
-      let comissaoPjVal: number | undefined = undefined;
-      if (userId && config.comissoes_pj_corretores?.[userId] !== undefined && isPosVal(config.comissoes_pj_corretores[userId])) {
-        const v = config.comissoes_pj_corretores[userId];
-        comissaoPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
-      } else if (isPosVal(config.percentual_comissao_pj)) {
+      let comissaoPjVal: number | undefined = getSpecificPJCom(config.comissoes_pj_corretores);
+      if (comissaoPjVal === undefined && isPosVal(config.percentual_comissao_pj)) {
         comissaoPjVal = typeof config.percentual_comissao_pj === 'string' ? parseFloat(config.percentual_comissao_pj.replace(',', '.')) : config.percentual_comissao_pj;
       }
 
@@ -1454,8 +1466,6 @@ export default function ContasAReceberPage() {
         } else {
           effectivePj = comissaoPjVal;
         }
-      } else if (rawComEmpresa !== undefined) {
-        effectivePj = rawComEmpresa;
       }
 
       return [{
