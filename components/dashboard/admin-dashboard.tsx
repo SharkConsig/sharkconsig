@@ -366,6 +366,7 @@ export function AdminDashboard({
   const [dbProdutosConfigs, setDbProdutosConfigs] = React.useState<any[]>([])
   const [isFinancialLoading, setIsFinancialLoading] = React.useState(false)
   const [customCommissionPercents, setCustomCommissionPercents] = React.useState<Record<string, number>>({})
+  const [customPjCommissionPercents, setCustomPjCommissionPercents] = React.useState<Record<string, number>>({})
   const [compareChartMetric, setCompareChartMetric] = React.useState<'producao' | 'receita'>('producao')
 
   // Load localstorage values on mount
@@ -375,6 +376,14 @@ export function AdminDashboard({
       if (storedPercents) {
         try {
           setCustomCommissionPercents(JSON.parse(storedPercents))
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      const storedPjPercents = window.localStorage.getItem("receber_custom_pj_commission_percents")
+      if (storedPjPercents) {
+        try {
+          setCustomPjCommissionPercents(JSON.parse(storedPjPercents))
         } catch (e) {
           console.error(e)
         }
@@ -864,8 +873,34 @@ export function AdminDashboard({
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getCommissionPercentage = React.useCallback((proposal: any) => {
+    if (!proposal) return 0
     const commissionRate = 6 // default rate
+    const idLead = proposal.id_lead
+
+    if (isCorretorPJ) {
+      if (idLead && customPjCommissionPercents[idLead] !== undefined && customPjCommissionPercents[idLead] !== null) {
+        return customPjCommissionPercents[idLead]
+      }
+      if (proposal.comissao_corretor_porcentagem !== undefined && proposal.comissao_corretor_porcentagem !== null && Number(proposal.comissao_corretor_porcentagem) > 0) {
+        return Number(proposal.comissao_corretor_porcentagem)
+      }
+      const valOp = Number(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
+      if (proposal.valor_producao !== undefined && proposal.valor_producao !== null && valOp > 0) {
+        return parseFloat(((Number(proposal.valor_producao) / valOp) * 100).toFixed(4))
+      }
+    } else {
+      if (idLead && customCommissionPercents[idLead] !== undefined && customCommissionPercents[idLead] !== null) {
+        return customCommissionPercents[idLead]
+      }
+    }
+
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
+      if (isCorretorPJ) {
+        return 0
+      }
+      if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
+        return Number(proposal.comissao_banco_porcentagem)
+      }
       return commissionRate
     }
 
@@ -1039,8 +1074,8 @@ export function AdminDashboard({
     }
 
     if (bestMatch && highestScore >= 15) {
-      if (isCorretorPJ && bestMatch.percentual_comissao_pj !== undefined) {
-        return bestMatch.percentual_comissao_pj
+      if (isCorretorPJ) {
+        return bestMatch.percentual_comissao_pj !== undefined ? bestMatch.percentual_comissao_pj : 0
       }
       if (bestMatch.percentual_comissao !== undefined) {
         return bestMatch.percentual_comissao
@@ -1063,16 +1098,20 @@ export function AdminDashboard({
     })
 
     if (exactClean) {
-      if (isCorretorPJ && exactClean.percentual_comissao_pj !== undefined) {
-        return exactClean.percentual_comissao_pj
+      if (isCorretorPJ) {
+        return exactClean.percentual_comissao_pj !== undefined ? exactClean.percentual_comissao_pj : 0
       }
       if (exactClean.percentual_comissao !== undefined) {
         return exactClean.percentual_comissao
       }
     }
 
+    if (isCorretorPJ) {
+      return 0
+    }
+
     return commissionRate
-  }, [dbProdutosConfigs, isCorretorPJ, filterUserId, perfil?.id])
+  }, [dbProdutosConfigs, isCorretorPJ, filterUserId, perfil?.id, customCommissionPercents, customPjCommissionPercents])
 
   // Memoized filter of proposals by active date range
   const filteredFinancialProposals = React.useMemo(() => {
@@ -1111,10 +1150,10 @@ export function AdminDashboard({
   const totalRevenue = React.useMemo(() => {
     return filteredFinancialProposals.reduce((sum, p) => {
       const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
-      const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
+      const comPercent = getCommissionPercentage(p)
       return sum + (val * comPercent) / 100
     }, 0)
-  }, [filteredFinancialProposals, customCommissionPercents, getCommissionPercentage])
+  }, [filteredFinancialProposals, getCommissionPercentage])
 
   // Previous equivalent period dates based on financial filter dates
   const prevPeriodDates = React.useMemo(() => {
@@ -1202,7 +1241,7 @@ export function AdminDashboard({
         const key = getKey(p).toUpperCase()
         const name = getName(p)
         const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
-        const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
+        const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
         if (!data[key]) {
@@ -1310,7 +1349,7 @@ export function AdminDashboard({
 
     filteredFinancialProposals.forEach((p) => {
       const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
-      const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
+      const comPercent = getCommissionPercentage(p)
       const rev = (val * comPercent) / 100
 
       // 1. Produto (tipo_operacao)
@@ -1426,9 +1465,7 @@ export function AdminDashboard({
       const month = pDate.getMonth()
 
       const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
-      const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-        ? customCommissionPercents[p.id_lead] 
-        : getCommissionPercentage(p)
+      const comPercent = getCommissionPercentage(p)
       const rev = (val * comPercent) / 100
 
       // Year comparisons
@@ -1529,9 +1566,7 @@ export function AdminDashboard({
         if (!pDate) return
         const pDateStr = format(pDate, "yyyy-MM-dd")
         const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
-        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-          ? customCommissionPercents[p.id_lead] 
-          : getCommissionPercentage(p)
+        const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
         const item = data.find(d => d.dateStr === pDateStr)
@@ -1575,9 +1610,7 @@ export function AdminDashboard({
 
         const day = pDate.getDate()
         const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
-        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-          ? customCommissionPercents[p.id_lead] 
-          : getCommissionPercentage(p)
+        const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
         const item = data.find(w => day >= w.startDay && day <= w.endDay)
@@ -1615,9 +1648,7 @@ export function AdminDashboard({
         if (pDate.getFullYear() !== start.getFullYear()) return
         const pMonth = pDate.getMonth()
         const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
-        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-          ? customCommissionPercents[p.id_lead] 
-          : getCommissionPercentage(p)
+        const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
         if (pMonth >= 0 && pMonth < 12) {
@@ -1650,9 +1681,7 @@ export function AdminDashboard({
         const pMonth = pDate.getMonth()
         const pQuarter = Math.floor(pMonth / 3)
         const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
-        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-          ? customCommissionPercents[p.id_lead] 
-          : getCommissionPercentage(p)
+        const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
         if (pQuarter >= 0 && pQuarter < 4) {
@@ -1684,9 +1713,7 @@ export function AdminDashboard({
         if (!pDate) return
         const pYear = pDate.getFullYear()
         const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
-        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-          ? customCommissionPercents[p.id_lead] 
-          : getCommissionPercentage(p)
+        const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
         const item = data.find(d => d.year === pYear)
@@ -1722,9 +1749,7 @@ export function AdminDashboard({
         if (!pDate) return
         const pDateStr = format(pDate, "yyyy-MM-dd")
         const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
-        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-          ? customCommissionPercents[p.id_lead] 
-          : getCommissionPercentage(p)
+        const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
         const item = data.find(d => d.dateStr === pDateStr)
@@ -1752,9 +1777,7 @@ export function AdminDashboard({
         const dayOffset = Math.floor((pDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
         if (dayOffset >= 0 && dayOffset < diffDays) {
           const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
-          const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-            ? customCommissionPercents[p.id_lead] 
-            : getCommissionPercentage(p)
+          const comPercent = getCommissionPercentage(p)
           const rev = (val * comPercent) / 100
 
           const item = data.find(w => dayOffset >= w.startDay && dayOffset <= w.endDay)
@@ -1784,9 +1807,7 @@ export function AdminDashboard({
         if (pDate.getFullYear() !== start.getFullYear()) return
         const pMonth = pDate.getMonth()
         const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
-        const comPercent = customCommissionPercents[p.id_lead] !== undefined 
-          ? customCommissionPercents[p.id_lead] 
-          : getCommissionPercentage(p)
+        const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
         if (pMonth >= 0 && pMonth < 12) {
@@ -1796,7 +1817,7 @@ export function AdminDashboard({
       })
       return data
     }
-  }, [financialProposals, customCommissionPercents, getCommissionPercentage, financialStartDate, financialEndDate, financialPeriod])
+  }, [financialProposals, getCommissionPercentage, financialStartDate, financialEndDate, financialPeriod])
 
   // New Memoized Comparative Statistics matching any chosen financial period
   const dynamicComparisonStats = React.useMemo(() => {
@@ -1814,7 +1835,7 @@ export function AdminDashboard({
     const revCurrent = totalRevenue
     const revPrevious = previousPeriodProposals.reduce((sum, p) => {
       const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
-      const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
+      const comPercent = getCommissionPercentage(p)
       return sum + (val * comPercent) / 100
     }, 0)
 
