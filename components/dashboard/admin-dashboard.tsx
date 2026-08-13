@@ -49,6 +49,59 @@ import {
   Tooltip
 } from "recharts"
 
+const METADATA_PREFIX = "___FINANCE_METADATA___:"
+const METADATA_SUFFIX = "___END_FINANCE_METADATA___"
+
+interface FinanceMetadata {
+  received?: boolean
+  receivedDate?: string
+  paymentStatus?: "A_RECEBER" | "RECEBIDO" | "ESTORNADO"
+  pjPaid?: boolean
+  pjPaidDate?: string
+}
+
+const parseProposalNotesAndMetadata = (observacoes?: string | null): { notes: string; metadata: FinanceMetadata } => {
+  if (!observacoes) return { notes: "", metadata: {} }
+  const startIndex = observacoes.indexOf(METADATA_PREFIX)
+  if (startIndex === -1) {
+    return { notes: observacoes, metadata: {} }
+  }
+  const endIndex = observacoes.indexOf(METADATA_SUFFIX, startIndex)
+  if (endIndex === -1) {
+    return { notes: observacoes, metadata: {} }
+  }
+  
+  const notes = (observacoes.substring(0, startIndex) + observacoes.substring(endIndex + METADATA_SUFFIX.length)).trim()
+  const metadataStr = observacoes.substring(startIndex + METADATA_PREFIX.length, endIndex)
+  try {
+    const metadata = JSON.parse(metadataStr)
+    return { notes, metadata }
+  } catch (e) {
+    console.error("Failed to parse finance metadata", e)
+    return { notes: observacoes, metadata: {} }
+  }
+}
+
+const parseDateToYYYYMMDD = (compareDate: any): string => {
+  if (!compareDate) return ""
+  try {
+    const str = String(compareDate).trim()
+    if (!str) return ""
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      return str.substring(0, 10)
+    }
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+      const parts = str.split("/")
+      return `${parts[2]}-${parts[1]}-${parts[0]}`
+    }
+    const pDate = new Date(str)
+    if (isNaN(pDate.getTime())) return ""
+    return format(pDate, "yyyy-MM-dd")
+  } catch {
+    return ""
+  }
+}
+
 interface Perfil {
   id: string
   nome: string
@@ -485,11 +538,11 @@ export function AdminDashboard({
   const fetchFinancialData = React.useCallback(async () => {
     setIsFinancialLoading(true)
     try {
-      // 1. Fetch proposals with status in ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA']
+      // 1. Fetch proposals with status 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA'
       let propQuery = supabase
         .from("propostas")
         .select("*")
-        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA"])
+        .eq("status", "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA")
 
       if (filterUserId) {
         propQuery = propQuery.eq("corretor_id", filterUserId)
@@ -498,7 +551,43 @@ export function AdminDashboard({
       const { data: propData, error: propErr } = await propQuery
 
       if (propErr) throw propErr
-      setFinancialProposals(propData || [])
+
+      let localReceivedIds: Record<string, boolean> = {}
+      let localReceivedDates: Record<string, string> = {}
+      let localPaymentStatuses: Record<string, "A_RECEBER" | "RECEBIDO" | "ESTORNADO"> = {}
+      if (typeof window !== "undefined") {
+        try {
+          const stored = window.localStorage.getItem("receber_pago_status_ids")
+          if (stored) localReceivedIds = JSON.parse(stored)
+          const storedDates = window.localStorage.getItem("receber_pago_dates")
+          if (storedDates) localReceivedDates = JSON.parse(storedDates)
+          const storedPS = window.localStorage.getItem("receber_payment_statuses")
+          if (storedPS) localPaymentStatuses = JSON.parse(storedPS)
+        } catch (e) {
+          console.error("Erro ao carregar local storage:", e)
+        }
+      }
+
+      // Process proposals filtering strictly by status 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA' and using data_pago_cliente
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const processedProps = (propData || [])
+        .filter((p: any) => p.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA")
+        .map((p: any) => {
+          const { metadata } = parseProposalNotesAndMetadata(p.observacoes)
+          const effectiveStatus: "A_RECEBER" | "RECEBIDO" | "ESTORNADO" = 
+            metadata.paymentStatus || 
+            (metadata.received !== undefined ? (metadata.received ? "RECEBIDO" : "A_RECEBER") : undefined) ||
+            localPaymentStatuses[p.id_lead] ||
+            (localReceivedIds[p.id_lead] ? "RECEBIDO" : "A_RECEBER")
+
+          return {
+            ...p,
+            _effectiveStatus: effectiveStatus,
+            _effectiveDate: p.data_pago_cliente
+          }
+        })
+
+      setFinancialProposals(processedProps)
 
       // 2. Fetch products config table regras
       let configsData = null
@@ -896,6 +985,9 @@ export function AdminDashboard({
       if (idLead && customCommissionPercents[idLead] !== undefined && customCommissionPercents[idLead] !== null) {
         return customCommissionPercents[idLead]
       }
+      if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
+        return Number(proposal.comissao_banco_porcentagem)
+      }
     }
 
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
@@ -1120,44 +1212,43 @@ export function AdminDashboard({
   // Memoized filter of proposals by active date range
   const filteredFinancialProposals = React.useMemo(() => {
     return financialProposals.filter((proposal) => {
-      if (filterUserId && proposal.corretor_id !== filterUserId) return false
+      if (filterUserId && String(proposal.corretor_id) !== String(filterUserId)) return false
+      if (proposal.status !== "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA") return false
       if (!financialStartDate && !financialEndDate) return true
       const compareDate = proposal.data_pago_cliente
       if (!compareDate) return false
 
-      try {
-        const pDate = new Date(compareDate)
-        if (isNaN(pDate.getTime())) return true
-        const formattedCompare = format(pDate, "yyyy-MM-dd")
+      const formattedCompare = parseDateToYYYYMMDD(compareDate)
+      if (!formattedCompare) return false
 
-        if (financialStartDate && formattedCompare < financialStartDate) return false
-        if (financialEndDate && formattedCompare > financialEndDate) return false
-      } catch (err) {
-        console.error("Erro data filtro financeiro:", err)
-        return true
-      }
+      if (financialStartDate && formattedCompare < financialStartDate) return false
+      if (financialEndDate && formattedCompare > financialEndDate) return false
+
       return true
     })
   }, [financialProposals, financialStartDate, financialEndDate, filterUserId])
 
-  // Calculate Produção Total: sum of p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+  // Calculate Produção Total: sum of p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
   const totalProduction = React.useMemo(() => {
     return filteredFinancialProposals.reduce((sum, p) => {
       const val = isCorretorPJ 
         ? (p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || 0)
-        : (p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0)
-      return sum + val
+        : (p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
+      return sum + Number(val)
     }, 0)
   }, [filteredFinancialProposals, isCorretorPJ])
 
-  // Calculate Receita Total: sum of (val * comPercent) / 100
+  // Calculate Receita Total: sum of (val * comPercent) / 100 or comissao_banco_valor
   const totalRevenue = React.useMemo(() => {
     return filteredFinancialProposals.reduce((sum, p) => {
-      const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+      const val = Number(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
+      if (!isCorretorPJ && p.comissao_banco_valor !== undefined && p.comissao_banco_valor !== null && Number(p.comissao_banco_valor) > 0) {
+        return sum + Number(p.comissao_banco_valor)
+      }
       const comPercent = getCommissionPercentage(p)
       return sum + (val * comPercent) / 100
     }, 0)
-  }, [filteredFinancialProposals, getCommissionPercentage])
+  }, [filteredFinancialProposals, getCommissionPercentage, isCorretorPJ])
 
   // Previous equivalent period dates based on financial filter dates
   const prevPeriodDates = React.useMemo(() => {
@@ -1207,23 +1298,20 @@ export function AdminDashboard({
     const { prevStart, prevEnd } = prevPeriodDates
     if (!prevStart || !prevEnd) return []
     return financialProposals.filter((proposal) => {
-      if (filterUserId && proposal.corretor_id !== filterUserId) return false
+      if (filterUserId && String(proposal.corretor_id) !== String(filterUserId)) return false
+      if (proposal.status !== "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA") return false
       const compareDate = proposal.data_pago_cliente
       if (!compareDate) return false
 
-      try {
-        const pDate = new Date(compareDate)
-        if (isNaN(pDate.getTime())) return false
-        const formattedCompare = format(pDate, "yyyy-MM-dd")
+      const formattedCompare = parseDateToYYYYMMDD(compareDate)
+      if (!formattedCompare) return false
 
-        if (formattedCompare < prevStart) return false
-        if (formattedCompare > prevEnd) return false
-      } catch {
-        return false
-      }
+      if (formattedCompare < prevStart) return false
+      if (formattedCompare > prevEnd) return false
+
       return true
     })
-  }, [financialProposals, prevPeriodDates])
+  }, [financialProposals, prevPeriodDates, filterUserId])
 
   // Ranking data for top banks, products and agreements
   const rankingsData = React.useMemo(() => {
@@ -1244,9 +1332,14 @@ export function AdminDashboard({
       propsList.forEach((p) => {
         const key = getKey(p).toUpperCase()
         const name = getName(p)
-        const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
-        const comPercent = getCommissionPercentage(p)
-        const rev = (val * comPercent) / 100
+        const val = Number(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
+        let rev = 0
+        if (!isCorretorPJ && p.comissao_banco_valor !== undefined && p.comissao_banco_valor !== null && Number(p.comissao_banco_valor) > 0) {
+          rev = Number(p.comissao_banco_valor)
+        } else {
+          const comPercent = getCommissionPercentage(p)
+          rev = (val * comPercent) / 100
+        }
 
         if (!data[key]) {
           data[key] = { key, name, prod: 0, rev: 0, count: 0 }
@@ -1535,14 +1628,12 @@ export function AdminDashboard({
 
   const dynamicChartData = React.useMemo(() => {
     const getProposalDate = (p: any) => {
+      if (p.status !== "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA") return null
       const dStr = p.data_pago_cliente
       if (!dStr) return null
-      try {
-        const d = new Date(dStr)
-        return isNaN(d.getTime()) ? null : d
-      } catch {
-        return null
-      }
+      const ymd = parseDateToYYYYMMDD(dStr)
+      if (!ymd) return null
+      return new Date(ymd + "T12:00:00")
     }
 
     const start = financialStartDate ? new Date(financialStartDate + "T12:00:00") : new Date()
