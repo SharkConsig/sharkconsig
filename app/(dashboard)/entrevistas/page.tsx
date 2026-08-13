@@ -142,12 +142,10 @@ export default function EntrevistasPage() {
         }
       }
 
-      // Automatically purge any mock candidates so the list is clean
-      const mockNames = ["Jenifer", "João Lucas", "Gabryella", "Airton", "Julia", "Marina", "Maria Eduarda", "Flavia", "Amine", "Laura", "Vitória", "Poliana", "Helena", "Andriw", "Jainara"]
+      // Purge legacy mock seed IDs if any without phone
       initialData = initialData.filter(item => {
-        const isMockId = /^int-([1-9]|1[0-5])$/.test(item.id)
-        const isMockName = mockNames.includes(item.name)
-        return !isMockId && !isMockName
+        const isMockId = /^int-([1-9]|1[0-5])$/.test(item.id) && !item.phone
+        return !isMockId
       })
 
       if (!isSupabaseConfigured) {
@@ -204,11 +202,7 @@ export default function EntrevistasPage() {
               area: item.area,
               notes: item.notes || "",
               tipo: item.tipo || "ENTREVISTAS"
-            })).filter(item => {
-              const isMockId = /^int-([1-9]|1[0-5])$/.test(item.id)
-              const isMockName = mockNames.includes(item.name)
-              return !isMockId && !isMockName
-            })
+            }))
             setInterviews(mappedData)
             localStorage.setItem("shark_hr_interviews_spreadsheet", JSON.stringify(mappedData))
             localStorage.setItem("shark_hr_interviews_database_seeded_v1", "true")
@@ -423,9 +417,9 @@ export default function EntrevistasPage() {
   }
 
   const isCandidateInTab = (item: Interview, tab: "ENTREVISTAS" | "LIGAÇÕES") => {
-    const itemTipo = item.tipo || "ENTREVISTAS"
+    const itemTipo = String(item.tipo || "ENTREVISTAS").toUpperCase().trim()
     if (tab === "ENTREVISTAS") {
-      return itemTipo === "ENTREVISTAS" || item.fase === "Entrevista"
+      return itemTipo === "ENTREVISTAS" || item.fase === "Entrevista" || !item.tipo
     }
     return itemTipo === "LIGAÇÕES" && item.fase !== "Entrevista"
   }
