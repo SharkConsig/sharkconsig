@@ -22,6 +22,7 @@ import {
   Calendar,
   Briefcase,
   Clock,
+  History,
   AlertTriangle,
   GraduationCap,
   Calculator,
@@ -189,6 +190,12 @@ const allMenuItems = [
         name: "CONTAS A RECEBER", 
         href: "/financeiro/contas-a-receber", 
         icon: ClipboardList, 
+        roles: ["Administrador", "Desenvolvedor"] 
+      },
+      { 
+        name: "HISTÓRICO PAGAMENTOS PJ", 
+        href: "/financeiro/historico-pagamentos-pj", 
+        icon: History, 
         roles: ["Administrador", "Desenvolvedor"] 
       },
       { 

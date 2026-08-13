@@ -824,6 +824,63 @@ export default function ContasAReceberPage() {
       const parsed = stored ? JSON.parse(stored) : {}
       parsed[idLead] = newPjPaid
       window.localStorage.setItem("receber_pj_paid_ids", JSON.stringify(parsed))
+
+      // Sync with PJ Payment History (historico_pagamentos_pj_records)
+      try {
+        const historyRaw = window.localStorage.getItem("historico_pagamentos_pj_records")
+        let historyList: any[] = historyRaw ? JSON.parse(historyRaw) : []
+
+        if (newPjPaid) {
+          const existingIndex = historyList.findIndex((item: any) => item.id_lead === idLead)
+          const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
+          const pjPct = customPjCommissionPercents[idLead] !== undefined 
+            ? customPjCommissionPercents[idLead] 
+            : (getPJCommissionPercentage(proposal) || 0)
+          const pjBruta = getPJCommissionValue(proposal)
+          const todayDate = new Date().toISOString().split("T")[0]
+          const corretorNome = (proposal.nome_corretor || proposal.corretor || "Corretor PJ").trim()
+
+          if (existingIndex >= 0) {
+            historyList[existingIndex] = {
+              ...historyList[existingIndex],
+              data_pagamento: historyList[existingIndex].data_pagamento || todayDate,
+              nome: corretorNome,
+              valor_operacao: valOp,
+              aliquota_comissao: pjPct,
+              comissao_bruta: pjBruta,
+              comissao_liquida: pjBruta + (Number(historyList[existingIndex].proventos) || 0) - (Number(historyList[existingIndex].descontos) || 0)
+            }
+          } else {
+            // Find max friendly numeric ID starting at 1001
+            const maxId = historyList.reduce((max: number, item: any) => {
+              const num = parseInt(String(item.id || "").replace("#", ""), 10)
+              return !isNaN(num) && num > max ? num : max
+            }, 1000)
+            const friendlyId = String(maxId + 1)
+
+            historyList.unshift({
+              id: friendlyId,
+              id_lead: idLead,
+              data_pagamento: todayDate,
+              nome: corretorNome,
+              valor_operacao: valOp,
+              aliquota_comissao: pjPct,
+              comissao_bruta: pjBruta,
+              proventos: 0,
+              descontos: 0,
+              comissao_liquida: pjBruta,
+              created_at: new Date().toISOString()
+            })
+          }
+        } else {
+          historyList = historyList.filter((item: any) => item.id_lead !== idLead)
+        }
+
+        window.localStorage.setItem("historico_pagamentos_pj_records", JSON.stringify(historyList))
+        window.dispatchEvent(new Event("historico_pj_updated"))
+      } catch (e) {
+        console.error("Erro ao atualizar historico_pagamentos_pj_records:", e)
+      }
     }
 
     try {

@@ -1019,6 +1019,41 @@ function NewProposalForm() {
 
       if (error) throw error
 
+      // Se a proposta foi originada de um chamado, atualiza o status desse chamado específico para "PROPOSTA ENVIADA"
+      const idChamadoParam = searchParams.get("idChamado") || searchParams.get("idLead")
+      if (idChamadoParam) {
+        try {
+          const { data: ticketData } = await supabase
+            .from('chamados')
+            .select('id')
+            .eq('id', idChamadoParam)
+            .maybeSingle()
+
+          if (ticketData) {
+            const { data: statusObj } = await supabase
+              .from('status_chamados')
+              .select('id, nome')
+              .ilike('nome', '%PROPOSTA ENVIADA%')
+              .maybeSingle()
+
+            const updatePayload: Record<string, any> = {
+              status: statusObj?.nome || 'PROPOSTA ENVIADA',
+              updated_at: new Date().toISOString()
+            }
+            if (statusObj?.id) {
+              updatePayload.status_id = statusObj.id
+            }
+
+            await supabase
+              .from('chamados')
+              .update(updatePayload)
+              .eq('id', ticketData.id)
+          }
+        } catch (tErr) {
+          console.error("Erro ao atualizar chamado para PROPOSTA ENVIADA:", tErr)
+        }
+      }
+
       toast.dismiss(loadingToast)
       toast.success("Proposta salva com sucesso!")
       router.push("/propostas")
