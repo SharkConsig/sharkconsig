@@ -1632,11 +1632,11 @@ export default function ContasAReceberPage() {
   const fetchProposals = async () => {
     setIsLoading(true)
     try {
-      // Query proposals in 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA' and 'PÓS-VENDA REALIZADA'
+      // Query proposals in 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA', 'PAGAMENTO DEVOLVIDO' and 'CANCELADO'
       const { data, error } = await supabase
         .from("propostas")
         .select("*")
-        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA"])
+        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA", "PAGAMENTO DEVOLVIDO", "CANCELADO"])
         .order("updated_at", { ascending: false })
 
       if (error) {
@@ -1753,8 +1753,10 @@ export default function ContasAReceberPage() {
 
       const formattedData = data
         .filter((p: Proposal) => {
-          if (p.status === "CANCELADO" || p.status === "PAGAMENTO DEVOLVIDO") {
-            return false
+          if (p.status === "CANCELADO") {
+            const { metadata } = parseProposalNotesAndMetadata(p.observacoes)
+            const isEstornado = metadata.paymentStatus === "ESTORNADO" || localPaymentStatuses[p.id_lead] === "ESTORNADO"
+            return isEstornado
           }
           return true
         })
@@ -1987,9 +1989,6 @@ export default function ContasAReceberPage() {
 
   // Filtering Logic - Base filters
   const baseFilteredProposals = proposals.filter((proposal) => {
-    if (proposal.status === "CANCELADO" || proposal.status === "PAGAMENTO DEVOLVIDO") {
-      return false
-    }
     const cleanSearch = searchTerm.toLowerCase().replace(/\D/g, "")
     const cleanCpf = (proposal.cliente_cpf || "").replace(/\D/g, "")
 
