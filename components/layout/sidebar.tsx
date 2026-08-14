@@ -49,6 +49,12 @@ const allMenuItems = [
         roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio"] 
       },
       { 
+        name: "CALCULADORA", 
+        href: "/calculadora", 
+        icon: Calculator, 
+        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Monitoramento"] 
+      },
+      { 
         name: "IMPORTAR LOTE", 
         href: "/importar", 
         icon: FileUp, 
@@ -209,12 +215,6 @@ const allMenuItems = [
   {
     title: "",
     items: [
-      { 
-        name: "CALCULADORA", 
-        href: "/calculadora", 
-        icon: Calculator, 
-        roles: ["Administrador", "Desenvolvedor", "Corretor", "Supervisor", "Operacional", "Estágio", "Monitoramento"] 
-      },
       { 
         name: "CONFIGURAÇÕES", 
         href: "/configuracoes", 
