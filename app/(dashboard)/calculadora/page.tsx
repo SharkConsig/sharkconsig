@@ -672,7 +672,9 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
           const specialRate = t === 12 ? 0.0082 : 0.0096
           const dynPlan = calculateDynamicAmortizationPlan(prazo, t, parcela, 0.05)
           const sumTotalMes = dynPlan.reduce((acc, row) => acc + row.totalMes, 0)
-          const calcParcelaMedia = t > 0 ? sumTotalMes / t : parcela
+          const calcParcelaMedia = t === 12 
+            ? parcela * (1 + 1.0289) 
+            : parcela * (1 + 0.0816)
 
           return {
             term: t,
