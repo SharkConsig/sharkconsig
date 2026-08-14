@@ -271,9 +271,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     if (isCorretorPJ && section.title === "RECURSOS HUMANOS") {
       return {
         title: "",
-        items: items
-          .filter(item => item.href === "/capacitacao-pj")
-          .map(item => ({ ...item, name: "CAPACITAÇÃO" }))
+        items: [
+          ...items
+            .filter(item => item.href === "/capacitacao-pj")
+            .map(item => ({ ...item, name: "CAPACITAÇÃO" })),
+          {
+            name: "HISTÓRICO DE PAGAMENTOS",
+            href: "/financeiro/historico-pagamentos-pj",
+            icon: History,
+            roles: ["Corretor", "Administrador", "Desenvolvedor"]
+          }
+        ]
       }
     }
     return { ...section, items }

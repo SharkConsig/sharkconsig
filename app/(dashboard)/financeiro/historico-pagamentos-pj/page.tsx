@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { 
   Search, 
-  History, 
   FileSpreadsheet, 
   RefreshCw, 
   Calendar, 
@@ -22,10 +21,23 @@ import {
   Filter,
   X,
   CheckCircle2,
-  ListFilter
+  ListFilter,
+  AlertTriangle,
+  Radio,
+  Eye,
+  Share2
 } from "lucide-react"
+import { useAuth } from "@/context/auth-context"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { toast } from "react-hot-toast"
+import { toast } from "sonner"
 import { format } from "date-fns"
 import ExcelJS from "exceljs"
 import { saveAs } from "file-saver"
@@ -45,6 +57,11 @@ export interface HistoricoPJRecord {
 }
 
 export default function HistoricoPagamentosPJPage() {
+  const { user, perfil } = useAuth()
+  const isCorretor = perfil?.role === "Corretor"
+  const isCorretorPJ = isCorretor && (perfil?.regime_contratacao === "PJ" || perfil?.tipo_contrato === "PJ")
+  const isCorretorUser = isCorretor || isCorretorPJ
+
   const [records, setRecords] = useState<HistoricoPJRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   
@@ -61,6 +78,11 @@ export default function HistoricoPagamentosPJPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [pageSize, setPageSize] = useState<number>(50)
   const [currentPage, setCurrentPage] = useState<number>(1)
+  const [mirroredVersion, setMirroredVersion] = useState<number>(0)
+
+  // Delete Confirmation Modal state
+  const [recordToDelete, setRecordToDelete] = useState<HistoricoPJRecord | null>(null)
+  const [isDeleting, setIsDeleting] = useState<boolean>(false)
 
   // Format monetary value
   const formatCurrency = (val: number | undefined | null) => {
@@ -78,41 +100,82 @@ export default function HistoricoPagamentosPJPage() {
     return isNaN(parsed) ? 0 : parsed
   }
 
-  // Load records from LocalStorage & Supabase
-  const loadData = useCallback(async () => {
-    setIsLoading(true)
+  // Load records from Supabase historico_pagamentos_pj & LocalStorage
+  const loadData = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true)
+    }
     try {
       let localRecords: HistoricoPJRecord[] = []
       if (typeof window !== "undefined") {
         const raw = localStorage.getItem("historico_pagamentos_pj_records")
         if (raw) {
-          localRecords = JSON.parse(raw)
+          try {
+            localRecords = JSON.parse(raw)
+          } catch (e) {
+            console.error(e)
+          }
         }
       }
 
-      // Also fetch from Supabase to recover any PJ paid proposals that might not be in local storage
-      const { data: propData, error } = await supabase
+      // 1. Fetch directly from Supabase historico_pagamentos_pj
+      const { data: dbData, error: dbError } = await supabase
+        .from("historico_pagamentos_pj")
+        .select("*")
+        .order("data_pagamento", { ascending: false })
+
+      let dbRecords: HistoricoPJRecord[] = []
+      if (!dbError && dbData && dbData.length > 0) {
+        dbRecords = dbData.map((row: any) => ({
+          id: String(row.id || ""),
+          id_lead: String(row.id_lead || ""),
+          data_pagamento: row.data_pagamento ? String(row.data_pagamento).split("T")[0] : "",
+          nome: String(row.nome || "Corretor PJ"),
+          valor_operacao: safeFloat(row.valor_operacao),
+          aliquota_comissao: safeFloat(row.aliquota_comissao),
+          comissao_bruta: safeFloat(row.comissao_bruta),
+          proventos: safeFloat(row.proventos),
+          descontos: safeFloat(row.descontos),
+          comissao_liquida: safeFloat(row.comissao_liquida),
+          created_at: row.created_at || new Date().toISOString()
+        }))
+      }
+
+      // 2. Also check propostas with pjPaid to guarantee no payments are missed
+      const { data: propData } = await supabase
         .from("propostas")
         .select("*")
         .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA"])
 
-      if (!error && propData) {
-        let pjPaidIds: Record<string, boolean> = {}
-        if (typeof window !== "undefined") {
-          const storedPj = localStorage.getItem("receber_pj_paid_ids")
-          if (storedPj) pjPaidIds = JSON.parse(storedPj)
+      let pjPaidIds: Record<string, boolean> = {}
+      if (typeof window !== "undefined") {
+        const storedPj = localStorage.getItem("receber_pj_paid_ids")
+        if (storedPj) {
+          try {
+            pjPaidIds = JSON.parse(storedPj)
+          } catch (e) {
+            console.error(e)
+          }
         }
+      }
 
-        const mapExisting = new Map<string, HistoricoPJRecord>()
-        localRecords.forEach(r => mapExisting.set(r.id_lead, r))
+      const mapExisting = new Map<string, HistoricoPJRecord>()
+      dbRecords.forEach(r => mapExisting.set(r.id_lead, r))
+      localRecords.forEach(r => {
+        if (!mapExisting.has(r.id_lead)) {
+          mapExisting.set(r.id_lead, r)
+        }
+      })
 
-        let nextFriendlyNum = localRecords.reduce((max, r) => {
-          const num = parseInt(String(r.id || "").replace("#", ""), 10)
-          return !isNaN(num) && num > max ? num : max
-        }, 1000)
+      let nextFriendlyNum = Array.from(mapExisting.values()).reduce((max, r) => {
+        const num = parseInt(String(r.id || "").replace("#", ""), 10)
+        return !isNaN(num) && num > max ? num : max
+      }, 1000)
 
-        const merged: HistoricoPJRecord[] = []
+      const merged: HistoricoPJRecord[] = []
+      const newItemsToSync: HistoricoPJRecord[] = []
 
+      if (propData) {
         propData.forEach((p: any) => {
           let isPaid = !!pjPaidIds[p.id_lead]
           let pjPaidDate = new Date().toISOString().split("T")[0]
@@ -142,7 +205,7 @@ export default function HistoricoPagamentosPJPage() {
                 pjBruta = (valOp * pjPct) / 100
               }
 
-              merged.push({
+              const newItem: HistoricoPJRecord = {
                 id: String(nextFriendlyNum),
                 id_lead: p.id_lead,
                 data_pagamento: pjPaidDate,
@@ -154,27 +217,58 @@ export default function HistoricoPagamentosPJPage() {
                 descontos: 0,
                 comissao_liquida: pjBruta,
                 created_at: new Date().toISOString()
-              })
+              }
+              merged.push(newItem)
+              newItemsToSync.push(newItem)
             }
           }
         })
+      }
 
-        // Add any local records that might not be in propData query
-        localRecords.forEach(r => {
-          if (!merged.some(m => m.id_lead === r.id_lead)) {
-            merged.push(r)
-          }
-        })
-
-        // Sort by Date descending
-        merged.sort((a, b) => (b.data_pagamento || "").localeCompare(a.data_pagamento || ""))
-
-        setRecords(merged)
-        if (typeof window !== "undefined") {
-          localStorage.setItem("historico_pagamentos_pj_records", JSON.stringify(merged))
+      // Add any database records or local records that are not in propData
+      Array.from(mapExisting.values()).forEach(r => {
+        if (!merged.some(m => m.id_lead === r.id_lead)) {
+          merged.push(r)
         }
-      } else {
-        setRecords(localRecords)
+      })
+
+      // Sort by Date descending
+      merged.sort((a, b) => (b.data_pagamento || "").localeCompare(a.data_pagamento || ""))
+
+      setRecords(merged)
+      if (typeof window !== "undefined") {
+        localStorage.setItem("historico_pagamentos_pj_records", JSON.stringify(merged))
+      }
+
+      // Sync any unsaved items to historico_pagamentos_pj
+      if (newItemsToSync.length > 0) {
+        for (const item of newItemsToSync) {
+          try {
+            const numericId = parseInt(String(item.id).replace(/\D/g, ""), 10)
+            const payload: any = {
+              id_lead: item.id_lead,
+              data_pagamento: item.data_pagamento,
+              nome: item.nome,
+              valor_operacao: item.valor_operacao,
+              aliquota_comissao: item.aliquota_comissao,
+              comissao_bruta: item.comissao_bruta,
+              proventos: item.proventos,
+              descontos: item.descontos,
+              comissao_liquida: item.comissao_liquida,
+              updated_at: new Date().toISOString()
+            }
+            if (!isNaN(numericId) && numericId > 0) {
+              payload.id = numericId
+            }
+            const { error: insErr } = await supabase.from("historico_pagamentos_pj").insert(payload)
+            if (insErr) {
+              delete payload.id
+              await supabase.from("historico_pagamentos_pj").insert(payload)
+            }
+          } catch (syncErr) {
+            console.warn("Aviso ao sincronizar item com historico_pagamentos_pj:", syncErr)
+          }
+        }
       }
     } catch (err) {
       console.error("Erro ao carregar histórico de pagamentos PJ:", err)
@@ -185,18 +279,23 @@ export default function HistoricoPagamentosPJPage() {
   }, [])
 
   useEffect(() => {
-    loadData()
+    loadData(true)
 
     const handleUpdate = () => {
-      loadData()
+      loadData(false)
+    }
+    const handleMirrored = () => {
+      setMirroredVersion(v => v + 1)
     }
     if (typeof window !== "undefined") {
       window.addEventListener("historico_pj_updated", handleUpdate)
+      window.addEventListener("historico_pj_espelhado", handleMirrored)
       window.addEventListener("storage", handleUpdate)
     }
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("historico_pj_updated", handleUpdate)
+        window.removeEventListener("historico_pj_espelhado", handleMirrored)
         window.removeEventListener("storage", handleUpdate)
       }
     }
@@ -213,12 +312,63 @@ export default function HistoricoPagamentosPJPage() {
     return Array.from(set).sort()
   }, [records])
 
-  // Save changes to localStorage
-  const saveRecordsToStorage = (updated: HistoricoPJRecord[]) => {
+  // Save changes to localStorage & Supabase
+  const saveRecordsToStorage = async (updated: HistoricoPJRecord[], singleItemToSync?: HistoricoPJRecord) => {
     setRecords(updated)
     if (typeof window !== "undefined") {
       localStorage.setItem("historico_pagamentos_pj_records", JSON.stringify(updated))
       window.dispatchEvent(new Event("historico_pj_updated"))
+    }
+
+    if (singleItemToSync) {
+      try {
+        const { data: existing } = await supabase
+          .from("historico_pagamentos_pj")
+          .select("id")
+          .eq("id_lead", singleItemToSync.id_lead)
+          .maybeSingle()
+
+        if (existing?.id) {
+          await supabase
+            .from("historico_pagamentos_pj")
+            .update({
+              data_pagamento: singleItemToSync.data_pagamento,
+              nome: singleItemToSync.nome,
+              valor_operacao: singleItemToSync.valor_operacao,
+              aliquota_comissao: singleItemToSync.aliquota_comissao,
+              comissao_bruta: singleItemToSync.comissao_bruta,
+              proventos: singleItemToSync.proventos,
+              descontos: singleItemToSync.descontos,
+              comissao_liquida: singleItemToSync.comissao_liquida,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", existing.id)
+        } else {
+          const numericId = parseInt(String(singleItemToSync.id).replace(/\D/g, ""), 10)
+          const payload: any = {
+            id_lead: singleItemToSync.id_lead,
+            data_pagamento: singleItemToSync.data_pagamento,
+            nome: singleItemToSync.nome,
+            valor_operacao: singleItemToSync.valor_operacao,
+            aliquota_comissao: singleItemToSync.aliquota_comissao,
+            comissao_bruta: singleItemToSync.comissao_bruta,
+            proventos: singleItemToSync.proventos,
+            descontos: singleItemToSync.descontos,
+            comissao_liquida: singleItemToSync.comissao_liquida,
+            updated_at: new Date().toISOString()
+          }
+          if (!isNaN(numericId) && numericId > 0) {
+            payload.id = numericId
+          }
+          const { error: insErr } = await supabase.from("historico_pagamentos_pj").insert(payload)
+          if (insErr) {
+            delete payload.id
+            await supabase.from("historico_pagamentos_pj").insert(payload)
+          }
+        }
+      } catch (dbErr) {
+        console.error("Erro ao atualizar historico_pagamentos_pj no banco:", dbErr)
+      }
     }
   }
 
@@ -228,6 +378,8 @@ export default function HistoricoPagamentosPJPage() {
     field: keyof HistoricoPJRecord, 
     value: string | number
   ) => {
+    let editedItem: HistoricoPJRecord | undefined
+
     const updated = records.map(r => {
       if (r.id_lead === idLead) {
         const item = { ...r }
@@ -253,24 +405,109 @@ export default function HistoricoPagamentosPJPage() {
           item.comissao_liquida = item.comissao_bruta + item.proventos - numDesc
         }
 
+        editedItem = item
         return item
       }
       return r
     })
 
-    saveRecordsToStorage(updated)
+    saveRecordsToStorage(updated, editedItem)
   }
 
-  // Remove a record from history
-  const handleRemoveRecord = (idLead: string) => {
-    const updated = records.filter(r => r.id_lead !== idLead)
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      next.delete(idLead)
-      return next
-    })
-    saveRecordsToStorage(updated)
-    toast.success("Registro removido do histórico.")
+  // Confirm and delete a record from history & revert proposal status to 'PAGAR PJ'
+  const handleConfirmDelete = async () => {
+    if (!recordToDelete) return
+    const idLead = recordToDelete.id_lead
+    setIsDeleting(true)
+
+    try {
+      // 1. Remove from records state
+      const updated = records.filter(r => r.id_lead !== idLead)
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        next.delete(idLead)
+        return next
+      })
+      saveRecordsToStorage(updated)
+
+      // 2. Clear from LocalStorage PJ Paid IDs
+      if (typeof window !== "undefined") {
+        try {
+          const storedPj = window.localStorage.getItem("receber_pj_paid_ids")
+          const parsedPj = storedPj ? JSON.parse(storedPj) : {}
+          parsedPj[idLead] = false
+          window.localStorage.setItem("receber_pj_paid_ids", JSON.stringify(parsedPj))
+        } catch (e) {
+          console.error("Erro ao atualizar receber_pj_paid_ids:", e)
+        }
+      }
+
+      // 3. Delete from Supabase historico_pagamentos_pj table
+      try {
+        await supabase.from("historico_pagamentos_pj").delete().eq("id_lead", idLead)
+      } catch (dbErr) {
+        console.error("Erro ao remover da historico_pagamentos_pj:", dbErr)
+      }
+
+      // 4. Update propostas table in Supabase to revert pjPaid status to false
+      try {
+        const { data: propRow } = await supabase
+          .from("propostas")
+          .select("observacoes")
+          .eq("id_lead", idLead)
+          .maybeSingle()
+
+        if (propRow) {
+          const obs = propRow.observacoes || ""
+          let notes = obs
+          let metadata: any = {}
+          const prefix = "[FINANCE_METADATA_V1:"
+          const suffix = "]"
+          const startIdx = obs.indexOf(prefix)
+          if (startIdx !== -1) {
+            const endIdx = obs.indexOf(suffix, startIdx)
+            if (endIdx !== -1) {
+              notes = (obs.substring(0, startIdx) + obs.substring(endIdx + suffix.length)).trim()
+              try {
+                metadata = JSON.parse(obs.substring(startIdx + prefix.length, endIdx))
+              } catch (e) {
+                console.error("Erro ao parsear metadata da proposta:", e)
+              }
+            }
+          }
+
+          metadata.pjPaid = false
+          metadata.pjPaidDate = null
+
+          const cleanNotes = (notes || "").trim()
+          const newObs = `${cleanNotes}\n\n${prefix}${JSON.stringify(metadata)}${suffix}`.trim()
+
+          await supabase
+            .from("propostas")
+            .update({
+              observacoes: newObs,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id_lead", idLead)
+        }
+      } catch (metaErr) {
+        console.warn("Erro ao atualizar metadados da proposta:", metaErr)
+      }
+
+      // 5. Notify all components/tabs
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("historico_pj_updated"))
+        window.dispatchEvent(new Event("storage"))
+      }
+
+      toast.success("Registro removido do histórico e status revertido para 'PAGAR PJ'.")
+    } catch (err) {
+      console.error("Erro ao excluir registro de pagamento PJ:", err)
+      toast.error("Erro ao excluir registro.")
+    } finally {
+      setIsDeleting(false)
+      setRecordToDelete(null)
+    }
   }
 
   // Clear all filters
@@ -286,7 +523,43 @@ export default function HistoricoPagamentosPJPage() {
 
   // Filtered list by search term and filters
   const filteredRecords = useMemo(() => {
-    return records.filter(r => {
+    // If logged user is a Corretor / Corretor PJ, only show mirrored records assigned to them
+    let base = records
+    if (isCorretorUser) {
+      let mirroredMap: Record<string, boolean> = {}
+      if (typeof window !== "undefined") {
+        const raw = localStorage.getItem("historico_pj_espelhados")
+        if (raw) {
+          try {
+            mirroredMap = JSON.parse(raw)
+          } catch (e) {
+            console.error(e)
+          }
+        }
+      }
+
+      const rawUserName = (perfil?.nome || perfil?.nome_completo || user?.email?.split("@")[0] || "").toLowerCase().trim()
+      const norm = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+      const normalizedUserName = norm(rawUserName)
+
+      base = records.filter(r => {
+        // Must be mirrored by Admin (check by id_lead or record id)
+        const isMirrored = !!mirroredMap[r.id_lead] || !!mirroredMap[r.id]
+        if (!isMirrored) return false
+        
+        // If corretor user has a name, check if record belongs to them
+        if (normalizedUserName && r.nome) {
+          const recName = norm(r.nome)
+          const nameMatches = recName.includes(normalizedUserName) || normalizedUserName.includes(recName)
+          if (!nameMatches && recName !== "corretor pj" && recName !== "") {
+            return false
+          }
+        }
+        return true
+      })
+    }
+
+    return base.filter(r => {
       // Search term
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase().trim()
@@ -317,7 +590,7 @@ export default function HistoricoPagamentosPJPage() {
 
       return true
     })
-  }, [records, searchTerm, startDate, endDate, selectedCorretor, minValor, maxValor])
+  }, [records, searchTerm, startDate, endDate, selectedCorretor, minValor, maxValor, isCorretorUser, perfil?.nome, user?.email, mirroredVersion])
 
   // Pagination
   const totalPages = Math.ceil(filteredRecords.length / pageSize) || 1
@@ -434,247 +707,295 @@ export default function HistoricoPagamentosPJPage() {
     toast.success(`${recordsToExport.length} registro(s) exportado(s) com sucesso!`)
   }
 
+  // Handle Espelhar Histórico
+  const handleEspelharHistorico = () => {
+    if (selectedIds.size === 0) {
+      toast.error("Selecione pelo menos um pagamento para espelhar.")
+      return
+    }
+
+    try {
+      let mirroredMap: Record<string, boolean> = {}
+      if (typeof window !== "undefined") {
+        const raw = localStorage.getItem("historico_pj_espelhados")
+        if (raw) {
+          try {
+            mirroredMap = JSON.parse(raw)
+          } catch (e) {}
+        }
+      }
+
+      selectedIds.forEach(id => {
+        mirroredMap[id] = true
+      })
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("historico_pj_espelhados", JSON.stringify(mirroredMap))
+        window.dispatchEvent(new Event("historico_pj_espelhado"))
+      }
+
+      toast.success(`${selectedIds.size} pagamento(s) espelhado(s) com sucesso para o Corretor PJ!`)
+    } catch (e) {
+      console.error(e)
+      toast.error("Erro ao espelhar histórico.")
+    }
+  }
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-50/50">
-      <Header title="HISTÓRICO DE PAGAMENTOS PJ" />
+      <Header title={isCorretorUser ? "HISTÓRICO DE PAGAMENTOS" : "HISTÓRICO DE PAGAMENTOS PJ"} />
 
       <main className="flex-1 p-4 md:p-6 space-y-6 max-w-[1600px] w-full mx-auto">
-        {/* Title Header Card */}
-        <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="bg-[#1C2643] p-3.5 rounded-2xl text-white shadow-md">
-              <History className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-xl md:text-2xl font-black text-[#1C2643] tracking-tight">
-                Histórico de Pagamento de Comissão PJ
-              </h1>
-              <p className="text-xs font-semibold text-slate-500 mt-0.5">
-                Registro detalhado de repasses efetuados para os corretores PJ.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <Button
-              onClick={loadData}
-              variant="outline"
-              size="sm"
-              className="h-10 px-4 rounded-xl border-slate-200 text-slate-700 font-bold hover:bg-slate-50 gap-2 cursor-pointer"
-            >
-              <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
-              <span>Atualizar</span>
-            </Button>
-
-            <Button
-              onClick={exportToExcel}
-              size="sm"
-              className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2 shadow-sm cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>
-                {selectedIds.size > 0 ? `Exportar Excel (${selectedIds.size})` : "Exportar Excel"}
-              </span>
-            </Button>
-          </div>
-        </div>
-
         {/* Financial KPI Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
-            <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total Operações</div>
-            <div className="text-lg font-black text-[#1C2643] mt-1">{formatCurrency(totals.valor_operacao)}</div>
-            <div className="text-[10px] font-bold text-slate-400 mt-0.5">{filteredRecords.length} registro(s)</div>
-          </div>
+          {/* Total Operações */}
+          <Card className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white rounded-2xl shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">
+                TOTAL OPERAÇÕES
+              </p>
+              <p className="text-[17px] font-black text-[#1C2643] tracking-tight mb-3">
+                {formatCurrency(totals.valor_operacao)}
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="bg-[#1C2643] px-2 py-0.5 rounded text-[10px] font-bold text-white min-w-[20px] flex justify-center shadow-sm">
+                  {filteredRecords.length}
+                </div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">registro(s)</span>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
-            <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Comissão Bruta</div>
-            <div className="text-lg font-black text-indigo-900 mt-1">{formatCurrency(totals.comissao_bruta)}</div>
-            <div className="text-[10px] font-bold text-indigo-400 mt-0.5">Soma bruta acumulada</div>
-          </div>
+          {/* Comissão Bruta */}
+          <Card className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white rounded-2xl shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">
+                COMISSÃO BRUTA
+              </p>
+              <p className="text-[17px] font-black text-indigo-900 tracking-tight mb-3">
+                {formatCurrency(totals.comissao_bruta)}
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest leading-none">Soma bruta acumulada</span>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
-            <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total Proventos</div>
-            <div className="text-lg font-black text-emerald-600 mt-1">{formatCurrency(totals.proventos)}</div>
-            <div className="text-[10px] font-bold text-emerald-500 mt-0.5">+ Valores adicionados</div>
-          </div>
+          {/* Total Proventos */}
+          <Card className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white rounded-2xl shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">
+                TOTAL PROVENTOS
+              </p>
+              <p className="text-[17px] font-black text-emerald-600 tracking-tight mb-3">
+                {formatCurrency(totals.proventos)}
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest leading-none">+ Valores adicionados</span>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
-            <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total Descontos</div>
-            <div className="text-lg font-black text-rose-600 mt-1">{formatCurrency(totals.descontos)}</div>
-            <div className="text-[10px] font-bold text-rose-400 mt-0.5">- Subtrações efetuadas</div>
-          </div>
+          {/* Total Descontos */}
+          <Card className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white rounded-2xl shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">
+                TOTAL DESCONTOS
+              </p>
+              <p className="text-[17px] font-black text-rose-600 tracking-tight mb-3">
+                {formatCurrency(totals.descontos)}
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold text-rose-500 uppercase tracking-widest leading-none">- Subtrações efetuadas</span>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-white rounded-2xl p-4 border border-slate-200 bg-gradient-to-br from-white to-blue-50/50 shadow-sm">
-            <div className="text-[10px] font-black uppercase text-blue-600 tracking-wider">Comissão Líquida Total</div>
-            <div className="text-xl font-black text-blue-900 mt-1">{formatCurrency(totals.comissao_liquida)}</div>
-            <div className="text-[10px] font-bold text-blue-500 mt-0.5">Total repassado aos PJs</div>
-          </div>
+          {/* Comissão Líquida Total */}
+          <Card className="card-shadow border border-slate-200 h-full relative transition-all hover:scale-[1.02] bg-white rounded-2xl shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-[9px] font-bold text-[#171717] uppercase mb-1 h-6 leading-tight tracking-widest text-[#171717]/80">
+                COMISSÃO LÍQUIDA TOTAL
+              </p>
+              <p className="text-[17px] font-black text-blue-900 tracking-tight mb-3">
+                {formatCurrency(totals.comissao_liquida)}
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest leading-none">Total repassado aos PJs</span>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Search & Filter Controls Bar */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            {/* BUSCAR RECEBÍVEIS / BUSCA RÁPIDA */}
-            <div className="md:col-span-5 space-y-1.5">
-              <label className="text-[11px] font-black uppercase tracking-wider text-slate-500">
-                BUSCAR RECEBÍVEIS
-              </label>
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                <Input
-                  type="text"
-                  placeholder="CPF, Nome, ID ou Corretor..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value)
-                    setCurrentPage(1)
-                  }}
-                  className="pl-9 h-10 text-xs rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-[#1C2643]/20"
-                />
-              </div>
-            </div>
+        <Card id="card-pj-filters" className="card-shadow border border-slate-200 bg-white relative transition-all hover:scale-[1.02] rounded-2xl shadow-sm overflow-hidden">
+          <CardContent className="p-5 space-y-4">
+            <h3 className="text-[10px] font-black text-slate-700 tracking-widest uppercase flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-primary" /> Pesquisa de Histórico de Pagamentos PJ
+            </h3>
 
-            {/* PERÍODO DE PAGAMENTO */}
-            <div className="md:col-span-4 space-y-1.5">
-              <label className="text-[11px] font-black uppercase tracking-wider text-slate-500">
-                PERÍODO DE PAGAMENTO
-              </label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => {
-                    setStartDate(e.target.value)
-                    setCurrentPage(1)
-                  }}
-                  className="h-10 text-xs rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white"
-                />
-                <span className="text-xs font-bold text-slate-400 uppercase">A</span>
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => {
-                    setEndDate(e.target.value)
-                    setCurrentPage(1)
-                  }}
-                  className="h-10 text-xs rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white"
-                />
-              </div>
-            </div>
-
-            {/* Action Buttons: FILTROS, LIMPAR, BUSCAR */}
-            <div className="md:col-span-3 flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                className={cn(
-                  "h-10 px-3 rounded-xl border-slate-200 text-xs font-bold gap-2 transition-colors cursor-pointer",
-                  showAdvancedFilters ? "bg-slate-100 text-[#1C2643]" : "text-slate-600 hover:bg-slate-50"
-                )}
-              >
-                <Filter className="w-3.5 h-3.5" />
-                <span>FILTROS</span>
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleClearFilters}
-                className="h-10 px-3 rounded-xl border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50 text-xs font-bold cursor-pointer"
-              >
-                <span>LIMPAR</span>
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => setCurrentPage(1)}
-                className="h-10 px-4 rounded-xl bg-[#1C2643] hover:bg-[#151c33] text-white text-xs font-bold gap-2 cursor-pointer shadow-sm"
-              >
-                <Search className="w-3.5 h-3.5" />
-                <span>BUSCAR</span>
-              </Button>
-            </div>
-          </div>
-
-          {/* Expandable Filter Panel */}
-          {showAdvancedFilters && (
-            <div className="pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in duration-200">
-              {/* Corretor Filter */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                  Corretor PJ
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+              {/* BUSCAR RECEBÍVEIS / BUSCA RÁPIDA */}
+              <div className="md:col-span-5 space-y-1.5">
+                <label className="text-[9px] font-bold text-[#171717]/60 uppercase tracking-widest ml-1 block">
+                  Buscar Recebíveis / Digitação
                 </label>
-                <select
-                  value={selectedCorretor}
-                  onChange={(e) => {
-                    setSelectedCorretor(e.target.value)
-                    setCurrentPage(1)
-                  }}
-                  className="w-full h-9 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-[#1C2643]/20"
-                >
-                  <option value="">Todos os Corretores PJ</option>
-                  {uniqueCorretores.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Valor Operação Range */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                  Valor Operação (R$)
-                </label>
-                <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                   <Input
-                    type="number"
-                    placeholder="Mínimo"
-                    value={minValor}
+                    type="text"
+                    placeholder="CPF, Nome, ID ou Corretor..."
+                    value={searchTerm}
                     onChange={(e) => {
-                      setMinValor(e.target.value)
+                      setSearchTerm(e.target.value)
                       setCurrentPage(1)
                     }}
-                    className="h-9 text-xs rounded-xl border-slate-200 bg-slate-50/50"
-                  />
-                  <span className="text-xs text-slate-300">-</span>
-                  <Input
-                    type="number"
-                    placeholder="Máximo"
-                    value={maxValor}
-                    onChange={(e) => {
-                      setMaxValor(e.target.value)
-                      setCurrentPage(1)
-                    }}
-                    className="h-9 text-xs rounded-xl border-slate-200 bg-slate-50/50"
+                    className="pl-9 h-[38px] bg-white border border-slate-200 text-[11px] font-medium text-slate-800 transition-colors focus-visible:ring-1 focus-visible:ring-slate-300 rounded-lg placeholder:text-[9.5px] placeholder:text-slate-400"
                   />
                 </div>
               </div>
 
-              {/* Selected Count / Clear Action */}
-              <div className="flex items-end justify-between pb-0.5">
-                <span className="text-xs font-semibold text-slate-400">
-                  {filteredRecords.length} registro(s) encontrado(s)
-                </span>
-                <button
+              {/* PERÍODO DE PAGAMENTO */}
+              <div className="md:col-span-4 space-y-1.5">
+                <label className="text-[9px] font-bold text-[#171717]/60 uppercase tracking-widest ml-1 block">
+                  Período de Pagamento
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value)
+                      setCurrentPage(1)
+                    }}
+                    className="h-[38px] w-full text-[11px] border border-slate-200 rounded-lg bg-white px-3 font-medium text-slate-800 transition-colors focus:outline-none focus:ring-1 focus:ring-slate-300"
+                  />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">A</span>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value)
+                      setCurrentPage(1)
+                    }}
+                    className="h-[38px] w-full text-[11px] border border-slate-200 rounded-lg bg-white px-3 font-medium text-slate-800 transition-colors focus:outline-none focus:ring-1 focus:ring-slate-300"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons: FILTROS, LIMPAR, BUSCAR */}
+              <div className="md:col-span-3 flex items-center justify-end gap-2">
+                <Button
                   type="button"
-                  onClick={handleClearFilters}
-                  className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                  className={cn(
+                    "h-[38px] px-3.5 rounded-lg border border-slate-200 text-[11px] font-bold uppercase tracking-widest gap-1.5 transition-colors cursor-pointer",
+                    showAdvancedFilters ? "bg-slate-100 text-[#171717]" : "text-slate-600 hover:bg-slate-50"
+                  )}
                 >
-                  Limpar todos os filtros
-                </button>
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>FILTROS</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearFilters}
+                  className="h-[38px] px-3.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-800 text-[11px] font-bold uppercase tracking-widest cursor-pointer"
+                >
+                  <span>LIMPAR</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setCurrentPage(1)}
+                  className="h-[38px] px-4 bg-[#171717] hover:bg-[#171717]/90 text-white text-[11px] font-black uppercase tracking-widest gap-1.5 cursor-pointer rounded-lg border-2 border-transparent shadow-sm"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>BUSCAR</span>
+                </Button>
               </div>
             </div>
-          )}
-        </div>
+
+            {/* Expandable Filter Panel */}
+            {showAdvancedFilters && (
+              <div className="pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in duration-200">
+                {/* Corretor Filter */}
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold text-[#171717]/60 uppercase tracking-widest ml-1 block">
+                    Corretor PJ
+                  </label>
+                  <select
+                    value={selectedCorretor}
+                    onChange={(e) => {
+                      setSelectedCorretor(e.target.value)
+                      setCurrentPage(1)
+                    }}
+                    className="h-[38px] w-full text-[11px] border border-slate-200 rounded-lg bg-white px-3 focus:outline-none focus:ring-1 focus:ring-slate-300 font-medium text-slate-800 transition-colors"
+                  >
+                    <option value="">TODOS OS CORRETORES PJ</option>
+                    {uniqueCorretores.map(c => (
+                      <option key={c} value={c}>{c.toUpperCase()}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Valor Operação Range */}
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold text-[#171717]/60 uppercase tracking-widest ml-1 block">
+                    Valor Operação (R$)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      placeholder="Mínimo"
+                      value={minValor}
+                      onChange={(e) => {
+                        setMinValor(e.target.value)
+                        setCurrentPage(1)
+                      }}
+                      className="h-[38px] bg-white border border-slate-200 text-[11px] font-medium text-slate-800 rounded-lg placeholder:text-[9.5px]"
+                    />
+                    <span className="text-xs text-slate-300">-</span>
+                    <Input
+                      type="number"
+                      placeholder="Máximo"
+                      value={maxValor}
+                      onChange={(e) => {
+                        setMaxValor(e.target.value)
+                        setCurrentPage(1)
+                      }}
+                      className="h-[38px] bg-white border border-slate-200 text-[11px] font-medium text-slate-800 rounded-lg placeholder:text-[9.5px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Selected Count / Clear Action */}
+                <div className="flex items-end justify-between pb-0.5">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                    {filteredRecords.length} registro(s) encontrado(s)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleClearFilters}
+                    className="text-[11px] font-bold text-rose-600 hover:underline uppercase tracking-widest cursor-pointer"
+                  >
+                    Limpar todos os filtros
+                  </button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Table Container Card matching image.png */}
         <div className="bg-white rounded-[24px] border border-slate-100 shadow-sm overflow-hidden">
           {/* Header Bar above Table */}
-          <div className="p-4 px-6 border-b border-slate-100 flex items-center justify-end bg-white">
+          <div className="p-4 px-6 border-b border-slate-100 flex items-center justify-end gap-3 bg-white">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">
                 Ver por páginas:
@@ -693,6 +1014,31 @@ export default function HistoricoPagamentosPJPage() {
                 <option value={100}>100</option>
               </select>
             </div>
+
+            <Button
+              onClick={exportToExcel}
+              size="sm"
+              className="h-8 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-2 shadow-sm cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>
+                {selectedIds.size > 0 ? `Exportar Excel (${selectedIds.size})` : "Exportar Excel"}
+              </span>
+            </Button>
+
+            {!isCorretorUser && (
+              <Button
+                onClick={handleEspelharHistorico}
+                size="sm"
+                className="h-8 px-3.5 rounded-xl bg-[#1C2643] hover:bg-[#2A3860] text-white text-xs font-bold gap-2 shadow-sm cursor-pointer"
+                title="Espelhar histórico para o Corretor PJ"
+              >
+                <Radio className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+                <span>
+                  {selectedIds.size > 0 ? `Espelhar Histórico (${selectedIds.size})` : "Espelhar Histórico"}
+                </span>
+              </Button>
+            )}
           </div>
 
           {/* Table */}
@@ -735,9 +1081,11 @@ export default function HistoricoPagamentosPJPage() {
                   <th className="py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right min-w-[180px]">
                     COMISSÃO LÍQUIDA
                   </th>
-                  <th className="py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center min-w-[80px]">
-                    AÇÕES
-                  </th>
+                  {!isCorretorUser && (
+                    <th className="py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center min-w-[80px]">
+                      AÇÕES
+                    </th>
+                  )}
                 </tr>
               </thead>
 
@@ -790,8 +1138,12 @@ export default function HistoricoPagamentosPJPage() {
                           <input
                             type="date"
                             value={item.data_pagamento || ""}
+                            disabled={isCorretorUser}
                             onChange={(e) => handleCellChange(item.id_lead, "data_pagamento", e.target.value)}
-                            className="h-8 px-2 rounded-lg border border-slate-200 bg-white font-bold text-slate-700 text-xs focus:ring-1 focus:ring-[#1C2643] focus:outline-none"
+                            className={cn(
+                              "h-8 px-2 rounded-lg bg-transparent font-bold text-slate-700 text-xs focus:ring-1 focus:ring-[#1C2643] focus:bg-white focus:outline-none transition-colors",
+                              isCorretorUser && "pointer-events-none"
+                            )}
                           />
                         </td>
 
@@ -812,8 +1164,12 @@ export default function HistoricoPagamentosPJPage() {
                               type="number"
                               step="0.01"
                               value={item.aliquota_comissao ?? ""}
+                              disabled={isCorretorUser}
                               onChange={(e) => handleCellChange(item.id_lead, "aliquota_comissao", e.target.value)}
-                              className="h-8 w-16 px-1.5 text-right rounded-lg border border-slate-200 bg-white font-bold text-slate-700 text-xs focus:ring-1 focus:ring-[#1C2643] focus:outline-none"
+                              className={cn(
+                                "h-8 w-16 px-1.5 text-right rounded-lg bg-transparent font-bold text-slate-700 text-xs focus:ring-1 focus:ring-[#1C2643] focus:bg-white focus:outline-none transition-colors",
+                                isCorretorUser && "pointer-events-none"
+                              )}
                             />
                             <span className="font-bold text-slate-400">%</span>
                           </div>
@@ -825,8 +1181,12 @@ export default function HistoricoPagamentosPJPage() {
                             type="number"
                             step="0.01"
                             value={item.comissao_bruta ?? ""}
+                            disabled={isCorretorUser}
                             onChange={(e) => handleCellChange(item.id_lead, "comissao_bruta", e.target.value)}
-                            className="h-8 w-28 px-2 text-right rounded-lg border border-slate-200 bg-white font-bold text-emerald-700 text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                            className={cn(
+                              "h-8 w-28 px-2 text-right rounded-lg bg-transparent font-bold text-emerald-700 text-xs focus:ring-1 focus:ring-emerald-500 focus:bg-white focus:outline-none transition-colors",
+                              isCorretorUser && "pointer-events-none"
+                            )}
                           />
                         </td>
 
@@ -836,8 +1196,12 @@ export default function HistoricoPagamentosPJPage() {
                             type="number"
                             step="0.01"
                             value={item.proventos ?? ""}
+                            disabled={isCorretorUser}
                             onChange={(e) => handleCellChange(item.id_lead, "proventos", e.target.value)}
-                            className="h-8 w-24 px-2 text-right rounded-lg border border-slate-200 bg-emerald-50/40 font-bold text-emerald-700 text-xs focus:ring-1 focus:ring-emerald-400 focus:outline-none"
+                            className={cn(
+                              "h-8 w-24 px-2 text-right rounded-lg bg-transparent font-bold text-emerald-700 text-xs focus:ring-1 focus:ring-emerald-400 focus:bg-white focus:outline-none transition-colors",
+                              isCorretorUser && "pointer-events-none"
+                            )}
                           />
                         </td>
 
@@ -847,8 +1211,12 @@ export default function HistoricoPagamentosPJPage() {
                             type="number"
                             step="0.01"
                             value={item.descontos ?? ""}
+                            disabled={isCorretorUser}
                             onChange={(e) => handleCellChange(item.id_lead, "descontos", e.target.value)}
-                            className="h-8 w-24 px-2 text-right rounded-lg border border-slate-200 bg-rose-50/40 font-bold text-rose-700 text-xs focus:ring-1 focus:ring-rose-400 focus:outline-none"
+                            className={cn(
+                              "h-8 w-24 px-2 text-right rounded-lg bg-transparent font-bold text-rose-700 text-xs focus:ring-1 focus:ring-rose-400 focus:bg-white focus:outline-none transition-colors",
+                              isCorretorUser && "pointer-events-none"
+                            )}
                           />
                         </td>
 
@@ -858,16 +1226,18 @@ export default function HistoricoPagamentosPJPage() {
                         </td>
 
                         {/* Action */}
-                        <td className="py-3 px-4 text-center whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveRecord(item.id_lead)}
-                            title="Remover do histórico"
-                            className="text-slate-300 hover:text-rose-600 transition-colors cursor-pointer p-1"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
+                        {!isCorretorUser && (
+                          <td className="py-3 px-4 text-center whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => setRecordToDelete(item)}
+                              title="Remover do histórico"
+                              className="text-slate-300 hover:text-rose-600 transition-colors cursor-pointer p-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     )
                   })
@@ -928,6 +1298,48 @@ export default function HistoricoPagamentosPJPage() {
             </div>
           </div>
         </div>
+
+        {/* Modal de Confirmação de Exclusão */}
+        <Dialog open={!!recordToDelete} onOpenChange={(open) => !open && setRecordToDelete(null)}>
+          <DialogContent className="sm:max-w-[440px] p-6 rounded-2xl bg-white shadow-2xl border border-slate-200">
+            <DialogHeader className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 mx-auto sm:mx-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <DialogTitle className="text-base font-black text-[#1C2643]">
+                Confirmar Exclusão de Repasse PJ
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500 leading-relaxed">
+                Tem certeza que deseja remover o pagamento PJ referente à proposta{" "}
+                <span className="font-bold text-slate-800">#{recordToDelete?.id} - {recordToDelete?.nome}</span>?
+                <br /><br />
+                <span className="block p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-semibold">
+                  ⚠️ <strong>Atenção:</strong> O registro será removido do histórico de pagamentos PJ e o botão no <strong>Contas a Receber</strong> será alternado de volta para <strong>PAGAR PJ</strong>. A proposta continuará salva no sistema.
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogFooter className="mt-6 flex items-center justify-end gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRecordToDelete(null)}
+                disabled={isDeleting}
+                className="h-9 px-4 rounded-xl text-xs font-bold text-slate-600 border-slate-200 hover:bg-slate-50"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="h-9 px-4 rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition-all"
+              >
+                {isDeleting ? "Excluindo..." : "Sim, Excluir e Reverter"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   )

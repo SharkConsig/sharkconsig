@@ -840,8 +840,9 @@ export default function ContasAReceberPage() {
           const todayDate = new Date().toISOString().split("T")[0]
           const corretorNome = (proposal.nome_corretor || proposal.corretor || "Corretor PJ").trim()
 
+          let finalRecord: any
           if (existingIndex >= 0) {
-            historyList[existingIndex] = {
+            finalRecord = {
               ...historyList[existingIndex],
               data_pagamento: historyList[existingIndex].data_pagamento || todayDate,
               nome: corretorNome,
@@ -850,6 +851,7 @@ export default function ContasAReceberPage() {
               comissao_bruta: pjBruta,
               comissao_liquida: pjBruta + (Number(historyList[existingIndex].proventos) || 0) - (Number(historyList[existingIndex].descontos) || 0)
             }
+            historyList[existingIndex] = finalRecord
           } else {
             // Find max friendly numeric ID starting at 1001
             const maxId = historyList.reduce((max: number, item: any) => {
@@ -858,7 +860,7 @@ export default function ContasAReceberPage() {
             }, 1000)
             const friendlyId = String(maxId + 1)
 
-            historyList.unshift({
+            finalRecord = {
               id: friendlyId,
               id_lead: idLead,
               data_pagamento: todayDate,
@@ -870,10 +872,76 @@ export default function ContasAReceberPage() {
               descontos: 0,
               comissao_liquida: pjBruta,
               created_at: new Date().toISOString()
-            })
+            }
+            historyList.unshift(finalRecord)
+          }
+
+          // Persist to Supabase historico_pagamentos_pj
+          try {
+            const { data: existing } = await supabase
+              .from("historico_pagamentos_pj")
+              .select("id")
+              .eq("id_lead", idLead)
+              .maybeSingle()
+
+            const numericId = parseInt(String(finalRecord.id).replace(/\D/g, ""), 10)
+
+            if (existing?.id) {
+              await supabase
+                .from("historico_pagamentos_pj")
+                .update({
+                  data_pagamento: finalRecord.data_pagamento,
+                  nome: finalRecord.nome,
+                  valor_operacao: finalRecord.valor_operacao,
+                  aliquota_comissao: finalRecord.aliquota_comissao,
+                  comissao_bruta: finalRecord.comissao_bruta,
+                  proventos: Number(finalRecord.proventos) || 0,
+                  descontos: Number(finalRecord.descontos) || 0,
+                  comissao_liquida: finalRecord.comissao_liquida,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("id", existing.id)
+            } else {
+              const insertPayload: any = {
+                id_lead: finalRecord.id_lead,
+                data_pagamento: finalRecord.data_pagamento,
+                nome: finalRecord.nome,
+                valor_operacao: finalRecord.valor_operacao,
+                aliquota_comissao: finalRecord.aliquota_comissao,
+                comissao_bruta: finalRecord.comissao_bruta,
+                proventos: Number(finalRecord.proventos) || 0,
+                descontos: Number(finalRecord.descontos) || 0,
+                comissao_liquida: finalRecord.comissao_liquida,
+                updated_at: new Date().toISOString()
+              }
+              if (!isNaN(numericId) && numericId > 0) {
+                insertPayload.id = numericId
+              }
+
+              const { error: insErr } = await supabase
+                .from("historico_pagamentos_pj")
+                .insert(insertPayload)
+
+              if (insErr) {
+                delete insertPayload.id
+                await supabase.from("historico_pagamentos_pj").insert(insertPayload)
+              }
+            }
+          } catch (dbErr) {
+            console.error("Erro ao persistir na historico_pagamentos_pj:", dbErr)
           }
         } else {
           historyList = historyList.filter((item: any) => item.id_lead !== idLead)
+
+          // Delete from Supabase historico_pagamentos_pj
+          try {
+            await supabase
+              .from("historico_pagamentos_pj")
+              .delete()
+              .eq("id_lead", idLead)
+          } catch (dbErr) {
+            console.error("Erro ao remover da historico_pagamentos_pj:", dbErr)
+          }
         }
 
         window.localStorage.setItem("historico_pagamentos_pj_records", JSON.stringify(historyList))
@@ -1686,8 +1754,10 @@ export default function ContasAReceberPage() {
     return 0
   }, [customPjCommissionValues, customPjCommissionPercents, getPJCommissionPercentage])
 
-  const fetchProposals = async () => {
-    setIsLoading(true)
+  const fetchProposals = async (showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true)
+    }
     try {
       // Query proposals in 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA', 'PAGAMENTO DEVOLVIDO' and 'CANCELADO'
       const { data, error } = await supabase
@@ -1801,6 +1871,22 @@ export default function ContasAReceberPage() {
         } catch (e) {
           console.error("Erro ao carregar local storage para sincronização:", e)
         }
+      }
+
+      // Query database historico_pagamentos_pj to hydrate PJ paid status
+      try {
+        const { data: pjDbData } = await supabase
+          .from("historico_pagamentos_pj")
+          .select("id_lead")
+        if (pjDbData && pjDbData.length > 0) {
+          pjDbData.forEach((row: any) => {
+            if (row.id_lead) {
+              localPjPaidIds[row.id_lead] = true
+            }
+          })
+        }
+      } catch (pjErr) {
+        console.warn("Aviso ao buscar historico_pagamentos_pj:", pjErr)
       }
 
       const finalPaymentStatuses: Record<string, "A_RECEBER" | "RECEBIDO" | "ESTORNADO"> = {}
@@ -1921,7 +2007,28 @@ export default function ContasAReceberPage() {
   }
 
   useEffect(() => {
-    fetchProposals()
+    fetchProposals(true)
+
+    const handlePjUpdate = () => {
+      if (typeof window !== "undefined") {
+        try {
+          const storedPjPaid = window.localStorage.getItem("receber_pj_paid_ids")
+          if (storedPjPaid) {
+            const parsed = JSON.parse(storedPjPaid)
+            setPjPaidProposalIds(prev => ({ ...prev, ...parsed }))
+          }
+        } catch (e) {
+          console.error(e)
+        }
+      }
+    }
+
+    window.addEventListener("historico_pj_updated", handlePjUpdate)
+    window.addEventListener("storage", handlePjUpdate)
+    return () => {
+      window.removeEventListener("historico_pj_updated", handlePjUpdate)
+      window.removeEventListener("storage", handlePjUpdate)
+    }
   }, [])
 
   // Quick action to change status directly from here
@@ -1970,9 +2077,16 @@ export default function ContasAReceberPage() {
         console.warn("Erro ao preencher log de alteração:", histErr)
       }
 
+      setProposals(prev => prev.map(p => p.id_lead === statusTargetProposal.id_lead ? {
+        ...p,
+        status: selectedNewStatus,
+        ade: statusAde,
+        obs_operacional: statusObsOperacional,
+        updated_at: isoDate
+      } : p))
+
       toast.success("Status atualizado com sucesso!", { id: loadingToast })
       setIsStatusModalOpen(false)
-      fetchProposals()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error("Erro ao atualizar status:", err)

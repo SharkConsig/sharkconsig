@@ -126,6 +126,218 @@ function calculateImplicitRate(pv: number, pmt: number, n: number): number {
   return rate
 }
 
+interface DynamicAmortMonth {
+  month: number;
+  fixedParcela: number;
+  amortNums: number[];
+  amortVals: number[];
+  sumAmortVals: number;
+  totalMes: number;
+}
+
+function calculateDynamicAmortizationPlan(
+  prazoTotal: number,
+  term: number,
+  parcela: number,
+  rateForAmort: number = 0.05
+): DynamicAmortMonth[] {
+  if (term <= 0 || parcela <= 0) {
+    return []
+  }
+
+  if (prazoTotal <= term) {
+    const rows: DynamicAmortMonth[] = []
+    for (let m = 1; m <= term; m++) {
+      rows.push({
+        month: m,
+        fixedParcela: parcela,
+        amortNums: [],
+        amortVals: [],
+        sumAmortVals: 0,
+        totalMes: parcela
+      })
+    }
+    return rows
+  }
+
+  // Pre-calculate present value for each back installment from prazoTotal down to (term + 1)
+  // e.g. for prazoTotal=96 and term=24, installments 96 down to 25
+  const amortInstallments: { num: number; val: number }[] = []
+  for (let k = prazoTotal; k > term; k--) {
+    const val = Math.max(0, parcela / Math.pow(1 + rateForAmort, k))
+    amortInstallments.push({ num: k, val })
+  }
+
+  const N = amortInstallments.length
+  const T = term
+
+  if (N === 0) {
+    const rows: DynamicAmortMonth[] = []
+    for (let m = 1; m <= T; m++) {
+      rows.push({
+        month: m,
+        fixedParcela: parcela,
+        amortNums: [],
+        amortVals: [],
+        sumAmortVals: 0,
+        totalMes: parcela
+      })
+    }
+    return rows
+  }
+
+  // If N < T (fewer installments than months) or simple edge case, distribute 1 or 0 per month
+  if (N < T) {
+    const schedule: DynamicAmortMonth[] = []
+    for (let m = 1; m <= T; m++) {
+      const monthNums: number[] = []
+      const monthVals: number[] = []
+      let monthSum = 0
+
+      if (m - 1 < N) {
+        monthNums.push(amortInstallments[m - 1].num)
+        monthVals.push(amortInstallments[m - 1].val)
+        monthSum += amortInstallments[m - 1].val
+      }
+
+      schedule.push({
+        month: m,
+        fixedParcela: parcela,
+        amortNums: monthNums,
+        amortVals: monthVals,
+        sumAmortVals: monthSum,
+        totalMes: parcela + monthSum
+      })
+    }
+    return schedule
+  }
+
+  // Prefix sums of installment values: P[i] = sum of first i installments
+  const P = new Float64Array(N + 1)
+  for (let i = 0; i < N; i++) {
+    P[i + 1] = P[i] + amortInstallments[i].val
+  }
+
+  const totalAmortSum = P[N]
+  const targetMonthlyAmort = totalAmortSum / T
+
+  // Dynamic Programming optimization to partition N installments into T months
+  // Objective 1 (Primary): Minimize the maximum monthly Total (or max monthly amort sum)
+  // Objective 2 (Secondary): Minimize the sum of squared deviations from the ideal average
+  interface DPState {
+    maxPeak: number;
+    sumSqDiff: number;
+    prevIndex: number;
+  }
+
+  const dp: (DPState | null)[][] = Array.from({ length: T + 1 }, () => Array(N + 1).fill(null))
+
+  // Base case: Month 1
+  for (let i = 1; i <= N - (T - 1); i++) {
+    const sumVal = P[i]
+    dp[1][i] = {
+      maxPeak: sumVal,
+      sumSqDiff: Math.pow(sumVal - targetMonthlyAmort, 2),
+      prevIndex: 0
+    }
+  }
+
+  // DP Transitions: Month m = 2..T
+  for (let m = 2; m <= T; m++) {
+    const minI = m
+    const maxI = N - (T - m)
+
+    for (let i = minI; i <= maxI; i++) {
+      const minJ = m - 1
+      const maxJ = i - 1
+
+      let bestState: DPState | null = null
+
+      for (let j = minJ; j <= maxJ; j++) {
+        const prevState = dp[m - 1][j]
+        if (!prevState) continue
+
+        const currentMonthSum = P[i] - P[j]
+        const candidatePeak = Math.max(prevState.maxPeak, currentMonthSum)
+        const candidateSumSq = prevState.sumSqDiff + Math.pow(currentMonthSum - targetMonthlyAmort, 2)
+
+        if (!bestState) {
+          bestState = {
+            maxPeak: candidatePeak,
+            sumSqDiff: candidateSumSq,
+            prevIndex: j
+          }
+        } else {
+          // Compare candidate with bestState
+          const peakDiff = candidatePeak - bestState.maxPeak
+          if (peakDiff < -0.01) {
+            bestState = {
+              maxPeak: candidatePeak,
+              sumSqDiff: candidateSumSq,
+              prevIndex: j
+            }
+          } else if (Math.abs(peakDiff) <= 0.01) {
+            if (candidateSumSq < bestState.sumSqDiff) {
+              bestState = {
+                maxPeak: candidatePeak,
+                sumSqDiff: candidateSumSq,
+                prevIndex: j
+              }
+            }
+          }
+        }
+      }
+
+      dp[m][i] = bestState
+    }
+  }
+
+  // Reconstruct partition boundaries
+  const monthBoundaries: number[] = new Array(T + 1)
+  monthBoundaries[T] = N
+  let curr = N
+  for (let m = T; m >= 2; m--) {
+    const state = dp[m][curr]
+    if (state && typeof state.prevIndex === 'number') {
+      curr = state.prevIndex
+      monthBoundaries[m - 1] = curr
+    } else {
+      curr = Math.max(0, Math.min(curr - 1, m - 1))
+      monthBoundaries[m - 1] = curr
+    }
+  }
+  monthBoundaries[0] = 0
+
+  const schedule: DynamicAmortMonth[] = []
+  for (let m = 1; m <= T; m++) {
+    const startIdx = Math.max(0, Math.min(N, monthBoundaries[m - 1]))
+    const endIdx = Math.max(startIdx, Math.min(N, monthBoundaries[m]))
+
+    const monthNums: number[] = []
+    const monthVals: number[] = []
+    let monthSum = 0
+
+    for (let idx = startIdx; idx < endIdx; idx++) {
+      if (amortInstallments[idx]) {
+        monthNums.push(amortInstallments[idx].num)
+        monthVals.push(amortInstallments[idx].val)
+        monthSum += amortInstallments[idx].val
+      }
+    }
+
+    schedule.push({
+      month: m,
+      fixedParcela: parcela,
+      amortNums: monthNums,
+      amortVals: monthVals,
+      sumAmortVals: monthSum,
+      totalMes: parcela + monthSum
+    })
+  }
+
+  return schedule
+}
+
 interface CalculadoraPageProps {
   clientMargins?: {
     principal: number;
@@ -458,19 +670,15 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
       .map(t => {
         if (isSpecialCoef && (t === 12 || t === 24)) {
           const specialRate = t === 12 ? 0.0082 : 0.0096
-          let calcParcelaMedia = 0
-          if (t === 12) {
-            calcParcelaMedia = parcela + (parcela * 1.0289)
-          } else if (t === 24) {
-            calcParcelaMedia = parcela + (parcela * 0.0816)
-          }
-          const totalPagar = calcParcelaMedia * t
+          const dynPlan = calculateDynamicAmortizationPlan(prazo, t, parcela, 0.05)
+          const sumTotalMes = dynPlan.reduce((acc, row) => acc + row.totalMes, 0)
+          const calcParcelaMedia = t > 0 ? sumTotalMes / t : parcela
 
           return {
             term: t,
             taxa: specialRate,
             parcelaMedia: calcParcelaMedia,
-            totalPagar: totalPagar,
+            totalPagar: sumTotalMes,
             invalido: false
           }
         }
@@ -485,28 +693,9 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
           }
         }
 
-        // Calculate exact sum of "TOTAL MÊS" column by iterating over monthly strategy amortizations
-        const totalExtraAmort = Math.max(0, prazo - t)
-        const extraPerMonth = t > 0 ? totalExtraAmort / t : 0
-        let currentBackInstallment = prazo
-        let sumTotalMes = 0
-
-        for (let m = 1; m <= t; m++) {
-          const numAmortThisMonth = Math.min(
-            Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
-            currentBackInstallment - t
-          )
-
-          let sumAmortValsThisMonth = 0
-          for (let k = 0; k < numAmortThisMonth && currentBackInstallment > t; k++) {
-            const valAmort = Math.max(0, parcela / Math.pow(1 + taxaImplicita, currentBackInstallment))
-            sumAmortValsThisMonth += valAmort
-            currentBackInstallment--
-          }
-
-          sumTotalMes += (parcela + sumAmortValsThisMonth)
-        }
-
+        // Calculate dynamic plan minimizing max monthly total and smoothing variance
+        const dynPlan = calculateDynamicAmortizationPlan(prazo, t, parcela, taxaImplicita)
+        const sumTotalMes = dynPlan.reduce((acc, row) => acc + row.totalMes, 0)
         const pmtMedia = t > 0 ? sumTotalMes / t : 0
         const rateN = calculateImplicitRate(contratoComIof, pmtMedia, t)
         const tx2Dec = Math.round(rateN * 10000) / 10000
@@ -1537,78 +1726,48 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
 
     const roundCoef = Math.round(coeficiente * 100000) / 100000
     const isSpecialCoef = roundCoef >= 0.039 && roundCoef <= 0.0455
-    const rateForAmort = isSpecialCoef ? 0.05 : taxaImplicita
+    const rateForAmort = (isSpecialCoef && (activeResult.prazo === 12 || activeResult.prazo === 24)) ? 0.05 : taxaImplicita
 
     const term = activeResult.prazo
     const pmt = activeResult.parcela
     const tx = activeResult.taxa
-    const totalExtraAmort = Math.max(0, prazo - term)
-    const extraPerMonth = term > 0 ? totalExtraAmort / term : 0
 
-    let currentBackInstallment = prazo
     let rowsHtml = ""
 
-    for (let m = 1; m <= term; m++) {
-      let numAmortThisMonth = 0
-      if (isSpecialCoef && term === 24) {
-        if (m >= 1 && m <= 8) {
-          numAmortThisMonth = 7
-        } else if (m >= 9 && m <= 16) {
-          numAmortThisMonth = 2
-        } else {
-          numAmortThisMonth = currentBackInstallment - term
-        }
-        numAmortThisMonth = Math.min(numAmortThisMonth, currentBackInstallment - term)
-      } else if (isSpecialCoef && term === 12) {
-        if (m >= 1 && m <= 4) {
-          numAmortThisMonth = 10
-        } else if (m === 5 || m === 6) {
-          numAmortThisMonth = 9
-        } else if (m === 7) {
-          numAmortThisMonth = 8
-        } else if (m === 8) {
-          numAmortThisMonth = 6
-        } else if (m >= 9 && m <= 12) {
-          numAmortThisMonth = 3
-        } else {
-          numAmortThisMonth = currentBackInstallment - term
-        }
-        numAmortThisMonth = Math.min(numAmortThisMonth, currentBackInstallment - term)
-      } else {
-        numAmortThisMonth = Math.min(
-          Math.round(m * extraPerMonth) - Math.round((m - 1) * extraPerMonth),
-          currentBackInstallment - term
-        )
+    if (term < prazo) {
+      const dynPlan = calculateDynamicAmortizationPlan(prazo, term, parcela, rateForAmort)
+      for (const row of dynPlan) {
+        const isEven = row.month % 2 === 0
+        const rowBg = isEven ? "#F8FAFC" : "#FFFFFF"
+        const amortNumsStr = row.amortNums.length > 0 ? row.amortNums.join(", ") : "-"
+        const amortValsStr = row.amortVals.length > 0 
+          ? row.amortVals.map(v => formatBRL(v)).join("<br/>") 
+          : formatBRL(0)
+
+        rowsHtml += `
+          <tr style="background-color: ${rowBg}; border-bottom: 1px solid #E2E8F0;">
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${row.month}</td>
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(row.fixedParcela)}</td>
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #475569; vertical-align: top;">${amortNumsStr}</td>
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${amortValsStr}</td>
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(row.totalMes)}</td>
+          </tr>
+        `
       }
-
-      const amortNums: number[] = []
-      const amortVals: string[] = []
-      let sumAmortValsThisMonth = 0
-
-      for (let k = 0; k < numAmortThisMonth && currentBackInstallment > term; k++) {
-        amortNums.push(currentBackInstallment)
-        const valAmort = Math.max(0, parcela / Math.pow(1 + rateForAmort, currentBackInstallment))
-        sumAmortValsThisMonth += valAmort
-        amortVals.push(formatBRL(valAmort))
-        currentBackInstallment--
+    } else {
+      for (let m = 1; m <= term; m++) {
+        const isEven = m % 2 === 0
+        const rowBg = isEven ? "#F8FAFC" : "#FFFFFF"
+        rowsHtml += `
+          <tr style="background-color: ${rowBg}; border-bottom: 1px solid #E2E8F0;">
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${m}</td>
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(parcela)}</td>
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #475569; vertical-align: top;">-</td>
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(0)}</td>
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(parcela)}</td>
+          </tr>
+        `
       }
-
-      const isEven = m % 2 === 0
-      const rowBg = isEven ? "#F8FAFC" : "#FFFFFF"
-
-      const amortNumsStr = amortNums.length > 0 ? amortNums.join(", ") : "-"
-      const amortValsStr = amortVals.length > 0 ? amortVals.join("<br/>") : formatBRL(0)
-      const totalMes = parcela + sumAmortValsThisMonth
-
-      rowsHtml += `
-        <tr style="background-color: ${rowBg}; border-bottom: 1px solid #E2E8F0;">
-          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${m}</td>
-          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(parcela)}</td>
-          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #475569; vertical-align: top;">${amortNumsStr}</td>
-          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${amortValsStr}</td>
-          <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #1E293B; vertical-align: top;">${formatBRL(totalMes)}</td>
-        </tr>
-      `
     }
 
     printWindow.document.write(`
