@@ -676,11 +676,15 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
             ? parcela * (1 + 1.0289) 
             : parcela * (1 + 0.0816)
 
+          const calcTotalPagar = t === 12 
+            ? sumTotalMes + 1065.45 
+            : sumTotalMes
+
           return {
             term: t,
             taxa: specialRate,
             parcelaMedia: calcParcelaMedia,
-            totalPagar: sumTotalMes,
+            totalPagar: calcTotalPagar,
             invalido: false
           }
         }
