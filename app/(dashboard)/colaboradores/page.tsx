@@ -20,6 +20,8 @@ import {
   FileSpreadsheet,
   Cake,
   UserMinus,
+  UserX,
+  Laptop,
   Paperclip,
   Eye,
   UploadCloud,
@@ -381,7 +383,17 @@ function getBirthdayDetails(dateStr: string) {
 export default function ColaboradoresPage() {
   const [isRHMessagingOpen, setIsRHMessagingOpen] = useState(false)
   const [collaborators, setCollaborators] = useState<Collaborator[]>([])
-  const [activeTab, setActiveTab] = useState<"presenciais" | "home_office" | "aniversarios" | "ex_colaboradores">("presenciais")
+  const [activeTab, setActiveTab] = useState<"presenciais" | "home_office" | "aniversarios" | "ex_colaboradores" | "ex_home_office">("presenciais")
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      const tabParam = params.get("tab")
+      if (tabParam === "home_office" || tabParam === "presenciais" || tabParam === "aniversarios" || tabParam === "ex_colaboradores" || tabParam === "ex_home_office") {
+        setActiveTab(tabParam)
+      }
+    }
+  }, [])
   const [loadingTable, setLoadingTable] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterRole, setFilterRole] = useState("todos")
@@ -911,6 +923,9 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
   const presenciaisCollaborators = activeCollaborators.filter(c => c.workLocation !== "Home Office" && c.role !== "Home Office")
   const homeOfficeCollaborators = activeCollaborators.filter(c => c.workLocation === "Home Office" || c.role === "Home Office")
 
+  const exPresenciaisCollaborators = inactiveCollaborators.filter(c => c.workLocation !== "Home Office" && c.role !== "Home Office")
+  const exHomeOfficeCollaborators = inactiveCollaborators.filter(c => c.workLocation === "Home Office" || c.role === "Home Office")
+
   const currentMonthNum = new Date().getMonth() + 1
   const activeBirthdaysCurrentMonth = activeCollaborators.filter(c => {
     if (!c.birthDate) return false
@@ -962,7 +977,8 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
 
   const filteredPresenciais = filterList(presenciaisCollaborators)
   const filteredHomeOffice = filterList(homeOfficeCollaborators)
-  const filteredExCollaborators = filterList(inactiveCollaborators)
+  const filteredExCollaborators = filterList(exPresenciaisCollaborators)
+  const filteredExHomeOffice = filterList(exHomeOfficeCollaborators)
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50/50 min-h-screen">
@@ -971,49 +987,73 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
       <div className="p-4 lg:p-8 max-w-[1600px] mx-auto w-full space-y-8">
         
         {/* Statistics Widgets */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-6">
           <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
-            <CardContent className="p-6 flex items-center justify-between">
+            <CardContent className="p-5 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Colaboradores Ativos</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Colaboradores Ativos</p>
                 <p className="text-3xl font-black text-slate-800 mt-1">
-                  {activeTab === "home_office" 
-                    ? homeOfficeCollaborators.length 
-                    : activeTab === "presenciais" 
-                    ? presenciaisCollaborators.length 
-                    : activeCollaborators.length}
+                  {presenciaisCollaborators.length}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
-                <Users className="w-6 h-6" />
+              <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+                <Users className="w-5 h-5" />
               </div>
             </CardContent>
           </Card>
 
           <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
-            <CardContent className="p-6 flex items-center justify-between">
+            <CardContent className="p-5 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aniversariantes do Mês</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Parceiros Home Office Ativos</p>
+                <p className="text-3xl font-black text-slate-800 mt-1">
+                  {homeOfficeCollaborators.length}
+                </p>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                <Laptop className="w-5 h-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
+            <CardContent className="p-5 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Aniversariantes do Mês</p>
                 <p className="text-3xl font-black text-slate-800 mt-1">
                   {activeBirthdaysCurrentMonth.length}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 shrink-0">
-                <Cake className="w-6 h-6" />
+              <div className="w-11 h-11 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 shrink-0">
+                <Cake className="w-5 h-5" />
               </div>
             </CardContent>
           </Card>
 
           <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
-            <CardContent className="p-6 flex items-center justify-between">
+            <CardContent className="p-5 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Colaboradores Inativos</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Colaboradores Inativos</p>
                 <p className="text-3xl font-black text-slate-800 mt-1">
-                  {inactiveCollaborators.length}
+                  {exPresenciaisCollaborators.length}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 shrink-0">
-                <UserMinus className="w-6 h-6" />
+              <div className="w-11 h-11 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 shrink-0">
+                <UserMinus className="w-5 h-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-slate-200 bg-white rounded-2xl shadow-sm">
+            <CardContent className="p-5 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Parceiros Home Office Inativos</p>
+                <p className="text-3xl font-black text-slate-800 mt-1">
+                  {exHomeOfficeCollaborators.length}
+                </p>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+                <UserX className="w-5 h-5" />
               </div>
             </CardContent>
           </Card>
@@ -1051,7 +1091,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
             )}
             id="tab-home-office"
           >
-            COLABORADORES HOME OFFICE
+            PARCEIROS HOME OFFICE
           </button>
           <button
             type="button"
@@ -1078,6 +1118,19 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
             id="tab-ex-colaboradores"
           >
             EX COLABORADORES
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("ex_home_office")}
+            className={cn(
+              "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 cursor-pointer",
+              activeTab === "ex_home_office"
+                ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black"
+                : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            )}
+            id="tab-ex-home-office"
+          >
+            EX PARCEIROS HOME OFFICE
           </button>
         </div>
 
@@ -2289,22 +2342,26 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                       <tr>
                         <td colSpan={13} className="text-center py-20 bg-slate-50/10">
                           <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
-                            <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Carregando planilha de ex-colaboradores...</p>
+                            <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">
+                              {activeTab === "ex_home_office" ? "Carregando planilha de ex-parceiros home office..." : "Carregando planilha de ex-colaboradores..."}
+                            </p>
                           </div>
                         </td>
                       </tr>
-                    ) : filteredExCollaborators.length === 0 ? (
+                    ) : (activeTab === "ex_home_office" ? filteredExHomeOffice : filteredExCollaborators).length === 0 ? (
                       <tr>
                         <td colSpan={13} className="text-center py-20 bg-slate-50/10 border-none">
                           <div className="flex flex-col items-center justify-center space-y-2">
                             <FileSpreadsheet className="w-10 h-10 text-slate-350" />
-                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Nenhum ex-colaborador encontrado</p>
+                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                              {activeTab === "ex_home_office" ? "Nenhum ex-parceiro home office encontrado" : "Nenhum ex-colaborador encontrado"}
+                            </p>
                             <p className="text-slate-400 text-[9px] font-semibold">Tabela vazia ou sem correspondências.</p>
                           </div>
                         </td>
                       </tr>
                     ) : (
-                      filteredExCollaborators.map((colab, idx) => (
+                      (activeTab === "ex_home_office" ? filteredExHomeOffice : filteredExCollaborators).map((colab, idx) => (
                         <tr key={colab.id} className={cn("transition-all font-semibold align-middle whitespace-nowrap hover:bg-slate-200/50", idx % 2 === 0 ? "bg-white" : "bg-slate-100")}>
                           {/* Nome Completo */}
                           <td className="px-4 py-3.5">

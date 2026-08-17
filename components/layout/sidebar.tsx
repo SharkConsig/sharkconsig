@@ -257,6 +257,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     let items = section.items;
 
     if (section.title === "PROPOSTAS") {
+      // Oculta o grupo PROPOSTAS para o acesso de Recursos Humanos
+      if (isRecursosHumanos && !isAdmin) {
+        return {
+          title: "",
+          items: []
+        }
+      }
+
       items = items.map(item => {
         if (item.href === "/propostas/tabelas") {
           return {

@@ -16,7 +16,8 @@ import {
   ChevronDown,
   ChevronUp,
   GraduationCap,
-  Briefcase
+  Briefcase,
+  Laptop
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { useAuth } from "@/context/auth-context"
@@ -141,6 +142,10 @@ interface DBCollaborator {
   joinDate?: string | null
   data_nascimento?: string | null
   birthDate?: string | null
+  local_trabalho?: string | null
+  workLocation?: string | null
+  cargo?: string | null
+  role?: string | null
 }
 
 // Helper to parse birthday month safely (0-indexed)
@@ -184,6 +189,7 @@ export function HRDashboard({
   const isOnlyAdmin = perfil?.role?.toLowerCase() === 'administrador' || perfil?.role?.toLowerCase() === 'desenvolvedor'
   const [rankingModalParams, setRankingModalParams] = useState<RankingContractModalParams | null>(null)
   const [colaboradoresCount, setColaboradoresCount] = useState(0)
+  const [parceirosHomeOfficeCount, setParceirosHomeOfficeCount] = useState(0)
 
   const handleOpenRankingModal = (params: RankingContractModalParams) => {
     setRankingModalParams(params)
@@ -212,7 +218,7 @@ export function HRDashboard({
   useEffect(() => {
     async function loadStats() {
       // 1. Initial Local Cache Fallback
-      let colabsLocal: DBCollaborator[] = []
+      let colabsLocal: any[] = []
       let interviewsLocal: Record<string, unknown>[] = []
       let warningsLocal: Record<string, unknown>[] = []
 
@@ -243,11 +249,22 @@ export function HRDashboard({
         console.error("Local warnings read err:", e)
       }
 
-      const activeColabsLocal = colabsLocal.filter((item: DBCollaborator) => {
+      const activeColabsLocal = colabsLocal.filter((item: any) => {
         const status = item.status || "Ativo"
         return status !== "Inativo"
       })
-      setColaboradoresCount(activeColabsLocal.length)
+
+      const isHomeOffice = (item: any) => {
+        const loc = (item.workLocation || item.local_trabalho || "").toLowerCase()
+        const r = (item.role || item.cargo || item.funcao || "").toLowerCase()
+        return loc.includes("home office") || r.includes("home office")
+      }
+
+      const presenciaisLocal = activeColabsLocal.filter((item: any) => !isHomeOffice(item))
+      const homeOfficeLocal = activeColabsLocal.filter((item: any) => isHomeOffice(item))
+
+      setColaboradoresCount(presenciaisLocal.length)
+      setParceirosHomeOfficeCount(homeOfficeLocal.length)
       setEntrevistasCount(interviewsLocal.length)
       setAdvertenciasCount(warningsLocal.length)
 
@@ -269,33 +286,37 @@ export function HRDashboard({
         console.error("Local interviews map err:", err)
       }
 
-      const today = new Date()
-      const currentMonth = today.getMonth()
+      const currentMonthNum = new Date().getMonth() + 1
 
-      const birthLocalCount = activeColabsLocal.filter((item: DBCollaborator) => {
+      const birthLocalCount = activeColabsLocal.filter((item: any) => {
         const dateStr = item.birthDate || item.data_nascimento || ""
         const m = getBirthdayMonth(dateStr)
-        return m === currentMonth
+        return m !== null && (m + 1) === currentMonthNum
       }).length
       setBirthdaysCount(birthLocalCount)
 
       // 2. Direct Supabase Query fetch
       try {
-        const { data: colabsData } = await supabase
+        const { data: colabsData, error: colabsErr } = await supabase
           .from("hr_colaboradores")
-          .select("id, status, data_admissao, data_nascimento")
+          .select("*")
         
-        if (colabsData) {
-          const activeSupa = (colabsData as DBCollaborator[]).filter((item: DBCollaborator) => {
+        if (colabsData && !colabsErr) {
+          const activeSupa = colabsData.filter((item: any) => {
             const status = item.status || "Ativo"
             return status !== "Inativo"
           })
-          setColaboradoresCount(activeSupa.length)
+          
+          const presenciaisSupa = activeSupa.filter((item: any) => !isHomeOffice(item))
+          const homeOfficeSupa = activeSupa.filter((item: any) => isHomeOffice(item))
 
-          const birthSupaCount = activeSupa.filter((item: DBCollaborator) => {
-            const dateStr = item.data_nascimento || ""
+          setColaboradoresCount(presenciaisSupa.length)
+          setParceirosHomeOfficeCount(homeOfficeSupa.length)
+
+          const birthSupaCount = activeSupa.filter((item: any) => {
+            const dateStr = item.data_nascimento || item.birthDate || ""
             const m = getBirthdayMonth(dateStr)
-            return m === currentMonth
+            return m !== null && (m + 1) === currentMonthNum
           }).length
           setBirthdaysCount(birthSupaCount)
         }
@@ -341,11 +362,20 @@ export function HRDashboard({
     {
       title: "Colaboradores Ativos",
       value: colaboradoresCount,
-      description: "Profissionais contratados",
+      description: "Profissionais presenciais contratados",
       icon: Users,
       color: "text-blue-600",
       bgColor: "bg-blue-50",
-      href: "/colaboradores"
+      href: "/colaboradores?tab=presenciais"
+    },
+    {
+      title: "Parceiros Home Office Ativos",
+      value: parceirosHomeOfficeCount,
+      description: "Profissionais em regime home office",
+      icon: Laptop,
+      color: "text-indigo-600",
+      bgColor: "bg-indigo-50",
+      href: "/colaboradores?tab=home_office"
     },
     {
       title: "Aniversariantes do Mês",
@@ -354,7 +384,7 @@ export function HRDashboard({
       icon: Cake,
       color: "text-rose-600",
       bgColor: "bg-rose-50",
-      href: "/colaboradores"
+      href: "/colaboradores?tab=aniversarios"
     },
     {
       title: "Entrevistas Agendadas",
