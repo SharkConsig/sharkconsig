@@ -104,24 +104,12 @@ export default function HistoricoPagamentosPJPage() {
     return isNaN(parsed) ? 0 : parsed
   }
 
-  // Load records from Supabase historico_pagamentos_pj & LocalStorage
+  // Load records directly from Supabase historico_pagamentos_pj (Single Source of Truth)
   const loadData = useCallback(async (showLoading = false) => {
     if (showLoading) {
       setIsLoading(true)
     }
     try {
-      let localRecords: HistoricoPJRecord[] = []
-      if (typeof window !== "undefined") {
-        const raw = localStorage.getItem("historico_pagamentos_pj_records")
-        if (raw) {
-          try {
-            localRecords = JSON.parse(raw)
-          } catch (e) {
-            console.error(e)
-          }
-        }
-      }
-
       // 1. Fetch directly from Supabase historico_pagamentos_pj
       const { data: dbData, error: dbError } = await supabase
         .from("historico_pagamentos_pj")
@@ -157,169 +145,17 @@ export default function HistoricoPagamentosPJPage() {
         })
       }
 
-      // 2. Also check propostas with pjPaid or mirrored to guarantee no payments are missed
-      const { data: propData } = await supabase
-        .from("propostas")
-        .select("*")
-
-      let pjPaidIds: Record<string, boolean> = {}
-      if (typeof window !== "undefined") {
-        const storedPj = localStorage.getItem("receber_pj_paid_ids")
-        if (storedPj) {
-          try {
-            pjPaidIds = JSON.parse(storedPj)
-          } catch (e) {
-            console.error(e)
-          }
-        }
-      }
-
       if (typeof window !== "undefined") {
         try {
           localStorage.setItem("historico_pj_espelhados", JSON.stringify(dbMirroredMap))
+          localStorage.setItem("historico_pagamentos_pj_records", JSON.stringify(dbRecords))
         } catch (e) {}
       }
 
-      const mapExisting = new Map<string, HistoricoPJRecord>()
-      dbRecords.forEach(r => mapExisting.set(r.id_lead, r))
-      localRecords.forEach(r => {
-        if (!mapExisting.has(r.id_lead)) {
-          mapExisting.set(r.id_lead, r)
-        }
-      })
-
-      let nextFriendlyNum = Array.from(mapExisting.values()).reduce((max, r) => {
-        const num = parseInt(String(r.id || "").replace("#", ""), 10)
-        return !isNaN(num) && num > max ? num : max
-      }, 1000)
-
-      const merged: HistoricoPJRecord[] = []
-      const newItemsToSync: HistoricoPJRecord[] = []
-
-      if (propData) {
-        propData.forEach((p: any) => {
-          let isPaid = !!pjPaidIds[p.id_lead]
-          let pjPaidDate = new Date().toISOString().split("T")[0]
-
-          if (p.observacoes) {
-            try {
-              const obsMatch = p.observacoes.match(/\[FINANCE_METADATA\](.*?)\[\/FINANCE_METADATA\]/s)
-              if (obsMatch && obsMatch[1]) {
-                const meta = JSON.parse(obsMatch[1])
-                if (meta.pjPaid !== undefined) isPaid = meta.pjPaid
-                if (meta.pjPaidDate) pjPaidDate = meta.pjPaidDate.split("T")[0]
-              }
-            } catch (e) {
-              // ignore parse errors
-            }
-          }
-
-          if (isPaid) {
-            const clienteName = (p.nome_cliente || p.cliente || p.nome || "").trim()
-            const clienteCpf = (p.cliente_cpf || p.cpf_cliente || p.cpf || "").trim()
-
-            if (mapExisting.has(p.id_lead)) {
-              const existing = mapExisting.get(p.id_lead)!
-              let changed = false
-              if (!existing.cliente && clienteName) {
-                existing.cliente = clienteName
-                changed = true
-              }
-              if (!existing.cpf_cliente && clienteCpf) {
-                existing.cpf_cliente = clienteCpf
-                changed = true
-              }
-              if (changed) {
-                // Also update in Supabase asynchronously
-                supabase
-                  .from("historico_pagamentos_pj")
-                  .update({
-                    cliente: existing.cliente,
-                    cpf_cliente: existing.cpf_cliente,
-                    updated_at: new Date().toISOString()
-                  } as any)
-                  .eq("id_lead", p.id_lead)
-                  .then(() => {})
-              }
-              merged.push(existing)
-            } else {
-              nextFriendlyNum++
-              const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
-              const pjPct = safeFloat(p.comissao_pj_porcentagem || p.comissao_corretor_porcentagem || 0)
-              let pjBruta = safeFloat(p.comissao_pj_valor || 0)
-              if (!pjBruta && pjPct > 0) {
-                pjBruta = (valOp * pjPct) / 100
-              }
-
-              const newItem: HistoricoPJRecord = {
-                id: String(nextFriendlyNum),
-                id_lead: p.id_lead,
-                data_pagamento: pjPaidDate,
-                nome: (p.nome_corretor || p.corretor || "Corretor PJ").trim(),
-                cliente: clienteName,
-                cpf_cliente: clienteCpf,
-                valor_operacao: valOp,
-                aliquota_comissao: pjPct,
-                comissao_bruta: pjBruta,
-                proventos: 0,
-                descontos: 0,
-                comissao_liquida: pjBruta,
-                created_at: new Date().toISOString()
-              }
-              merged.push(newItem)
-              newItemsToSync.push(newItem)
-            }
-          }
-        })
-      }
-
-      // Add any database records or local records that are not in propData
-      Array.from(mapExisting.values()).forEach(r => {
-        if (!merged.some(m => m.id_lead === r.id_lead)) {
-          merged.push(r)
-        }
-      })
-
       // Sort by Date descending
-      merged.sort((a, b) => (b.data_pagamento || "").localeCompare(a.data_pagamento || ""))
+      dbRecords.sort((a, b) => (b.data_pagamento || "").localeCompare(a.data_pagamento || ""))
 
-      setRecords(merged)
-      if (typeof window !== "undefined") {
-        localStorage.setItem("historico_pagamentos_pj_records", JSON.stringify(merged))
-      }
-
-      // Sync any unsaved items to historico_pagamentos_pj
-      if (newItemsToSync.length > 0) {
-        for (const item of newItemsToSync) {
-          try {
-            const numericId = parseInt(String(item.id).replace(/\D/g, ""), 10)
-            const payload: any = {
-              id_lead: item.id_lead,
-              data_pagamento: item.data_pagamento,
-              nome: item.nome,
-              cliente: item.cliente || "",
-              cpf_cliente: item.cpf_cliente || "",
-              valor_operacao: item.valor_operacao,
-              aliquota_comissao: item.aliquota_comissao,
-              comissao_bruta: item.comissao_bruta,
-              proventos: item.proventos,
-              descontos: item.descontos,
-              comissao_liquida: item.comissao_liquida,
-              updated_at: new Date().toISOString()
-            }
-            if (!isNaN(numericId) && numericId > 0) {
-              payload.id = numericId
-            }
-            const { error: insErr } = await supabase.from("historico_pagamentos_pj").insert(payload)
-            if (insErr) {
-              delete payload.id
-              await supabase.from("historico_pagamentos_pj").insert(payload)
-            }
-          } catch (syncErr) {
-            console.warn("Aviso ao sincronizar item com historico_pagamentos_pj:", syncErr)
-          }
-        }
-      }
+      setRecords(dbRecords)
     } catch (err) {
       console.error("Erro ao carregar histórico de pagamentos PJ:", err)
       toast.error("Erro ao carregar histórico de pagamentos PJ.")
