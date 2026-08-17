@@ -839,6 +839,8 @@ export default function ContasAReceberPage() {
           const pjBruta = getPJCommissionValue(proposal)
           const todayDate = new Date().toISOString().split("T")[0]
           const corretorNome = (proposal.nome_corretor || proposal.corretor || "Corretor PJ").trim()
+          const clienteNome = (proposal.nome_cliente || (proposal as any).cliente || "").trim()
+          const clienteCpf = (proposal.cliente_cpf || (proposal as any).cpf || (proposal as any).cpf_cliente || "").trim()
 
           let finalRecord: any
           if (existingIndex >= 0) {
@@ -846,6 +848,8 @@ export default function ContasAReceberPage() {
               ...historyList[existingIndex],
               data_pagamento: historyList[existingIndex].data_pagamento || todayDate,
               nome: corretorNome,
+              cliente: clienteNome || historyList[existingIndex].cliente || "",
+              cpf_cliente: clienteCpf || historyList[existingIndex].cpf_cliente || "",
               valor_operacao: valOp,
               aliquota_comissao: pjPct,
               comissao_bruta: pjBruta,
@@ -865,6 +869,8 @@ export default function ContasAReceberPage() {
               id_lead: idLead,
               data_pagamento: todayDate,
               nome: corretorNome,
+              cliente: clienteNome,
+              cpf_cliente: clienteCpf,
               valor_operacao: valOp,
               aliquota_comissao: pjPct,
               comissao_bruta: pjBruta,
@@ -892,6 +898,8 @@ export default function ContasAReceberPage() {
                 .update({
                   data_pagamento: finalRecord.data_pagamento,
                   nome: finalRecord.nome,
+                  cliente: finalRecord.cliente || clienteNome,
+                  cpf_cliente: finalRecord.cpf_cliente || clienteCpf,
                   valor_operacao: finalRecord.valor_operacao,
                   aliquota_comissao: finalRecord.aliquota_comissao,
                   comissao_bruta: finalRecord.comissao_bruta,
@@ -906,6 +914,8 @@ export default function ContasAReceberPage() {
                 id_lead: finalRecord.id_lead,
                 data_pagamento: finalRecord.data_pagamento,
                 nome: finalRecord.nome,
+                cliente: finalRecord.cliente || clienteNome,
+                cpf_cliente: finalRecord.cpf_cliente || clienteCpf,
                 valor_operacao: finalRecord.valor_operacao,
                 aliquota_comissao: finalRecord.aliquota_comissao,
                 comissao_bruta: finalRecord.comissao_bruta,

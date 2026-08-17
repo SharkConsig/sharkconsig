@@ -23,6 +23,7 @@ import {
 import { useAuth } from "@/context/auth-context"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
+import { Header } from "@/components/layout/header"
 
 // Helper function to format BRL currency
 function formatBRL(val: number): string {
@@ -2270,9 +2271,10 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
   }
 
   return (
-    <div className={cn("text-slate-800", isEmbedded ? "p-0 bg-transparent min-h-0" : "p-6 md:p-8 lg:p-10 min-h-screen bg-slate-50")}>
+    <div className={cn("text-slate-800 flex-1 flex flex-col", isEmbedded ? "p-0 bg-transparent min-h-0" : "min-h-screen bg-slate-50")}>
+      {!isEmbedded && <Header title="CALCULADORA" />}
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto space-y-6">
+      <main className={cn("max-w-7xl mx-auto space-y-6 w-full", isEmbedded ? "p-0" : "p-6 md:p-8 lg:p-10")}>
         {/* TOP TABS NAVBAR */}
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4">
           <button

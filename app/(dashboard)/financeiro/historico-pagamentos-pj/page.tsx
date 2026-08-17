@@ -25,7 +25,8 @@ import {
   AlertTriangle,
   Radio,
   Eye,
-  Share2
+  Share2,
+  Undo2
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import {
@@ -47,12 +48,15 @@ export interface HistoricoPJRecord {
   id_lead: string
   data_pagamento: string // "YYYY-MM-DD"
   nome: string // Corretor PJ
+  cliente?: string // Nome do Cliente
+  cpf_cliente?: string // CPF do Cliente
   valor_operacao: number
   aliquota_comissao: number // percentage e.g. 5.0
   comissao_bruta: number
   proventos: number
   descontos: number
   comissao_liquida: number
+  espelhado?: boolean
   created_at?: string
 }
 
@@ -125,27 +129,38 @@ export default function HistoricoPagamentosPJPage() {
         .order("data_pagamento", { ascending: false })
 
       let dbRecords: HistoricoPJRecord[] = []
+      let dbMirroredMap: Record<string, boolean> = {}
+
       if (!dbError && dbData && dbData.length > 0) {
-        dbRecords = dbData.map((row: any) => ({
-          id: String(row.id || ""),
-          id_lead: String(row.id_lead || ""),
-          data_pagamento: row.data_pagamento ? String(row.data_pagamento).split("T")[0] : "",
-          nome: String(row.nome || "Corretor PJ"),
-          valor_operacao: safeFloat(row.valor_operacao),
-          aliquota_comissao: safeFloat(row.aliquota_comissao),
-          comissao_bruta: safeFloat(row.comissao_bruta),
-          proventos: safeFloat(row.proventos),
-          descontos: safeFloat(row.descontos),
-          comissao_liquida: safeFloat(row.comissao_liquida),
-          created_at: row.created_at || new Date().toISOString()
-        }))
+        dbRecords = dbData.map((row: any) => {
+          const isRowEspelhado = Boolean(row.espelhado ?? row.pj_mirrored ?? row.mirrored ?? false)
+          if (isRowEspelhado) {
+            if (row.id_lead) dbMirroredMap[row.id_lead] = true
+            if (row.id) dbMirroredMap[String(row.id)] = true
+          }
+          return {
+            id: String(row.id || ""),
+            id_lead: String(row.id_lead || ""),
+            data_pagamento: row.data_pagamento ? String(row.data_pagamento).split("T")[0] : "",
+            nome: String(row.nome || "Corretor PJ"),
+            cliente: String(row.cliente || row.nome_cliente || "").trim(),
+            cpf_cliente: String(row.cpf_cliente || row.cpf || row.cliente_cpf || "").trim(),
+            valor_operacao: safeFloat(row.valor_operacao),
+            aliquota_comissao: safeFloat(row.aliquota_comissao),
+            comissao_bruta: safeFloat(row.comissao_bruta),
+            proventos: safeFloat(row.proventos),
+            descontos: safeFloat(row.descontos),
+            comissao_liquida: safeFloat(row.comissao_liquida),
+            espelhado: isRowEspelhado,
+            created_at: row.created_at || new Date().toISOString()
+          }
+        })
       }
 
-      // 2. Also check propostas with pjPaid to guarantee no payments are missed
+      // 2. Also check propostas with pjPaid or mirrored to guarantee no payments are missed
       const { data: propData } = await supabase
         .from("propostas")
         .select("*")
-        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA"])
 
       let pjPaidIds: Record<string, boolean> = {}
       if (typeof window !== "undefined") {
@@ -157,6 +172,31 @@ export default function HistoricoPagamentosPJPage() {
             console.error(e)
           }
         }
+      }
+
+      if (propData) {
+        propData.forEach((p: any) => {
+          if (p.observacoes) {
+            try {
+              const obsMatch = p.observacoes.match(/\[FINANCE_METADATA\](.*?)\[\/FINANCE_METADATA\]/s)
+              if (obsMatch && obsMatch[1]) {
+                const meta = JSON.parse(obsMatch[1])
+                if (meta.pjMirrored || meta.espelhado_pj || meta.espelhado) {
+                  dbMirroredMap[p.id_lead] = true
+                }
+              }
+            } catch (e) {}
+          }
+        })
+      }
+
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem("historico_pj_espelhados")
+          const currentLocal = raw ? JSON.parse(raw) : {}
+          const mergedMirrored = { ...currentLocal, ...dbMirroredMap }
+          localStorage.setItem("historico_pj_espelhados", JSON.stringify(mergedMirrored))
+        } catch (e) {}
       }
 
       const mapExisting = new Map<string, HistoricoPJRecord>()
@@ -194,8 +234,33 @@ export default function HistoricoPagamentosPJPage() {
           }
 
           if (isPaid) {
+            const clienteName = (p.nome_cliente || p.cliente || p.nome || "").trim()
+            const clienteCpf = (p.cliente_cpf || p.cpf_cliente || p.cpf || "").trim()
+
             if (mapExisting.has(p.id_lead)) {
-              merged.push(mapExisting.get(p.id_lead)!)
+              const existing = mapExisting.get(p.id_lead)!
+              let changed = false
+              if (!existing.cliente && clienteName) {
+                existing.cliente = clienteName
+                changed = true
+              }
+              if (!existing.cpf_cliente && clienteCpf) {
+                existing.cpf_cliente = clienteCpf
+                changed = true
+              }
+              if (changed) {
+                // Also update in Supabase asynchronously
+                supabase
+                  .from("historico_pagamentos_pj")
+                  .update({
+                    cliente: existing.cliente,
+                    cpf_cliente: existing.cpf_cliente,
+                    updated_at: new Date().toISOString()
+                  } as any)
+                  .eq("id_lead", p.id_lead)
+                  .then(() => {})
+              }
+              merged.push(existing)
             } else {
               nextFriendlyNum++
               const valOp = safeFloat(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
@@ -210,6 +275,8 @@ export default function HistoricoPagamentosPJPage() {
                 id_lead: p.id_lead,
                 data_pagamento: pjPaidDate,
                 nome: (p.nome_corretor || p.corretor || "Corretor PJ").trim(),
+                cliente: clienteName,
+                cpf_cliente: clienteCpf,
                 valor_operacao: valOp,
                 aliquota_comissao: pjPct,
                 comissao_bruta: pjBruta,
@@ -249,6 +316,8 @@ export default function HistoricoPagamentosPJPage() {
               id_lead: item.id_lead,
               data_pagamento: item.data_pagamento,
               nome: item.nome,
+              cliente: item.cliente || "",
+              cpf_cliente: item.cpf_cliente || "",
               valor_operacao: item.valor_operacao,
               aliquota_comissao: item.aliquota_comissao,
               comissao_bruta: item.comissao_bruta,
@@ -541,6 +610,7 @@ export default function HistoricoPagamentosPJPage() {
       const rawUserName = (perfil?.nome || perfil?.nome_completo || user?.email?.split("@")[0] || "").toLowerCase().trim()
       const norm = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
       const normalizedUserName = norm(rawUserName)
+      const userFirstName = normalizedUserName.split(" ")[0] || ""
 
       base = records.filter(r => {
         // Must be mirrored by Admin (check by id_lead or record id)
@@ -550,7 +620,12 @@ export default function HistoricoPagamentosPJPage() {
         // If corretor user has a name, check if record belongs to them
         if (normalizedUserName && r.nome) {
           const recName = norm(r.nome)
-          const nameMatches = recName.includes(normalizedUserName) || normalizedUserName.includes(recName)
+          const recFirstName = recName.split(" ")[0] || ""
+          const nameMatches = 
+            recName.includes(normalizedUserName) || 
+            normalizedUserName.includes(recName) ||
+            (userFirstName.length >= 3 && recFirstName.length >= 3 && userFirstName === recFirstName)
+            
           if (!nameMatches && recName !== "corretor pj" && recName !== "") {
             return false
           }
@@ -566,6 +641,9 @@ export default function HistoricoPagamentosPJPage() {
         const matchesSearch = 
           (r.id || "").toLowerCase().includes(term) ||
           (r.nome || "").toLowerCase().includes(term) ||
+          (r.cliente || "").toLowerCase().includes(term) ||
+          (r.cpf_cliente || "").replace(/\D/g, "").includes(term.replace(/\D/g, "")) ||
+          (r.cpf_cliente || "").toLowerCase().includes(term) ||
           (r.id_lead || "").toLowerCase().includes(term) ||
           (r.data_pagamento || "").includes(term)
         if (!matchesSearch) return false
@@ -662,6 +740,8 @@ export default function HistoricoPagamentosPJPage() {
       { header: "ID", key: "id", width: 12 },
       { header: "Data Pagamento", key: "data_pagamento", width: 16 },
       { header: "Nome Corretor PJ", key: "nome", width: 35 },
+      { header: "Cliente", key: "cliente", width: 35 },
+      { header: "CPF do Cliente", key: "cpf_cliente", width: 20 },
       { header: "Valor Operação", key: "valor_operacao", width: 20 },
       { header: "Alíquota (%)", key: "aliquota_comissao", width: 15 },
       { header: "Comissão Bruta", key: "comissao_bruta", width: 20 },
@@ -685,6 +765,8 @@ export default function HistoricoPagamentosPJPage() {
         id: `#${r.id}`,
         data_pagamento: r.data_pagamento ? format(new Date(r.data_pagamento + "T12:00:00"), "dd/MM/yyyy") : "-",
         nome: r.nome,
+        cliente: r.cliente || "-",
+        cpf_cliente: r.cpf_cliente || "-",
         valor_operacao: r.valor_operacao,
         aliquota_comissao: (r.aliquota_comissao || 0) / 100,
         comissao_bruta: r.comissao_bruta,
@@ -708,7 +790,7 @@ export default function HistoricoPagamentosPJPage() {
   }
 
   // Handle Espelhar Histórico
-  const handleEspelharHistorico = () => {
+  const handleEspelharHistorico = async () => {
     if (selectedIds.size === 0) {
       toast.error("Selecione pelo menos um pagamento para espelhar.")
       return
@@ -734,10 +816,138 @@ export default function HistoricoPagamentosPJPage() {
         window.dispatchEvent(new Event("historico_pj_espelhado"))
       }
 
+      // Persist to Supabase propostas table metadata and historico_pagamentos_pj table
+      const selectedIdLeads = Array.from(selectedIds)
+      for (const idLead of selectedIdLeads) {
+        try {
+          // 1. Try update historico_pagamentos_pj table directly if column exists
+          await supabase
+            .from("historico_pagamentos_pj")
+            .update({
+              espelhado: true,
+              updated_at: new Date().toISOString()
+            } as any)
+            .eq("id_lead", idLead)
+        } catch (dbErr) {}
+
+        try {
+          // 2. Also persist to propostas observacoes metadata
+          const { data: prop } = await supabase
+            .from("propostas")
+            .select("observacoes")
+            .eq("id_lead", idLead)
+            .maybeSingle()
+
+          if (prop) {
+            let metadata: Record<string, any> = {}
+            let notes = prop.observacoes || ""
+            const obsMatch = notes.match(/\[FINANCE_METADATA\](.*?)\[\/FINANCE_METADATA\]/s)
+            if (obsMatch && obsMatch[1]) {
+              try {
+                metadata = JSON.parse(obsMatch[1])
+                notes = notes.replace(/\[FINANCE_METADATA\].*?\[\/FINANCE_METADATA\]/s, "").trim()
+              } catch (e) {}
+            }
+
+            metadata.pjMirrored = true
+            metadata.espelhado_pj = true
+            metadata.espelhado = true
+            const newObs = `${notes}\n\n[FINANCE_METADATA]${JSON.stringify(metadata)}[/FINANCE_METADATA]`.trim()
+
+            await supabase
+              .from("propostas")
+              .update({
+                observacoes: newObs,
+                updated_at: new Date().toISOString()
+              })
+              .eq("id_lead", idLead)
+          }
+        } catch (dbErr) {
+          console.warn("Aviso ao persistir espelhamento na proposta:", idLead, dbErr)
+        }
+      }
+
+      // Update state in memory
+      setRecords(prev => prev.map(r => selectedIds.has(r.id_lead) || selectedIds.has(r.id) ? { ...r, espelhado: true } : r))
+      setMirroredVersion(v => v + 1)
+
       toast.success(`${selectedIds.size} pagamento(s) espelhado(s) com sucesso para o Corretor PJ!`)
     } catch (e) {
       console.error(e)
       toast.error("Erro ao espelhar histórico.")
+    }
+  }
+
+  // Handle Desfazer Espelhamento
+  const handleDesfazerEspelhamento = async (record: HistoricoPJRecord) => {
+    try {
+      // 1. Remove from localStorage
+      if (typeof window !== "undefined") {
+        const raw = localStorage.getItem("historico_pj_espelhados")
+        if (raw) {
+          try {
+            const map = JSON.parse(raw)
+            delete map[record.id_lead]
+            delete map[record.id]
+            localStorage.setItem("historico_pj_espelhados", JSON.stringify(map))
+            window.dispatchEvent(new Event("historico_pj_espelhado"))
+          } catch (e) {}
+        }
+      }
+
+      // 2. Update Supabase historico_pagamentos_pj table
+      try {
+        await supabase
+          .from("historico_pagamentos_pj")
+          .update({
+            espelhado: false,
+            updated_at: new Date().toISOString()
+          } as any)
+          .eq("id_lead", record.id_lead)
+      } catch (dbErr) {}
+
+      // 3. Update Supabase propostas metadata
+      try {
+        const { data: prop } = await supabase
+          .from("propostas")
+          .select("observacoes")
+          .eq("id_lead", record.id_lead)
+          .maybeSingle()
+
+        if (prop) {
+          let metadata: Record<string, any> = {}
+          let notes = prop.observacoes || ""
+          const obsMatch = notes.match(/\[FINANCE_METADATA\](.*?)\[\/FINANCE_METADATA\]/s)
+          if (obsMatch && obsMatch[1]) {
+            try {
+              metadata = JSON.parse(obsMatch[1])
+              notes = notes.replace(/\[FINANCE_METADATA\].*?\[\/FINANCE_METADATA\]/s, "").trim()
+            } catch (e) {}
+          }
+
+          metadata.pjMirrored = false
+          metadata.espelhado_pj = false
+          metadata.espelhado = false
+          const newObs = `${notes}\n\n[FINANCE_METADATA]${JSON.stringify(metadata)}[/FINANCE_METADATA]`.trim()
+
+          await supabase
+            .from("propostas")
+            .update({
+              observacoes: newObs,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id_lead", record.id_lead)
+        }
+      } catch (dbErr) {}
+
+      // 4. Update memory state
+      setRecords(prev => prev.map(r => (r.id_lead === record.id_lead || r.id === record.id) ? { ...r, espelhado: false } : r))
+      setMirroredVersion(v => v + 1)
+
+      toast.success(`Espelhamento do pagamento #${record.id} desfeito com sucesso!`)
+    } catch (e) {
+      console.error(e)
+      toast.error("Erro ao desfazer espelhamento.")
     }
   }
 
@@ -1060,8 +1270,16 @@ export default function HistoricoPagamentosPJPage() {
                   <th className="py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap min-w-[160px]">
                     DATA PAGAMENTO
                   </th>
+                  {!isCorretorUser && (
+                    <th className="py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap min-w-[220px]">
+                      CORRETOR PJ
+                    </th>
+                  )}
                   <th className="py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap min-w-[220px]">
-                    CORRETOR PJ
+                    CLIENTE
+                  </th>
+                  <th className="py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap min-w-[150px]">
+                    CPF DO CLIENTE
                   </th>
                   <th className="py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right min-w-[160px]">
                     VALOR OPERAÇÃO
@@ -1092,7 +1310,7 @@ export default function HistoricoPagamentosPJPage() {
               <tbody className="divide-y divide-slate-100 text-xs">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-slate-400 font-bold">
+                    <td colSpan={13} className="py-12 text-center text-slate-400 font-bold">
                       <div className="flex flex-col items-center gap-2">
                         <RefreshCw className="w-6 h-6 animate-spin text-[#1C2643]" />
                         <span>Carregando histórico de repasses...</span>
@@ -1101,7 +1319,7 @@ export default function HistoricoPagamentosPJPage() {
                   </tr>
                 ) : paginatedRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-slate-400 font-bold">
+                    <td colSpan={13} className="py-12 text-center text-slate-400 font-bold">
                       Nenhum registro de pagamento de comissão PJ encontrado.
                     </td>
                   </tr>
@@ -1127,10 +1345,24 @@ export default function HistoricoPagamentosPJPage() {
                         </td>
 
                         {/* ID */}
-                        <td className="py-3 px-4 font-black text-[#1C2643] text-center whitespace-nowrap">
-                          <span className="bg-slate-100 border border-slate-200 text-slate-700 px-2 py-0.5 rounded-md text-[11px] font-bold">
-                            #{item.id}
-                          </span>
+                        <td className="py-3 px-4 font-black text-center whitespace-nowrap">
+                          {(() => {
+                            const isDbMirrored = item.espelhado === true
+
+                            if (!isCorretorUser && isDbMirrored) {
+                              return (
+                                <span className="bg-emerald-100 border border-emerald-300 text-emerald-800 px-2 py-0.5 rounded-md text-[11px] font-bold shadow-xs inline-flex items-center gap-1">
+                                  #{item.id}
+                                </span>
+                              )
+                            }
+
+                            return (
+                              <span className="bg-slate-100 border border-slate-200 text-slate-700 px-2 py-0.5 rounded-md text-[11px] font-bold">
+                                #{item.id}
+                              </span>
+                            )
+                          })()}
                         </td>
 
                         {/* Data do Pagamento (Editable) */}
@@ -1147,9 +1379,21 @@ export default function HistoricoPagamentosPJPage() {
                           />
                         </td>
 
-                        {/* Nome do Corretor */}
-                        <td className="py-3 px-4 font-black text-slate-800 uppercase whitespace-nowrap">
-                          {item.nome}
+                        {/* Nome do Corretor (only for admin) */}
+                        {!isCorretorUser && (
+                          <td className="py-3 px-4 font-black text-slate-800 uppercase whitespace-nowrap">
+                            {item.nome}
+                          </td>
+                        )}
+
+                        {/* CLIENTE */}
+                        <td className="py-3 px-4 font-bold text-slate-700 uppercase whitespace-nowrap">
+                          {item.cliente || "-"}
+                        </td>
+
+                        {/* CPF DO CLIENTE */}
+                        <td className="py-3 px-4 font-medium text-slate-600 whitespace-nowrap">
+                          {item.cpf_cliente || "-"}
                         </td>
 
                         {/* VALOR OPERAÇÃO */}
@@ -1228,14 +1472,26 @@ export default function HistoricoPagamentosPJPage() {
                         {/* Action */}
                         {!isCorretorUser && (
                           <td className="py-3 px-4 text-center whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => setRecordToDelete(item)}
-                              title="Remover do histórico"
-                              className="text-slate-300 hover:text-rose-600 transition-colors cursor-pointer p-1"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              {item.espelhado && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDesfazerEspelhamento(item)}
+                                  title="Desfazer espelhamento para o Corretor PJ"
+                                  className="text-amber-500 hover:text-amber-700 transition-colors cursor-pointer p-1 rounded hover:bg-amber-50"
+                                >
+                                  <Undo2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setRecordToDelete(item)}
+                                title="Remover do histórico"
+                                className="text-slate-300 hover:text-rose-600 transition-colors cursor-pointer p-1 rounded hover:bg-rose-50"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         )}
                       </tr>
