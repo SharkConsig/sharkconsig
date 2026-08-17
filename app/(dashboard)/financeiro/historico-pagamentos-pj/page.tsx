@@ -133,7 +133,7 @@ export default function HistoricoPagamentosPJPage() {
 
       if (!dbError && dbData && dbData.length > 0) {
         dbRecords = dbData.map((row: any) => {
-          const isRowEspelhado = Boolean(row.espelhado ?? row.pj_mirrored ?? row.mirrored ?? false)
+          const isRowEspelhado = row.espelhado === true || row.pj_mirrored === true || row.mirrored === true
           if (isRowEspelhado) {
             if (row.id_lead) dbMirroredMap[row.id_lead] = true
             if (row.id) dbMirroredMap[String(row.id)] = true
@@ -174,28 +174,9 @@ export default function HistoricoPagamentosPJPage() {
         }
       }
 
-      if (propData) {
-        propData.forEach((p: any) => {
-          if (p.observacoes) {
-            try {
-              const obsMatch = p.observacoes.match(/\[FINANCE_METADATA\](.*?)\[\/FINANCE_METADATA\]/s)
-              if (obsMatch && obsMatch[1]) {
-                const meta = JSON.parse(obsMatch[1])
-                if (meta.pjMirrored || meta.espelhado_pj || meta.espelhado) {
-                  dbMirroredMap[p.id_lead] = true
-                }
-              }
-            } catch (e) {}
-          }
-        })
-      }
-
       if (typeof window !== "undefined") {
         try {
-          const raw = localStorage.getItem("historico_pj_espelhados")
-          const currentLocal = raw ? JSON.parse(raw) : {}
-          const mergedMirrored = { ...currentLocal, ...dbMirroredMap }
-          localStorage.setItem("historico_pj_espelhados", JSON.stringify(mergedMirrored))
+          localStorage.setItem("historico_pj_espelhados", JSON.stringify(dbMirroredMap))
         } catch (e) {}
       }
 
@@ -613,8 +594,8 @@ export default function HistoricoPagamentosPJPage() {
       const userFirstName = normalizedUserName.split(" ")[0] || ""
 
       base = records.filter(r => {
-        // Must be mirrored by Admin (check by id_lead or record id)
-        const isMirrored = !!mirroredMap[r.id_lead] || !!mirroredMap[r.id]
+        // Must be mirrored in DB (r.espelhado === true) or active in mirroredMap
+        const isMirrored = r.espelhado === true || !!mirroredMap[r.id_lead] || !!mirroredMap[r.id]
         if (!isMirrored) return false
         
         // If corretor user has a name, check if record belongs to them
