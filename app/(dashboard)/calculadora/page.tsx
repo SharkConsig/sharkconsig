@@ -139,7 +139,8 @@ function calculateDynamicAmortizationPlan(
   prazoTotal: number,
   term: number,
   parcela: number,
-  rateForAmort: number = 0.05
+  rateForAmort: number = 0.05,
+  graceMonths: number = 0
 ): DynamicAmortMonth[] {
   if (term <= 0 || parcela <= 0) {
     return []
@@ -169,12 +170,26 @@ function calculateDynamicAmortizationPlan(
   }
 
   const N = amortInstallments.length
-  const T = term
+  const actualGraceMonths = (graceMonths > 0 && term > graceMonths) ? graceMonths : 0
+  const T = term - actualGraceMonths
 
-  if (N === 0) {
-    const rows: DynamicAmortMonth[] = []
-    for (let m = 1; m <= T; m++) {
-      rows.push({
+  const schedule: DynamicAmortMonth[] = []
+
+  // Add initial grace months (if any) with fixed parcela only
+  for (let m = 1; m <= actualGraceMonths; m++) {
+    schedule.push({
+      month: m,
+      fixedParcela: parcela,
+      amortNums: [],
+      amortVals: [],
+      sumAmortVals: 0,
+      totalMes: parcela
+    })
+  }
+
+  if (N === 0 || T <= 0) {
+    for (let m = actualGraceMonths + 1; m <= term; m++) {
+      schedule.push({
         month: m,
         fixedParcela: parcela,
         amortNums: [],
@@ -183,12 +198,11 @@ function calculateDynamicAmortizationPlan(
         totalMes: parcela
       })
     }
-    return rows
+    return schedule
   }
 
-  // If N < T (fewer installments than months) or simple edge case, distribute 1 or 0 per month
+  // If N < T (fewer installments than active months) or simple edge case
   if (N < T) {
-    const schedule: DynamicAmortMonth[] = []
     for (let m = 1; m <= T; m++) {
       const monthNums: number[] = []
       const monthVals: number[] = []
@@ -201,7 +215,7 @@ function calculateDynamicAmortizationPlan(
       }
 
       schedule.push({
-        month: m,
+        month: actualGraceMonths + m,
         fixedParcela: parcela,
         amortNums: monthNums,
         amortVals: monthVals,
@@ -221,7 +235,7 @@ function calculateDynamicAmortizationPlan(
   const totalAmortSum = P[N]
   const targetMonthlyAmort = totalAmortSum / T
 
-  // Dynamic Programming optimization to partition N installments into T months
+  // Dynamic Programming optimization to partition N installments into T active months
   // Objective 1 (Primary): Minimize the maximum monthly Total (or max monthly amort sum)
   // Objective 2 (Secondary): Minimize the sum of squared deviations from the ideal average
   interface DPState {
@@ -232,7 +246,7 @@ function calculateDynamicAmortizationPlan(
 
   const dp: (DPState | null)[][] = Array.from({ length: T + 1 }, () => Array(N + 1).fill(null))
 
-  // Base case: Month 1
+  // Base case: Month 1 of active distribution
   for (let i = 1; i <= N - (T - 1); i++) {
     const sumVal = P[i]
     dp[1][i] = {
@@ -308,7 +322,6 @@ function calculateDynamicAmortizationPlan(
   }
   monthBoundaries[0] = 0
 
-  const schedule: DynamicAmortMonth[] = []
   for (let m = 1; m <= T; m++) {
     const startIdx = Math.max(0, Math.min(N, monthBoundaries[m - 1]))
     const endIdx = Math.max(startIdx, Math.min(N, monthBoundaries[m]))
@@ -326,7 +339,7 @@ function calculateDynamicAmortizationPlan(
     }
 
     schedule.push({
-      month: m,
+      month: actualGraceMonths + m,
       fixedParcela: parcela,
       amortNums: monthNums,
       amortVals: monthVals,
@@ -670,7 +683,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
       .map(t => {
         if (isSpecialCoef && (t === 12 || t === 24)) {
           const specialRate = t === 12 ? 0.0082 : 0.0096
-          const dynPlan = calculateDynamicAmortizationPlan(prazo, t, parcela, 0.05)
+          const dynPlan = calculateDynamicAmortizationPlan(prazo, t, parcela, 0.05, 3)
           const sumTotalMes = dynPlan.reduce((acc, row) => acc + row.totalMes, 0)
           const calcParcelaMedia = t === 12 
             ? parcela * (1 + 1.0289) 
@@ -1732,7 +1745,9 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
 
     const roundCoef = Math.round(coeficiente * 100000) / 100000
     const isSpecialCoef = roundCoef >= 0.039 && roundCoef <= 0.0455
-    const rateForAmort = (isSpecialCoef && (activeResult.prazo === 12 || activeResult.prazo === 24)) ? 0.05 : taxaImplicita
+    const isSpecialTerm = isSpecialCoef && (activeResult.prazo === 12 || activeResult.prazo === 24)
+    const rateForAmort = isSpecialTerm ? 0.05 : taxaImplicita
+    const graceMonths = isSpecialTerm ? 3 : 0
 
     const term = activeResult.prazo
     const pmt = activeResult.parcela
@@ -1741,7 +1756,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
     let rowsHtml = ""
 
     if (term < prazo) {
-      const dynPlan = calculateDynamicAmortizationPlan(prazo, term, parcela, rateForAmort)
+      const dynPlan = calculateDynamicAmortizationPlan(prazo, term, parcela, rateForAmort, graceMonths)
       for (const row of dynPlan) {
         const isEven = row.month % 2 === 0
         const rowBg = isEven ? "#F8FAFC" : "#FFFFFF"
