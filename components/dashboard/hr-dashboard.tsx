@@ -1207,7 +1207,33 @@ export function HRDashboard({
 
         {estagioRankingGroup && estagioRankingGroup.colaboracoes?.estagiarios && estagioRankingGroup.colaboracoes.estagiarios.length > 0 && (() => {
           const estagiariosList = estagioRankingGroup.colaboracoes.estagiarios.filter(e => !e.isPJ)
-          const colaboradoresPJList = estagioRankingGroup.colaboracoes.estagiarios.filter(e => e.isPJ)
+          
+          // Replicate Jorge Fabrício Marques Siqueira's stats to Carlos Eduardo Mendes in real time
+          const jorgeStats = brokerRankings.find(b => {
+            const normalized = (b.nome || "").toLowerCase().trim()
+            return normalized.includes("jorge fabrício") || normalized.includes("jorge fabricio") || normalized.includes("jorge fabricio marques")
+          })
+
+          const colaboradoresPJList = estagioRankingGroup.colaboracoes.estagiarios
+            .filter(e => e.isPJ)
+            .map(item => {
+              const normalizedName = (item.nome || "").toLowerCase().trim()
+              if (normalizedName.includes("carlos eduardo") && jorgeStats) {
+                return {
+                  ...item,
+                  approvedTicketsCount: jorgeStats.approvedTicketsCount || item.approvedTicketsCount || 0,
+                  totalPaid: jorgeStats.totalPaid ?? item.totalPaid,
+                  countPaid: jorgeStats.countPaid ?? item.countPaid,
+                  totalInProcess: jorgeStats.totalInProcess ?? item.totalInProcess,
+                  countInProcess: jorgeStats.countInProcess ?? item.countInProcess,
+                  totalToday: jorgeStats.totalToday ?? item.totalToday,
+                  countToday: jorgeStats.countToday ?? item.countToday,
+                  _sourcePersonId: jorgeStats.corretor_id
+                }
+              }
+              return item
+            })
+            .sort((a, b) => (b.totalPaid || 0) - (a.totalPaid || 0))
 
           return (
             <div className="lg:col-span-12 space-y-6 mt-6 animate-fade-in" id="estagio-pj-ranking-card-hr">
@@ -1421,7 +1447,7 @@ export function HRDashboard({
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleOpenRankingModal({
-                                          personId: est.estagiario_id,
+                                          personId: (est as any)._sourcePersonId || est.estagiario_id,
                                           personName: est.nome,
                                           category: 'paid',
                                           categoryLabel: 'Produção (Pagos)'
@@ -1441,7 +1467,7 @@ export function HRDashboard({
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleOpenRankingModal({
-                                          personId: est.estagiario_id,
+                                          personId: (est as any)._sourcePersonId || est.estagiario_id,
                                           personName: est.nome,
                                           category: 'in_process',
                                           categoryLabel: 'Em Andamento'
@@ -1466,7 +1492,7 @@ export function HRDashboard({
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleOpenRankingModal({
-                                          personId: est.estagiario_id,
+                                          personId: (est as any)._sourcePersonId || est.estagiario_id,
                                           personName: est.nome,
                                           category: 'today',
                                           categoryLabel: 'Digitadas Hoje'
