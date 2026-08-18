@@ -17,7 +17,10 @@ import {
   ChevronUp,
   GraduationCap,
   Briefcase,
-  Laptop
+  Laptop,
+  Award,
+  X,
+  Search
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { useAuth } from "@/context/auth-context"
@@ -48,7 +51,17 @@ interface HRMetric {
   icon: React.ElementType
   color: string
   bgColor: string
-  href: string
+  href?: string
+  onClick?: () => void
+}
+
+export interface TenureAnniversaryPerson {
+  id: string
+  name: string
+  role: string
+  locationType: "Presencial" | "Home Office"
+  admissionDate: string
+  yearsCompleted: number
 }
 
 interface InternCollaboration {
@@ -148,6 +161,54 @@ interface DBCollaborator {
   role?: string | null
 }
 
+// Helper to parse date parts safely (day, month 1-indexed, year)
+const parseDateParts = (dateStr: string | null | undefined): { day: number; month: number; year: number } | null => {
+  if (!dateStr) return null
+  const cleanStr = dateStr.trim()
+  
+  if (cleanStr.includes("/")) {
+    const parts = cleanStr.split("/")
+    if (parts.length >= 3) {
+      const day = parseInt(parts[0], 10)
+      const month = parseInt(parts[1], 10)
+      const year = parseInt(parts[2], 10)
+      if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+        return { day, month, year }
+      }
+    }
+  } else if (cleanStr.includes("-")) {
+    const parts = cleanStr.split("-")
+    if (parts.length >= 3) {
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD
+        const year = parseInt(parts[0], 10)
+        const month = parseInt(parts[1], 10)
+        const day = parseInt(parts[2], 10)
+        if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+          return { day, month, year }
+        }
+      } else {
+        // DD-MM-YYYY
+        const day = parseInt(parts[0], 10)
+        const month = parseInt(parts[1], 10)
+        const year = parseInt(parts[2], 10)
+        if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+          return { day, month, year }
+        }
+      }
+    }
+  }
+  return null
+}
+
+// Helper to check if admission date completes 1 or more years in the given month/year
+const isTenureAnniversaryInMonth = (admissionDateStr: string | null | undefined, targetMonth: number, targetYear: number): boolean => {
+  const parts = parseDateParts(admissionDateStr)
+  if (!parts) return false
+  // Must be in the same month (1-indexed) and admission year must be at least 1 year prior to current target year
+  return parts.month === targetMonth && (targetYear - parts.year) >= 1
+}
+
 // Helper to parse birthday month safely (0-indexed)
 const getBirthdayMonth = (dateStr: string): number | null => {
   if (!dateStr) return null
@@ -190,6 +251,10 @@ export function HRDashboard({
   const [rankingModalParams, setRankingModalParams] = useState<RankingContractModalParams | null>(null)
   const [colaboradoresCount, setColaboradoresCount] = useState(0)
   const [parceirosHomeOfficeCount, setParceirosHomeOfficeCount] = useState(0)
+  const [companyTenureAnniversariesCount, setCompanyTenureAnniversariesCount] = useState(0)
+  const [tenureAnniversaryList, setTenureAnniversaryList] = useState<TenureAnniversaryPerson[]>([])
+  const [isTenureModalOpen, setIsTenureModalOpen] = useState(false)
+  const [tenureSearchTerm, setTenureSearchTerm] = useState("")
 
   const handleOpenRankingModal = (params: RankingContractModalParams) => {
     setRankingModalParams(params)
@@ -286,7 +351,9 @@ export function HRDashboard({
         console.error("Local interviews map err:", err)
       }
 
-      const currentMonthNum = new Date().getMonth() + 1
+      const today = new Date()
+      const currentMonthNum = today.getMonth() + 1
+      const currentYearNum = today.getFullYear()
 
       const birthLocalCount = activeColabsLocal.filter((item: any) => {
         const dateStr = item.birthDate || item.data_nascimento || ""
@@ -294,6 +361,28 @@ export function HRDashboard({
         return m !== null && (m + 1) === currentMonthNum
       }).length
       setBirthdaysCount(birthLocalCount)
+
+      const tenureLocalPeople: TenureAnniversaryPerson[] = activeColabsLocal
+        .filter((item: any) => {
+          const admissionDateStr = item.joinDate || item.data_admissao || ""
+          return isTenureAnniversaryInMonth(admissionDateStr, currentMonthNum, currentYearNum)
+        })
+        .map((item: any) => {
+          const admissionDateStr = item.joinDate || item.data_admissao || ""
+          const parts = parseDateParts(admissionDateStr)
+          const years = parts ? (currentYearNum - parts.year) : 1
+          const formattedAdmission = parts ? `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year}` : admissionDateStr
+          return {
+            id: item.id || String(Math.random()),
+            name: item.name || item.nome || "Colaborador",
+            role: item.role || item.cargo || item.funcao || "Colaborador",
+            locationType: isHomeOffice(item) ? "Home Office" : "Presencial",
+            admissionDate: formattedAdmission,
+            yearsCompleted: years
+          }
+        })
+      setCompanyTenureAnniversariesCount(tenureLocalPeople.length)
+      setTenureAnniversaryList(tenureLocalPeople)
 
       // 2. Direct Supabase Query fetch
       try {
@@ -319,6 +408,28 @@ export function HRDashboard({
             return m !== null && (m + 1) === currentMonthNum
           }).length
           setBirthdaysCount(birthSupaCount)
+
+          const tenureSupaPeople: TenureAnniversaryPerson[] = activeSupa
+            .filter((item: any) => {
+              const admissionDateStr = item.data_admissao || item.joinDate || ""
+              return isTenureAnniversaryInMonth(admissionDateStr, currentMonthNum, currentYearNum)
+            })
+            .map((item: any) => {
+              const admissionDateStr = item.data_admissao || item.joinDate || ""
+              const parts = parseDateParts(admissionDateStr)
+              const years = parts ? (currentYearNum - parts.year) : 1
+              const formattedAdmission = parts ? `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year}` : admissionDateStr
+              return {
+                id: item.id || String(Math.random()),
+                name: item.nome || item.name || "Colaborador",
+                role: item.cargo || item.funcao || item.role || "Colaborador",
+                locationType: isHomeOffice(item) ? "Home Office" : "Presencial",
+                admissionDate: formattedAdmission,
+                yearsCompleted: years
+              }
+            })
+          setCompanyTenureAnniversariesCount(tenureSupaPeople.length)
+          setTenureAnniversaryList(tenureSupaPeople)
         }
 
         const { data: interviewsData } = await supabase
@@ -385,6 +496,18 @@ export function HRDashboard({
       color: "text-rose-600",
       bgColor: "bg-rose-50",
       href: "/colaboradores?tab=aniversarios"
+    },
+    {
+      title: "Aniversariante de Tempo de Empresa",
+      value: companyTenureAnniversariesCount,
+      description: "Completando 1 ou mais anos este mês",
+      icon: Award,
+      color: "text-[#1C2643]",
+      bgColor: "bg-[#1C2643]/10",
+      onClick: () => {
+        setTenureSearchTerm("")
+        setIsTenureModalOpen(true)
+      }
     },
     {
       title: "Entrevistas Agendadas",
@@ -473,6 +596,27 @@ export function HRDashboard({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full" id="dashboard-summary-cards-grid">
         {metrics.map((metric, index) => {
           const Icon = metric.icon
+          const cardInner = (
+            <Card className="border border-slate-150 rounded-2xl shadow-sm hover:shadow-md bg-white overflow-hidden h-full text-left w-full">
+              <CardContent className="p-6 flex items-center justify-between h-full">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    {metric.title}
+                  </p>
+                  <p className="text-2xl font-black text-[#1C2643]">
+                    {metric.value}
+                  </p>
+                  <p className="text-[10px] font-medium text-slate-500">
+                    {metric.description}
+                  </p>
+                </div>
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${metric.bgColor} ${metric.color}`}>
+                  <Icon className="w-6 h-6" />
+                </div>
+              </CardContent>
+            </Card>
+          )
+
           return (
             <motion.div
               key={metric.title}
@@ -480,26 +624,19 @@ export function HRDashboard({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
             >
-              <Link href={metric.href} className="block transition-all hover:-translate-y-1 duration-200 h-full">
-                <Card className="border border-slate-150 rounded-2xl shadow-sm hover:shadow-md bg-white overflow-hidden h-full">
-                  <CardContent className="p-6 flex items-center justify-between h-full">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        {metric.title}
-                      </p>
-                      <p className="text-2xl font-black text-[#1C2643]">
-                        {metric.value}
-                      </p>
-                      <p className="text-[10px] font-medium text-slate-500">
-                        {metric.description}
-                      </p>
-                    </div>
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${metric.bgColor} ${metric.color}`}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
+              {metric.onClick ? (
+                <button 
+                  type="button" 
+                  onClick={metric.onClick} 
+                  className="block transition-all hover:-translate-y-1 duration-200 h-full w-full text-left cursor-pointer"
+                >
+                  {cardInner}
+                </button>
+              ) : (
+                <Link href={metric.href || "#"} className="block transition-all hover:-translate-y-1 duration-200 h-full">
+                  {cardInner}
+                </Link>
+              )}
             </motion.div>
           )
         })}
@@ -1362,6 +1499,155 @@ export function HRDashboard({
           onClose={() => setRankingModalParams(null)}
           params={rankingModalParams}
         />
+      )}
+
+      {/* MODAL DE ANIVERSARIANTES DE TEMPO DE EMPRESA */}
+      {isTenureModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-5 bg-[#1C2643] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center text-white shrink-0 border border-white/20">
+                  <Award className="w-5 h-5 text-amber-300" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black uppercase tracking-tight">
+                    Aniversariantes de Tempo de Empresa
+                  </h3>
+                  <p className="text-xs text-slate-300 font-medium">
+                    Colaboradores completando 1 ou mais anos de casa este mês
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsTenureModalOpen(false)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="p-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar colaborador por nome, cargo ou regime..."
+                  value={tenureSearchTerm}
+                  onChange={(e) => setTenureSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1C2643]/20 focus:border-[#1C2643] font-medium"
+                />
+              </div>
+            </div>
+
+            {/* Content list */}
+            <div className="p-6 overflow-y-auto space-y-3 flex-1">
+              {(() => {
+                const filtered = tenureAnniversaryList.filter((person) => {
+                  if (!tenureSearchTerm.trim()) return true
+                  const q = tenureSearchTerm.toLowerCase()
+                  return (
+                    person.name.toLowerCase().includes(q) ||
+                    person.role.toLowerCase().includes(q) ||
+                    person.locationType.toLowerCase().includes(q)
+                  )
+                })
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-12 text-center flex flex-col items-center justify-center space-y-2">
+                      <div className="w-12 h-12 rounded-full bg-[#1C2643]/10 flex items-center justify-center text-[#1C2643]">
+                        <Award className="w-6 h-6" />
+                      </div>
+                      <p className="text-sm font-bold text-slate-700">
+                        Nenhum colaborador encontrado
+                      </p>
+                      <p className="text-xs text-slate-400 max-w-xs">
+                        {tenureSearchTerm
+                          ? "Nenhum resultado corresponde aos termos da busca."
+                          : "Não há colaboradores completando tempo de empresa este mês."}
+                      </p>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="space-y-3">
+                    {filtered.map((person) => (
+                      <div
+                        key={person.id}
+                        className="p-4 rounded-xl border border-slate-150 bg-white hover:border-[#1C2643]/30 hover:shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[#1C2643]/10 text-[#1C2643] flex items-center justify-center font-black text-sm shrink-0 border border-[#1C2643]/20">
+                            {person.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold text-slate-800">
+                                {person.name}
+                              </h4>
+                              <span
+                                className={cn(
+                                  "text-[10px] font-black uppercase px-2 py-0.5 rounded-full",
+                                  person.locationType === "Home Office"
+                                    ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                    : "bg-blue-50 text-blue-700 border border-blue-200"
+                                )}
+                              >
+                                {person.locationType}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 font-medium">
+                              {person.role}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 justify-between sm:justify-end">
+                          <div className="text-left sm:text-right">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                              Data de Admissão
+                            </span>
+                            <span className="text-xs font-bold text-slate-700">
+                              {person.admissionDate}
+                            </span>
+                          </div>
+
+                          <div className="px-3 py-1.5 rounded-lg bg-[#1C2643]/10 border border-[#1C2643]/20 text-right shrink-0">
+                            <span className="text-[10px] font-bold text-[#1C2643] uppercase tracking-widest block leading-none">
+                              Tempo de Casa
+                            </span>
+                            <span className="text-xs font-black text-[#1C2643] leading-none">
+                              {person.yearsCompleted} {person.yearsCompleted === 1 ? "Ano" : "Anos"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
+              <span className="text-xs font-bold text-slate-500">
+                Total: {tenureAnniversaryList.length} {tenureAnniversaryList.length === 1 ? "colaborador" : "colaboradores"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsTenureModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
