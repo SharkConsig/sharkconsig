@@ -973,7 +973,7 @@ export function HRDashboard({
             </div>
 
             <div className="flex-1 overflow-auto custom-scrollbar">
-            {isDashboardLoading ? (
+            {isDashboardLoading && (!brokerRankings || brokerRankings.length === 0) ? (
               <div className="flex flex-col items-center justify-center py-20 gap-4">
                 <Loader2 className="w-12 h-12 animate-spin text-[#1C2643] opacity-20" />
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] animate-pulse">

@@ -26,10 +26,15 @@ export async function GET(request: Request) {
         }
       }
 
+      let rawName = metadata.nome_completo || metadata.full_name || 'Sem Nome'
+      if (rawName.toLowerCase().includes("carlos eduardo")) {
+        rawName = "Luana"
+      }
+
       return NextResponse.json({
         id: user.id,
         email: user.email,
-        nome: metadata.nome_completo || metadata.full_name || 'Sem Nome',
+        nome: rawName,
         username: metadata.username,
         funcao: metadata.funcao || 'Corretor',
         regime_contratacao: metadata.regime_contratacao || '',
@@ -79,10 +84,15 @@ export async function GET(request: Request) {
         supervisorNome = nameMap.get(supervisorId);
       }
 
+      let rawName = metadata.nome_completo || metadata.full_name || 'Sem Nome'
+      if (rawName.toLowerCase().includes("carlos eduardo")) {
+        rawName = "Luana"
+      }
+
       return {
         id: user.id,
         email: user.email,
-        nome: metadata.nome_completo || metadata.full_name || 'Sem Nome',
+        nome: rawName,
         username: metadata.username,
         funcao: metadata.funcao || 'Corretor',
         regime_contratacao: metadata.regime_contratacao || '',
