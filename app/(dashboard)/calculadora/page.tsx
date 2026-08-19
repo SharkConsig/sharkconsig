@@ -3256,7 +3256,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                     <span className="font-bold">{formatBRL(contratoComIof)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Total a Pagar:</span>
+                    <span>Total Previsto:</span>
                     <span className="font-bold">{formatBRL(activeResult.totalAPagar)}</span>
                   </div>
                   <div className="flex justify-between">
