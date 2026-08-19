@@ -684,15 +684,11 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
       .map(t => {
         if (isSpecialCoef && (t === 12 || t === 24)) {
           const specialRate = t === 12 ? 0.0082 : 0.0096
-          const dynPlan = calculateDynamicAmortizationPlan(prazo, t, parcela, 0.05, 3)
-          const sumTotalMes = dynPlan.reduce((acc, row) => acc + row.totalMes, 0)
           const calcParcelaMedia = t === 12 
             ? parcela * (1 + 1.0289) 
             : parcela * (1 + 0.0816)
 
-          const calcTotalPagar = t === 12 
-            ? sumTotalMes + 1065.45 
-            : sumTotalMes
+          const calcTotalPagar = calcParcelaMedia * t
 
           return {
             term: t,
@@ -708,7 +704,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
             term: t,
             taxa: taxaImplicita,
             parcelaMedia: parcela,
-            totalPagar: totalAPagar,
+            totalPagar: parcela * t,
             invalido: false
           }
         }
@@ -735,7 +731,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
           term: t,
           taxa: Math.max(0, rateN),
           parcelaMedia: calcParcelaMedia,
-          totalPagar: sumTotalMes,
+          totalPagar: calcParcelaMedia * t,
           invalido: false
         }
       })
@@ -1074,7 +1070,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                 <span style="color: #0F172A; font-weight: 800;">${formatPercent(plan.taxa, 2)}</span>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0;">
-                <span style="color: #64748B; font-weight: 600;">Total a Pagar</span>
+                <span style="color: #64748B; font-weight: 600;">Total Previsto</span>
                 <span style="color: #0F172A; font-weight: 800;">${formatBRL(plan.totalPagar)}</span>
               </div>
             </div>
@@ -3610,7 +3606,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                               <span className="font-extrabold text-slate-900">{formatPercent(plan.taxa, 2)}</span>
                             </div>
                             <div className="flex justify-between items-center pt-2.5">
-                              <span className="font-semibold text-slate-500">Total a Pagar</span>
+                              <span className="font-semibold text-slate-500">Total Previsto</span>
                               <span className="font-extrabold text-slate-900">{formatBRL(plan.totalPagar)}</span>
                             </div>
                           </div>
