@@ -271,13 +271,42 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
     }
   }
 
+  const handleClearAllMessages = async () => {
+    setSending(true)
+    setStatusBanner(null)
+    try {
+      const res = await fetch("/api/rh-mensagens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear_all" })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao apagar mensagens")
+      }
+
+      setMessage("")
+      setUsers(prev => prev.map(u => ({ ...u, rh_mensagem_destaque: "" })))
+      setStatusBanner({ type: 'success', text: 'Todas as mensagens foram apagadas com sucesso para todos os colaboradores!' })
+      window.dispatchEvent(new Event("shark_hr_celebration_updated"))
+      if (onSuccess) onSuccess()
+    } catch (err: any) {
+      console.error("Erro ao apagar todas as mensagens:", err)
+      setStatusBanner({ type: 'error', text: err.message || 'Erro ao apagar mensagens.' })
+    } finally {
+      setSending(false)
+    }
+  }
+
   if (!isOpen) return null
 
   const selectedUser = users.find(u => u.id === selectedUserId)
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-      <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+      <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col">
         {/* Modal Header */}
         <div className="bg-[#171717] px-6 py-5 flex items-center justify-between text-white">
           <div className="flex items-center gap-3">
@@ -383,35 +412,53 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
         </div>
 
         {/* Modal Footer Buttons */}
-        <div className="bg-slate-50 border-t border-slate-100 px-6 py-4 flex items-center justify-end gap-3">
+        <div className="bg-slate-50 border-t border-slate-100 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <Button
             type="button"
             variant="outline"
-            onClick={handleCancel}
+            onClick={handleClearAllMessages}
             disabled={sending}
-            className="border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs uppercase px-5 py-2.5 rounded-xl cursor-pointer"
-          >
-            Cancelar
-          </Button>
-
-          <Button
-            type="button"
-            onClick={handleSend}
-            disabled={sending || !selectedUserId || !message.trim()}
-            className="bg-[#171717] hover:bg-black text-white font-bold text-xs uppercase px-6 py-2.5 rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+            className="w-full sm:w-auto border-rose-200 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 font-bold text-xs uppercase px-4 py-2.5 rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-all shadow-xs shrink-0 whitespace-nowrap disabled:opacity-50"
+            title="Apagar todas as mensagens enviadas para todos os colaboradores"
           >
             {sending ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
-                Enviando...
-              </>
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600 shrink-0" />
             ) : (
-              <>
-                <Send className="w-4 h-4 text-amber-400" />
-                Enviar Mensagem
-              </>
+              <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
             )}
+            <span>{sending ? "Apagando..." : "Apagar Todas as Mensagens"}</span>
           </Button>
+
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              disabled={sending}
+              className="border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs uppercase px-5 py-2.5 rounded-xl cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              Cancelar
+            </Button>
+
+            <Button
+              type="button"
+              onClick={handleSend}
+              disabled={sending || !selectedUserId || !message.trim()}
+              className="bg-[#171717] hover:bg-black text-white font-bold text-xs uppercase px-6 py-2.5 rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2 shrink-0 whitespace-nowrap"
+            >
+              {sending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
+                  <span>Enviando...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Enviar Mensagem</span>
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

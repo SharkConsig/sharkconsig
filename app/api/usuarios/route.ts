@@ -31,6 +31,12 @@ export async function GET(request: Request) {
         rawName = "Luana"
       }
 
+      const rhMsgUpdatedAt = metadata.rh_mensagem_updated_at;
+      let activeRhMsg = metadata.rh_mensagem_destaque || '';
+      if (activeRhMsg && rhMsgUpdatedAt && (Date.now() - new Date(rhMsgUpdatedAt).getTime() > 24 * 60 * 60 * 1000)) {
+        activeRhMsg = '';
+      }
+
       return NextResponse.json({
         id: user.id,
         email: user.email,
@@ -47,7 +53,7 @@ export async function GET(request: Request) {
         status: (metadata.status || 'ATIVO').toUpperCase(),
         padrinho_id: metadata.padrinho_id || '',
         padrinho_nome: metadata.padrinho_nome || '',
-        rh_mensagem_destaque: metadata.rh_mensagem_destaque || ''
+        rh_mensagem_destaque: activeRhMsg
       })
     }
 
@@ -89,6 +95,12 @@ export async function GET(request: Request) {
         rawName = "Luana"
       }
 
+      const rhMsgUpdatedAt = metadata.rh_mensagem_updated_at;
+      let activeRhMsg = metadata.rh_mensagem_destaque || '';
+      if (activeRhMsg && rhMsgUpdatedAt && (Date.now() - new Date(rhMsgUpdatedAt).getTime() > 24 * 60 * 60 * 1000)) {
+        activeRhMsg = '';
+      }
+
       return {
         id: user.id,
         email: user.email,
@@ -105,7 +117,7 @@ export async function GET(request: Request) {
         status: (metadata.status || 'ATIVO').toUpperCase(),
         padrinho_id: metadata.padrinho_id || '',
         padrinho_nome: metadata.padrinho_nome || '',
-        rh_mensagem_destaque: metadata.rh_mensagem_destaque || '',
+        rh_mensagem_destaque: activeRhMsg,
         created_at: user.created_at,
         last_sign_in_at: user.last_sign_in_at
       }
