@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X, Copy } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -11,7 +11,6 @@ import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/context/auth-context"
-import { useRef } from "react"
 interface HistoryItem {
   id: string;
   created_at: string;
@@ -169,11 +168,14 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       'PAGAMENTO DEVOLVIDO'
     ].includes(proposal.status));
 
-  const isClonedProposal = Boolean(
-    proposal.observacoes?.includes("Clonado do ID") || 
-    proposal.observacoes?.includes("[Clonado")
-  )
-  const canEditHeaderSelection = canEditFields && isClonedProposal
+  const userRole = (user?.role || "").trim().toLowerCase()
+  const userFuncao = (user?.funcao || "").trim().toLowerCase()
+  const isOperacionalOuAdmin = isAdmin || isDeveloper || isOperational || 
+    userRole === 'operacional' || userRole === 'administrativo' || userRole === 'admin' || userRole === 'administrador' ||
+    userFuncao.includes('operacional') || userFuncao.includes('administrativo') || userFuncao.includes('admin')
+
+  // Somente para o usuário 'Operacional' e 'Administrativo', nas propostas já digitadas (originais ou clonadas), CONVÊNIO, BANCO e OPERAÇÃO são editáveis
+  const canEditHeaderSelection = isOperacionalOuAdmin
 
   const canAttach = true;
 
@@ -192,6 +194,50 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   const [usersMap, setUsersMap] = useState<Map<string, string>>(new Map())
   const [isSaving, setIsSaving] = useState(false)
   const [isCloning, setIsCloning] = useState(false)
+  const [isSavingHeader, setIsSavingHeader] = useState(false)
+
+  const handleSaveHeaderSelection = async () => {
+    if (!proposal || !proposal.id_lead) return
+    setIsSavingHeader(true)
+    try {
+      const { error } = await supabase
+        .from('propostas')
+        .update({
+          convenio: selection.convenio,
+          banco: selection.banco,
+          tipo_operacao: selection.operacao,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id_lead', proposal.id_lead)
+
+      if (error) throw error
+
+      try {
+        if (user?.id) {
+          await supabase.from('historico_propostas').insert({
+            proposta_id_lead: proposal.id_lead,
+            usuario_id: user.id,
+            status_anterior: proposal.status,
+            status_novo: proposal.status,
+            descricao: `Convênio (${selection.convenio}), Banco (${selection.banco}) e Operação (${selection.operacao}) atualizados`,
+            tipo: 'info',
+            observacoes: "Alteração de Convênio, Banco e Operação pelo Operacional/Administrativo.",
+            created_at: new Date().toISOString()
+          })
+        }
+      } catch (histErr) {
+        console.warn("Erro ao gravar histórico:", histErr)
+      }
+
+      toast.success("Alteração realizada com sucesso!", { position: "bottom-right" })
+      if (_onRefresh) _onRefresh()
+    } catch (err) {
+      console.error("Erro ao salvar Convênio, Banco e Operação:", err)
+      toast.error("Erro ao salvar alteração.", { position: "bottom-right" })
+    } finally {
+      setIsSavingHeader(false)
+    }
+  }
 
   const handleCloneProposalInAccordion = async () => {
     if (!proposal) return
@@ -312,6 +358,86 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     banco: proposal.banco || "",
     operacao: proposal.tipo_operacao || ""
   })
+
+  // Opções de Convênio de acordo com as tabelas de coeficientes existentes
+  const availableConvenios = useMemo(() => {
+    if (!dbProdutosConfigs || dbProdutosConfigs.length === 0) {
+      return dbConvenios.map(c => c.nome)
+    }
+    const set = new Set<string>()
+    dbProdutosConfigs.forEach(cfg => {
+      if (cfg.ativo === false) return
+      const convNome = cfg.convenios?.nome || dbConvenios.find(c => c.id === cfg.convenio_id)?.nome
+      if (convNome) set.add(convNome)
+    })
+    if (set.size === 0) {
+      dbConvenios.forEach(c => set.add(c.nome))
+    }
+    return Array.from(set).sort()
+  }, [dbProdutosConfigs, dbConvenios])
+
+  // Opções de Banco de acordo com as tabelas de coeficientes existentes (filtrado por convênio se selecionado)
+  const availableBancos = useMemo(() => {
+    if (!dbProdutosConfigs || dbProdutosConfigs.length === 0) {
+      return dbBancos.map(b => b.nome)
+    }
+    const set = new Set<string>()
+    const filteredByConv = selection.convenio 
+      ? dbProdutosConfigs.filter(cfg => {
+          if (cfg.ativo === false) return false
+          const convNome = cfg.convenios?.nome || dbConvenios.find(c => c.id === cfg.convenio_id)?.nome
+          return convNome === selection.convenio
+        })
+      : dbProdutosConfigs
+
+    const targetList = filteredByConv.length > 0 ? filteredByConv : dbProdutosConfigs
+    targetList.forEach(cfg => {
+      if (cfg.ativo === false) return
+      const bancoObj = dbBancos.find(b => b.id === cfg.banco_id || b.nome === cfg.banco_id)
+      const bancoNome = bancoObj?.nome || cfg.banco_id
+      if (bancoNome) set.add(bancoNome)
+    })
+    if (set.size === 0) {
+      dbBancos.forEach(b => set.add(b.nome))
+    }
+    return Array.from(set).sort()
+  }, [dbProdutosConfigs, dbBancos, dbConvenios, selection.convenio])
+
+  // Opções de Operação de acordo com as tabelas de coeficientes existentes (filtrado por convênio e banco)
+  const availableOperacoes = useMemo(() => {
+    if (!dbProdutosConfigs || dbProdutosConfigs.length === 0) {
+      return dbOperacoes.map(o => o.nome)
+    }
+    const filtered = dbProdutosConfigs.filter(cfg => {
+      if (cfg.ativo === false) return false
+      if (selection.convenio) {
+        const convNome = cfg.convenios?.nome || dbConvenios.find(c => c.id === cfg.convenio_id)?.nome
+        if (convNome && convNome !== selection.convenio) return false
+      }
+      if (selection.banco) {
+        const bancoObj = dbBancos.find(b => b.id === cfg.banco_id || b.nome === cfg.banco_id)
+        const bancoNome = bancoObj?.nome || cfg.banco_id
+        if (bancoNome && bancoNome !== selection.banco) return false
+      }
+      return true
+    })
+
+    const targetList = filtered.length > 0 ? filtered : dbProdutosConfigs
+    const set = new Set<string>()
+    targetList.forEach(cfg => {
+      if (cfg.ativo === false) return
+      if (cfg.operacoes && Array.isArray(cfg.operacoes)) {
+        cfg.operacoes.forEach(op => {
+          const opNome = dbOperacoes.find(o => o.id === op)?.nome || op
+          if (opNome) set.add(opNome)
+        })
+      }
+    })
+    if (set.size === 0) {
+      dbOperacoes.forEach(o => set.add(o.nome))
+    }
+    return Array.from(set).sort()
+  }, [dbProdutosConfigs, dbOperacoes, dbConvenios, dbBancos, selection.convenio, selection.banco])
 
   useEffect(() => {
     async function fetchReferences() {
@@ -1560,23 +1686,40 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               <>
                 <div className="flex flex-col items-center md:items-start transition-all">
                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
-                  {canEditHeaderSelection ? (
-                    <select
-                      value={selection.operacao}
-                      onChange={(e) => setSelection(prev => ({ ...prev, operacao: e.target.value }))}
-                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[280px]"
-                    >
-                      <option value="">Selecione a Operação</option>
-                      {dbOperacoes.map(o => (
-                        <option key={o.id || o.nome} value={o.nome}>{o.nome}</option>
-                      ))}
-                      {selection.operacao && !dbOperacoes.some(o => o.nome === selection.operacao) && (
-                        <option value={selection.operacao}>{selection.operacao}</option>
-                      )}
-                    </select>
-                  ) : (
-                    <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao || "-"}</span>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {canEditHeaderSelection ? (
+                      <select
+                        value={selection.operacao}
+                        onChange={(e) => setSelection(prev => ({ ...prev, operacao: e.target.value }))}
+                        className="h-8 px-2 rounded-lg bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none cursor-pointer max-w-[280px]"
+                      >
+                        <option value="">Selecione a Operação</option>
+                        {availableOperacoes.map(o => (
+                          <option key={o} value={o}>{o}</option>
+                        ))}
+                        {selection.operacao && !availableOperacoes.includes(selection.operacao) && (
+                          <option value={selection.operacao}>{selection.operacao}</option>
+                        )}
+                      </select>
+                    ) : (
+                      <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao || "-"}</span>
+                    )}
+                    {canEditHeaderSelection && (
+                      <button
+                        type="button"
+                        onClick={handleSaveHeaderSelection}
+                        disabled={isSavingHeader}
+                        title="Salvar alterações"
+                        className="h-8 w-8 min-w-[32px] ml-5 md:ml-7 bg-[#171717] hover:bg-[#171717]/90 text-white rounded-lg flex items-center justify-center shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSavingHeader ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        ) : (
+                          <Save className="w-4 h-4 text-white" />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="h-8 w-px bg-slate-100 hidden md:block" />
@@ -1587,13 +1730,13 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     <select
                       value={selection.convenio}
                       onChange={(e) => setSelection(prev => ({ ...prev, convenio: e.target.value }))}
-                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
+                      className="h-8 px-2 rounded-lg bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none cursor-pointer max-w-[200px]"
                     >
                       <option value="">Selecione Convênio</option>
-                      {dbConvenios.map(c => (
-                        <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                      {availableConvenios.map(c => (
+                        <option key={c} value={c}>{c}</option>
                       ))}
-                      {selection.convenio && !dbConvenios.some(c => c.nome === selection.convenio) && (
+                      {selection.convenio && !availableConvenios.includes(selection.convenio) && (
                         <option value={selection.convenio}>{selection.convenio}</option>
                       )}
                     </select>
@@ -1610,13 +1753,13 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     <select
                       value={selection.banco}
                       onChange={(e) => setSelection(prev => ({ ...prev, banco: e.target.value }))}
-                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
+                      className="h-8 px-2 rounded-lg bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none cursor-pointer max-w-[200px]"
                     >
                       <option value="">Selecione o Banco</option>
-                      {dbBancos.map(b => (
-                        <option key={b.id || b.nome} value={b.nome}>{b.nome}</option>
+                      {availableBancos.map(b => (
+                        <option key={b} value={b}>{b}</option>
                       ))}
-                      {selection.banco && !dbBancos.some(b => b.nome === selection.banco) && (
+                      {selection.banco && !availableBancos.includes(selection.banco) && (
                         <option value={selection.banco}>{selection.banco}</option>
                       )}
                     </select>
@@ -1663,13 +1806,13 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     <select
                       value={selection.convenio}
                       onChange={(e) => setSelection(prev => ({ ...prev, convenio: e.target.value }))}
-                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
+                      className="h-8 px-2 rounded-lg bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none cursor-pointer max-w-[200px]"
                     >
                       <option value="">Selecione Convênio</option>
-                      {dbConvenios.map(c => (
-                        <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                      {availableConvenios.map(c => (
+                        <option key={c} value={c}>{c}</option>
                       ))}
-                      {selection.convenio && !dbConvenios.some(c => c.nome === selection.convenio) && (
+                      {selection.convenio && !availableConvenios.includes(selection.convenio) && (
                         <option value={selection.convenio}>{selection.convenio}</option>
                       )}
                     </select>
@@ -1686,13 +1829,13 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     <select
                       value={selection.banco}
                       onChange={(e) => setSelection(prev => ({ ...prev, banco: e.target.value }))}
-                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[200px]"
+                      className="h-8 px-2 rounded-lg bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none cursor-pointer max-w-[200px]"
                     >
                       <option value="">Selecione o Banco</option>
-                      {dbBancos.map(b => (
-                        <option key={b.id || b.nome} value={b.nome}>{b.nome}</option>
+                      {availableBancos.map(b => (
+                        <option key={b} value={b}>{b}</option>
                       ))}
-                      {selection.banco && !dbBancos.some(b => b.nome === selection.banco) && (
+                      {selection.banco && !availableBancos.includes(selection.banco) && (
                         <option value={selection.banco}>{selection.banco}</option>
                       )}
                     </select>
@@ -1705,23 +1848,40 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
 
                 <div className="flex flex-col items-center md:items-start transition-all">
                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
-                  {canEditHeaderSelection ? (
-                    <select
-                      value={selection.operacao}
-                      onChange={(e) => setSelection(prev => ({ ...prev, operacao: e.target.value }))}
-                      className="h-8 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none focus:border-primary cursor-pointer max-w-[280px]"
-                    >
-                      <option value="">Selecione a Operação</option>
-                      {dbOperacoes.map(o => (
-                        <option key={o.id || o.nome} value={o.nome}>{o.nome}</option>
-                      ))}
-                      {selection.operacao && !dbOperacoes.some(o => o.nome === selection.operacao) && (
-                        <option value={selection.operacao}>{selection.operacao}</option>
-                      )}
-                    </select>
-                  ) : (
-                    <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao || "-"}</span>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {canEditHeaderSelection ? (
+                      <select
+                        value={selection.operacao}
+                        onChange={(e) => setSelection(prev => ({ ...prev, operacao: e.target.value }))}
+                        className="h-8 px-2 rounded-lg bg-slate-50 text-[11px] font-black text-[#1A2B49] uppercase focus:outline-none cursor-pointer max-w-[280px]"
+                      >
+                        <option value="">Selecione a Operação</option>
+                        {availableOperacoes.map(o => (
+                          <option key={o} value={o}>{o}</option>
+                        ))}
+                        {selection.operacao && !availableOperacoes.includes(selection.operacao) && (
+                          <option value={selection.operacao}>{selection.operacao}</option>
+                        )}
+                      </select>
+                    ) : (
+                      <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao || "-"}</span>
+                    )}
+                    {canEditHeaderSelection && (
+                      <button
+                        type="button"
+                        onClick={handleSaveHeaderSelection}
+                        disabled={isSavingHeader}
+                        title="Salvar alterações"
+                        className="h-8 w-8 min-w-[32px] ml-5 md:ml-7 bg-[#171717] hover:bg-[#171717]/90 text-white rounded-lg flex items-center justify-center shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSavingHeader ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        ) : (
+                          <Save className="w-4 h-4 text-white" />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </>
             )}

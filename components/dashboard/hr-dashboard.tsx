@@ -30,6 +30,8 @@ import Image from "next/image"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
 import { format } from "date-fns"
 import { RankingContractsModal, RankingContractModalParams } from "./ranking-contracts-modal"
+import { RHMessagingModal } from "@/components/rh/rh-messaging-modal"
+import { MessageSquarePlus } from "lucide-react"
 
 interface Interview {
   id: string
@@ -62,6 +64,15 @@ export interface TenureAnniversaryPerson {
   locationType: "Presencial" | "Home Office"
   admissionDate: string
   yearsCompleted: number
+}
+
+export interface BirthdayPerson {
+  id: string
+  name: string
+  role: string
+  locationType: "Presencial" | "Home Office"
+  birthDate: string
+  day: number
 }
 
 interface InternCollaboration {
@@ -256,6 +267,18 @@ export function HRDashboard({
   const [isTenureModalOpen, setIsTenureModalOpen] = useState(false)
   const [tenureSearchTerm, setTenureSearchTerm] = useState("")
 
+  const [birthdayList, setBirthdayList] = useState<BirthdayPerson[]>([])
+  const [isBirthdayModalOpen, setIsBirthdayModalOpen] = useState(false)
+  const [birthdaySearchTerm, setBirthdaySearchTerm] = useState("")
+
+  const [isMessagingModalOpen, setIsMessagingModalOpen] = useState(false)
+  const [selectedColabForMessage, setSelectedColabForMessage] = useState<{ id?: string; name?: string } | null>(null)
+
+  const handleOpenMessageForColab = (person: { id?: string; name: string }) => {
+    setSelectedColabForMessage({ id: person.id, name: person.name })
+    setIsMessagingModalOpen(true)
+  }
+
   const handleOpenRankingModal = (params: RankingContractModalParams) => {
     setRankingModalParams(params)
   }
@@ -362,6 +385,28 @@ export function HRDashboard({
       }).length
       setBirthdaysCount(birthLocalCount)
 
+      const birthdayLocalPeople: BirthdayPerson[] = activeColabsLocal
+        .filter((item: any) => {
+          const dateStr = item.birthDate || item.data_nascimento || ""
+          const m = getBirthdayMonth(dateStr)
+          return m !== null && (m + 1) === currentMonthNum
+        })
+        .map((item: any) => {
+          const dateStr = item.birthDate || item.data_nascimento || ""
+          const parts = parseDateParts(dateStr)
+          const formattedBirth = parts ? `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}` : dateStr
+          return {
+            id: item.id || String(Math.random()),
+            name: item.name || item.nome || "Colaborador",
+            role: item.role || item.cargo || item.funcao || "Colaborador",
+            locationType: isHomeOffice(item) ? "Home Office" : "Presencial",
+            birthDate: formattedBirth,
+            day: parts ? parts.day : 0
+          }
+        })
+        .sort((a, b) => a.day - b.day)
+      setBirthdayList(birthdayLocalPeople)
+
       const tenureLocalPeople: TenureAnniversaryPerson[] = activeColabsLocal
         .filter((item: any) => {
           const admissionDateStr = item.joinDate || item.data_admissao || ""
@@ -408,6 +453,28 @@ export function HRDashboard({
             return m !== null && (m + 1) === currentMonthNum
           }).length
           setBirthdaysCount(birthSupaCount)
+
+          const birthdaySupaPeople: BirthdayPerson[] = activeSupa
+            .filter((item: any) => {
+              const dateStr = item.data_nascimento || item.birthDate || ""
+              const m = getBirthdayMonth(dateStr)
+              return m !== null && (m + 1) === currentMonthNum
+            })
+            .map((item: any) => {
+              const dateStr = item.data_nascimento || item.birthDate || ""
+              const parts = parseDateParts(dateStr)
+              const formattedBirth = parts ? `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}` : dateStr
+              return {
+                id: item.id || String(Math.random()),
+                name: item.nome || item.name || "Colaborador",
+                role: item.cargo || item.funcao || item.role || "Colaborador",
+                locationType: isHomeOffice(item) ? "Home Office" : "Presencial",
+                birthDate: formattedBirth,
+                day: parts ? parts.day : 0
+              }
+            })
+            .sort((a, b) => a.day - b.day)
+          setBirthdayList(birthdaySupaPeople)
 
           const tenureSupaPeople: TenureAnniversaryPerson[] = activeSupa
             .filter((item: any) => {
@@ -495,10 +562,13 @@ export function HRDashboard({
       icon: Cake,
       color: "text-rose-600",
       bgColor: "bg-rose-50",
-      href: "/colaboradores?tab=aniversarios"
+      onClick: () => {
+        setBirthdaySearchTerm("")
+        setIsBirthdayModalOpen(true)
+      }
     },
     {
-      title: "Aniversariante de Tempo de Empresa",
+      title: "Aniversariantes de Tempo Empresa",
       value: companyTenureAnniversariesCount,
       description: "Completando 1 ou mais anos este mês",
       icon: Award,
@@ -1527,6 +1597,151 @@ export function HRDashboard({
         />
       )}
 
+      {/* MODAL DE ANIVERSARIANTES DO MÊS */}
+      {isBirthdayModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-5 bg-[#1C2643] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 backdrop-blur-md flex items-center justify-center text-rose-300 shrink-0 border border-rose-500/30">
+                  <Cake className="w-5 h-5 text-rose-300" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black uppercase tracking-tight">
+                    Aniversariantes do Mês
+                  </h3>
+                  <p className="text-xs text-slate-300 font-medium">
+                    Colaboradores que fazem aniversário este mês
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsBirthdayModalOpen(false)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="p-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar colaborador por nome, cargo ou regime..."
+                  value={birthdaySearchTerm}
+                  onChange={(e) => setBirthdaySearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1C2643]/20 focus:border-[#1C2643] font-medium"
+                />
+              </div>
+            </div>
+
+            {/* Content list */}
+            <div className="p-6 overflow-y-auto space-y-3 flex-1">
+              {(() => {
+                const filtered = birthdayList.filter((person) => {
+                  if (!birthdaySearchTerm.trim()) return true
+                  const q = birthdaySearchTerm.toLowerCase()
+                  return (
+                    person.name.toLowerCase().includes(q) ||
+                    person.role.toLowerCase().includes(q) ||
+                    person.locationType.toLowerCase().includes(q)
+                  )
+                })
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-12 text-center flex flex-col items-center justify-center space-y-2">
+                      <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center text-rose-500">
+                        <Cake className="w-6 h-6" />
+                      </div>
+                      <p className="text-sm font-bold text-slate-700">
+                        Nenhum aniversariante encontrado
+                      </p>
+                      <p className="text-xs text-slate-400 max-w-xs">
+                        {birthdaySearchTerm
+                          ? "Nenhum resultado corresponde aos termos da busca."
+                          : "Não há colaboradores aniversariantes cadastrados para este mês."}
+                      </p>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="space-y-3">
+                    {filtered.map((person) => (
+                      <div
+                        key={person.id}
+                        onClick={() => handleOpenMessageForColab(person)}
+                        className="p-4 rounded-xl border border-slate-150 bg-white hover:border-rose-400 hover:shadow-md hover:scale-[1.008] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer group"
+                        title="Clique para enviar mensagem de celebração do RH"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center font-black text-sm shrink-0 border border-rose-200 group-hover:bg-rose-600 group-hover:text-white transition-colors">
+                            {person.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold text-slate-800 group-hover:text-rose-700 transition-colors">
+                                {person.name}
+                              </h4>
+                              <span
+                                className={cn(
+                                   "text-[10px] font-black uppercase px-2 py-0.5 rounded-full",
+                                   person.locationType === "Home Office"
+                                     ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                     : "bg-blue-50 text-blue-700 border border-blue-200"
+                                )}
+                              >
+                                {person.locationType}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 font-medium">
+                              {person.role}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 justify-between sm:justify-end">
+                          <div className="px-3.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200/60 text-right shrink-0 flex items-center gap-2">
+                            <Cake className="w-4 h-4 text-rose-500" />
+                            <div>
+                              <span className="text-[9px] font-bold text-rose-600/80 uppercase tracking-widest block leading-none">
+                                Aniversário
+                              </span>
+                              <span className="text-xs font-black text-rose-700 leading-none">
+                                {person.birthDate}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
+              <span className="text-xs font-bold text-slate-500">
+                Total: {birthdayList.length} {birthdayList.length === 1 ? "aniversariante" : "aniversariantes"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsBirthdayModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE ANIVERSARIANTES DE TEMPO DE EMPRESA */}
       {isTenureModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
@@ -1539,7 +1754,7 @@ export function HRDashboard({
                 </div>
                 <div>
                   <h3 className="text-base sm:text-lg font-black uppercase tracking-tight">
-                    Aniversariantes de Tempo de Empresa
+                    Aniversariantes de Tempo Empresa
                   </h3>
                   <p className="text-xs text-slate-300 font-medium">
                     Colaboradores completando 1 ou mais anos de casa este mês
@@ -1605,7 +1820,9 @@ export function HRDashboard({
                     {filtered.map((person) => (
                       <div
                         key={person.id}
-                        className="p-4 rounded-xl border border-slate-150 bg-white hover:border-[#1C2643]/30 hover:shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        onClick={() => handleOpenMessageForColab(person)}
+                        className="p-4 rounded-xl border border-slate-150 bg-white hover:border-[#1C2643] hover:shadow-md hover:scale-[1.008] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer group"
+                        title="Clique para enviar mensagem de celebração do RH"
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-[#1C2643]/10 text-[#1C2643] flex items-center justify-center font-black text-sm shrink-0 border border-[#1C2643]/20">
@@ -1633,7 +1850,7 @@ export function HRDashboard({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 justify-between sm:justify-end">
+                        <div className="flex items-center gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 justify-between sm:justify-end">
                           <div className="text-left sm:text-right">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
                               Data de Admissão
@@ -1674,6 +1891,18 @@ export function HRDashboard({
             </div>
           </div>
         </div>
+      )}
+      {/* MODAL DE MENSAGEM DO RH A PARTIR DO CLIQUE NO COLABORADOR */}
+      {isMessagingModalOpen && (
+        <RHMessagingModal
+          isOpen={isMessagingModalOpen}
+          onClose={() => {
+            setIsMessagingModalOpen(false)
+            setSelectedColabForMessage(null)
+          }}
+          initialUserId={selectedColabForMessage?.id}
+          initialUserName={selectedColabForMessage?.name}
+        />
       )}
     </div>
   )

@@ -5,37 +5,75 @@ import { Sparkles, X, MessageSquareText, Award } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import confetti from "canvas-confetti"
 
+const FOUR_HOURS_MS = 4 * 60 * 60 * 1000
+
 export function RHMessagePopup() {
   const { perfil, user } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
   const [currentMessage, setCurrentMessage] = useState<string>("")
+
+  const triggerPopup = (msg: string, userId: string) => {
+    const cleanMsg = msg.trim()
+    const timestampKey = `rh_msg_last_shown_${userId}_${encodeURIComponent(cleanMsg)}`
+    const sessionKey = `rh_msg_seen_${userId}_${encodeURIComponent(cleanMsg)}`
+
+    setCurrentMessage(cleanMsg)
+    setIsOpen(true)
+
+    const now = Date.now()
+    localStorage.setItem(timestampKey, now.toString())
+    sessionStorage.setItem(sessionKey, "true")
+
+    // Trigger celebration confetti animation
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.4 }
+      })
+    } catch (e) {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     // Check if user has an active rh_mensagem_destaque
     const msg = perfil?.rh_mensagem_destaque
     const userId = perfil?.id || user?.id
 
-    if (msg && msg.trim() && userId) {
-      const storageKey = `rh_msg_seen_${userId}_${encodeURIComponent(msg.trim())}`
-      const alreadySeenInSession = sessionStorage.getItem(storageKey)
+    if (!msg || !msg.trim() || !userId) return
 
-      if (!alreadySeenInSession) {
-        setCurrentMessage(msg.trim())
-        setIsOpen(true)
-        sessionStorage.setItem(storageKey, "true")
+    const cleanMsg = msg.trim()
+    const timestampKey = `rh_msg_last_shown_${userId}_${encodeURIComponent(cleanMsg)}`
+    const sessionKey = `rh_msg_seen_${userId}_${encodeURIComponent(cleanMsg)}`
 
-        // Trigger celebration confetti animation
-        try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.4 }
-          })
-        } catch (e) {
-          // ignore
-        }
+    const checkAndShow = () => {
+      const alreadySeenInSession = sessionStorage.getItem(sessionKey)
+      const lastShownStr = localStorage.getItem(timestampKey)
+      const lastShown = lastShownStr ? parseInt(lastShownStr, 10) : 0
+      const now = Date.now()
+
+      // Show if not yet seen in this session OR if 4 hours have passed since last shown
+      if (!alreadySeenInSession || (now - lastShown >= FOUR_HOURS_MS)) {
+        triggerPopup(cleanMsg, userId)
       }
     }
+
+    // Check on initial load/navigation
+    checkAndShow()
+
+    // Interval to ensure it triggers every 4 hours if the page remains open
+    const interval = setInterval(() => {
+      const lastShownStr = localStorage.getItem(timestampKey)
+      const lastShown = lastShownStr ? parseInt(lastShownStr, 10) : 0
+      const now = Date.now()
+
+      if (now - lastShown >= FOUR_HOURS_MS) {
+        triggerPopup(cleanMsg, userId)
+      }
+    }, 60 * 1000) // check every minute
+
+    return () => clearInterval(interval)
   }, [perfil?.rh_mensagem_destaque, perfil?.id, user?.id])
 
   // Listen for real-time celebration update events (e.g., when RH sends a new message)
@@ -44,11 +82,7 @@ export function RHMessagePopup() {
       const msg = perfil?.rh_mensagem_destaque
       const userId = perfil?.id || user?.id
       if (msg && msg.trim() && userId) {
-        const storageKey = `rh_msg_seen_${userId}_${encodeURIComponent(msg.trim())}`
-        // Always show on fresh update from RH
-        setCurrentMessage(msg.trim())
-        setIsOpen(true)
-        sessionStorage.setItem(storageKey, "true")
+        triggerPopup(msg.trim(), userId)
       }
     }
 

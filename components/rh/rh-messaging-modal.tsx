@@ -16,9 +16,73 @@ interface RHMessagingModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
+  initialUserId?: string
+  initialUserName?: string
 }
 
-export function RHMessagingModal({ isOpen, onClose, onSuccess }: RHMessagingModalProps) {
+const cleanStr = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+
+function findBestMatch(list: SystemUser[], targetId?: string, targetName?: string): SystemUser | undefined {
+  if (!list || list.length === 0) return undefined
+
+  if (targetId) {
+    const byId = list.find(u => u.id === targetId)
+    if (byId) return byId
+  }
+
+  if (!targetName || !targetName.trim()) return undefined
+
+  const cleanedTarget = cleanStr(targetName)
+  if (!cleanedTarget) return undefined
+
+  // 1. Exact normalized match
+  const exact = list.find(u => cleanStr(u.nome) === cleanedTarget)
+  if (exact) return exact
+
+  // 2. Includes or is included
+  const includesMatch = list.find(u => {
+    const cName = cleanStr(u.nome)
+    return cName.includes(cleanedTarget) || cleanedTarget.includes(cName)
+  })
+  if (includesMatch) return includesMatch
+
+  // 3. Match by name tokens (first name + last name or multiple tokens)
+  const targetTokens = cleanedTarget.split(" ").filter(t => !["de", "da", "do", "dos", "das", "e"].includes(t))
+  if (targetTokens.length > 0) {
+    const tokenMatch = list.find(u => {
+      const uTokens = cleanStr(u.nome).split(" ").filter(t => !["de", "da", "do", "dos", "das", "e"].includes(t))
+      if (uTokens.length === 0) return false
+      if (targetTokens[0] === uTokens[0]) {
+        if (targetTokens.length === 1 || uTokens.length === 1) return true
+        if (targetTokens[targetTokens.length - 1] === uTokens[uTokens.length - 1]) return true
+        const common = targetTokens.filter(t => uTokens.includes(t))
+        if (common.length >= 2) return true
+      }
+      return false
+    })
+    if (tokenMatch) return tokenMatch
+  }
+
+  // 4. First name match fallback
+  if (targetTokens.length > 0) {
+    const firstNameMatch = list.find(u => {
+      const uTokens = cleanStr(u.nome).split(" ")
+      return uTokens[0] === targetTokens[0]
+    })
+    if (firstNameMatch) return firstNameMatch
+  }
+
+  return undefined
+}
+
+export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, initialUserName }: RHMessagingModalProps) {
   const [users, setUsers] = useState<SystemUser[]>([])
   const [loadingUsers, setLoadingUsers] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<string>("")
@@ -34,6 +98,34 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess }: RHMessagingModa
     }
   }, [isOpen])
 
+  // Pre-select initial user if provided
+  useEffect(() => {
+    if (!isOpen) return
+
+    if (initialUserId || initialUserName) {
+      if (users.length > 0) {
+        const match = findBestMatch(users, initialUserId, initialUserName)
+        if (match) {
+          setSelectedUserId(match.id)
+          if (match.rh_mensagem_destaque) {
+            setMessage(match.rh_mensagem_destaque)
+          }
+          return
+        }
+        // Fallback: create & insert local option so it is ALWAYS selected for any collaborator
+        const fallbackId = initialUserId || `colab_${Date.now()}`
+        const fallbackUser: SystemUser = {
+          id: fallbackId,
+          nome: initialUserName || 'Colaborador',
+          funcao: 'Colaborador',
+          rh_mensagem_destaque: ''
+        }
+        setUsers(prev => [fallbackUser, ...prev.filter(u => u.id !== fallbackId)])
+        setSelectedUserId(fallbackId)
+      }
+    }
+  }, [isOpen, users, initialUserId, initialUserName])
+
   const fetchUsers = async () => {
     setLoadingUsers(true)
     try {
@@ -41,14 +133,40 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess }: RHMessagingModa
       if (res.ok) {
         const data = await res.json()
         if (Array.isArray(data)) {
-          const mapped: SystemUser[] = data.map((u: any) => ({
-            id: u.id,
-            nome: u.nome || u.username || 'Sem Nome',
-            email: u.email || '',
-            funcao: u.funcao || u.role || 'Colaborador',
-            rh_mensagem_destaque: u.rh_mensagem_destaque || ''
-          }))
+          let mapped: SystemUser[] = data
+            .filter((u: any) => {
+              const status = String(u.status || 'ATIVO').toUpperCase().trim()
+              return status === 'ATIVO' || status === 'ACTIVE'
+            })
+            .map((u: any) => ({
+              id: u.id,
+              nome: u.nome || u.username || 'Sem Nome',
+              email: u.email || '',
+              funcao: u.funcao || u.role || 'Colaborador',
+              rh_mensagem_destaque: u.rh_mensagem_destaque || ''
+            }))
           mapped.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+
+          if (initialUserId || initialUserName) {
+            const match = findBestMatch(mapped, initialUserId, initialUserName)
+            if (match) {
+              setSelectedUserId(match.id)
+              if (match.rh_mensagem_destaque) {
+                setMessage(match.rh_mensagem_destaque)
+              }
+            } else if (initialUserName) {
+              const fallbackId = initialUserId || `colab_${Date.now()}`
+              const fallbackUser: SystemUser = {
+                id: fallbackId,
+                nome: initialUserName,
+                funcao: 'Colaborador',
+                rh_mensagem_destaque: ''
+              }
+              mapped = [fallbackUser, ...mapped]
+              setSelectedUserId(fallbackId)
+            }
+          }
+
           setUsers(mapped)
         }
       }
