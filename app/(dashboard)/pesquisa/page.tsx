@@ -593,7 +593,7 @@ export default function SearchClientPage() {
                 <div class="metric-value">${formatBRL(vContrato)}</div>
               </div>
               <div class="metric-card">
-                <div class="metric-label">PRAZO ESTRATÉGIA</div>
+                <div class="metric-label">DURAÇÃO</div>
                 <div class="metric-value metric-highlight">${przEst} parcelas</div>
               </div>
               <div class="metric-card">
@@ -747,7 +747,7 @@ export default function SearchClientPage() {
                       </span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Prazo Estratégia</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Duração</span>
                       <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
                         {proposal.prazo_estrategia ? `${proposal.prazo_estrategia}x` : "--"}
                       </span>

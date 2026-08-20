@@ -1416,7 +1416,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
 
                     <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
                       <input id="check-show-card-prazo" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
-                      Exibir PRAZO ESTRATÉGIA
+                      Exibir DURAÇÃO
                     </label>
 
                     <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
@@ -1920,7 +1920,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
 
                   <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
                     <input id="check-show-card-prazo" type="checkbox" checked style="width: 16px; height: 16px; accent-color: #00D492; cursor: pointer;" />
-                    Exibir PRAZO ESTRATÉGIA
+                    Exibir DURAÇÃO
                   </label>
 
                   <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer;">
@@ -2017,7 +2017,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
               <div class="metric-value">${formatBRL(resumoAmortizacao ? valorBolso : valorLiberado)}</div>
             </div>
             <div class="metric-card" id="metric-card-prazo">
-              <div class="metric-label">${resumoAmortizacao ? 'PRAZO REMANESCENTE' : 'PRAZO ESTRATÉGIA'}</div>
+              <div class="metric-label">${resumoAmortizacao ? 'PRAZO REMANESCENTE' : 'DURAÇÃO'}</div>
               <div class="metric-value metric-highlight">${term} meses</div>
             </div>
             <div class="metric-card" id="metric-card-parcela">
