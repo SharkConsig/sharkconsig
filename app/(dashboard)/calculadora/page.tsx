@@ -2470,56 +2470,58 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                 </div>
 
                 {/* PLANO DE AMORTIZAÇÃO GRID */}
-                <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-[#00D492]">
-                      <TableIcon className="w-4 h-4 text-[#00D492]" />
-                      <span>PLANO DE AMORTIZAÇÃO</span>
+                {!valorBolsoInput?.trim() && (
+                  <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-[#00D492]">
+                        <TableIcon className="w-4 h-4 text-[#00D492]" />
+                        <span>PLANO DE AMORTIZAÇÃO</span>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        A partir do valor já liberado — quanto sobra de prazo e parcela média ao escolher cada opção
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-500">
-                      A partir do valor já liberado — quanto sobra de prazo e parcela média ao escolher cada opção
-                    </p>
-                  </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {planosAmortizacao
-                      .filter((p) => {
-                        const roundCoef = Math.round(coeficiente * 100000) / 100000
-                        const isSpecialCoef = roundCoef >= 0.039 && roundCoef <= 0.0455
-                        if (isSpecialCoef) {
-                          return p.term === 12 || p.term === 24
-                        }
-                        return true
-                      })
-                      .map((p) => {
-                      const isSelected = selectedPlanTerm === p.term
-                      return (
-                        <button
-                          key={p.term}
-                          onClick={() => {
-                            setSelectedPlanTerm(p.term)
-                          }}
-                          className={cn(
-                            "p-4 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1",
-                            isSelected
-                              ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-[#00D492]"
-                              : "bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                          )}
-                        >
-                          <span className="text-xl font-extrabold tracking-tight">
-                            {p.term}x
-                          </span>
-                          <span className={cn(
-                            "text-[12px] font-semibold",
-                            isSelected ? "text-[#00D492]" : "text-slate-500"
-                          )}>
-                            Taxa {formatPercent(p.taxa, 2)}
-                          </span>
-                        </button>
-                      )
-                    })}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {planosAmortizacao
+                        .filter((p) => {
+                          const roundCoef = Math.round(coeficiente * 100000) / 100000
+                          const isSpecialCoef = roundCoef >= 0.039 && roundCoef <= 0.0455
+                          if (isSpecialCoef) {
+                            return p.term === 12 || p.term === 24
+                          }
+                          return true
+                        })
+                        .map((p) => {
+                        const isSelected = selectedPlanTerm === p.term
+                        return (
+                          <button
+                            key={p.term}
+                            onClick={() => {
+                              setSelectedPlanTerm(p.term)
+                            }}
+                            className={cn(
+                              "p-4 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1",
+                              isSelected
+                                ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-[#00D492]"
+                                : "bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                            )}
+                          >
+                            <span className="text-xl font-extrabold tracking-tight">
+                              {p.term}x
+                            </span>
+                            <span className={cn(
+                              "text-[12px] font-semibold",
+                              isSelected ? "text-[#00D492]" : "text-slate-500"
+                            )}>
+                              Taxa {formatPercent(p.taxa, 2)}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* RIGHT COLUMN: RESULTADO & RESUMO AMORTIZAÇÃO */}
@@ -2555,9 +2557,16 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                     </div>
 
                     <div className="py-2.5 flex justify-between items-center">
-                      <span className="font-semibold text-slate-500">Prazo</span>
+                      <span className="font-semibold text-slate-500">Duração</span>
                       <span className="font-bold text-slate-900">{activeResult.prazo} meses</span>
                     </div>
+
+                    {Boolean(valorBolsoInput?.trim()) && (
+                      <div className="my-1.5 px-3 py-2 bg-[#79ABDE] border border-[#1B74CE] rounded-xl flex justify-between items-center">
+                        <span className="font-bold text-slate-900">Valor em Mãos</span>
+                        <span className="font-extrabold text-slate-950">{formatBRL(valorBolso)}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* RESUMO AMORTIZAÇÃO (If active) */}
@@ -2610,7 +2619,10 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                   )}
 
                   {/* Action Buttons */}
-                  <div className="pt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className={cn(
+                    "pt-4 grid gap-2",
+                    valorBolsoInput?.trim() ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"
+                  )}>
                     <button
                       onClick={() => setActiveTab("amort_liberacao")}
                       className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-3 px-2 rounded-xl transition-all flex items-center justify-center gap-1"
@@ -2627,21 +2639,25 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                       <span>Resumo</span>
                     </button>
 
-                    <button
-                      onClick={handleOpenCompareModal}
-                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-amber-600 cursor-pointer"
-                    >
-                      <ArrowLeftRight className="w-3.5 h-3.5 text-slate-950" />
-                      <span>Comparar</span>
-                    </button>
+                    {!valorBolsoInput?.trim() && (
+                      <>
+                        <button
+                          onClick={handleOpenCompareModal}
+                          className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-amber-600 cursor-pointer"
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5 text-slate-950" />
+                          <span>Comparar</span>
+                        </button>
 
-                    <button
-                      onClick={handleGerarPDF}
-                      className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-slate-800"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-[#00D492]" />
-                      <span>Ver Plano</span>
-                    </button>
+                        <button
+                          onClick={handleGerarPDF}
+                          className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-slate-800"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-[#00D492]" />
+                          <span>Ver Plano</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2680,7 +2696,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                 <span className="text-[#00D492] font-bold">{formatBRL(activeResult.parcela)}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-slate-400">Prazo:</span>
+                <span className="text-slate-400">Duração:</span>
                 <span className="text-[#00D492] font-bold">{activeResult.prazo} meses</span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -3243,7 +3259,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                   <div>Coeficiente: <span className="font-bold">{coeficiente}</span></div>
                   <div>Valor Liberado: <span className="font-bold">{formatBRL(valorLiberado)}</span></div>
                   <div>IOF: <span className="font-bold">{iofPercent}%</span></div>
-                  <div>Prazo: <span className="font-bold">{activeResult.prazo} meses</span></div>
+                  <div>Duração: <span className="font-bold">{activeResult.prazo} meses</span></div>
                   <div>Taxa: <span className="font-bold">{formatPercent(activeResult.taxa)}</span></div>
                 </div>
               </div>
