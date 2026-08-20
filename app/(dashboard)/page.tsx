@@ -97,6 +97,9 @@ interface InternCollaboration {
   countToday: number
   isPJ?: boolean
   approvedTicketsCount: number
+  operationsPaid?: Record<string, { total: number; count: number }>
+  operationsInProcess?: Record<string, { total: number; count: number }>
+  operationsToday?: Record<string, { total: number; count: number }>
 }
 
 interface RankingItem {
@@ -1102,7 +1105,7 @@ export default function DashboardPage() {
           // Fetch proposals for the team (or all if admin/operational)
           let teamProposalsQuery = supabase
             .from("propostas")
-            .select("corretor_id, valor_producao, valor_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
+            .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
 
           if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos)) {
             teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${teamIds.join(",")}),estagiario_colaborador_id.in.(${teamIds.join(",")})`)
@@ -1166,6 +1169,12 @@ export default function DashboardPage() {
           countToday: number 
         }> = {}
 
+        const brokerOperations: Record<string, {
+          paid: Record<string, { total: number, count: number }>,
+          inProcess: Record<string, { total: number, count: number }>,
+          today: Record<string, { total: number, count: number }>
+        }> = {}
+
         const brokerColaboracoes: Record<string, {
           propria: {
             totalPaid: number, countPaid: number, totalInProcess: number, countInProcess: number, totalToday: number, countToday: number
@@ -1187,6 +1196,8 @@ export default function DashboardPage() {
           return regime === 'pj' || func === 'pj' || role === 'pj' || func.includes('corretor pj') || role.includes('corretor pj');
         }
 
+        const rawBrokerMetrics: Record<string, { totalPaid: number, countPaid: number, totalInProcess: number, countInProcess: number, totalToday: number, countToday: number }> = {}
+
         // Initialize everyone stable with 0
         allUsers.forEach((u: User) => {
           brokerMetrics[u.id] = { 
@@ -1194,7 +1205,15 @@ export default function DashboardPage() {
             countPaid: 0, 
             totalInProcess: 0, 
             countInProcess: 0,
-            totalToday: 0,
+            totalToday: 0, 
+            countToday: 0 
+          }
+          rawBrokerMetrics[u.id] = { 
+            totalPaid: 0, 
+            countPaid: 0, 
+            totalInProcess: 0, 
+            countInProcess: 0,
+            totalToday: 0, 
             countToday: 0 
           }
           brokerColaboracoes[u.id] = {
@@ -1209,6 +1228,7 @@ export default function DashboardPage() {
           corretor_id: string, 
           valor_producao: string | number, 
           valor_operacao?: string | number,
+          tipo_operacao?: string,
           updated_at: string, 
           created_at: string, 
           status: string, 
@@ -1219,6 +1239,15 @@ export default function DashboardPage() {
           const numericVal = isNaN(parseCurrency(curr.valor_producao)) ? 0 : parseCurrency(curr.valor_producao)
           const rawOpVal = (curr.valor_operacao !== null && curr.valor_operacao !== undefined && curr.valor_operacao !== "") ? curr.valor_operacao : curr.valor_producao
           const numericValOp = isNaN(parseCurrency(rawOpVal)) || parseCurrency(rawOpVal) === 0 ? numericVal : parseCurrency(rawOpVal)
+          
+          const rawTypeUpper = (curr.tipo_operacao || "").trim().toUpperCase()
+          let pjCalculatedVal = numericValOp
+          if (rawTypeUpper.includes("CARTAO") || rawTypeUpper.includes("CARTÃO")) {
+            pjCalculatedVal = numericValOp * 0.35
+          } else if (rawTypeUpper.includes("MARGEM") || rawTypeUpper.includes("NOVO")) {
+            pjCalculatedVal = numericValOp * 0.09
+          }
+
           const brokerId = curr.corretor_id || ""
 
           const brokerUser = allUsers.find((u: User) => u.id === brokerId)
@@ -1269,73 +1298,125 @@ export default function DashboardPage() {
           const isDigitadaHoje = isTodayCreated && !isCancelled && !isRetroactivePayment && !isPaid
           const isEffectiveInProcess = isInProcess || isDigitadaHoje
 
+          const rawType = (curr.tipo_operacao || "").trim().toUpperCase()
+          const cleanType = rawType || "OUTROS"
+
+          // For cards/goals: If PJ, apply percentage calculation (35% Cartão, 9% Margem)
+          const isPJBrokerCard = checkUserPJ(brokerUser)
+          const cardVal = isPJBrokerCard ? pjCalculatedVal : numericVal
+
           if (isPaid && isMTDPaid) {
-            teamMTDTotal += numericVal
+            teamMTDTotal += cardVal
             const isMatchUser = beneficiaryIds.includes(perfil?.id || '') || (isLuanaUser && resolvedJorgeId && beneficiaryIds.includes(resolvedJorgeId))
             if (isMatchUser) {
-              userMTDTotal += numericVal
+              userMTDTotal += cardVal
             }
           }
 
           if (isPaid && isPaidInRange) {
-            teamTotal += numericVal
-            if (isTodayPaid) teamDailyTotal += numericVal
+            teamTotal += cardVal
+            if (isTodayPaid) teamDailyTotal += cardVal
             
             beneficiaryIds.forEach((bId) => {
+              const bUser = allUsers.find((u: User) => u.id === bId)
+              const bIsPJ = checkUserPJ(bUser)
+              const bVal = bIsPJ ? pjCalculatedVal : numericVal
+              const bRawVal = bIsPJ ? numericValOp : numericVal
+
               if (brokerMetrics[bId]) {
-                const bUser = allUsers.find((u: User) => u.id === bId)
-                const bIsPJ = checkUserPJ(bUser)
-                const bVal = bIsPJ ? numericValOp : numericVal
                 brokerMetrics[bId].totalPaid += bVal
                 brokerMetrics[bId].countPaid += 1
               }
+              if (rawBrokerMetrics[bId]) {
+                rawBrokerMetrics[bId].totalPaid += bRawVal
+                rawBrokerMetrics[bId].countPaid += 1
+              }
+
+              if (!brokerOperations[bId]) {
+                brokerOperations[bId] = { paid: {}, inProcess: {}, today: {} }
+              }
+              if (!brokerOperations[bId].paid[cleanType]) {
+                brokerOperations[bId].paid[cleanType] = { total: 0, count: 0 }
+              }
+              brokerOperations[bId].paid[cleanType].total += bRawVal
+              brokerOperations[bId].paid[cleanType].count += 1
             })
           }
 
           if (isEffectiveInProcess) {
-            teamInProcessValueCalc += numericVal
+            teamInProcessValueCalc += cardVal
             teamInProcessCountCalc += 1
             if (curr.status === "COM INCONSISTÊNCIA NO BANCO" || curr.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL") {
-              teamPendingInconsistencyValueCalc += numericVal
+              teamPendingInconsistencyValueCalc += cardVal
               teamPendingInconsistencyCountCalc += 1
             }
             beneficiaryIds.forEach((bId) => {
+              const bUser = allUsers.find((u: User) => u.id === bId)
+              const bIsPJ = checkUserPJ(bUser)
+              const bVal = bIsPJ ? pjCalculatedVal : numericVal
+              const bRawVal = bIsPJ ? numericValOp : numericVal
+
               if (brokerMetrics[bId]) {
-                const bUser = allUsers.find((u: User) => u.id === bId)
-                const bIsPJ = checkUserPJ(bUser)
-                const bVal = bIsPJ ? numericValOp : numericVal
                 brokerMetrics[bId].totalInProcess += bVal
                 brokerMetrics[bId].countInProcess += 1
               }
+              if (rawBrokerMetrics[bId]) {
+                rawBrokerMetrics[bId].totalInProcess += bRawVal
+                rawBrokerMetrics[bId].countInProcess += 1
+              }
+
+              if (!brokerOperations[bId]) {
+                brokerOperations[bId] = { paid: {}, inProcess: {}, today: {} }
+              }
+              if (!brokerOperations[bId].inProcess[cleanType]) {
+                brokerOperations[bId].inProcess[cleanType] = { total: 0, count: 0 }
+              }
+              brokerOperations[bId].inProcess[cleanType].total += bRawVal
+              brokerOperations[bId].inProcess[cleanType].count += 1
             })
           }
 
           if (isOpInProcess) {
-            opInProcessValueCalc += numericVal
+            opInProcessValueCalc += cardVal
             opInProcessCountCalc += 1
           }
 
           if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
-            teamCreatedTodayValue += numericVal
+            teamCreatedTodayValue += cardVal
             teamCreatedTodayCount += 1
             beneficiaryIds.forEach((bId) => {
+              const bUser = allUsers.find((u: User) => u.id === bId)
+              const bIsPJ = checkUserPJ(bUser)
+              const bVal = bIsPJ ? pjCalculatedVal : numericVal
+              const bRawVal = bIsPJ ? numericValOp : numericVal
+
               if (brokerMetrics[bId]) {
-                const bUser = allUsers.find((u: User) => u.id === bId)
-                const bIsPJ = checkUserPJ(bUser)
-                const bVal = bIsPJ ? numericValOp : numericVal
                 brokerMetrics[bId].totalToday += bVal
                 brokerMetrics[bId].countToday += 1
               }
+              if (rawBrokerMetrics[bId]) {
+                rawBrokerMetrics[bId].totalToday += bRawVal
+                rawBrokerMetrics[bId].countToday += 1
+              }
+
+              if (!brokerOperations[bId]) {
+                brokerOperations[bId] = { paid: {}, inProcess: {}, today: {} }
+              }
+              if (!brokerOperations[bId].today[cleanType]) {
+                brokerOperations[bId].today[cleanType] = { total: 0, count: 0 }
+              }
+              brokerOperations[bId].today[cleanType].total += bRawVal
+              brokerOperations[bId].today[cleanType].count += 1
             })
           }
 
           if (isThisWeekCreated && !isCancelled && !isRetroactivePayment) {
-            teamCreatedWeekValue += numericVal
+            teamCreatedWeekValue += cardVal
             teamCreatedWeekCount += 1
           }
 
           if (isThisMonthCreated && !isCancelled && !isRetroactivePayment) {
-            teamCreatedMonthValue += numericVal
+            teamCreatedMonthValue += cardVal
             teamCreatedMonthCount += 1
           }
 
@@ -1396,19 +1477,23 @@ export default function DashboardPage() {
           const fakeLuanaMetric = { totalPaid: 148500, countPaid: 7, totalInProcess: 36200, countInProcess: 3, totalToday: 48600, countToday: 2 }
           if (resolvedLuanaUser) {
             brokerMetrics[resolvedLuanaUser.id] = { ...fakeLuanaMetric }
+            rawBrokerMetrics[resolvedLuanaUser.id] = { ...fakeLuanaMetric }
             approvedTicketsByUser[resolvedLuanaUser.id] = 24
           }
           if (perfil?.id) {
             brokerMetrics[perfil.id] = { ...fakeLuanaMetric }
+            rawBrokerMetrics[perfil.id] = { ...fakeLuanaMetric }
             approvedTicketsByUser[perfil.id] = 24
           }
         } else if (resolvedJorgeId && brokerMetrics[resolvedJorgeId]) {
           if (resolvedLuanaUser) {
             brokerMetrics[resolvedLuanaUser.id] = { ...brokerMetrics[resolvedJorgeId] }
+            rawBrokerMetrics[resolvedLuanaUser.id] = { ...(rawBrokerMetrics[resolvedJorgeId] || brokerMetrics[resolvedJorgeId]) }
             approvedTicketsByUser[resolvedLuanaUser.id] = approvedTicketsByUser[resolvedJorgeId] || approvedTicketsByUser[resolvedLuanaUser.id] || 0
           }
           if (isLuanaUser && perfil?.id) {
             brokerMetrics[perfil.id] = { ...brokerMetrics[resolvedJorgeId] }
+            rawBrokerMetrics[perfil.id] = { ...(rawBrokerMetrics[resolvedJorgeId] || brokerMetrics[resolvedJorgeId]) }
             approvedTicketsByUser[perfil.id] = approvedTicketsByUser[resolvedJorgeId] || 0
           }
         }
@@ -1471,7 +1556,7 @@ export default function DashboardPage() {
         let groupCountToday = 0;
 
         groupedUsers.forEach((u: User) => {
-          const m = brokerMetrics[u.id] || { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 };
+          const m = rawBrokerMetrics[u.id] || { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 };
           groupTotalPaid += m.totalPaid;
           groupCountPaid += m.countPaid;
           groupTotalInProcess += m.totalInProcess;
@@ -1481,14 +1566,20 @@ export default function DashboardPage() {
         });
 
         const groupMembersDetailList = groupedUsers.map((m: User) => {
-          let metrics = brokerMetrics[m.id] || { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 };
+          let metrics = rawBrokerMetrics[m.id] || { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 };
           let approvedCount = approvedTicketsByUser[m.id] || 0
+          let opsPaid = brokerOperations[m.id]?.paid || {}
+          let opsInProcess = brokerOperations[m.id]?.inProcess || {}
+          let opsToday = brokerOperations[m.id]?.today || {}
 
           const normalizedName = (m.nome || "").toLowerCase().trim()
           if (normalizedName.includes("luana") || normalizedName.includes("carlos eduardo")) {
-            if (resolvedJorgeId && brokerMetrics[resolvedJorgeId]) {
-              metrics = { ...brokerMetrics[resolvedJorgeId] }
+            if (resolvedJorgeId && rawBrokerMetrics[resolvedJorgeId]) {
+              metrics = { ...rawBrokerMetrics[resolvedJorgeId] }
               approvedCount = approvedTicketsByUser[resolvedJorgeId] || approvedCount
+              opsPaid = brokerOperations[resolvedJorgeId]?.paid || {}
+              opsInProcess = brokerOperations[resolvedJorgeId]?.inProcess || {}
+              opsToday = brokerOperations[resolvedJorgeId]?.today || {}
             }
           }
 
@@ -1506,7 +1597,10 @@ export default function DashboardPage() {
             totalToday: metrics.totalToday,
             countToday: metrics.countToday,
             isPJ: isUserPJ(m),
-            approvedTicketsCount: approvedCount
+            approvedTicketsCount: approvedCount,
+            operationsPaid: opsPaid,
+            operationsInProcess: opsInProcess,
+            operationsToday: opsToday
           };
         });
 
@@ -1548,12 +1642,12 @@ export default function DashboardPage() {
             corretor_id: m.id,
             nome: m.nome,
             funcao: m.funcao || "",
-            totalPaid: brokerMetrics[m.id]?.totalPaid || 0,
-            countPaid: brokerMetrics[m.id]?.countPaid || 0,
-            totalInProcess: brokerMetrics[m.id]?.totalInProcess || 0,
-            countInProcess: brokerMetrics[m.id]?.countInProcess || 0,
-            totalToday: brokerMetrics[m.id]?.totalToday || 0,
-            countToday: brokerMetrics[m.id]?.countToday || 0,
+            totalPaid: rawBrokerMetrics[m.id]?.totalPaid || 0,
+            countPaid: rawBrokerMetrics[m.id]?.countPaid || 0,
+            totalInProcess: rawBrokerMetrics[m.id]?.totalInProcess || 0,
+            countInProcess: rawBrokerMetrics[m.id]?.countInProcess || 0,
+            totalToday: rawBrokerMetrics[m.id]?.totalToday || 0,
+            countToday: rawBrokerMetrics[m.id]?.countToday || 0,
             approvedTicketsCount: approvedTicketsByUser[m.id] || 0,
             colaboracoes: {
               propria: { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },

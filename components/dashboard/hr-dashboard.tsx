@@ -87,6 +87,9 @@ interface InternCollaboration {
   countToday: number
   isPJ?: boolean
   approvedTicketsCount: number
+  operationsPaid?: Record<string, { total: number; count: number }>
+  operationsInProcess?: Record<string, { total: number; count: number }>
+  operationsToday?: Record<string, { total: number; count: number }>
 }
 
 interface RankingItem {
@@ -1285,23 +1288,14 @@ export function HRDashboard({
           })
 
           const colaboradoresPJList = estagioRankingGroup.colaboracoes.estagiarios
-            .filter(e => e.isPJ)
-            .map(item => {
-              const normalizedName = (item.nome || "").toLowerCase().trim()
-              if (normalizedName.includes("carlos eduardo") && jorgeStats) {
-                return {
-                  ...item,
-                  approvedTicketsCount: jorgeStats.approvedTicketsCount || item.approvedTicketsCount || 0,
-                  totalPaid: jorgeStats.totalPaid ?? item.totalPaid,
-                  countPaid: jorgeStats.countPaid ?? item.countPaid,
-                  totalInProcess: jorgeStats.totalInProcess ?? item.totalInProcess,
-                  countInProcess: jorgeStats.countInProcess ?? item.countInProcess,
-                  totalToday: jorgeStats.totalToday ?? item.totalToday,
-                  countToday: jorgeStats.countToday ?? item.countToday,
-                  _sourcePersonId: jorgeStats.corretor_id
-                }
-              }
-              return item
+            .filter(e => {
+              if (!e.isPJ) return false
+              if (e.nome?.toLowerCase().includes("luana") || e.nome?.toLowerCase().includes("carlos eduardo")) return false
+              const hasApproved = (e.approvedTicketsCount || 0) > 0
+              const hasPaid = (e.totalPaid || 0) > 0 || (e.countPaid || 0) > 0
+              const hasInProcess = (e.totalInProcess || 0) > 0 || (e.countInProcess || 0) > 0
+              const hasToday = (e.totalToday || 0) > 0 || (e.countToday || 0) > 0
+              return hasApproved || hasPaid || hasInProcess || hasToday
             })
             .sort((a, b) => (b.totalPaid || 0) - (a.totalPaid || 0))
 

@@ -121,6 +121,9 @@ interface InternCollaboration {
   countToday: number
   isPJ?: boolean
   approvedTicketsCount: number
+  operationsPaid?: Record<string, { total: number; count: number }>
+  operationsInProcess?: Record<string, { total: number; count: number }>
+  operationsToday?: Record<string, { total: number; count: number }>
 }
 
 interface RankingItem {
@@ -422,6 +425,22 @@ export function AdminDashboard({
   const [customCommissionPercents, setCustomCommissionPercents] = React.useState<Record<string, number>>({})
   const [customPjCommissionPercents, setCustomPjCommissionPercents] = React.useState<Record<string, number>>({})
   const [compareChartMetric, setCompareChartMetric] = React.useState<'producao' | 'receita'>('producao')
+  const [pjBrokerIds, setPjBrokerIds] = React.useState<Set<string>>(new Set())
+
+  React.useEffect(() => {
+    if (brokerRankings && brokerRankings.length > 0) {
+      setPjBrokerIds(prev => {
+        const next = new Set(prev)
+        brokerRankings.forEach(b => {
+          const func = (b.funcao || "").trim().toLowerCase()
+          if (func === 'pj' || func.includes('corretor pj')) {
+            next.add(b.corretor_id)
+          }
+        })
+        return next
+      })
+    }
+  }, [brokerRankings])
 
   // Load localstorage values on mount
   React.useEffect(() => {
@@ -1186,6 +1205,29 @@ export function AdminDashboard({
       }
 
       setDbProdutosConfigs(configsData || [])
+
+      // 3. Fetch PJ brokers to apply correct weighting in Admin Financial calculations
+      const { data: usersData } = await supabase
+        .from('usuarios')
+        .select('id, nome, role, funcao, regime_contratacao')
+
+      if (usersData) {
+        const pjs = new Set<string>()
+        usersData.forEach((u: any) => {
+          const regime = (u.regime_contratacao || "").trim().toLowerCase()
+          const func = (u.funcao || "").trim().toLowerCase()
+          const role = (u.role || "").trim().toLowerCase()
+          if (func === 'desenvolvedor' || func === 'developer') return
+          if (regime === 'pj' || func === 'pj' || role === 'pj' || func.includes('corretor pj') || role.includes('corretor pj')) {
+            pjs.add(u.id)
+          }
+        })
+        setPjBrokerIds(prev => {
+          const merged = new Set(prev)
+          pjs.forEach(id => merged.add(id))
+          return merged
+        })
+      }
     } catch (error) {
       const err = error as Error
       console.error("Erro ao carregar dados financeiros:", err.message)
@@ -1810,23 +1852,59 @@ export function AdminDashboard({
     })
   }, [financialProposals, financialStartDate, financialEndDate, filterUserId])
 
-  // Calculate Produção Total: sum of p.valor_operacao || p.valor_cliente || 0
+  const parseNumericVal = (val: any): number => {
+    if (val === null || val === undefined || val === "") return 0
+    if (typeof val === "number") return isNaN(val) ? 0 : val
+    const str = String(val).trim()
+    if (!str) return 0
+    const cleaned = str.replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".")
+    const num = parseFloat(cleaned)
+    return isNaN(num) ? 0 : num
+  }
+
+  // Calculate proposal production value, taking into account PJ rules (35% Cartão, 9% Margem/Novo) in Admin view
+  const getProposalProductionVal = React.useCallback((p: any) => {
+    const rawOpVal = (p.valor_operacao !== null && p.valor_operacao !== undefined && p.valor_operacao !== "")
+      ? p.valor_operacao
+      : (p.valor_cliente || p.valor_cliente_operacional || p.valor_producao || 0)
+    const numericValOp = parseNumericVal(rawOpVal)
+
+    // Only apply PJ percentage reduction when viewing as Administrator / Company (!isCorretorPJ) and proposal is from a PJ broker
+    const isProposalFromPJ = !isCorretorPJ && (
+      (p.corretor_id && pjBrokerIds.has(p.corretor_id)) ||
+      (p.corretor_regime && String(p.corretor_regime).toUpperCase() === 'PJ') ||
+      (p.estagiario_colaborador_id && pjBrokerIds.has(p.estagiario_colaborador_id))
+    )
+
+    if (isProposalFromPJ) {
+      const rawTypeUpper = (p.tipo_operacao || "").trim().toUpperCase()
+      if (rawTypeUpper.includes("CARTAO") || rawTypeUpper.includes("CARTÃO")) {
+        return numericValOp * 0.35
+      } else if (rawTypeUpper.includes("MARGEM") || rawTypeUpper.includes("NOVO")) {
+        return numericValOp * 0.09
+      }
+    }
+
+    return numericValOp
+  }, [isCorretorPJ, pjBrokerIds])
+
+  // Calculate Produção Total: sum of getProposalProductionVal(p)
   const totalProduction = React.useMemo(() => {
     return filteredFinancialProposals.reduce((sum, p) => {
-      const val = Number(p.valor_operacao || p.valor_cliente || 0)
+      const val = getProposalProductionVal(p)
       return sum + val
     }, 0)
-  }, [filteredFinancialProposals])
+  }, [filteredFinancialProposals, getProposalProductionVal])
 
   // Calculate Receita Total: sum of (valOp * comPercent) / 100 based on Administrator coefficient commission
   const totalRevenue = React.useMemo(() => {
     return filteredFinancialProposals.reduce((sum, p) => {
-      const valOp = Number(p.valor_operacao || p.valor_cliente || 0)
+      const valOp = getProposalProductionVal(p)
       const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
       const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
       return sum + (valOp * comPercentVal) / 100
     }, 0)
-  }, [filteredFinancialProposals, customCommissionPercents, getCommissionPercentage])
+  }, [filteredFinancialProposals, customCommissionPercents, getCommissionPercentage, getProposalProductionVal])
 
   // Previous equivalent period dates based on financial filter dates
   const prevPeriodDates = React.useMemo(() => {
@@ -1909,7 +1987,7 @@ export function AdminDashboard({
       propsList.forEach((p) => {
         const key = getKey(p).toUpperCase()
         const name = getName(p)
-        const val = Number(p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0)
+        const val = getProposalProductionVal(p)
         let rev = 0
         if (!isCorretorPJ && p.comissao_banco_valor !== undefined && p.comissao_banco_valor !== null && Number(p.comissao_banco_valor) > 0) {
           rev = Number(p.comissao_banco_valor)
@@ -2022,7 +2100,7 @@ export function AdminDashboard({
     const supervisores: Record<string, { name: string; prod: number; rev: number; count: number }> = {}
 
     filteredFinancialProposals.forEach((p) => {
-      const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+      const val = getProposalProductionVal(p)
       const comPercent = getCommissionPercentage(p)
       const rev = (val * comPercent) / 100
 
@@ -2100,7 +2178,7 @@ export function AdminDashboard({
       corretores: Object.values(corretores).sort(sortByRev),
       supervisores: Object.values(supervisores).sort(sortByRev)
     }
-  }, [filteredFinancialProposals, customCommissionPercents, getCommissionPercentage, brokerToSupervisorMap])
+  }, [filteredFinancialProposals, customCommissionPercents, getCommissionPercentage, brokerToSupervisorMap, getProposalProductionVal])
 
   // Memoized historical statistics for YoY and MoM comparisons
   const comparisonStats = React.useMemo(() => {
@@ -2138,7 +2216,7 @@ export function AdminDashboard({
       const year = pDate.getFullYear()
       const month = pDate.getMonth()
 
-      const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+      const val = getProposalProductionVal(p)
       const comPercent = getCommissionPercentage(p)
       const rev = (val * comPercent) / 100
 
@@ -2201,7 +2279,7 @@ export function AdminDashboard({
       monthRevDiff,
       monthRevPct
     }
-  }, [financialProposals, customCommissionPercents, getCommissionPercentage, financialStartDate])
+  }, [financialProposals, customCommissionPercents, getCommissionPercentage, financialStartDate, getProposalProductionVal])
 
   const dynamicChartData = React.useMemo(() => {
     const getProposalDate = (p: any) => {
@@ -2236,7 +2314,7 @@ export function AdminDashboard({
         const pDate = getProposalDate(p)
         if (!pDate) return
         const pDateStr = format(pDate, "yyyy-MM-dd")
-        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const val = getProposalProductionVal(p)
         const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
@@ -2280,7 +2358,7 @@ export function AdminDashboard({
         if (pYear !== start.getFullYear() || pMonth !== start.getMonth()) return
 
         const day = pDate.getDate()
-        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const val = getProposalProductionVal(p)
         const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
@@ -2318,7 +2396,7 @@ export function AdminDashboard({
         if (!pDate) return
         if (pDate.getFullYear() !== start.getFullYear()) return
         const pMonth = pDate.getMonth()
-        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const val = getProposalProductionVal(p)
         const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
@@ -2351,7 +2429,7 @@ export function AdminDashboard({
         if (pDate.getFullYear() !== start.getFullYear()) return
         const pMonth = pDate.getMonth()
         const pQuarter = Math.floor(pMonth / 3)
-        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const val = getProposalProductionVal(p)
         const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
@@ -2383,7 +2461,7 @@ export function AdminDashboard({
         const pDate = getProposalDate(p)
         if (!pDate) return
         const pYear = pDate.getFullYear()
-        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const val = getProposalProductionVal(p)
         const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
@@ -2419,7 +2497,7 @@ export function AdminDashboard({
         const pDate = getProposalDate(p)
         if (!pDate) return
         const pDateStr = format(pDate, "yyyy-MM-dd")
-        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const val = getProposalProductionVal(p)
         const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
@@ -2447,7 +2525,7 @@ export function AdminDashboard({
         if (!pDate) return
         const dayOffset = Math.floor((pDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
         if (dayOffset >= 0 && dayOffset < diffDays) {
-          const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+          const val = getProposalProductionVal(p)
           const comPercent = getCommissionPercentage(p)
           const rev = (val * comPercent) / 100
 
@@ -2477,7 +2555,7 @@ export function AdminDashboard({
         if (!pDate) return
         if (pDate.getFullYear() !== start.getFullYear()) return
         const pMonth = pDate.getMonth()
-        const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+        const val = getProposalProductionVal(p)
         const comPercent = getCommissionPercentage(p)
         const rev = (val * comPercent) / 100
 
@@ -2488,7 +2566,7 @@ export function AdminDashboard({
       })
       return data
     }
-  }, [financialProposals, getCommissionPercentage, financialStartDate, financialEndDate, financialPeriod])
+  }, [financialProposals, getCommissionPercentage, financialStartDate, financialEndDate, financialPeriod, getProposalProductionVal])
 
   // New Memoized Comparative Statistics matching any chosen financial period
   const dynamicComparisonStats = React.useMemo(() => {
@@ -2499,13 +2577,13 @@ export function AdminDashboard({
 
     const prodCurrent = totalProduction
     const prodPrevious = previousPeriodProposals.reduce((sum, p) => {
-      const val = p.valor_cliente || p.valor_cliente_operacional || p.valor_operacao || 0
+      const val = getProposalProductionVal(p)
       return sum + val
     }, 0)
 
     const revCurrent = totalRevenue
     const revPrevious = previousPeriodProposals.reduce((sum, p) => {
-      const val = p.valor_operacao || p.valor_cliente || p.valor_cliente_operacional || p.valor_base || p.valor_parcela || 0
+      const val = getProposalProductionVal(p)
       const comPercent = getCommissionPercentage(p)
       return sum + (val * comPercent) / 100
     }, 0)
@@ -3344,24 +3422,14 @@ export function AdminDashboard({
           })
 
           const colaboradoresPJList = estagioRankingGroup.colaboracoes.estagiarios
-            .filter(e => e.isPJ)
-            .map(item => {
-              const normalizedName = (item.nome || "").toLowerCase().trim()
-              if ((normalizedName.includes("luana") || normalizedName.includes("carlos eduardo")) && jorgeStats) {
-                return {
-                  ...item,
-                  nome: item.nome?.toLowerCase().includes("carlos eduardo") ? "Luana" : item.nome,
-                  approvedTicketsCount: jorgeStats.approvedTicketsCount || item.approvedTicketsCount || 0,
-                  totalPaid: jorgeStats.totalPaid ?? item.totalPaid,
-                  countPaid: jorgeStats.countPaid ?? item.countPaid,
-                  totalInProcess: jorgeStats.totalInProcess ?? item.totalInProcess,
-                  countInProcess: jorgeStats.countInProcess ?? item.countInProcess,
-                  totalToday: jorgeStats.totalToday ?? item.totalToday,
-                  countToday: jorgeStats.countToday ?? item.countToday,
-                  _sourcePersonId: jorgeStats.corretor_id
-                }
-              }
-              return item
+            .filter(e => {
+              if (!e.isPJ) return false
+              if (e.nome?.toLowerCase().includes("luana") || e.nome?.toLowerCase().includes("carlos eduardo")) return false
+              const hasApproved = (e.approvedTicketsCount || 0) > 0
+              const hasPaid = (e.totalPaid || 0) > 0 || (e.countPaid || 0) > 0
+              const hasInProcess = (e.totalInProcess || 0) > 0 || (e.countInProcess || 0) > 0
+              const hasToday = (e.totalToday || 0) > 0 || (e.countToday || 0) > 0
+              return hasApproved || hasPaid || hasInProcess || hasToday
             })
             .sort((a, b) => (b.totalPaid || 0) - (a.totalPaid || 0))
 
