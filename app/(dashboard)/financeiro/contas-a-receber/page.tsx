@@ -1184,11 +1184,19 @@ export default function ContasAReceberPage() {
         const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(comPercent) ? comPercent : 0
         const dbValor = dbValue !== null ? (dbValue * comPercentVal) / 100 : null
 
+        const pjPercent = customPjCommissionPercents[idLead] !== undefined 
+          ? customPjCommissionPercents[idLead] 
+          : getPJCommissionPercentage(proposal)
+        const pjPercentVal = pjPercent !== undefined && pjPercent !== null && !isNaN(pjPercent) ? pjPercent : 0
+        const dbValorPj = dbValue !== null && pjPercentVal > 0 ? (dbValue * pjPercentVal) / 100 : null
+
         const { error } = await supabase
           .from("propostas")
           .update({
             valor_operacao: dbValue,
-            comissao_banco_valor: dbValor
+            comissao_banco_valor: dbValor,
+            comissao_pj_valor: dbValorPj,
+            valor_producao: dbValorPj
           })
           .eq("id_lead", idLead)
 
@@ -1199,8 +1207,13 @@ export default function ContasAReceberPage() {
           setProposals(prev => prev.map(p => p.id_lead === idLead ? {
             ...p,
             valor_operacao: dbValue === null ? undefined : dbValue,
-            comissao_banco_valor: dbValor
+            comissao_banco_valor: dbValor,
+            comissao_pj_valor: dbValorPj === null ? undefined : dbValorPj,
+            valor_producao: dbValorPj === null ? undefined : dbValorPj
           } : p))
+          if (dbValorPj !== null) {
+            setCustomPjCommissionValues(prev => ({ ...prev, [idLead]: dbValorPj }))
+          }
           toast.success("Valor da operação atualizado com sucesso!")
         }
       }
@@ -1739,14 +1752,6 @@ export default function ContasAReceberPage() {
   }, [dbProdutosConfigs, bancosList, perfil?.id]);
 
   const getPJCommissionValue = useCallback((proposal: Proposal) => {
-    if (proposal.id_lead && customPjCommissionValues[proposal.id_lead] !== undefined && customPjCommissionValues[proposal.id_lead] !== null) {
-      return customPjCommissionValues[proposal.id_lead]
-    }
-
-    if (proposal.comissao_pj_valor !== undefined && proposal.comissao_pj_valor !== null && !isNaN(Number(proposal.comissao_pj_valor))) {
-      return Number(proposal.comissao_pj_valor)
-    }
-
     const valOp = safeFloat(proposal.valor_operacao || proposal.valor_cliente || proposal.valor_cliente_operacional || proposal.valor_base || proposal.valor_parcela || 0)
 
     const pjPercent = customPjCommissionPercents[proposal.id_lead] !== undefined 
@@ -1755,6 +1760,14 @@ export default function ContasAReceberPage() {
 
     if (pjPercent !== undefined && pjPercent !== null && !isNaN(Number(pjPercent))) {
       return (valOp * Number(pjPercent)) / 100
+    }
+
+    if (proposal.id_lead && customPjCommissionValues[proposal.id_lead] !== undefined && customPjCommissionValues[proposal.id_lead] !== null) {
+      return customPjCommissionValues[proposal.id_lead]
+    }
+
+    if (proposal.comissao_pj_valor !== undefined && proposal.comissao_pj_valor !== null && !isNaN(Number(proposal.comissao_pj_valor))) {
+      return Number(proposal.comissao_pj_valor)
     }
 
     if (proposal.valor_producao !== undefined && proposal.valor_producao !== null && !isNaN(Number(proposal.valor_producao))) {
