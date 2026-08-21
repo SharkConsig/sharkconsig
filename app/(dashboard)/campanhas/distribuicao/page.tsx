@@ -141,7 +141,8 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
     'base_consulta_governo_mg',
     'base_consulta_prefeitura_natal',
     'base_consulta_prefeitura_porto_velho',
-    'base_consulta_governo_ba'
+    'base_consulta_governo_ba',
+    'base_consulta_governo_am'
   ];
 
   const results: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];

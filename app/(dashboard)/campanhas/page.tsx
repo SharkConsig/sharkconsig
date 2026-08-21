@@ -586,6 +586,8 @@ export default function CampaignsPage() {
         'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
         'prefeitura_natal': 'base_consulta_prefeitura_natal',
         'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
+        'governo_ba': 'base_consulta_governo_ba',
+        'governo_am': 'base_consulta_governo_am',
       };
 
       if (convenioKey && TABLE_MAP[convenioKey]) {
@@ -606,6 +608,8 @@ export default function CampaignsPage() {
         targetTable = 'base_consulta_prefeitura_natal';
       } else if (campaignName.includes('PORTO VELHO')) {
         targetTable = 'base_consulta_prefeitura_porto_velho';
+      } else if (campaignName.includes('AMAZONAS') || campaignName.includes('GOVERNO AM')) {
+        targetTable = 'base_consulta_governo_am';
       }
 
       const isGovPi = targetTable === 'base_consulta_governo_pi';
@@ -613,13 +617,16 @@ export default function CampaignsPage() {
       const isGovSp = targetTable === 'base_consulta_governo_sp';
       const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
       const isGovMa = targetTable === 'base_consulta_governo_ma';
+      const isGovAm = targetTable === 'base_consulta_governo_am';
       const isSantoAndre = targetTable === 'base_consulta_prefeitura_santo_andre';
       const isPrefNatal = targetTable === 'base_consulta_prefeitura_natal';
       const isPrefPortoVelho = targetTable === 'base_consulta_prefeitura_porto_velho';
       const isMultiConvenio = (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect');
 
       const headersArray = ["CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3"];
-      if (isGovPi) {
+      if (isGovAm) {
+        headersArray.push("MATRÍCULA", "ÓRGÃO", "SECRETARIA", "CARGO", "SITUAÇÃO", "MARGEM CONSIGNÁVEL", "MARGEM CARTÃO", "MARGEM CARTÃO BENEFÍCIO", "MARGEM BENEFÍCIO SAQUE");
+      } else if (isGovPi) {
         headersArray.push("MARGEM DISPONÍVEL EMPRÉSTIMO", "MARGEM CARTÃO CONSIGNADO", "MARGEM CARTÃO BENEFÍCIO");
       } else if (isGovRr) {
         headersArray.push("MARGEM EMPRÉSTIMO", "MARGEM CARTÃO");
@@ -721,6 +728,7 @@ export default function CampaignsPage() {
           { name: 'base_consulta_governo_ms', convenio: 'governo_ms', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
           { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo_consignado, margem_cartao_consignado, margem_cartao_beneficio" },
           { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo, margem_cartao_consignado" },
+          { name: 'base_consulta_governo_am', convenio: 'governo_am', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, situacao, margem_consignavel, margem_cartao, margem_cartao_beneficio, margem_cartao_beneficio_saque" },
         ];
 
         // 1. Buscar primeiro na tabela preferencial da campanha (targetTable)
@@ -809,7 +817,25 @@ export default function CampaignsPage() {
           const govRow = row as unknown as IGovPiRow;
 
           let csvFields: (string | number | null | undefined)[] = [];
-          if (isGovPi) {
+          if (isGovAm) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).matricula || "",
+              (row as any).orgao || "",
+              (row as any).secretaria || "",
+              (row as any).cargo || "",
+              (row as any).situacao || "",
+              (row as any).margem_consignavel ?? "",
+              (row as any).margem_cartao ?? "",
+              (row as any).margem_cartao_beneficio ?? "",
+              (row as any).margem_cartao_beneficio_saque ?? ""
+            ];
+          } else if (isGovPi) {
             csvFields = [
               govRow.cpf,
               govRow.nome,
@@ -983,6 +1009,14 @@ export default function CampaignsPage() {
                 "PREFEITURA PORTO VELHO",
                 "", (row as any).margem_emprestimo ?? "", "", "",
                 (row as any).margem_cartao_consignado ?? "", "", "", ""
+              ];
+            } else if (conv === "governo_am") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO AMAZONAS",
+                "", (row as any).margem_consignavel ?? "", "", "",
+                (row as any).margem_cartao ?? "", (row as any).margem_cartao_beneficio ?? "", "", (row as any).margem_cartao_beneficio_saque ?? ""
               ];
             } else {
               csvFields = [

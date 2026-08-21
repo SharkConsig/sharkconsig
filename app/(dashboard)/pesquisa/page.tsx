@@ -107,7 +107,7 @@ interface ClientData {
 }
 
 interface ConvenioProfile {
-  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba';
+  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am';
   client: ClientData;
   registrations: Registration[];
 }
@@ -123,7 +123,7 @@ export default function SearchClientPage() {
   const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false)
   
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
@@ -896,7 +896,7 @@ export default function SearchClientPage() {
   };
 
   const fetchRegistrationsForType = async (
-    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba',
+    type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am',
     clientData: ClientData
   ): Promise<Registration[]> => {
     const ensureArray = (val: unknown): Record<string, unknown>[] => {
@@ -1204,11 +1204,35 @@ export default function SearchClientPage() {
           instituidores: []
         }
       }) as unknown as Registration[]
+    } else if (type === 'governo_am') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('governo_am_matriculas').select('*').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => {
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          orgao: r.orgao as string | null,
+          secretaria: r.secretaria as string | null,
+          cargo: r.cargo as string | null,
+          situacao: r.situacao as string | null,
+          tipo_servidor: r.tipo_servidor as string | null,
+          margem_consignavel: r.margem_consignavel || 0.00,
+          margem_cartao: r.margem_cartao || 0.00,
+          margem_cartao_beneficio: r.margem_cartao_beneficio || 0.00,
+          margem_cartao_beneficio_saque: r.margem_cartao_beneficio_saque || 0.00,
+          uf: 'AM',
+          instituidores: []
+        }
+      }) as unknown as Registration[]
     }
     return []
   }
 
-  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | null) => {
+  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | null) => {
     const tableMap = {
       siape: 'clientes',
       governo_sp: 'governo_sp_clientes',
@@ -1223,7 +1247,8 @@ export default function SearchClientPage() {
       governo_ms: 'governo_ms_clientes',
       prefeitura_natal: 'prefeitura_natal_clientes',
       prefeitura_porto_velho: 'prefeitura_porto_velho_clientes',
-      governo_ba: 'governo_ba_clientes'
+      governo_ba: 'governo_ba_clientes',
+      governo_am: 'governo_am_clientes'
     }
 
     const foundProfiles: ConvenioProfile[] = []
@@ -1335,6 +1360,7 @@ export default function SearchClientPage() {
         { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal' },
         { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho' },
         { name: 'base_consulta_governo_ba', convenio: 'governo_ba' },
+        { name: 'base_consulta_governo_am', convenio: 'governo_am' },
       ];
 
       const results = await Promise.all(
@@ -1358,7 +1384,7 @@ export default function SearchClientPage() {
 
       const quickData = results.find(r => r !== null) || null;
 
-      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | null = null
+      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | null = null
       let resolvedCpf = cleanCPF
 
       if (quickData) {
@@ -1378,6 +1404,7 @@ export default function SearchClientPage() {
         else if (source === 'prefeitura_natal') preferredType = 'prefeitura_natal'
         else if (source === 'prefeitura_porto_velho') preferredType = 'prefeitura_porto_velho'
         else if (source === 'governo_ba') preferredType = 'governo_ba'
+        else if (source === 'governo_am') preferredType = 'governo_am'
       }
 
       await loadProfilesForCpf(resolvedCpf, preferredType)
@@ -1496,6 +1523,7 @@ export default function SearchClientPage() {
         { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal' },
         { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho' },
         { name: 'base_consulta_governo_ba', convenio: 'governo_ba' },
+        { name: 'base_consulta_governo_am', convenio: 'governo_am' },
       ];
 
       const results = await Promise.all(
@@ -1736,7 +1764,8 @@ export default function SearchClientPage() {
                       p.type === 'governo_ms' ? 'GOVERNO MATO GROSSO DO SUL' : 
                       p.type === 'prefeitura_natal' ? 'PREFEITURA DE NATAL' :
                       p.type === 'prefeitura_porto_velho' ? 'PREFEITURA DE PORTO VELHO' :
-                      p.type === 'governo_ba' ? 'GOVERNO BAHIA' : String(p.type).toUpperCase();
+                      p.type === 'governo_ba' ? 'GOVERNO BAHIA' :
+                      p.type === 'governo_am' ? 'GOVERNO AMAZONAS' : String(p.type).toUpperCase();
                     
                     return (
                       <button
@@ -4685,6 +4714,238 @@ export default function SearchClientPage() {
                                     tel3: unmaskPhone(client.telefone_3),
                                     origem: "pesquisa",
                                     convenio: "GOVERNO BAHIA"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {clientType === 'governo_am' && registrations.length > 0 && (() => {
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-am-${reg.id}-${idx}`}
+                        type="button"
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        MATRÍCULA {reg.matricula}
+                      </button>
+                    ))}
+                  </div>
+
+                  {registrations[activeRegIndex] && (() => {
+                    const reg = registrations[activeRegIndex];
+                    const regObj = reg as unknown as Record<string, unknown>;
+                    
+                    return (
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                        <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-emerald-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula (GOVERNO DO AMAZONAS)</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[13px] font-bold text-slate-900">{reg.matricula}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.orgao || "GOVERNO DO AMAZONAS"}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Secretaria / Cargo</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{((regObj.secretaria as string) || "N/I") + " / " + ((regObj.cargo as string) || "N/I")}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Situação / Vínculo</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{((regObj.situacao as string) || "N/I") + " / " + ((regObj.tipo_servidor as string) || "N/I")}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Margens Card */}
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-emerald-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Margens Disponíveis</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                              {/* Margem Consignável */}
+                              {(() => {
+                                const val = Number(regObj.margem_consignavel) || 0;
+                                const isPositive = val > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                  )}>
+                                    <div>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-700/60" : "text-red-700/60"
+                                      )}>
+                                        Margem Consignável
+                                      </p>
+                                      <p className={cn(
+                                        "text-lg font-black tracking-tight leading-none mt-1",
+                                        isPositive ? "text-emerald-950" : "text-red-950"
+                                      )}>
+                                        {formatCurrency(val)}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 mt-2">
+                                      <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <span className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-600" : "text-red-600"
+                                      )}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Margem Cartão */}
+                              {(() => {
+                                const val = Number(regObj.margem_cartao) || 0;
+                                const isPositive = val > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                  )}>
+                                    <div>
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                        Margem Cartão (RMC)
+                                      </p>
+                                      <p className="text-lg font-black text-slate-900 tracking-tight leading-none mt-1">
+                                        {formatCurrency(val)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Margem Cartão Benefício */}
+                              {(() => {
+                                const val = Number(regObj.margem_cartao_beneficio) || 0;
+                                const isPositive = val > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                  )}>
+                                    <div>
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                        Margem Cartão Benefício (RCC)
+                                      </p>
+                                      <p className="text-lg font-black text-slate-900 tracking-tight leading-none mt-1">
+                                        {formatCurrency(val)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Margem Cartão Benefício Saque */}
+                              {(() => {
+                                const val = Number(regObj.margem_cartao_beneficio_saque) || 0;
+                                const isPositive = val > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                  )}>
+                                    <div>
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                        Margem Benefício Saque
+                                      </p>
+                                      <p className="text-lg font-black text-slate-900 tracking-tight leading-none mt-1">
+                                        {formatCurrency(val)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
+
+                          {/* Footer Buttons for GOV AM */}
+                          <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
+                            <Button 
+                              onClick={() => {
+                                const rawCpf = client.cpf || "";
+                                const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+                                const mLiquida = formatCurrency(regObj.margem_consignavel);
+
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: formattedCpf,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  margem: mLiquida,
+                                  liquida5: formatCurrency(regObj.margem_cartao),
+                                  beneficio5: formatCurrency(regObj.margem_cartao_beneficio),
+                                  convenio: "GOVERNO AMAZONAS",
+                                  matricula: reg.matricula || ""
+                                });
+                                router.push(`/chamados/novo?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Abrir Chamado
+                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    matricula: reg.matricula || "",
+                                    idLead: reg.matricula,
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "GOVERNO AMAZONAS"
                                   });
                                   router.push(`/propostas/nova?${params.toString()}`);
                                 }}

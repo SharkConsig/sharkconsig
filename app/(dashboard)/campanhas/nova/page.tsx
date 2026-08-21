@@ -91,6 +91,8 @@ const TABLE_MAP: Record<string, string> = {
   'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
   'prefeitura_natal': 'base_consulta_prefeitura_natal',
   'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
+  'governo_ba': 'base_consulta_governo_ba',
+  'governo_am': 'base_consulta_governo_am',
 };
 
 const TABLE_COLUMNS: Record<string, string[]> = {
@@ -136,6 +138,12 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   'base_consulta_prefeitura_porto_velho': [
     'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
     'matricula', 'vinculo', 'orgao', 'margem_emprestimo', 'margem_cartao_consignado'
+  ],
+  'base_consulta_governo_ba': [
+    'cpf', 'nome', 'matricula', 'margem_emprestimo_total', 'margem_emprestimo_disponivel', 'orgao', 'secretaria', 'situacao', 'tipo_servidor', 'telefone'
+  ],
+  'base_consulta_governo_am': [
+    'cpf', 'nome', 'data_nascimento', 'matricula', 'orgao', 'secretaria', 'cargo', 'situacao', 'margem_consignavel', 'margem_cartao', 'margem_cartao_beneficio', 'margem_cartao_beneficio_saque', 'telefone_1', 'telefone_2', 'telefone_3'
   ]
 };
 
@@ -149,6 +157,8 @@ const CONVENIOS = [
   { id: 'prefeitura_santo_andre', label: 'PREFEITURA SANTO ANDRÉ' },
   { id: 'prefeitura_natal', label: 'PREFEITURA DE NATAL' },
   { id: 'prefeitura_porto_velho', label: 'PREFEITURA PORTO VELHO' },
+  { id: 'governo_ba', label: 'GOVERNO BAHIA' },
+  { id: 'governo_am', label: 'GOVERNO AMAZONAS' },
 ];
 
 export default function NewCampaignPage() {
@@ -223,6 +233,21 @@ export default function NewCampaignPage() {
       } else if (activeConvenio === 'governo_rr') {
         orgaos = [];
         situacoes = [];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'governo_am') {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: situacoesData } = await supabase
+          .from(tableName)
+          .select('situacao')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao).filter(Boolean) || [])).sort() as string[];
         regimes = [];
         ufs = [];
       } else if (activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') {
@@ -533,7 +558,11 @@ export default function NewCampaignPage() {
     const mMaxNum = parseSafeNumber(f.margemMax);
     
     if (mMinNum !== null || mMaxNum !== null) {
-      if (cols.includes('margem_35')) {
+      if (cols.includes('margem_consignavel')) {
+        q = q.not("margem_consignavel", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_consignavel", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_consignavel", mMaxNum);
+      } else if (cols.includes('margem_35')) {
         q = q.not("margem_35", "is", null);
         if (mMinNum !== null) q = q.gte("margem_35", mMinNum);
         if (mMaxNum !== null) q = q.lte("margem_35", mMaxNum);

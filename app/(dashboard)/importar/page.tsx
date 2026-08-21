@@ -88,6 +88,9 @@ const getRequiredHeadersKeysForType = (type: string): string[][] => {
   if (type === "GOVERNO_BA") {
     return [["cpf"], ["nome"], ["matricula"]];
   }
+  if (type === "GOVERNO_AM") {
+    return [["cpf"], ["nome"], ["matricula"]];
+  }
   return [];
 };
 
@@ -125,6 +128,7 @@ export default function ImportBatchPage() {
   const [totalBasePrefNatal, setTotalBasePrefNatal] = useState(0);
   const [totalBasePrefPortoVelho, setTotalBasePrefPortoVelho] = useState(0);
   const [totalBaseGovBA, setTotalBaseGovBA] = useState(0);
+  const [totalBaseGovAM, setTotalBaseGovAM] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
   
   // Pagination State
@@ -133,6 +137,7 @@ export default function ImportBatchPage() {
   
   const [description, setDescription] = useState("");
   const [type, setType] = useState("SIAPE");
+  const [modelSearch, setModelSearch] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [cleaningLog, setCleaningLog] = useState<string[]>([]);
@@ -191,7 +196,7 @@ export default function ImportBatchPage() {
       console.log("Estado da Sessão (fetchTotalBase):", `Logado como ${session.user.email}`);
       console.log("Token JWT (Tamanho):", session.access_token.length);
 
-      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes, govRJRes, prefSaRes, prefContagemRes, govMGRes, govMSRes, prefNatalRes, prefPortoVelhoRes, govBARes] = await Promise.all([
+      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes, govRJRes, prefSaRes, prefContagemRes, govMGRes, govMSRes, prefNatalRes, prefPortoVelhoRes, govBARes, govAMRes] = await Promise.all([
         withRetry(async () => {
           return await supabase
             .from('clientes')
@@ -261,6 +266,11 @@ export default function ImportBatchPage() {
           return await supabase
             .from('governo_ba_clientes')
             .select('*', { count: 'exact', head: true });
+        }),
+        withRetry(async () => {
+          return await supabase
+            .from('governo_am_clientes')
+            .select('*', { count: 'exact', head: true });
         })
       ]);
       
@@ -306,6 +316,9 @@ export default function ImportBatchPage() {
       if (govBARes.error) {
         console.warn("Aviso Supabase (Total GOV BA):", govBARes.error.message);
       }
+      if (govAMRes.error) {
+        console.warn("Aviso Supabase (Total GOV AM):", govAMRes.error.message);
+      }
 
       setTotalBaseSiape(siapeRes.count || 0);
       setTotalBaseGovSP(govSPRes.count || 0);
@@ -321,6 +334,7 @@ export default function ImportBatchPage() {
       setTotalBasePrefNatal(prefNatalRes.count || 0);
       setTotalBasePrefPortoVelho(prefPortoVelhoRes.count || 0);
       setTotalBaseGovBA(govBARes.count || 0);
+      setTotalBaseGovAM(govAMRes.count || 0);
     } catch (err: unknown) {
       const error = err as Error;
       console.warn("Aviso inesperado ao buscar total da base:", error?.message || error);
@@ -397,30 +411,61 @@ export default function ImportBatchPage() {
     return normalized;
   };
 
-  const normalizeDate = (date: string) => {
+  const normalizeDate = (date: string | null | undefined) => {
     if (!date) return null;
-    
-    // Handle DD/MM/YYYY or DD/MM/YY or DD-MM-YYYY
-    const parts = date.split(/[/-]/);
-    if (parts.length === 3) {
-      const day = parts[0].padStart(2, '0');
-      const month = parts[1].padStart(2, '0');
-      let year = parts[2];
-      
-      if (year.length === 2) {
-        const numYear = parseInt(year);
-        year = (numYear > 30 ? "19" : "20") + year;
-      }
-      
-      // If it's already YYYY-MM-DD
-      if (parts[0].length === 4) {
-        return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-      }
-      
-      return `${year}-${month}-${day}`;
+    const trimmed = String(date).trim();
+    if (!trimmed) return null;
+
+    // Reject error strings from Excel / spreadsheets (e.g. #N/DISP, #N/A, #VALUE!, N/I, NULL)
+    const upper = trimmed.toUpperCase();
+    if (upper.includes("#") || upper.includes("DISP") || upper.includes("N/A") || upper.includes("NULL") || upper.includes("UNDEFINED") || upper.includes("NAO") || upper.includes("NÃO")) {
+      return null;
     }
-    
-    return date;
+
+    // Handle ISO date strings (e.g. 2024-05-10T00:00:00.000Z)
+    if (trimmed.includes("T")) {
+      const datePart = trimmed.split("T")[0];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+        return datePart;
+      }
+    }
+
+    // Handle DD/MM/YYYY or DD/MM/YY or DD-MM-YYYY or YYYY-MM-DD
+    const parts = trimmed.split(/[/-]/);
+    if (parts.length === 3) {
+      const p0 = parts[0].trim();
+      const p1 = parts[1].trim();
+      const p2 = parts[2].trim();
+
+      // Check if all parts are numbers
+      const num0 = parseInt(p0, 10);
+      const num1 = parseInt(p1, 10);
+      const num2 = parseInt(p2, 10);
+
+      if (isNaN(num0) || isNaN(num1) || isNaN(num2)) {
+        return null;
+      }
+
+      // If it's already YYYY-MM-DD
+      if (p0.length === 4 && num0 >= 1900 && num0 <= 2100 && num1 >= 1 && num1 <= 12 && num2 >= 1 && num2 <= 31) {
+        return `${p0}-${String(num1).padStart(2, '0')}-${String(num2).padStart(2, '0')}`;
+      }
+
+      // If it's DD/MM/YYYY or DD/MM/YY
+      let year = num2;
+      if (p2.length === 2) {
+        year = year > 30 ? 1900 + year : 2000 + year;
+      }
+
+      const day = num0;
+      const month = num1;
+
+      if (year >= 1900 && year <= 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+    }
+
+    return null;
   };
 
   /**
@@ -2806,6 +2851,137 @@ export default function ImportBatchPage() {
     if (identErr) throw new Error(`Erro ao salvar matrículas BA: ${identErr?.message}`);
   };
 
+  const processGovernoAmChunk = async (chunk: Record<string, unknown>[], currentBatchId: string) => {
+    const normalizedRows = chunk.map(row => {
+      const normRow = normalizeRowKeys(row as Record<string, string | undefined>);
+      return {
+        cpf: normalizeCPF(normRow.cpf || ""),
+        nome: normalizeText(normRow.nome || ""),
+        data_nascimento: normalizeDate(normRow.data_nascimento || normRow.data_de_nascimento || normRow.nascimento || ""),
+        matricula: normalizeText(normRow.matricula || normRow.numero_matricula || normRow.identificacao || ""),
+        orgao: normalizeText(normRow.orgao || "GOVERNO DO AMAZONAS"),
+        secretaria: normalizeText(normRow.secretaria || normRow.lotacao || ""),
+        cargo: normalizeText(normRow.cargo || normRow.funcao || ""),
+        situacao: normalizeText(normRow.situacao || normRow.situacao_funcional || normRow.vinculo || normRow.tipo_vinculo || ""),
+        tipo_servidor: normalizeText(normRow.tipo_servidor || normRow.tipo || ""),
+        margem_consignavel: normalizeMoney(normRow.margem_consignavel || normRow.margem_emprestimo_disponivel || normRow.margem_emprestimo || normRow.margem_disponivel || normRow.margem_liquida || normRow.margem_35 || ""),
+        margem_cartao: normalizeMoney(normRow.margem_cartao || normRow.margem_cartao_consignado || normRow.margem_liquida_cartao || normRow.cartao || normRow.margem_5 || ""),
+        margem_cartao_beneficio: normalizeMoney(normRow.margem_cartao_beneficio || normRow.margem_beneficio || normRow.cartao_beneficio || ""),
+        margem_cartao_beneficio_saque: normalizeMoney(normRow.margem_cartao_beneficio_saque || normRow.margem_saque || normRow.saque || normRow.margem_beneficio_saque || ""),
+        telefone_1: normalizePhone(normRow.telefone || normRow.telefone1 || normRow.telefone_1 || ""),
+        telefone_2: normalizePhone(normRow.telefone2 || normRow.telefone_2 || ""),
+        telefone_3: normalizePhone(normRow.telefone3 || normRow.telefone_3 || "")
+      };
+    }).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('governo_am_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
+
+    const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
+      const v = String(val).trim();
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
+    };
+
+    const clientMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
+      const existingInMap = clientMap.get(row.cpf);
+
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      const data_nascimento = row.data_nascimento || ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const clientRows = Array.from(clientMap.values());
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      return await supabase.from('governo_am_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes AM: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_am_matriculas', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula}`, i]));
+
+    const identMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId || !row.matricula) return;
+
+      const key = `${clientId}_${row.matricula}`;
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
+      const currentInMap = identMap.get(key);
+
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || dbIdent?.orgao || null);
+      const secretaria = !shouldPreserve(row.secretaria) ? row.secretaria : (currentInMap?.secretaria || dbIdent?.secretaria || null);
+      const cargo = !shouldPreserve(row.cargo) ? row.cargo : (currentInMap?.cargo || dbIdent?.cargo || null);
+      const situacao = !shouldPreserve(row.situacao) ? row.situacao : (currentInMap?.situacao || dbIdent?.situacao || null);
+      const tipo_servidor = !shouldPreserve(row.tipo_servidor) ? row.tipo_servidor : (currentInMap?.tipo_servidor || dbIdent?.tipo_servidor || null);
+      const margem_consignavel = !shouldPreserve(row.margem_consignavel) ? row.margem_consignavel : (currentInMap?.margem_consignavel ?? dbIdent?.margem_consignavel ?? null);
+      const margem_cartao = !shouldPreserve(row.margem_cartao) ? row.margem_cartao : (currentInMap?.margem_cartao ?? dbIdent?.margem_cartao ?? null);
+      const margem_cartao_beneficio = !shouldPreserve(row.margem_cartao_beneficio) ? row.margem_cartao_beneficio : (currentInMap?.margem_cartao_beneficio ?? dbIdent?.margem_cartao_beneficio ?? null);
+      const margem_cartao_beneficio_saque = !shouldPreserve(row.margem_cartao_beneficio_saque) ? row.margem_cartao_beneficio_saque : (currentInMap?.margem_cartao_beneficio_saque ?? dbIdent?.margem_cartao_beneficio_saque ?? null);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        matricula: row.matricula,
+        orgao,
+        secretaria,
+        cargo,
+        situacao,
+        tipo_servidor,
+        margem_consignavel,
+        margem_cartao,
+        margem_cartao_beneficio,
+        margem_cartao_beneficio_saque,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const identRows = Array.from(identMap.values());
+    const { error: identErr } = await withRetry(async () => {
+      return await supabase.from('governo_am_matriculas')
+        .upsert(identRows, { onConflict: 'cliente_id,matricula' });
+    });
+
+    if (identErr) throw new Error(`Erro ao salvar matrículas AM: ${identErr?.message}`);
+  };
+
   const handleStartImport = async () => {
     console.log("Botão 'Iniciar Importação' clicado");
     setImportError(null);
@@ -2965,6 +3141,8 @@ export default function ImportBatchPage() {
                 await processPrefeituraPortoVelhoChunk(results.data, currentBatch.id);
               } else if (type === "GOVERNO_BA") {
                 await processGovernoBaChunk(results.data, currentBatch.id);
+              } else if (type === "GOVERNO_AM") {
+                await processGovernoAmChunk(results.data, currentBatch.id);
               }
             });
             
@@ -3048,6 +3226,8 @@ export default function ImportBatchPage() {
               rpcFunctionName = 'refresh_base_consulta_prefeitura_porto_velho';
             } else if (type === 'GOVERNO_BA') {
               rpcFunctionName = 'refresh_base_consulta_governo_ba';
+            } else if (type === 'GOVERNO_AM') {
+              rpcFunctionName = 'refresh_base_consulta_governo_am';
             }
 
             console.log(`Disparando atualização rápida da tabela correspondente: ${rpcFunctionName}`);
@@ -3114,7 +3294,7 @@ export default function ImportBatchPage() {
     ));
   };
 
-  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba') => {
+  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am') => {
     let headers = "";
     let filename = "";
 
@@ -3163,6 +3343,9 @@ export default function ImportBatchPage() {
     } else if (type === 'governo_ba') {
       headers = "cpf,nome,matricula,margem_emprestimo_total,margem_emprestimo_disponivel,orgao,secretaria,situacao,tipo_servidor,telefone";
       filename = "modelo_governo_bahia.csv";
+    } else if (type === 'governo_am') {
+      headers = "cpf,nome,data_nascimento,matricula,orgao,secretaria,cargo,situacao,margem_consignavel,margem_cartao,margem_cartao_beneficio,margem_cartao_beneficio_saque,telefone_1,telefone_2,telefone_3";
+      filename = "modelo_governo_amazonas.csv";
     }
     
     const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
@@ -3210,6 +3393,7 @@ export default function ImportBatchPage() {
                     <option value="PREFEITURA_NATAL">PREFEITURA DE NATAL</option>
                     <option value="PREFEITURA_PORTO_VELHO">PREFEITURA PORTO VELHO</option>
                     <option value="GOVERNO_BA">GOVERNO BAHIA</option>
+                    <option value="GOVERNO_AM">GOVERNO AMAZONAS</option>
                   </select>
                   <Input 
                     value={description}
@@ -3279,161 +3463,71 @@ export default function ImportBatchPage() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Modelos de Importação</p>
-                  <div className="space-y-2">
-                    <button 
-                      onClick={() => downloadCSV('siape')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO SIAPE</p>
-                        <p className="text-[10px] text-slate-400">Dados Pessoais + Matrícula</p>
+                {(() => {
+                  const importModelsList = [
+                    { id: 'siape', title: 'MODELO SIAPE', subtitle: 'Dados Pessoais + Matrícula' },
+                    { id: 'contratos', title: 'MODELO CONTRATOS', subtitle: 'Contratos Ativos' },
+                    { id: 'governo_sp', title: 'MODELO GOVERNO SP', subtitle: 'Base Governo São Paulo' },
+                    { id: 'prefeitura_sp', title: 'MODELO PREFEITURA SP', subtitle: 'Base Prefeitura São Paulo' },
+                    { id: 'governo_pi', title: 'MODELO GOVERNO PIAUÍ', subtitle: 'Base Governo Piauí' },
+                    { id: 'governo_ma', title: 'MODELO GOVERNO MARANHÃO', subtitle: 'Base Governo Maranhão' },
+                    { id: 'governo_rr', title: 'MODELO GOVERNO RORAIMA', subtitle: 'Base Governo Roraima' },
+                    { id: 'governo_rj', title: 'MODELO GOVERNO RIO DE JANEIRO', subtitle: 'Base Governo Rio de Janeiro' },
+                    { id: 'prefeitura_santo_andre', title: 'MODELO PREFEITURA SANTO ANDRÉ', subtitle: 'Base Prefeitura Santo André' },
+                    { id: 'prefeitura_contagem', title: 'MODELO PREFEITURA CONTAGEM', subtitle: 'Base Prefeitura Contagem' },
+                    { id: 'governo_mg', title: 'MODELO GOVERNO MINAS GERAIS', subtitle: 'Base Governo de Minas Gerais' },
+                    { id: 'governo_ms', title: 'MODELO GOVERNO MATO GROSSO DO SUL', subtitle: 'Base Governo de Mato Grosso do Sul' },
+                    { id: 'prefeitura_natal', title: 'MODELO PREFEITURA DE NATAL', subtitle: 'Base Prefeitura de Natal' },
+                    { id: 'prefeitura_porto_velho', title: 'MODELO PREFEITURA DE PORTO VELHO', subtitle: 'Base Prefeitura de Porto Velho' },
+                    { id: 'governo_ba', title: 'MODELO GOVERNO BAHIA', subtitle: 'Base Governo da Bahia' },
+                    { id: 'governo_am', title: 'MODELO GOVERNO AMAZONAS', subtitle: 'Base Governo do Amazonas' },
+                  ] as const;
+
+                  const filteredModels = importModelsList.filter(m =>
+                    m.title.toLowerCase().includes(modelSearch.toLowerCase()) ||
+                    m.subtitle.toLowerCase().includes(modelSearch.toLowerCase())
+                  );
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Modelos de Importação</p>
+                        <span className="text-[9px] font-bold text-slate-400">{filteredModels.length} de {importModelsList.length}</span>
                       </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('contratos')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO CONTRATOS</p>
-                        <p className="text-[10px] text-slate-400">Contratos Ativos</p>
+
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          value={modelSearch}
+                          onChange={(e) => setModelSearch(e.target.value)}
+                          placeholder="Buscar modelo..."
+                          className="h-8 pl-8 pr-3 text-[11px] bg-white border-slate-200"
+                        />
                       </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('governo_sp')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO SP</p>
-                        <p className="text-[10px] text-slate-400">Base Governo São Paulo</p>
+
+                      <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                        {filteredModels.map((model) => (
+                          <button 
+                            key={model.id}
+                            onClick={() => downloadCSV(model.id)}
+                            className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
+                          >
+                            <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary flex-shrink-0" />
+                            <div className="text-left">
+                              <p className="text-[10px] font-bold text-slate-700">{model.title}</p>
+                              <p className="text-[10px] text-slate-400">{model.subtitle}</p>
+                            </div>
+                          </button>
+                        ))}
+                        {filteredModels.length === 0 && (
+                          <div className="p-4 text-center text-slate-400 text-[11px]">
+                            Nenhum modelo encontrado
+                          </div>
+                        )}
                       </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('prefeitura_sp')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO PREFEITURA SP</p>
-                        <p className="text-[10px] text-slate-400">Base Prefeitura São Paulo</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('governo_pi')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO PIAUÍ</p>
-                        <p className="text-[10px] text-slate-400">Base Governo Piauí</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('governo_ma')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO MARANHÃO</p>
-                        <p className="text-[10px] text-slate-400">Base Governo Maranhão</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('governo_rr')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO RORAIMA</p>
-                        <p className="text-[10px] text-slate-400">Base Governo Roraima</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('governo_rj')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO RIO DE JANEIRO</p>
-                        <p className="text-[10px] text-slate-400">Base Governo Rio de Janeiro</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('prefeitura_santo_andre')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO PREFEITURA SANTO ANDRÉ</p>
-                        <p className="text-[10px] text-slate-400">Base Prefeitura Santo André</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('prefeitura_contagem')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO PREFEITURA CONTAGEM</p>
-                        <p className="text-[10px] text-slate-400">Base Prefeitura Contagem</p>
-                      </div>
-                    </button>
-                     <button 
-                      onClick={() => downloadCSV('governo_mg')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO MINAS GERAIS</p>
-                        <p className="text-[10px] text-slate-400">Base Governo de Minas Gerais</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('governo_ms')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO MATO GROSSO DO SUL</p>
-                        <p className="text-[10px] text-slate-400">Base Governo de Mato Grosso do Sul</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('prefeitura_natal')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO PREFEITURA DE NATAL</p>
-                        <p className="text-[10px] text-slate-400">Base Prefeitura de Natal</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('prefeitura_porto_velho')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO PREFEITURA DE PORTO VELHO</p>
-                        <p className="text-[10px] text-slate-400">Base Prefeitura de Porto Velho</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => downloadCSV('governo_ba')}
-                      className="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-primary transition-all group"
-                    >
-                      <FileText className="w-5 h-5 text-slate-300 group-hover:text-primary" />
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-700">MODELO GOVERNO BAHIA</p>
-                        <p className="text-[10px] text-slate-400">Base Governo da Bahia</p>
-                      </div>
-                    </button>
-                  </div>
-                </div>
+                    </div>
+                  );
+                })()}
 
                 {importError && (
                   <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2 animate-in fade-in slide-in-from-top-1">
@@ -3487,7 +3581,7 @@ export default function ImportBatchPage() {
                     </button>
                   </div>
                   <p className="text-[14px] font-black text-slate-900 tracking-tighter">
-                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0) + (totalBaseGovRJ || 0) + (totalBasePrefSa || 0) + (totalBasePrefContagem || 0) + (totalBaseGovMG || 0) + (totalBaseGovMS || 0) + (totalBasePrefNatal || 0) + (totalBasePrefPortoVelho || 0) + (totalBaseGovBA || 0)).toLocaleString('pt-BR')}
+                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0) + (totalBaseGovRJ || 0) + (totalBasePrefSa || 0) + (totalBasePrefContagem || 0) + (totalBaseGovMG || 0) + (totalBaseGovMS || 0) + (totalBasePrefNatal || 0) + (totalBasePrefPortoVelho || 0) + (totalBaseGovBA || 0) + (totalBaseGovAM || 0)).toLocaleString('pt-BR')}
                   </p>
                 </div>
 
@@ -3645,6 +3739,17 @@ export default function ImportBatchPage() {
                       </div>
                       <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-indigo-600 transition-colors">
                         {totalBaseGovBA.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+
+                    {/* GOVERNO AMAZONAS */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">GOV AMAZONAS</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-emerald-700 transition-colors">
+                        {totalBaseGovAM.toLocaleString('pt-BR')}
                       </p>
                     </div>
                   </div>
