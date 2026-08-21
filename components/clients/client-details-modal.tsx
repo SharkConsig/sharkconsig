@@ -148,7 +148,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -797,6 +797,43 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           margem_emprestimo_total: r.margem_emprestimo_total || 0.00,
           margem_emprestimo_disponivel: r.margem_emprestimo_disponivel || 0.00,
           uf: 'BA',
+          instituidores: []
+        }))
+
+        setRegistrations(mappedRegs as unknown as Registration[])
+        setIsLoading(false)
+        return
+      }
+
+      // 14. Try search in Governo AM Clients
+      const { data: amData } = await withRetry<ClientData | null>(async () => 
+        await supabase.from('governo_am_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+      )
+
+      if (amData) {
+        setClient(amData)
+        setClientType('governo_am')
+
+        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
+          await supabase.from('governo_am_matriculas').select('*').eq('cliente_id', (amData as ClientData).id)
+        )
+        if (regError) console.error("Erro ao buscar matrículas Governo AM:", regError)
+
+        const mappedRegs = (regData || []).map((r: Record<string, unknown>) => ({
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          orgao: r.orgao as string | null,
+          secretaria: r.secretaria as string | null,
+          cargo: r.cargo as string | null,
+          situacao: r.situacao as string | null,
+          tipo_servidor: r.tipo_servidor as string | null,
+          margem_consignavel: r.margem_consignavel || 0.00,
+          margem_cartao: r.margem_cartao || 0.00,
+          margem_cartao_beneficio: r.margem_cartao_beneficio || 0.00,
+          margem_cartao_beneficio_saque: r.margem_cartao_beneficio_saque || 0.00,
+          uf: 'AM',
           instituidores: []
         }))
 
@@ -2161,6 +2198,132 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                         <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
                                         <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
                                           {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </>
+                        ) : clientType === 'governo_am' ? (
+                          <>
+                            {/* Governo do Amazonas */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Identificação / Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "GOVERNO DO AMAZONAS"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Secretaria / Cargo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {(((activeReg as unknown as Record<string, unknown>).secretaria as string) || "N/I") + " / " + (((activeReg as unknown as Record<string, unknown>).cargo as string) || "N/I")}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação / Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {(((activeReg as unknown as Record<string, unknown>).situacao as string) || "N/I") + " / " + (((activeReg as unknown as Record<string, unknown>).tipo_servidor as string) || "N/I")}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-6 mt-6">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-3.5 bg-emerald-600 rounded-full"></div>
+                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens Disponíveis</h4>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {/* Margem Consignável */}
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_consignavel) || 0;
+                                  const isPositive = val > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <div>
+                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                          Margem Consignável
+                                        </p>
+                                        <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                          {formatCurrency(val)}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                {/* Margem Cartão (RMC) */}
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_cartao) || 0;
+                                  const isPositive = val > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                    )}>
+                                      <div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                                          Margem Cartão (RMC)
+                                        </p>
+                                        <p className="text-xl font-black text-slate-900">
+                                          {formatCurrency(val)}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                {/* Margem Cartão Benefício (RCC) */}
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_cartao_beneficio) || 0;
+                                  const isPositive = val > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                    )}>
+                                      <div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                                          Margem Cartão Benefício (RCC)
+                                        </p>
+                                        <p className="text-xl font-black text-slate-900">
+                                          {formatCurrency(val)}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                {/* Margem Benefício Saque */}
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_cartao_beneficio_saque) || 0;
+                                  const isPositive = val > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                    )}>
+                                      <div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                                          Margem Benefício Saque
+                                        </p>
+                                        <p className="text-xl font-black text-slate-900">
+                                          {formatCurrency(val)}
                                         </p>
                                       </div>
                                     </div>

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { 
   FileUp, 
@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronDown,
   Settings,
+  Rocket,
   Landmark,
   Calendar,
   Briefcase,
@@ -232,6 +233,9 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const originParam = searchParams.get("origem")
+  const isComeceAquiActive = pathname === "/capacitacao-pj" && originParam === "comece-aqui"
   const { isCollapsed, toggleCollapse, isHovered: contextHovered, setIsHovered: contextSetHovered } = useSidebar()
   const { perfil, user, isAdmin, isRecursosHumanos, isCorretor } = useAuth()
   const isHovered = contextHovered ?? false
@@ -421,7 +425,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   )}
                 >
                   {section.items.map((item) => {
-                    const isActive = pathname === item.href
+                    const isComeceAqui = item.name === "COMECE AQUI"
+                    const isCapacitacaoItem = item.href === "/capacitacao-pj"
+                    const isActive = isComeceAqui
+                      ? isComeceAquiActive
+                      : isCapacitacaoItem
+                      ? pathname === "/capacitacao-pj" && !isComeceAquiActive
+                      : pathname === item.href
+
                     return (
                       <Link
                         key={item.name}
@@ -431,13 +442,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                         className={cn(
                           "flex items-center gap-3 rounded-lg text-[11px] font-semibold transition-all",
                           effectiveCollapsed ? "justify-center p-3" : "px-4 py-3",
-                          isActive 
+                          isComeceAqui
+                            ? "bg-[#19223D] text-white hover:bg-[#222e54] shadow-sm mb-2 font-bold"
+                            : isActive 
                             ? "bg-primary text-white shadow-lg shadow-slate-200" 
                             : "text-slate-500 hover:bg-slate-50 hover:text-primary",
                           item.name === "CONFIGURAÇÕES" && !effectiveCollapsed && "mt-6"
                         )}
                       >
-                        <item.icon className={cn("w-[18px] h-[18px] flex-shrink-0", isActive ? "text-white" : "text-primary")} />
+                        <item.icon className={cn("w-[18px] h-[18px] flex-shrink-0", isComeceAqui ? "text-emerald-400" : isActive ? "text-white" : "text-primary")} />
                         {!effectiveCollapsed && <span>{item.name}</span>}
                       </Link>
                     )

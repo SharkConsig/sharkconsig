@@ -350,16 +350,6 @@ export function Header({ title }: HeaderProps) {
           </button>
         )}
 
-        {isCorretorPJ && (
-          <Link
-            href="/capacitacao-pj"
-            className="h-9 px-4 text-xs font-bold text-white rounded-lg shadow-sm hover:opacity-90 transition-all flex items-center justify-center cursor-pointer whitespace-nowrap"
-            style={{ backgroundColor: "#1C2643" }}
-          >
-            Aprenda e Venda Mais
-          </Link>
-        )}
-
         {!(isRecursosHumanos || perfil?.role === 'Recursos Humanos') && (
           <div className={`hidden md:flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100 mr-2 ${
             isCampanhaAtendimento ? "pointer-events-none opacity-40 cursor-not-allowed select-none" : ""
