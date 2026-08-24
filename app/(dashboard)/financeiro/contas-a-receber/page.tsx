@@ -3493,7 +3493,6 @@ export default function ContasAReceberPage() {
                               const pStatus = getPaymentStatus(proposal.id_lead)
                               const isPjPaid = !!pjPaidProposalIds[proposal.id_lead]
                               const isPJ = isPJProposal(proposal)
-                              const isComissaoRecebida = (activeCardFolder === 'recebida' || activeCardFolder === 'conta_corrente' || pStatus === "RECEBIDO") && isPJ
 
                               return (
                                 <div className="flex items-center justify-center gap-1.5">
@@ -3550,7 +3549,7 @@ export default function ContasAReceberPage() {
                                     </PopoverContent>
                                   </Popover>
 
-                                  {isComissaoRecebida && (
+                                  {isPJ && (
                                     <button
                                       type="button"
                                       onClick={() => handlePjPaidToggle(proposal.id_lead)}
