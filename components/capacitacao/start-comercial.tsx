@@ -68,7 +68,12 @@ interface StageItem {
   secondaryCtaLabel?: string
   secondaryCtaHref?: string
   deepDiveTopicId?: string
-  mockupType: "campanha" | "whatsapp_abertura" | "pesquisa_cliente" | "calculadora_comparativo" | "plano_amortizacao" | "digitacao_proposta" | "dashboard_acompanhamento" | "abrir_chamado_mockup" | "calculadora_dupla_mockup" | "quitacao_cartao"
+  screenshots?: {
+    title: string
+    url: string
+    alt: string
+  }[]
+  mockupType?: "campanha" | "whatsapp_abertura" | "pesquisa_cliente" | "calculadora_comparativo" | "plano_amortizacao" | "digitacao_proposta" | "dashboard_acompanhamento" | "abrir_chamado_mockup" | "calculadora_dupla_mockup" | "quitacao_cartao" | "lista_chamados"
 }
 
 export function StartComercial({ onNavigateToTopic }: { onNavigateToTopic?: (topicId: string) => void }) {
@@ -83,13 +88,14 @@ export function StartComercial({ onNavigateToTopic }: { onNavigateToTopic?: (top
     5: true,
     6: true,
     7: true,
-    8: true
+    8: true,
+    9: true
   })
   const [previewModal, setPreviewModal] = useState<{
     isOpen: boolean
     title: string
-    type: string
-  }>({ isOpen: false, title: "", type: "" })
+    imageUrl: string
+  }>({ isOpen: false, title: "", imageUrl: "" })
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
@@ -132,7 +138,13 @@ export function StartComercial({ onNavigateToTopic }: { onNavigateToTopic?: (top
       ctaLabel: "Ir para Acessar Campanha",
       ctaHref: "/campanhas/distribuicao",
       deepDiveTopicId: "mod_1",
-      mockupType: "campanha"
+      screenshots: [
+        {
+          title: "Tela Acessar Campanha",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/etapa_1_acessar_campanha.png",
+          alt: "Tela Acessar Campanha - SharkConsig"
+        }
+      ]
     },
     {
       id: "stage_2",
@@ -163,7 +175,13 @@ Me chama por aqui que te mostro antes do encerramento nos próximos dias.`,
       ctaLabel: "Ir para Acessar Cliente",
       ctaHref: "/pesquisa",
       deepDiveTopicId: "mod_1",
-      mockupType: "whatsapp_abertura"
+      screenshots: [
+        {
+          title: "Tela Acessar Cliente",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/etapa_2_acessar_cliente.png",
+          alt: "Tela Acessar Cliente - SharkConsig"
+        }
+      ]
     },
     {
       id: "stage_3",
@@ -229,21 +247,27 @@ Me chama por aqui que te mostro antes do encerramento nos próximos dias.`,
       secondaryCtaLabel: "Abrir Chamado",
       secondaryCtaHref: "/chamados/novo",
       deepDiveTopicId: "mod_2",
-      mockupType: "pesquisa_cliente"
+      screenshots: [
+        {
+          title: "Ações Acessar Cliente",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/acoes_acessar_cliente.png",
+          alt: "Ações Acessar Cliente - SharkConsig"
+        }
+      ]
     },
     {
       id: "stage_5",
       number: 5,
-      shortTitle: "Abrir Chamado",
-      title: "5. Abrir Chamado quando Precisar",
-      objective: "Acionar o suporte e análise operacional sempre que precisar de conferência de margem, tirar dúvidas ou enviar documentos.",
-      badgeText: "Apoio Operacional",
+      shortTitle: "Chamados: Abertura & Acompanhamento",
+      title: "5. Abrir e Acompanhar Chamados",
+      objective: "Acionar o suporte e análise operacional sempre que precisar de conferência de margem, tirar dúvidas ou enviar documentos, e acompanhar o status das solicitações.",
+      badgeText: "Apoio & Gestão Operacional",
       badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
       steps: [
-        "Conferência de margem no dia.",
-        "Dúvida sobre demanda/caso do cliente.",
-        "Envio de contracheque ou outros documentos para análise.",
-        "Selecionar origem, escolher a margem da operação, escrever observação e enviar."
+        "Abertura rápida: conferência de margem no dia, dúvidas sobre demandas ou envio de documentos para análise.",
+        "Acesse o link CHAMADOS na barra lateral para acompanhar o andamento.",
+        "Navegue entre as abas de status do chamado (ABERTO, APROVADOS, EM NEGOCIAÇÃO).",
+        "Aprovados: visão/atalho por órgãos; Em negociação: substatus para saber onde o cliente parou."
       ],
       copies: [
         {
@@ -258,7 +282,18 @@ Me chama por aqui que te mostro antes do encerramento nos próximos dias.`,
       secondaryCtaLabel: "Ver Chamados",
       secondaryCtaHref: "/chamados",
       deepDiveTopicId: "mod_2",
-      mockupType: "abrir_chamado_mockup"
+      screenshots: [
+        {
+          title: "Abrir Chamado",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/abrir_chamado.png",
+          alt: "Abrir Chamado - SharkConsig"
+        },
+        {
+          title: "Acompanhamento dos Chamados",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/lista_chamados.png",
+          alt: "Acompanhamento dos Chamados - SharkConsig"
+        }
+      ]
     },
     {
       id: "stage_6",
@@ -309,7 +344,18 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
       ctaLabel: "Ir para a Calculadora",
       ctaHref: "/calculadora",
       deepDiveTopicId: "mod_3",
-      mockupType: "calculadora_dupla_mockup"
+      screenshots: [
+        {
+          title: "Calculadora Comercial",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/calculadora.png",
+          alt: "Calculadora Comercial - SharkConsig"
+        },
+        {
+          title: "Comparativo Visual",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/comparativos.png",
+          alt: "Comparativo Visual - SharkConsig"
+        }
+      ]
     },
     {
       id: "stage_7",
@@ -334,7 +380,13 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
       ctaLabel: "Acessar Calculadora / Planos",
       ctaHref: "/calculadora",
       deepDiveTopicId: "mod_3",
-      mockupType: "plano_amortizacao"
+      screenshots: [
+        {
+          title: "Plano de Amortização",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/plano_amort.png",
+          alt: "Plano de Amortização - SharkConsig"
+        }
+      ]
     },
     {
       id: "stage_8",
@@ -357,26 +409,31 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
           whyUse: "Permite que o corretor conheça a dinâmica de quitação de cartão sem sobrecarregar a fase inicial de prospecção."
         }
       ],
-      toAvoid: "Não calcular saldos de forma manual sem conferir as margens oficiais no sistema e não prometer prazos de quitação sem antes simular a operação.",
-      ctaLabel: "Ir para Acessar Cliente",
+      toAvoid: "",
+      ctaLabel: "Buscar Cliente no Sistema",
       ctaHref: "/pesquisa",
       deepDiveTopicId: "mod_2",
-      mockupType: "quitacao_cartao"
+      screenshots: [
+        {
+          title: "Quitação de Cartão",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/proposta_reducao_RENATO_MENDES_CASTRO.jpg",
+          alt: "Quitação de Cartão - SharkConsig"
+        }
+      ]
     },
     {
       id: "stage_9",
       number: 9,
-      shortTitle: "Digitação & Acompanhamento",
-      title: "9. Coleta de Documentos, Digitação e Acompanhamento",
+      shortTitle: "Transforme Interesse em Ação",
+      title: "9. Cliente Gostou? Transforme Interesse em Ação",
       objective: "Transformar o aceite em ação rápida, solicitar os documentos corretos, digitar na tabela mais vantajosa e acompanhar a esteira no Dashboard.",
       badgeText: "Formalização & Fechamento",
       badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
       steps: [
         "Assim que o cliente aceitar, dispare o script de coleta de documentos.",
-        "Acesse Digitar Proposta (/propostas/nova), selecione o tipo de operação, convênio e tabela com melhor comissão/prazo.",
+        "Acesse Digitar Proposta, selecione o tipo de operação, convênio e tabela com melhor comissão/prazo para abrir a digitação.",
         "Preencha os dados e anexe os documentos com qualidade (RG/CNH frente e verso, contracheque).",
-        "Acompanhe a evolução de status no Dashboard (Digitação, Em Andamento, Pago ao Cliente, Cancelados).",
-        "Se o cliente parar de responder após a proposta, aplique o script de retomada."
+        "Acompanhe a esteira de propostas e utilize a mensagem de retomada caso o cliente pare."
       ],
       copies: [
         {
@@ -385,18 +442,34 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
           whyUse: "Cria senso de urgência saudável e direciona o cliente para o próximo passo prático."
         },
         {
-          label: "Mensagem de Retomada (Cliente que parou)",
+          label: "Retomada — Cliente Parou",
           text: `Consegui deixar sua análise separada aqui. Antes de encerrar, quer que eu te envie novamente o comparativo que montamos ou ficou alguma dúvida na condição?`,
-          whyUse: "Reabre a conversa de forma educada, resgatando a oportunidade sem ser invasivo."
+          whyUse: "Reabre a conversa de forma consultiva e sem pressão para destravar a proposta."
         }
       ],
-      toAvoid: "Não espere horas para pedir os documentos após o aceite. Não deixe o lead sem tabulação. Caso haja pendência operacional, use os chamados para resolver rapidamente.",
-      ctaLabel: "Digitar Nova Proposta",
+      toAvoid: "",
+      ctaLabel: "Ir para Digitar Proposta",
       ctaHref: "/propostas/nova",
-      secondaryCtaLabel: "Acompanhar no Dashboard",
-      secondaryCtaHref: "/",
+      secondaryCtaLabel: "Acompanhar Propostas",
+      secondaryCtaHref: "/propostas",
       deepDiveTopicId: "mod_2",
-      mockupType: "digitacao_proposta"
+      screenshots: [
+        {
+          title: "Referência Visual da Tela Passo 2",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/digitar_proposta.png",
+          alt: "Digitar Proposta - SharkConsig"
+        },
+        {
+          title: "Referência Visual da Tela Passo 3",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/digitar_proposta_2.png",
+          alt: "Digitar Proposta 2 - SharkConsig"
+        },
+        {
+          title: "Referência Visual da Tela Passo 4",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/propostas.png",
+          alt: "Acompanhamento de Propostas - SharkConsig"
+        }
+      ]
     }
   ]
 
@@ -515,13 +588,23 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
 
       case "abrir_chamado_mockup":
         return (
-          <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/abrir_chamado.png"
-              alt="Abrir Chamado - SharkConsig"
-              className="w-full h-auto object-contain rounded-lg block"
-            />
+          <div className="space-y-3">
+            <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/abrir_chamado.png"
+                alt="Abrir Chamado - SharkConsig"
+                className="w-full h-auto object-contain rounded-lg block"
+              />
+            </div>
+            <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/lista_chamados.png"
+                alt="Acompanhamento dos Chamados - SharkConsig"
+                className="w-full h-auto object-contain rounded-lg block"
+              />
+            </div>
           </div>
         )
 
@@ -637,38 +720,35 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
 
       case "digitacao_proposta":
         return (
-          <div className="bg-slate-900 text-white rounded-xl p-4 font-sans text-xs border border-slate-700 space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <span className="font-extrabold text-[11px] uppercase tracking-wider text-slate-300">
-                Digitação de Proposta — Escolha da Tabela
-              </span>
-              <span className="text-[10px] text-emerald-400 font-bold">GOVERNO SP • CARTÃO C/ SAQUE</span>
+          <div className="space-y-3">
+            <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/digitar_proposta.png"
+                alt="Digitar Proposta - SharkConsig"
+                className="w-full h-auto object-contain rounded-lg block"
+              />
             </div>
-
-            <div className="space-y-1.5">
-              <div className="p-2 bg-emerald-950/50 border border-emerald-500/50 rounded-lg flex items-center justify-between">
-                <div>
-                  <strong className="text-white text-xs block">BANCO SENFF</strong>
-                  <span className="text-[9px] text-slate-300">Comissão: <strong className="text-emerald-400">14,5%</strong> • Prazo: 96x</span>
-                </div>
-                <Badge className="bg-emerald-600 text-white text-[9px]">
-                  SELECIONADO
-                </Badge>
-              </div>
-
-              <div className="p-2 bg-slate-800/60 border border-slate-700 rounded-lg flex items-center justify-between opacity-80">
-                <div>
-                  <strong className="text-slate-300 text-xs block">BANCO SENFF</strong>
-                  <span className="text-[9px] text-slate-400">Comissão: 12,0% • Prazo: 84x</span>
-                </div>
-                <span className="text-[10px] text-slate-400">0.04401</span>
-              </div>
+            <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/digitar_proposta_2.png"
+                alt="Digitar Proposta 2 - SharkConsig"
+                className="w-full h-auto object-contain rounded-lg block"
+              />
             </div>
+          </div>
+        )
 
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-1 text-[10px]">
-              <span className="text-slate-400 block font-bold">DOCUMENTOS NECESSÁRIOS</span>
-              <p className="text-slate-300">✓ RG ou CNH (frente e verso) • ✓ Último contracheque • ✓ Comprovante de residência</p>
-            </div>
+      case "lista_chamados":
+        return (
+          <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/lista_chamados.png"
+              alt="Acompanhamento dos Chamados - SharkConsig"
+              className="w-full h-auto object-contain rounded-lg block"
+            />
           </div>
         )
 
@@ -769,9 +849,10 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                   <h3 className="text-lg md:text-xl font-black text-slate-900">
                     {stage.title}
                   </h3>
-                  <p className="text-xs md:text-sm text-slate-600 font-medium flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                    <strong>{stage.objectiveLabel || "Objetivo"}:</strong> {stage.objective}
+                  <p className="text-xs md:text-sm text-slate-600 font-medium leading-relaxed">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2 align-middle" />
+                    <strong className="text-slate-800 font-bold">{stage.objectiveLabel || "Objetivo"}:</strong>{" "}
+                    {stage.objective}
                   </p>
                 </div>
 
@@ -819,83 +900,85 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                       </div>
 
                       {/* O Que Falar / Ações da Etapa */}
-                      <div className="space-y-3">
-                        {stage.number !== 1 && stage.number !== 5 && stage.number !== 8 && (
-                          <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                            <MessageSquare className="w-4 h-4 text-emerald-600" />
-                            O que Falar (Script / Copy Pronta)
-                          </span>
-                        )}
-
+                      {stage.copies.length > 0 && (
                         <div className="space-y-3">
-                          {stage.copies.map((copyItem, cIdx) => {
-                            const copyId = `${stage.id}_copy_${cIdx}`
-                            const isCopied = copiedText === copyId
-                            const isStage1 = stage.number === 1
-                            const isStage5 = stage.number === 5
-                            const isStage8 = stage.number === 8
+                          {stage.number !== 1 && stage.number !== 5 && stage.number !== 8 && (
+                            <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                              <MessageSquare className="w-4 h-4 text-emerald-600" />
+                              O que Falar (Script / Copy Pronta)
+                            </span>
+                          )}
 
-                            return (
-                              <React.Fragment key={cIdx}>
-                                {copyItem.sectionHeader && (
-                                  <div className="pt-2">
-                                    <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                                      <MessageSquare className="w-4 h-4 text-emerald-600" />
-                                      {copyItem.sectionHeader}
-                                    </span>
-                                  </div>
-                                )}
-                                <div 
-                                  className="bg-[#f0f9f5] border border-emerald-200 rounded-2xl p-4 space-y-3 relative group"
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded">
-                                      {copyItem.label}
-                                    </span>
+                          <div className="space-y-3">
+                            {stage.copies.map((copyItem, cIdx) => {
+                              const copyId = `${stage.id}_copy_${cIdx}`
+                              const isCopied = copiedText === copyId
+                              const isStage1 = stage.number === 1
+                              const isStage5 = stage.number === 5
+                              const isStage8 = stage.number === 8
 
-                                    {!isStage1 && !isStage5 && !isStage8 && (
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        onClick={() => copyToClipboard(copyItem.text, copyId)}
-                                        className={cn(
-                                          "h-7 px-2.5 text-[10px] font-black gap-1.5 transition-all",
-                                          isCopied 
-                                            ? "bg-emerald-600 text-white hover:bg-emerald-700" 
-                                            : "bg-slate-900 hover:bg-slate-800 text-white"
-                                        )}
-                                      >
-                                        {isCopied ? (
-                                          <>
-                                            <CheckCheck className="w-3 h-3 text-white" />
-                                            Copiado!
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Copy className="w-3 h-3" />
-                                            Copiar Mensagem
-                                          </>
-                                        )}
-                                      </Button>
+                              return (
+                                <React.Fragment key={cIdx}>
+                                  {copyItem.sectionHeader && (
+                                    <div className="pt-2">
+                                      <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                                        <MessageSquare className="w-4 h-4 text-emerald-600" />
+                                        {copyItem.sectionHeader}
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div 
+                                    className="bg-[#f0f9f5] border border-emerald-200 rounded-2xl p-4 space-y-3 relative group"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded">
+                                        {copyItem.label}
+                                      </span>
+
+                                      {!isStage1 && !isStage5 && !isStage8 && (
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          onClick={() => copyToClipboard(copyItem.text, copyId)}
+                                          className={cn(
+                                            "h-7 px-2.5 text-[10px] font-black gap-1.5 transition-all",
+                                            isCopied 
+                                              ? "bg-emerald-600 text-white hover:bg-emerald-700" 
+                                              : "bg-slate-900 hover:bg-slate-800 text-white"
+                                          )}
+                                        >
+                                          {isCopied ? (
+                                            <>
+                                              <CheckCheck className="w-3 h-3 text-white" />
+                                              Copiado!
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Copy className="w-3 h-3" />
+                                              Copiar Mensagem
+                                            </>
+                                          )}
+                                        </Button>
+                                      )}
+                                    </div>
+
+                                    <div className="bg-white p-3.5 rounded-xl border border-emerald-100/80 shadow-2xs font-sans font-bold text-xs text-slate-900 whitespace-pre-line leading-relaxed select-text">
+                                      {copyItem.text}
+                                    </div>
+
+                                    {copyItem.whyUse && (
+                                      <p className="text-[13px] text-emerald-900/90 font-medium leading-relaxed">
+                                        <span className="font-extrabold text-emerald-800 mr-1.5">Por que usar:</span>
+                                        {copyItem.whyUse}
+                                      </p>
                                     )}
                                   </div>
-
-                                  <div className="bg-white p-3.5 rounded-xl border border-emerald-100/80 shadow-2xs font-sans font-bold text-xs text-slate-900 whitespace-pre-line leading-relaxed select-text">
-                                    {copyItem.text}
-                                  </div>
-
-                                  {copyItem.whyUse && (
-                                    <p className="text-[13px] text-emerald-900/90 font-medium leading-relaxed">
-                                      <span className="font-extrabold text-emerald-800 mr-1.5">Por que usar:</span>
-                                      {copyItem.whyUse}
-                                    </p>
-                                  )}
-                                </div>
-                              </React.Fragment>
-                            )
-                          })}
+                                </React.Fragment>
+                              )
+                            })}
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* What to Show (when available) */}
                       {stage.whatToShow && (
@@ -936,47 +1019,68 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                     {/* RIGHT COLUMN: Screen Mockup & Action CTAs (5 cols) */}
                     <div className="lg:col-span-5 space-y-4">
                       
-                      {/* Screen Preview Container */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          {stage.number !== 3 ? (
-                            <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
-                              <Eye className="w-3.5 h-3.5 text-slate-600" />
-                              {stage.number === 8 ? "REFERÊNCIA VISUAL" : "Referência Visual da Tela"}
-                            </span>
-                          ) : (
-                            <span />
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setPreviewModal({
-                              isOpen: true,
-                              title: stage.title,
-                              type: stage.mockupType
-                            })}
-                            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
-                          >
-                            <ZoomIn className="w-3 h-3" />
-                            Ampliar
-                          </button>
-                        </div>
+                      {/* Screen Preview Container (Single or Multiple Distinct Cards) */}
+                      {stage.screenshots && stage.screenshots.length > 0 ? (
+                        <div className="space-y-3">
+                          {stage.screenshots.map((screen, sIdx) => (
+                            <div key={sIdx} className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                                  <Eye className="w-3.5 h-3.5 text-slate-600" />
+                                  {stage.screenshots!.length > 1
+                                    ? screen.title
+                                    : stage.number === 8
+                                      ? "REFERÊNCIA VISUAL"
+                                      : "Referência Visual da Tela"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewModal({
+                                    isOpen: true,
+                                    title: screen.title,
+                                    imageUrl: screen.url
+                                  })}
+                                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <ZoomIn className="w-3 h-3" />
+                                  Ampliar
+                                </button>
+                              </div>
 
-                        <div 
-                          onClick={() => setPreviewModal({
-                            isOpen: true,
-                            title: stage.title,
-                            type: stage.mockupType
-                          })}
-                          className="cursor-pointer group relative rounded-xl overflow-hidden transition-all hover:ring-2 hover:ring-emerald-500"
-                        >
-                          {renderScreenMockup(stage.mockupType)}
-                          <div className="absolute inset-0 bg-slate-900/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                            <span className="bg-slate-950/80 text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow">
-                              <ZoomIn className="w-3 h-3" /> Clique para Inspecionar
-                            </span>
+                              <div 
+                                onClick={() => setPreviewModal({
+                                  isOpen: true,
+                                  title: screen.title,
+                                  imageUrl: screen.url
+                                })}
+                                className="cursor-pointer group relative rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white transition-all hover:ring-2 hover:ring-emerald-500"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={screen.url}
+                                  alt={screen.alt}
+                                  className="w-full h-auto object-contain rounded-lg block"
+                                />
+                                <div className="absolute inset-0 bg-slate-900/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                  <span className="bg-slate-950/80 text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow">
+                                    <ZoomIn className="w-3 h-3" /> Clique para Inspecionar
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : stage.mockupType ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span />
+                          </div>
+
+                          <div className="rounded-xl overflow-hidden transition-all">
+                            {renderScreenMockup(stage.mockupType)}
                           </div>
                         </div>
-                      </div>
+                      ) : null}
 
                       {/* Action Shortcuts & Deep Dive */}
                       <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
@@ -1034,7 +1138,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
         })}
       </div>
 
-      {/* Screen Zoom Modal */}
+      {/* Screen Zoom Modal (Single clicked image) */}
       {previewModal.isOpen && (
         <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 rounded-2xl max-w-3xl w-full border border-slate-700 overflow-hidden shadow-2xl space-y-4 p-6">
@@ -1049,15 +1153,22 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
               </div>
               <button
                 type="button"
-                onClick={() => setPreviewModal({ isOpen: false, title: "", type: "" })}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                onClick={() => setPreviewModal({ isOpen: false, title: "", imageUrl: "" })}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="py-2">
-              {renderScreenMockup(previewModal.type, true)}
+              <div className="rounded-xl overflow-hidden border border-slate-700 shadow-sm bg-white max-h-[70vh] flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewModal.imageUrl}
+                  alt={previewModal.title}
+                  className="w-full h-auto max-h-[70vh] object-contain rounded-lg block"
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-800">
@@ -1067,7 +1178,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
               <Button
                 type="button"
                 size="sm"
-                onClick={() => setPreviewModal({ isOpen: false, title: "", type: "" })}
+                onClick={() => setPreviewModal({ isOpen: false, title: "", imageUrl: "" })}
                 className="bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs"
               >
                 Fechar Visualização
