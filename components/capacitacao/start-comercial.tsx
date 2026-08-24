@@ -47,10 +47,12 @@ interface StageItem {
   title: string
   shortTitle: string
   objective: string
+  objectiveLabel?: string
   badgeText: string
   badgeColor: string
   steps: string[]
   copies: {
+    sectionHeader?: string
     label: string
     text: string
     whyUse?: string
@@ -66,7 +68,7 @@ interface StageItem {
   secondaryCtaLabel?: string
   secondaryCtaHref?: string
   deepDiveTopicId?: string
-  mockupType: "campanha" | "whatsapp_abertura" | "pesquisa_cliente" | "calculadora_comparativo" | "plano_amortizacao" | "digitacao_proposta" | "dashboard_acompanhamento"
+  mockupType: "campanha" | "whatsapp_abertura" | "pesquisa_cliente" | "calculadora_comparativo" | "plano_amortizacao" | "digitacao_proposta" | "dashboard_acompanhamento" | "abrir_chamado_mockup" | "calculadora_dupla_mockup" | "quitacao_cartao"
 }
 
 export function StartComercial({ onNavigateToTopic }: { onNavigateToTopic?: (topicId: string) => void }) {
@@ -79,7 +81,9 @@ export function StartComercial({ onNavigateToTopic }: { onNavigateToTopic?: (top
     3: true,
     4: true,
     5: true,
-    6: true
+    6: true,
+    7: true,
+    8: true
   })
   const [previewModal, setPreviewModal] = useState<{
     isOpen: boolean
@@ -156,8 +160,8 @@ Me chama por aqui que te mostro antes do encerramento nos próximos dias.`,
         }
       ],
       toAvoid: "Mensagem ativa precisa parecer conversa de WhatsApp, nunca disparo publicitário frio. Evite abrir com textos longos ou listas de tabelas de bancos.",
-      ctaLabel: "Ver Contatos na Campanha",
-      ctaHref: "/campanhas",
+      ctaLabel: "Ir para Acessar Cliente",
+      ctaHref: "/pesquisa",
       deepDiveTopicId: "mod_1",
       mockupType: "whatsapp_abertura"
     },
@@ -184,7 +188,7 @@ Me chama por aqui que te mostro antes do encerramento nos próximos dias.`,
         {
           label: "Se ele disser que já recebeu outra proposta",
           text: `Entendi. Você lembra mais ou menos o valor e em quantas parcelas ficou? Quero comparar com a condição que abriu aqui para você.`,
-          whyUse: "Permite usar a mesma referência para comprovar a vantagem do SharkConsig."
+          whyUse: "Permite usar a mesma referência para comprovar a vantagem da Acerto Fácil."
         },
         {
           label: "Para identificar a prioridade do cliente",
@@ -196,7 +200,7 @@ Me chama por aqui que te mostro antes do encerramento nos próximos dias.`,
       ctaLabel: "Ir para Acessar Cliente",
       ctaHref: "/pesquisa",
       deepDiveTopicId: "mod_1",
-      mockupType: "pesquisa_cliente"
+      mockupType: "whatsapp_sondagem"
     },
     {
       id: "stage_4",
@@ -204,11 +208,11 @@ Me chama por aqui que te mostro antes do encerramento nos próximos dias.`,
       shortTitle: "Consultar Margem",
       title: "4. Consultar antes de prometer",
       objective: "Conferir a margem e o perfil no SharkConsig antes de formalizar valores ao cliente.",
-      badgeText: "Conferência de Sistema",
+      badgeText: "Conferência no Sistema",
       badgeColor: "bg-amber-50 text-amber-700 border-amber-200",
       steps: [
         "No menu Acessar Cliente (/pesquisa), busque por CPF ou telefone completo.",
-        "Analise margem consignável, margem facultativa e contratos averbados.",
+        "Analise margem consignável, cartões e contratos ativos.",
         "Utilize os atalhos rápidos no rodapé: Simular Proposta, Abrir Chamado ou Digitar Proposta.",
         "Se o cliente não for localizado na base: use Abrir Chamado e informe os dados manualmente."
       ],
@@ -222,7 +226,7 @@ Me chama por aqui que te mostro antes do encerramento nos próximos dias.`,
       toAvoid: "Nunca prometa valores de cabeça sem consultar o sistema. Não transforme todo atendimento em burocracia; use chamados para análise e decisão rápida.",
       ctaLabel: "Buscar Cliente no Sistema",
       ctaHref: "/pesquisa",
-      secondaryCtaLabel: "Abrir Chamado / Dúvida",
+      secondaryCtaLabel: "Abrir Chamado",
       secondaryCtaHref: "/chamados/novo",
       deepDiveTopicId: "mod_2",
       mockupType: "pesquisa_cliente"
@@ -230,16 +234,45 @@ Me chama por aqui que te mostro antes do encerramento nos próximos dias.`,
     {
       id: "stage_5",
       number: 5,
-      shortTitle: "Envio da Proposta",
-      title: "5. A Prévia Visual — Parte Central da Conversa",
-      objective: "Depois de calcular, não mandar um textão. Enviar uma frase curta + IMAGEM DO COMPARATIVO + leitura simples do resultado.",
-      badgeText: "Apresentação de Alto Impacto",
+      shortTitle: "Abrir Chamado",
+      title: "5. Abrir Chamado quando Precisar",
+      objective: "Acionar o suporte e análise operacional sempre que precisar de conferência de margem, tirar dúvidas ou enviar documentos.",
+      badgeText: "Apoio Operacional",
+      badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
+      steps: [
+        "Conferência de margem no dia.",
+        "Dúvida sobre demanda/caso do cliente.",
+        "Envio de contracheque ou outros documentos para análise.",
+        "Selecionar origem, escolher a margem da operação, escrever observação e enviar."
+      ],
+      copies: [
+        {
+          label: "Regra",
+          text: `Chamado é suporte para análise e decisão. Não transformar todo atendimento em burocracia.`,
+          whyUse: "Garante agilidade no atendimento e aciona a retaguarda somente quando houver real necessidade técnica ou conferência documental."
+        }
+      ],
+      toAvoid: "Não fique com dúvidas ou deixe o cliente esperando sem resposta. Utilize o chamado para destravar a esteira com agilidade.",
+      ctaLabel: "Abrir Chamado",
+      ctaHref: "/chamados/novo",
+      secondaryCtaLabel: "Ver Chamados",
+      secondaryCtaHref: "/chamados",
+      deepDiveTopicId: "mod_2",
+      mockupType: "abrir_chamado_mockup"
+    },
+    {
+      id: "stage_6",
+      number: 6,
+      shortTitle: "Calcular & Comparar",
+      title: "6. Calcular e Escolher o que Mostrar",
+      objective: "Proporcionar uma forma simples de o cliente enxergar vantagem.",
+      badgeText: "Simulação de Alto Impacto",
       badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
       steps: [
-        "Acesse a Calculadora (/calculadora) e simule a melhor condição (12x, 24x ou plano inteligente).",
-        "Gere a imagem do comparativo ou PDF visual paisagem destacando a economia.",
+        "Acesse a Calculadora e simule a melhor condição (12x, 24x).",
+        "Gere a imagem do comparativo clicando no botão 'Comparar'.",
         "Envie no WhatsApp a frase curta de introdução + a imagem do comparativo.",
-        "Envie o texto de leitura simples do resultado conduzindo para o fechamento."
+        "Envie o texto de leitura simples do resultado conduzindo a negociação."
       ],
       copies: [
         {
@@ -255,6 +288,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
           whyUse: "A imagem carrega a comparação complexa; a mensagem destaca só a vantagem principal e termina com pergunta de fechamento."
         },
         {
+          sectionHeader: "Como Escolher a Ênfase da Mensagem",
           label: "Variação: Se o cliente quer mais valor",
           text: `Consegui estruturar uma condição que aproveita melhor a margem disponível. Nesse cenário, o ponto forte é o valor que conseguimos colocar na mão sem alongar a estratégia além do necessário.`
         },
@@ -271,60 +305,69 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
           text: `Nesse cenário que te apresentei, a taxa prática fica em 0,96% ao mês.`
         }
       ],
-      whatToShow: {
-        title: "Estrutura do Comparativo Visual",
-        description: "Envie o comparativo de 3 blocos simples:",
-        items: [
-          "Bloco 1: 12 Meses (R$ Liberado, Parcela Média, Taxa 0,82%, Economia Total)",
-          "Bloco 2: 24 Meses (R$ Liberado, Parcela Média, Taxa 0,96%, Economia Total)",
-          "Bloco 3: 96 Meses Tradicional (R$ Liberado, Parcela Alta, Taxa 4,03%, Custo Elevado)"
-        ]
-      },
       toAvoid: "Não transforme a resposta em explicação técnica com cálculos de juros compostos ou tabela cheia de números. Responda o que foi perguntado e conduza o próximo passo.",
-      ctaLabel: "Abrir Calculadora Comercial",
+      ctaLabel: "Ir para a Calculadora",
       ctaHref: "/calculadora",
       deepDiveTopicId: "mod_3",
-      mockupType: "calculadora_comparativo"
+      mockupType: "calculadora_dupla_mockup"
     },
     {
-      id: "stage_6",
-      number: 6,
+      id: "stage_7",
+      number: 7,
       shortTitle: "Plano & Amortização",
-      title: "6. Comparativo Primeiro. Plano Depois (Se necessário)",
+      title: "7. Comparativo Primeiro. Plano Depois (Se necessário)",
       objective: "Apresentar o Plano de Amortização apenas se o cliente pedir detalhamento de parcelas/prazos ou para gerar mais segurança.",
       badgeText: "Aprofundamento Técnico",
       badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
       steps: [
-        "Mantenha a estratégia de 2 camadas: Camada 1 = Comparativo Visual; Camada 2 = Plano de Amortização.",
         "Abra o plano somente se houver dúvida acentuada sobre a parcela média, valor de liberação alto ou pedido expresso de detalhamento.",
-        "Explique a mecânica de quitação das últimas parcelas com o código de barras com total transparência.",
-        "Se surgir dúvida técnica que você não domina: abra chamado de apoio no SharkConsig imediatamente."
+        "Explique a mecânica de quitação das últimas parcelas com o código de barras com total transparência."
       ],
       copies: [
         {
           label: "Explicação Simples do Plano de Amortização",
           text: `Você vai observar que a parcela fixa é menor do que a que mencionei. A partir do 4º mês você tem o código de barras do banco para a diferença. Seguindo a programação, a estratégia encerra no prazo apresentado.`,
           whyUse: "Descomplica a engenharia financeira sem gerar medo de complexidade."
-        },
-        {
-          label: "Se o cliente pedir mais segurança",
-          text: `Posso te mostrar o comparativo e, se quiser, também o plano completo de como essa estrutura encerra. Assim você confere os números antes de formalizar.`,
-          whyUse: "Garante transparência total sem assustar o cliente no início."
         }
       ],
-      toAvoid: "Não jogue o plano de amortização completo logo no primeiro contato. Ele é uma ferramenta de fechamento e segurança, não a porta de entrada da venda.",
+      toAvoid: "Não jogar o plano completo no primeiro contato. Ele é uma ferramenta de aprofundamento, não a abertura da venda.",
       ctaLabel: "Acessar Calculadora / Planos",
       ctaHref: "/calculadora",
-      secondaryCtaLabel: "Pedir Apoio em Chamado",
-      secondaryCtaHref: "/chamados/novo",
       deepDiveTopicId: "mod_3",
       mockupType: "plano_amortizacao"
     },
     {
-      id: "stage_7",
-      number: 7,
+      id: "stage_8",
+      number: 8,
+      shortTitle: "Quitação de Cartão",
+      title: "8. Quitação de Cartão",
+      objective: "Se a proposta for quitação de cartão, a liberação ocorre pela margem facultativa, liberando valor para quitar o saldo.",
+      objectiveLabel: "Quando",
+      badgeText: "Operação Especial",
+      badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
+      steps: [
+        "Saldo prévio: margem bruta do benefício – margem líquida = margem averbada.",
+        "Margem averbada × 16,6667 = saldo devedor prévio.",
+        "Em Acessar Cliente → Simular Proposta → usar a opção Quitação para criar a apresentação visual."
+      ],
+      copies: [
+        {
+          label: "Capacitação",
+          text: `A montagem detalhada da proposta e particularidades ficam em treinamento específico, indicado depois que a pessoa já iniciou a prospecção.`,
+          whyUse: "Permite que o corretor conheça a dinâmica de quitação de cartão sem sobrecarregar a fase inicial de prospecção."
+        }
+      ],
+      toAvoid: "Não calcular saldos de forma manual sem conferir as margens oficiais no sistema e não prometer prazos de quitação sem antes simular a operação.",
+      ctaLabel: "Ir para Acessar Cliente",
+      ctaHref: "/pesquisa",
+      deepDiveTopicId: "mod_2",
+      mockupType: "quitacao_cartao"
+    },
+    {
+      id: "stage_9",
+      number: 9,
       shortTitle: "Digitação & Acompanhamento",
-      title: "7. Coleta de Documentos, Digitação e Acompanhamento",
+      title: "9. Coleta de Documentos, Digitação e Acompanhamento",
       objective: "Transformar o aceite em ação rápida, solicitar os documentos corretos, digitar na tabela mais vantajosa e acompanhar a esteira no Dashboard.",
       badgeText: "Formalização & Fechamento",
       badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -365,7 +408,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
           <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/images/mockups/acessar-campanha.png"
+              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/etapa_1_acessar_campanha.png"
               alt="Tela Acessar Campanha - SharkConsig"
               className="w-full h-auto object-contain rounded-lg block"
             />
@@ -374,41 +417,85 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
 
       case "whatsapp_abertura":
         return (
-          <div className="bg-[#0b141a] text-slate-100 rounded-xl p-4 font-sans text-xs border border-emerald-900/40 space-y-3">
-            <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-              <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-white font-black text-[10px]">
-                D
+          <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/etapa_2_acessar_cliente.png"
+              alt="Tela Acessar Cliente - SharkConsig"
+              className="w-full h-auto object-contain rounded-lg block"
+            />
+          </div>
+        )
+
+      case "whatsapp_sondagem":
+        return (
+          <div className="bg-[#0b141a] text-slate-100 rounded-xl p-4 font-sans text-xs border border-emerald-900/40 space-y-3 shadow-sm">
+            <div className="flex items-center gap-2.5 border-b border-slate-800 pb-2.5">
+              <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center text-white font-black text-[11px] shadow-xs">
+                C
               </div>
-              <div>
-                <p className="font-bold text-slate-200 text-xs">Douglas (Cliente Servidor)</p>
-                <span className="text-[9px] text-emerald-400">online</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-slate-200 text-xs truncate">Cliente (Servidor Público)</p>
+                <span className="text-[10px] text-emerald-400 font-medium">online</span>
               </div>
             </div>
 
-            <div className="space-y-2">
-              {/* Sent Bubble */}
-              <div className="bg-[#005c4b] text-slate-100 p-3 rounded-2xl rounded-tr-none ml-auto max-w-[90%] shadow-md space-y-1.5">
-                <p className="text-[11px] leading-relaxed">
-                  Douglas! 👀 Abriu uma condição diferenciada vinculada à sua matrícula, com possibilidades em 12x, 24x, 36x ou 48x.
+            <div className="space-y-2.5 pt-1">
+              {/* Resposta do cliente à primeira mensagem */}
+              <div className="bg-[#202c33] text-slate-100 p-2.5 rounded-2xl rounded-tl-none mr-auto max-w-[85%] shadow-xs space-y-0.5">
+                <p className="text-[11px] text-slate-200 leading-snug">
+                  Oi! Pode ver sim como funciona.
                 </p>
-                <p className="text-[11px] leading-relaxed">
-                  Antes de eu encerrar sua análise, queria confirmar uma coisa: você já aproveitou essa condição ou ainda posso verificar o que ficou disponível para você?
+                <span className="text-[9px] text-slate-400 block text-right">10:43</span>
+              </div>
+
+              {/* Mensagem 1 de sondagem enviada */}
+              <div className="bg-[#005c4b] text-slate-100 p-2.5 rounded-2xl rounded-tr-none ml-auto max-w-[88%] shadow-xs space-y-1">
+                <p className="text-[11px] leading-relaxed text-slate-100">
+                  Perfeito. Só para eu direcionar certo: você chegou a receber alguma proposta recentemente ou ainda não verificou nada?
                 </p>
-                <p className="text-[11px] leading-relaxed">
-                  Me chama por aqui que te mostro antes do encerramento nos próximos dias.
-                </p>
-                <div className="flex items-center justify-end gap-1 text-[9px] text-emerald-200/70 pt-0.5">
-                  <span>10:42</span>
+                <div className="flex items-center justify-end gap-1 text-[9px] text-emerald-200/70">
+                  <span>10:44</span>
                   <CheckCheck className="w-3 h-3 text-cyan-400" />
                 </div>
               </div>
 
-              {/* Received Bubble */}
-              <div className="bg-[#202c33] text-slate-100 p-2.5 rounded-2xl rounded-tl-none mr-auto max-w-[80%] shadow-md space-y-0.5">
-                <p className="text-[11px] text-slate-200">
-                  Olá! Pode ver o que tem disponível para mim sim, por favor.
+              {/* Resposta do cliente dizendo que recebeu outra */}
+              <div className="bg-[#202c33] text-slate-100 p-2.5 rounded-2xl rounded-tl-none mr-auto max-w-[85%] shadow-xs space-y-0.5">
+                <p className="text-[11px] text-slate-200 leading-snug">
+                  Já me mandaram uma proposta de outro banco ontem.
                 </p>
                 <span className="text-[9px] text-slate-400 block text-right">10:45</span>
+              </div>
+
+              {/* Mensagem 2 de sondagem enviada */}
+              <div className="bg-[#005c4b] text-slate-100 p-2.5 rounded-2xl rounded-tr-none ml-auto max-w-[88%] shadow-xs space-y-1">
+                <p className="text-[11px] leading-relaxed text-slate-100">
+                  Entendi. Você lembra mais ou menos o valor e em quantas parcelas ficou? Quero comparar com a condição que abriu aqui para você.
+                </p>
+                <div className="flex items-center justify-end gap-1 text-[9px] text-emerald-200/70">
+                  <span>10:46</span>
+                  <CheckCheck className="w-3 h-3 text-cyan-400" />
+                </div>
+              </div>
+
+              {/* Resposta do cliente sobre prioridade */}
+              <div className="bg-[#202c33] text-slate-100 p-2.5 rounded-2xl rounded-tl-none mr-auto max-w-[85%] shadow-xs space-y-0.5">
+                <p className="text-[11px] text-slate-200 leading-snug">
+                  Era 84x, mas achei o prazo muito longo.
+                </p>
+                <span className="text-[9px] text-slate-400 block text-right">10:47</span>
+              </div>
+
+              {/* Mensagem 3 de sondagem enviada */}
+              <div className="bg-[#005c4b] text-slate-100 p-2.5 rounded-2xl rounded-tr-none ml-auto max-w-[88%] shadow-xs space-y-1">
+                <p className="text-[11px] leading-relaxed text-slate-100">
+                  Hoje para você faria mais sentido buscar o maior valor possível ou uma condição que pese menos e termine antes?
+                </p>
+                <div className="flex items-center justify-end gap-1 text-[9px] text-emerald-200/70">
+                  <span>10:48</span>
+                  <CheckCheck className="w-3 h-3 text-cyan-400" />
+                </div>
               </div>
             </div>
           </div>
@@ -416,42 +503,46 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
 
       case "pesquisa_cliente":
         return (
-          <div className="bg-slate-900 text-white rounded-xl p-4 font-sans text-xs border border-slate-700 space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <span className="font-extrabold text-[11px] uppercase tracking-wider text-slate-300">
-                Acessar Cliente — Histórico e Margens
-              </span>
-              <span className="text-[10px] text-slate-400">CPF: 311.297.***-04</span>
+          <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/acoes_acessar_cliente.png"
+              alt="Ações Acessar Cliente - SharkConsig"
+              className="w-full h-auto object-contain rounded-lg block"
+            />
+          </div>
+        )
+
+      case "abrir_chamado_mockup":
+        return (
+          <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/abrir_chamado.png"
+              alt="Abrir Chamado - SharkConsig"
+              className="w-full h-auto object-contain rounded-lg block"
+            />
+          </div>
+        )
+
+      case "calculadora_dupla_mockup":
+        return (
+          <div className="space-y-3">
+            <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/calculadora.png"
+                alt="Calculadora Comercial - SharkConsig"
+                className="w-full h-auto object-contain rounded-lg block"
+              />
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-              <div className="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
-                <span className="text-[10px] text-slate-400 block font-bold">BANCO DO BRASIL</span>
-                <div className="flex justify-between mt-1">
-                  <span className="text-slate-400">Parcela: R$ 426,52</span>
-                  <span className="text-emerald-400 font-bold">49x (R$ 14.725)</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
-                <span className="text-[10px] text-slate-400 block font-bold">BANCO SANTANDER</span>
-                <div className="flex justify-between mt-1">
-                  <span className="text-slate-400">Parcela: R$ 1.015,37</span>
-                  <span className="text-emerald-400 font-bold">52x (R$ 36.480)</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-slate-800 flex flex-wrap gap-2 justify-end">
-              <span className="px-2.5 py-1 bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded text-[10px] font-bold">
-                ✓ SIMULAR PROPOSTA
-              </span>
-              <span className="px-2.5 py-1 bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded text-[10px] font-bold">
-                ✓ ABRIR CHAMADO
-              </span>
-              <span className="px-2.5 py-1 bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-bold">
-                ✓ DIGITAR PROPOSTA
-              </span>
+            <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/comparativos.png"
+                alt="Comparativo Visual - SharkConsig"
+                className="w-full h-auto object-contain rounded-lg block"
+              />
             </div>
           </div>
         )
@@ -516,50 +607,31 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
 
       case "plano_amortizacao":
         return (
-          <div className="bg-slate-900 text-white rounded-xl p-4 font-sans text-xs border border-slate-700 space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <span className="font-extrabold text-[11px] uppercase tracking-wider text-amber-400">
-                Plano de Amortização Inteligente (2ª Camada)
-              </span>
-              <span className="text-[10px] text-slate-300">Contrato: R$ 23.078,70 • Duração: 24 meses</span>
-            </div>
+          <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/plano_amort.png"
+              alt="Plano de Amortização - SharkConsig"
+              className="w-full h-auto object-contain rounded-lg block"
+            />
+          </div>
+        )
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-[10px] border-collapse">
-                <thead>
-                  <tr className="bg-slate-800 text-slate-300 border-b border-slate-700">
-                    <th className="p-1.5">MÊS</th>
-                    <th className="p-1.5">FIXA EM FOLHA</th>
-                    <th className="p-1.5">AMORTIZAÇÕES (CÓDIGO DE BARRAS)</th>
-                    <th className="p-1.5 text-right">TOTAL MÊS</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  <tr className="hover:bg-slate-800/50">
-                    <td className="p-1.5 font-bold">1 a 3</td>
-                    <td className="p-1.5 text-slate-300">R$ 1.000,00</td>
-                    <td className="p-1.5 text-slate-500">- (Apenas parcela em folha)</td>
-                    <td className="p-1.5 text-right font-bold text-slate-200">R$ 1.000,00</td>
-                  </tr>
-                  <tr className="hover:bg-slate-800/50 bg-emerald-950/30">
-                    <td className="p-1.5 font-bold text-emerald-400">4</td>
-                    <td className="p-1.5 text-slate-300">R$ 1.000,00</td>
-                    <td className="p-1.5 text-emerald-300">Parcelas 96, 95, 94, 93... quitadas</td>
-                    <td className="p-1.5 text-right font-bold text-emerald-400">R$ 1.355,92</td>
-                  </tr>
-                  <tr className="hover:bg-slate-800/50 bg-emerald-950/30">
-                    <td className="p-1.5 font-bold text-emerald-400">5 em diante</td>
-                    <td className="p-1.5 text-slate-300">R$ 1.000,00</td>
-                    <td className="p-1.5 text-emerald-300">Amortização programada das pontas</td>
-                    <td className="p-1.5 text-right font-bold text-emerald-400">R$ 1.340,09</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <p className="text-[10px] text-slate-400 bg-slate-950 p-2 rounded border border-slate-800 leading-relaxed">
-              💡 <strong>Regra:</strong> Apresente este quadro apenas quando o cliente tiver dúvida ou exigir segurança matemática de encerramento do contrato.
-            </p>
+      case "quitacao_cartao":
+        return (
+          <div className={cn(
+            "rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white mx-auto",
+            isZoomed && "max-w-[80%]"
+          )}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/proposta_reducao_RENATO_MENDES_CASTRO.jpg"
+              alt="Quitação de Cartão - SharkConsig"
+              className={cn(
+                "w-full h-auto object-contain rounded-lg block",
+                isZoomed && "max-h-[60vh] mx-auto"
+              )}
+            />
           </div>
         )
 
@@ -691,7 +763,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                       {stage.badgeText}
                     </span>
                     <span className="text-xs font-bold text-slate-400">
-                      Etapa {stage.number} de 7
+                      Etapa {stage.number} de {STAGES.length}
                     </span>
                   </div>
                   <h3 className="text-lg md:text-xl font-black text-slate-900">
@@ -699,7 +771,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                   </h3>
                   <p className="text-xs md:text-sm text-slate-600 font-medium flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                    <strong>Objetivo:</strong> {stage.objective}
+                    <strong>{stage.objectiveLabel || "Objetivo"}:</strong> {stage.objective}
                   </p>
                 </div>
 
@@ -728,10 +800,12 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                       
                       {/* Passo a Passo (2 to 4 direct steps) */}
                       <div className="space-y-3">
-                        <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                          <Check className="w-4 h-4 text-emerald-600" />
-                          Passo a Passo da Etapa
-                        </span>
+                        {stage.number !== 8 && (
+                          <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                            <Check className="w-4 h-4 text-emerald-600" />
+                            Passo a Passo da Etapa
+                          </span>
+                        )}
                         <div className="grid grid-cols-1 gap-2">
                           {stage.steps.map((st, sIdx) => (
                             <div key={sIdx} className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-start gap-3 text-xs text-slate-800 font-medium">
@@ -746,7 +820,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
 
                       {/* O Que Falar / Ações da Etapa */}
                       <div className="space-y-3">
-                        {stage.number !== 1 && (
+                        {stage.number !== 1 && stage.number !== 5 && stage.number !== 8 && (
                           <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
                             <MessageSquare className="w-4 h-4 text-emerald-600" />
                             O que Falar (Script / Copy Pronta)
@@ -758,61 +832,66 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                             const copyId = `${stage.id}_copy_${cIdx}`
                             const isCopied = copiedText === copyId
                             const isStage1 = stage.number === 1
+                            const isStage5 = stage.number === 5
+                            const isStage8 = stage.number === 8
 
                             return (
-                              <div 
-                                key={cIdx} 
-                                className="bg-[#f0f9f5] border border-emerald-200 rounded-2xl p-4 space-y-3 relative group"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded">
-                                    {copyItem.label}
-                                  </span>
+                              <React.Fragment key={cIdx}>
+                                {copyItem.sectionHeader && (
+                                  <div className="pt-2">
+                                    <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                                      <MessageSquare className="w-4 h-4 text-emerald-600" />
+                                      {copyItem.sectionHeader}
+                                    </span>
+                                  </div>
+                                )}
+                                <div 
+                                  className="bg-[#f0f9f5] border border-emerald-200 rounded-2xl p-4 space-y-3 relative group"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded">
+                                      {copyItem.label}
+                                    </span>
 
-                                  {!isStage1 && (
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      onClick={() => copyToClipboard(copyItem.text, copyId)}
-                                      className={cn(
-                                        "h-7 px-2.5 text-[10px] font-black gap-1.5 transition-all",
-                                        isCopied 
-                                          ? "bg-emerald-600 text-white hover:bg-emerald-700" 
-                                          : "bg-slate-900 hover:bg-slate-800 text-white"
-                                      )}
-                                    >
-                                      {isCopied ? (
-                                        <>
-                                          <CheckCheck className="w-3 h-3 text-white" />
-                                          Copiado!
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Copy className="w-3 h-3" />
-                                          Copiar Mensagem
-                                        </>
-                                      )}
-                                    </Button>
+                                    {!isStage1 && !isStage5 && !isStage8 && (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={() => copyToClipboard(copyItem.text, copyId)}
+                                        className={cn(
+                                          "h-7 px-2.5 text-[10px] font-black gap-1.5 transition-all",
+                                          isCopied 
+                                            ? "bg-emerald-600 text-white hover:bg-emerald-700" 
+                                            : "bg-slate-900 hover:bg-slate-800 text-white"
+                                        )}
+                                      >
+                                        {isCopied ? (
+                                          <>
+                                            <CheckCheck className="w-3 h-3 text-white" />
+                                            Copiado!
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Copy className="w-3 h-3" />
+                                            Copiar Mensagem
+                                          </>
+                                        )}
+                                      </Button>
+                                    )}
+                                  </div>
+
+                                  <div className="bg-white p-3.5 rounded-xl border border-emerald-100/80 shadow-2xs font-sans font-bold text-xs text-slate-900 whitespace-pre-line leading-relaxed select-text">
+                                    {copyItem.text}
+                                  </div>
+
+                                  {copyItem.whyUse && (
+                                    <p className="text-[13px] text-emerald-900/90 font-medium leading-relaxed">
+                                      <span className="font-extrabold text-emerald-800 mr-1.5">Por que usar:</span>
+                                      {copyItem.whyUse}
+                                    </p>
                                   )}
                                 </div>
-
-                                <div className={cn(
-                                  "bg-white p-3.5 rounded-xl border border-emerald-100/80 shadow-2xs font-mono text-xs text-slate-800 whitespace-pre-line leading-relaxed select-text",
-                                  isStage1 && "font-sans font-bold text-slate-900"
-                                )}>
-                                  {copyItem.text}
-                                </div>
-
-                                {copyItem.whyUse && (
-                                  <p className={cn(
-                                    "text-[11px] text-emerald-900/90 font-medium leading-normal flex items-start gap-1.5",
-                                    isStage1 && "text-[13px]"
-                                  )}>
-                                    <span className="font-extrabold text-emerald-800">Por que usar:</span>
-                                    {copyItem.whyUse}
-                                  </p>
-                                )}
-                              </div>
+                              </React.Fragment>
                             )
                           })}
                         </div>
@@ -840,15 +919,17 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                       )}
 
                       {/* O que Evitar / Dica Importante */}
-                      <div className="p-4 bg-red-50/80 rounded-2xl border border-red-200/90 space-y-1.5">
-                        <span className="text-xs font-black uppercase tracking-wider text-red-800 flex items-center gap-1.5">
-                          <AlertTriangle className="w-4 h-4 text-red-600" />
-                          O que EVITAR nesta etapa
-                        </span>
-                        <p className="text-xs text-red-950 font-medium leading-relaxed">
-                          {stage.toAvoid}
-                        </p>
-                      </div>
+                      {stage.number !== 8 && stage.toAvoid && (
+                        <div className="p-4 bg-red-50/80 rounded-2xl border border-red-200/90 space-y-1.5">
+                          <span className="text-xs font-black uppercase tracking-wider text-red-800 flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4 text-red-600" />
+                            O que EVITAR nesta etapa
+                          </span>
+                          <p className="text-xs text-red-950 font-medium leading-relaxed">
+                            {stage.toAvoid}
+                          </p>
+                        </div>
+                      )}
 
                     </div>
 
@@ -858,10 +939,14 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                       {/* Screen Preview Container */}
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
-                            <Eye className="w-3.5 h-3.5 text-slate-600" />
-                            Referência Visual da Tela
-                          </span>
+                          {stage.number !== 3 ? (
+                            <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                              <Eye className="w-3.5 h-3.5 text-slate-600" />
+                              {stage.number === 8 ? "REFERÊNCIA VISUAL" : "Referência Visual da Tela"}
+                            </span>
+                          ) : (
+                            <span />
+                          )}
                           <button
                             type="button"
                             onClick={() => setPreviewModal({

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo, Suspense } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -665,11 +665,14 @@ export default function CapacitacaoPJPage() {
 
 function CapacitacaoPJContent() {
   const { user } = useAuth()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const originParam = searchParams.get("origem")
   const isComeceAquiDirect = originParam === "comece-aqui"
 
-  const [activeTab, setActiveTab] = useState<"start" | "capacitacao">("start")
+  const [activeTab, setActiveTab] = useState<"start" | "capacitacao">(() => 
+    isComeceAquiDirect ? "start" : "capacitacao"
+  )
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([])
   const [activeModuleId, setActiveModuleId] = useState<string>("mod_1")
   const [activeLessonId, setActiveLessonId] = useState<string>("lesson_1_1")
@@ -682,6 +685,15 @@ function CapacitacaoPJContent() {
   const [loading, setLoading] = useState(true)
   const [savingLesson, setSavingLesson] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
+
+  // Synchronize activeTab when origin searchParam changes (e.g. clicking sidebar links)
+  useEffect(() => {
+    if (originParam === "comece-aqui") {
+      setActiveTab("start")
+    } else {
+      setActiveTab("capacitacao")
+    }
+  }, [originParam])
 
   // Calculate total lessons and progress percentage
   const allLessons = useMemo(() => {
@@ -955,6 +967,8 @@ function CapacitacaoPJContent() {
             onNavigateToTopic={(topicId) => {
               setActiveTab("capacitacao")
               setActiveModuleId(topicId)
+              setExpandedModules(prev => ({ ...prev, [topicId]: true }))
+              router.push("/capacitacao-pj")
             }}
           />
         ) : (

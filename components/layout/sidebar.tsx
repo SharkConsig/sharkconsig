@@ -38,6 +38,13 @@ const allMenuItems = [
     title: "",
     items: [
       { 
+        name: "COMECE AQUI", 
+        href: "/capacitacao-pj?origem=comece-aqui", 
+        icon: Rocket, 
+        isSpecialStart: true,
+        roles: ["Administrador", "Desenvolvedor"] 
+      },
+      { 
         name: "DASHBOARD", 
         href: "/", 
         icon: Landmark, 
@@ -303,6 +310,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
+        // Se for o link COMECE AQUI, visível somente para Administrador e Desenvolvedor
+        if (item.name === "COMECE AQUI") {
+          if (isAdmin || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor') return true
+          return false
+        }
+
         // Se for o link de capacitação e for Corretor PJ, permite!
         if (item.href === "/capacitacao-pj" && isCorretorPJ) return true
         if (item.href === "/propostas/tabelas") return true

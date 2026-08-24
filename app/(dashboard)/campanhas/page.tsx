@@ -1159,49 +1159,28 @@ export default function CampaignsPage() {
     if (!campaignToDistribute) return
     setIsSavingDistribution(true)
     try {
-      const updatedFiltros = {
+      const response = await fetch('/api/campanhas/distribuir', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          campanhaId: campaignToDistribute.id,
+          selectedSupervisors,
+          selectedBrokers
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao processar distribuição no servidor.')
+      }
+
+      const updatedFiltros = data.updatedFiltros || {
         ...campaignToDistribute.filtros,
         distribuicao: selectedSupervisors,
         corretores_selecionados: selectedBrokers
-      }
-
-      const { error: updateError } = await supabase
-        .from('campanhas')
-        .update({ filtros: updatedFiltros })
-        .eq('id', campaignToDistribute.id)
-
-      if (updateError) throw updateError
-
-      // Clear existing participants for this campaign
-      await supabase
-        .from('campanha_participantes')
-        .delete()
-        .eq('campanha_id', campaignToDistribute.id)
-
-      // Collect participants to insert
-      const participantsToInsert: { campanha_id: string; user_id: string; papel: string }[] = []
-
-      selectedSupervisors.forEach(supId => {
-        participantsToInsert.push({
-          campanha_id: campaignToDistribute.id,
-          user_id: supId,
-          papel: 'supervisor'
-        })
-      })
-
-      selectedBrokers.forEach(brokerId => {
-        participantsToInsert.push({
-          campanha_id: campaignToDistribute.id,
-          user_id: brokerId,
-          papel: 'corretor'
-        })
-      })
-
-      if (participantsToInsert.length > 0) {
-        const { error: partError } = await supabase
-          .from('campanha_participantes')
-          .insert(participantsToInsert)
-        if (partError) throw partError
       }
 
       setCampaigns(prev => prev.map(c => 
@@ -1212,18 +1191,30 @@ export default function CampaignsPage() {
       alert("Campanha distribuída com sucesso!")
     } catch (err: unknown) {
       console.error("Erro ao salvar distribuição:", err)
-      const errorMsg = err instanceof Error ? err.message : "Erro desconhecido";
+      let errorMsg = "Erro desconhecido"
+      if (err instanceof Error) {
+        errorMsg = err.message
+      } else if (typeof err === 'object' && err !== null) {
+        const anyErr = err as { message?: string; error?: string; details?: string }
+        errorMsg = anyErr.message || anyErr.error || anyErr.details || JSON.stringify(err)
+      } else if (typeof err === 'string') {
+        errorMsg = err
+      }
       alert("Erro ao salvar distribuição: " + errorMsg)
     } finally {
       setIsSavingDistribution(false)
     }
   }
 
-  const supervisors = allUsers.filter(u => u.funcao === 'Supervisor' || u.funcao === 'Administrador')
-  const availableBrokers = allUsers.filter(u => 
-    (u.funcao === 'Corretor' || u.funcao === 'Estágio' || u.funcao === 'Processo Seletivo' || u.funcao === 'PROCESSO SELETIVO') && 
-    (u.supervisor_id && selectedSupervisors.includes(u.supervisor_id))
-  )
+  const supervisors = allUsers.filter(u => {
+    const f = (u.funcao || '').toLowerCase()
+    return f.includes('supervisor') || f.includes('administrador') || f.includes('admin')
+  })
+  const availableBrokers = allUsers.filter(u => {
+    const f = (u.funcao || '').toLowerCase()
+    const isBrokerRole = f.includes('corretor') || f.includes('estágio') || f.includes('estagio') || f.includes('processo seletivo') || f.includes('pj')
+    return isBrokerRole && (u.supervisor_id && selectedSupervisors.includes(u.supervisor_id))
+  })
 
   return (
     <div className="flex-1 flex flex-col relative">
