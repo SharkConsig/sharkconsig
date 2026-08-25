@@ -470,6 +470,125 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
           alt: "Acompanhamento de Propostas - SharkConsig"
         }
       ]
+    },
+    {
+      id: "stage_10",
+      number: 10,
+      shortTitle: "Análise do Dashboard",
+      title: "10. Dashboard e Como Analisá-lo",
+      objective: "Acompanhar seus indicadores de produção e receita, entender quais bancos e produtos geram maior retorno e tomar decisões estratégicas para escalar seus resultados.",
+      badgeText: "Gestão & Estratégia Comercial",
+      badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      steps: [
+        "Sustentabilidade e Receita: Monitore a produção total, contratos pagos, ticket médio e a comissão real faturada no período selecionado (dia, semana, mês ou ano).",
+        "Análise Comparativa: Compare sua evolução de produção e receita com os meses anteriores e acompanhe o ritmo semanal para manter a meta no radar.",
+        "Diagnóstico de Desempenho: Identifique a participação por produto (Crédito Novo, Portabilidade, Cartão Benefício, Margem Livre), convênios e bancos.",
+        "Ranking de Canais: Descubra quais instituições financeiras e linhas de crédito entregam o maior volume e receita para a sua carteira.",
+        "Diagnóstico Estratégico & Riscos: Avalie a eficiência de margem, o yield de cada produto e evite depender de um único convênio ou banco para manter sua operação saudável."
+      ],
+      copies: [
+        {
+          label: "Dica de Gestão Comercial",
+          text: `Utilize o Dashboard diariamente para calibrar seu foco: priorize produtos e tabelas com maior yield/comissionamento médio e diversifique os convênios atendidos para manter seu faturamento previsível e em crescimento contínuo.`,
+          whyUse: "Focar em produtos de maior retorno e diversificar bancos aumenta seu ganho com a mesma quantidade de esforço operacional."
+        }
+      ],
+      toAvoid: "Não olhe apenas o volume total de produção sem verificar a receita real faturada e o comissionamento médio. Evite concentrar 100% dos seus esforços em um único convênio ou banco sem explorar outras oportunidades da esteira.",
+      ctaLabel: "Ir para o Dashboard",
+      ctaHref: "/",
+      deepDiveTopicId: "mod_3",
+      screenshots: [
+        {
+          title: "Sustentabilidade e Receita",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_1.png",
+          alt: "Sustentabilidade e Receita - SharkConsig"
+        },
+        {
+          title: "Análise Comparativa",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_2.png",
+          alt: "Análise Comparativa - SharkConsig"
+        },
+        {
+          title: "Diagnóstico de Desempenho",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_3.png",
+          alt: "Diagnóstico de Desempenho - SharkConsig"
+        },
+        {
+          title: "Ranking de Performance por Canal",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_4.png",
+          alt: "Ranking de Performance por Canal - SharkConsig"
+        },
+        {
+          title: "Diagnóstico Financeiro e Estratégico",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_5.png",
+          alt: "Diagnóstico Financeiro e Estratégico - SharkConsig"
+        }
+      ]
+    },
+    {
+      id: "stage_11",
+      number: 11,
+      shortTitle: "Histórico de Pagamentos",
+      title: "11. Histórico dos seus Pagamentos (Comissões)",
+      objective: "Acompanhar com total transparência todos os repasses e pagamentos de comissões realizados pela empresa para você.",
+      badgeText: "Financeiro & Comissões",
+      badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      steps: [
+        "Cards Resumo Financeiro: Visualize o Total de Operações pagas, a Comissão Bruta acumulada, Proventos adicionados, Descontos efetuados e a Comissão Líquida Total repassada.",
+        "Pesquisa de Histórico de Pagamentos: Utilize os campos de busca por cliente, CPF, ID da digitação ou filtre pelo período de datas de pagamento desejado.",
+        "Tabela Detalhada por Contrato: Consulte o detalhamento de cada operação contendo data de pagamento, cliente, CPF, valor da operação, comissão percentual e em reais, proventos, descontos e comissão líquida final.",
+        "Exportação de Relatórios: Utilize o botão 'Exportar Excel' para baixar sua planilha financeira e manter seu controle contábil pessoal sempre atualizado."
+      ],
+      copies: [
+        {
+          label: "Dica de Controle Financeiro",
+          text: `Acompanhe seus repasses periodicamente filtrando por data de pagamento para conciliar os valores depositados em sua conta com cada contrato efetivado no SharkConsig.`,
+          whyUse: "Garante organização, previsibilidade financeira e controle exato de todas as comissões pagas pela empresa."
+        }
+      ],
+      toAvoid: "Não deixe de conferir os valores líquidos repassados e evite acumular dúvidas sobre comissões de propostas já pagas sem checar antes o relatório detalhado e os filtros por período no sistema.",
+      ctaLabel: "Ir para o Histórico de Pagamentos",
+      ctaHref: "/financeiro/historico-pagamentos-pj",
+      deepDiveTopicId: "mod_3",
+      screenshots: [
+        {
+          title: "Histórico de Pagamentos",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/historico_pagamentos.png",
+          alt: "Histórico de Pagamentos - SharkConsig"
+        }
+      ]
+    },
+    {
+      id: "stage_12",
+      number: 12,
+      shortTitle: "Capacitação",
+      title: "12. Capacitação — Formação & Aprofundamento",
+      objective: "Acessar a biblioteca completa de capacitação técnica, produtos, políticas de crédito por convênio, roteiros de fechamento e materiais oficiais em PDF.",
+      badgeText: "Treinamento & Alta Performance",
+      badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
+      steps: [
+        "Módulos Especializados: Estude os 4 módulos divididos em Fundamentos & Abordagem, Produtos & Convênios, Sistema & Operação e Scripts & Fechamento.",
+        "Aulas Objetivas: Cada aula apresenta objetivo central, pontos-chave de aplicação, o que evitar vs. o que preferir e comparativos práticos.",
+        "Downloads Oficiais: Baixe os PDFs oficiais de apoio de cada módulo para consulta rápida durante seus atendimentos.",
+        "Acompanhamento de Progresso: Marque as aulas concluídas e acompanhe em tempo real sua evolução na barra de progresso da capacitação."
+      ],
+      copies: [
+        {
+          label: "Rotina de Aprendizado Contínuo",
+          text: `Reserve de 15 a 30 minutos diários para revisar os scripts por órgão e as regras de margem complementar para aumentar constantemente sua taxa de conversão.`,
+          whyUse: "Acelera a curva de fechamentos e capacita você a solucionar objeções complexas com segurança."
+        }
+      ],
+      toAvoid: "Não atue nas campanhas e órgãos sem conhecer as regras básicas de margem e enquadramento disponíveis na capacitação. Evite abordagens genéricas sem leitura de contexto.",
+      ctaLabel: "Ir para a Capacitação Aprofundada",
+      ctaHref: "/capacitacao-pj?tab=capacitacao",
+      screenshots: [
+        {
+          title: "Capacitação",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/capacitacao.png",
+          alt: "Capacitação - SharkConsig"
+        }
+      ]
     }
   ]
 
@@ -783,7 +902,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
 
         {/* Sequential Stepper Bar */}
         <div className="pt-3 border-t border-slate-800">
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
             {STAGES.map((stg, idx) => {
               const isActive = activeStageIndex === idx
               return (
@@ -806,7 +925,9 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                     <span className="text-[10px] font-black uppercase text-emerald-400">
                       Etapa {stg.number}
                     </span>
-                    <span className="text-[9px] font-mono text-slate-500">0{stg.number}</span>
+                    <span className="text-[9px] font-mono text-slate-500">
+                      {String(stg.number).padStart(2, "0")}
+                    </span>
                   </div>
                   <p className="text-[11px] font-bold truncate leading-tight">
                     {stg.shortTitle}
@@ -818,7 +939,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
         </div>
       </div>
 
-      {/* 7 Interactive Stage Cards */}
+      {/* 12 Interactive Stage Cards */}
       <div className="space-y-6">
         {STAGES.map((stage, index) => {
           const isExpanded = expandedCards[index] ?? true
@@ -902,7 +1023,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                       {/* O Que Falar / Ações da Etapa */}
                       {stage.copies.length > 0 && (
                         <div className="space-y-3">
-                          {stage.number !== 1 && stage.number !== 5 && stage.number !== 8 && (
+                          {stage.number !== 1 && stage.number !== 5 && stage.number !== 8 && stage.number !== 10 && stage.number !== 11 && stage.number !== 12 && (
                             <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
                               <MessageSquare className="w-4 h-4 text-emerald-600" />
                               O que Falar (Script / Copy Pronta)
@@ -916,6 +1037,9 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                               const isStage1 = stage.number === 1
                               const isStage5 = stage.number === 5
                               const isStage8 = stage.number === 8
+                              const isStage10 = stage.number === 10
+                              const isStage11 = stage.number === 11
+                              const isStage12 = stage.number === 12
 
                               return (
                                 <React.Fragment key={cIdx}>
@@ -935,7 +1059,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                                         {copyItem.label}
                                       </span>
 
-                                      {!isStage1 && !isStage5 && !isStage8 && (
+                                      {!isStage1 && !isStage5 && !isStage8 && !isStage10 && !isStage11 && !isStage12 && (
                                         <Button
                                           type="button"
                                           size="sm"
@@ -1143,10 +1267,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
         <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 rounded-2xl max-w-3xl w-full border border-slate-700 overflow-hidden shadow-2xl space-y-4 p-6">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">
-                  Inspeção Visual da Tela
-                </span>
+              <div>
                 <h4 className="text-base font-black text-white">
                   {previewModal.title}
                 </h4>
@@ -1171,10 +1292,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-              <span className="text-[11px] text-slate-400">
-                🔒 Dados sensíveis mascarados para segurança da operação.
-              </span>
+            <div className="flex items-center justify-end pt-2 border-t border-slate-800">
               <Button
                 type="button"
                 size="sm"
