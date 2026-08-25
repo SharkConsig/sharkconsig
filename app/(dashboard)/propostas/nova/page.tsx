@@ -1852,11 +1852,7 @@ function NewProposalForm() {
                     type="date"
                     value={toInputDate(formData.nascimento)}
                     onChange={(e) => handleFormChange("nascimento", fromInputDate(e.target.value))}
-                    readOnly={initialParams.nascimento && !canEditPreFilled && !(isFromChamado && isCorretor)}
-                    className={cn(
-                      "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none",
-                      (initialParams.nascimento && !canEditPreFilled && !(isFromChamado && isCorretor)) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
-                    )}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none"
                   />
                 </div>
               </div>

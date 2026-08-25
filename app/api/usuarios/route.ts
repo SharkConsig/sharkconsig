@@ -27,9 +27,6 @@ export async function GET(request: Request) {
       }
 
       let rawName = metadata.nome_completo || metadata.full_name || 'Sem Nome'
-      if (rawName.toLowerCase().includes("carlos eduardo")) {
-        rawName = "Luana"
-      }
 
       const rhMsgUpdatedAt = metadata.rh_mensagem_updated_at;
       let activeRhMsg = metadata.rh_mensagem_destaque || '';
@@ -91,9 +88,6 @@ export async function GET(request: Request) {
       }
 
       let rawName = metadata.nome_completo || metadata.full_name || 'Sem Nome'
-      if (rawName.toLowerCase().includes("carlos eduardo")) {
-        rawName = "Luana"
-      }
 
       const rhMsgUpdatedAt = metadata.rh_mensagem_updated_at;
       let activeRhMsg = metadata.rh_mensagem_destaque || '';

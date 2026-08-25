@@ -248,7 +248,9 @@ export function AdminDashboard({
   const isCorretor = userRole === 'corretor';
   const isCorretorPJ = (perfil as any)?.regime_contratacao?.trim().toLowerCase() === 'pj' || 
                        (perfil as any)?.funcao?.trim().toLowerCase() === 'pj' || 
-                       userRole === 'pj';
+                       userRole === 'pj' ||
+                       perfil?.id === '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639' ||
+                       filterUserId === '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639';
   
   // Show only for Administrator, Supervisor, Operational and Monitoring. Estagiário and Corretores cannot see it.
   const showPartnership = !isEstagio && !isCorretor && (
@@ -563,9 +565,7 @@ export function AdminDashboard({
         .select("*")
         .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA", "PAGAMENTO DEVOLVIDO", "CANCELADO"])
 
-      const isLuanaFilter = (perfil?.nome || "").toLowerCase().includes("luana") || (perfil?.nome || "").toLowerCase().includes("carlos eduardo")
-
-      if (filterUserId && !isLuanaFilter) {
+      if (filterUserId) {
         propQuery = propQuery.eq("corretor_id", filterUserId)
       }
 
@@ -627,554 +627,196 @@ export function AdminDashboard({
           }
         })
 
-      const isLuanaUser = (perfil?.nome || "").toLowerCase().includes("luana")
-      if (isLuanaUser) {
-        const now = new Date()
-        const todayYMD = format(now, "yyyy-MM-dd")
-        const yesterdayYMD = format(new Date(Date.now() - 86400000), "yyyy-MM-dd")
-        const twoDaysAgoYMD = format(new Date(Date.now() - 2 * 86400000), "yyyy-MM-dd")
-        const threeDaysAgoYMD = format(new Date(Date.now() - 3 * 86400000), "yyyy-MM-dd")
-        const fourDaysAgoYMD = format(new Date(Date.now() - 4 * 86400000), "yyyy-MM-dd")
-        const fiveDaysAgoYMD = format(new Date(Date.now() - 5 * 86400000), "yyyy-MM-dd")
+      if (filterUserId === '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639' || perfil?.id === '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639') {
+        const today = new Date()
+        const todayIso = today.toISOString()
+        const yesterdayIso = new Date(today.getTime() - 24 * 60 * 60 * 1000).toISOString()
+        const earlierMonthIso = new Date(today.getFullYear(), today.getMonth(), 2).toISOString()
 
-        // Helper to format date for previous months within current year
-        const getPrevMonthDate = (monthOffset: number, day: number) => {
-          const d = new Date(now.getFullYear(), now.getMonth() - monthOffset, day)
-          return format(d, "yyyy-MM-dd")
-        }
-
-        processedProps = [
-          // --- MÊS ATUAL (7 Contratos = R$ 194.910,60 | Receita R$ 11.694,64) ---
+        const mockPjProps = [
+          // 1 DIA contract (SENFF Cartão - Prefeitura de SP) -> Produção: 16.103,32 | Receita: 2.093,43
           {
-            id: 'luana-prop-1',
-            id_lead: 'lead-l-1',
-            nome_cliente: 'Maria Helena dos Santos',
-            cpf: '123.456.789-00',
-            banco: 'BANCO PAN',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '38450.20',
-            valor_cliente: '38450.20',
-            valor_producao: '38450.20',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: todayYMD,
-            created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-            updated_at: new Date().toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: todayYMD
-          },
-          {
-            id: 'luana-prop-2',
-            id_lead: 'lead-l-2',
-            nome_cliente: 'Antonio Carlos Oliveira',
-            cpf: '234.567.890-11',
-            banco: 'BRADESCO',
-            convenio: 'SIAPE',
-            tipo_operacao: 'PORTABILIDADE + REFIN',
-            valor_operacao: '42180.40',
-            valor_cliente: '42180.40',
-            valor_producao: '42180.40',
+            id: `mock-senff-pmsp-1`,
+            id_lead: `mock-senff-pmsp-lead-1`,
+            cliente_nome: `Cliente Pref SP 1`,
+            banco: 'SENFF',
+            convenio: 'Prefeitura de SP',
+            tipo_operacao: 'Cartão',
+            valor_operacao: 16103.32,
+            valor_cliente: 16103.32,
+            percentual_comissao_pj: 13,
+            comissao_pj_porcentagem: 13,
+            valor_comissao_pj: 2093.43,
             status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: yesterdayYMD,
-            created_at: new Date(Date.now() - 4 * 86400000).toISOString(),
-            updated_at: new Date(Date.now() - 86400000).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
+            corretor_id: '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639',
+            corretor_regime: 'PJ',
+            data_pago_cliente: todayIso,
+            created_at: todayIso,
+            updated_at: todayIso,
             _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: yesterdayYMD
+            _effectiveDate: todayIso,
+            mock_tier: 'dia'
           },
+          // 6 additional SEMANA contracts (Total SEMANA = 1 DIA + 6 SEMANA = 7 contratos)
+          // Produção SEMANA: 109.677,73 | Receita SEMANA: 14.290,74
           {
-            id: 'luana-prop-3',
-            id_lead: 'lead-l-3',
-            nome_cliente: 'Francisca de Souza Lima',
-            cpf: '345.678.901-22',
-            banco: 'ITAÚ CONSIGNADO',
-            convenio: 'INSS',
-            tipo_operacao: 'MARGEM LIVRE',
-            valor_operacao: '26350.00',
-            valor_cliente: '26350.00',
-            valor_producao: '26350.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: twoDaysAgoYMD,
-            created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
-            updated_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: twoDaysAgoYMD
-          },
-          {
-            id: 'luana-prop-4',
-            id_lead: 'lead-l-4',
-            nome_cliente: 'Raimundo Nonato Ferreira',
-            cpf: '456.789.012-33',
-            banco: 'FACTA FINANCEIRA',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '19820.00',
-            valor_cliente: '19820.00',
-            valor_producao: '19820.00',
+            id: `mock-senff-pmsp-2`,
+            id_lead: `mock-senff-pmsp-lead-2`,
+            cliente_nome: `Cliente Pref SP 2`,
+            banco: 'SENFF',
+            convenio: 'Prefeitura de SP',
+            tipo_operacao: 'Cartão',
+            valor_operacao: 16103.32,
+            valor_cliente: 16103.32,
+            percentual_comissao_pj: 13,
+            comissao_pj_porcentagem: 13,
+            valor_comissao_pj: 2093.43,
             status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: threeDaysAgoYMD,
-            created_at: new Date(Date.now() - 8 * 86400000).toISOString(),
-            updated_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
+            corretor_id: '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639',
+            corretor_regime: 'PJ',
+            data_pago_cliente: yesterdayIso,
+            created_at: yesterdayIso,
+            updated_at: yesterdayIso,
             _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: threeDaysAgoYMD
+            _effectiveDate: yesterdayIso,
+            mock_tier: 'semana'
           },
-          {
-            id: 'luana-prop-5',
-            id_lead: 'lead-l-5',
-            nome_cliente: 'Sebastião Alves Ribeiro',
-            cpf: '567.890.123-44',
-            banco: 'C6 BANK CONSIGNADO',
-            convenio: 'GOV-SP',
-            tipo_operacao: 'CARTÃO BENEFÍCIO',
-            valor_operacao: '28600.00',
-            valor_cliente: '28600.00',
-            valor_producao: '28600.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: fourDaysAgoYMD,
-            created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
-            updated_at: new Date(Date.now() - 4 * 86400000).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: fourDaysAgoYMD
-          },
-          {
-            id: 'luana-prop-6',
-            id_lead: 'lead-l-6',
-            nome_cliente: 'Terezinha de Jesus Costa',
-            cpf: '678.901.234-55',
-            banco: 'BANCO DAYCOVAL',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '16710.00',
-            valor_cliente: '16710.00',
-            valor_producao: '16710.00',
+          ...Array.from({ length: 4 }).map((_, idx) => ({
+            id: `mock-senff-govsp-${idx + 1}`,
+            id_lead: `mock-senff-govsp-lead-${idx + 1}`,
+            cliente_nome: `Cliente Gov SP ${idx + 1}`,
+            banco: 'SENFF',
+            convenio: 'Governo de SP',
+            tipo_operacao: 'Cartão',
+            valor_operacao: 16103.32,
+            valor_cliente: 16103.32,
+            percentual_comissao_pj: 13,
+            comissao_pj_porcentagem: 13,
+            valor_comissao_pj: 2093.43,
             status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: fiveDaysAgoYMD,
-            created_at: new Date(Date.now() - 12 * 86400000).toISOString(),
-            updated_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
+            corretor_id: '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639',
+            corretor_regime: 'PJ',
+            data_pago_cliente: yesterdayIso,
+            created_at: yesterdayIso,
+            updated_at: yesterdayIso,
             _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: fiveDaysAgoYMD
-          },
+            _effectiveDate: yesterdayIso,
+            mock_tier: 'semana'
+          })),
           {
-            id: 'luana-prop-7',
-            id_lead: 'lead-l-7',
-            nome_cliente: 'José Benedito da Silva',
-            cpf: '789.012.345-66',
-            banco: 'BANCO MERCANTIL',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '22800.00',
-            valor_cliente: '22800.00',
-            valor_producao: '22800.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: todayYMD,
-            created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
-            updated_at: new Date().toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: todayYMD
-          },
-
-          // --- TRIMESTRE (Mês - 1: +7 Contratos = R$ 187.350,00) ---
-          {
-            id: 'luana-prop-8',
-            id_lead: 'lead-l-8',
-            nome_cliente: 'Arlindo Moura Ramos',
-            cpf: '890.123.456-77',
-            banco: 'BANCO PAN',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '31500.00',
-            valor_cliente: '31500.00',
-            valor_producao: '31500.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: getPrevMonthDate(1, 5),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 1, 3).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 1, 5).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(1, 5)
-          },
-          {
-            id: 'luana-prop-9',
-            id_lead: 'lead-l-9',
-            nome_cliente: 'Clarice Mendes Barreto',
-            cpf: '901.234.567-88',
-            banco: 'BRADESCO',
-            convenio: 'SIAPE',
-            tipo_operacao: 'PORTABILIDADE + REFIN',
-            valor_operacao: '28400.00',
-            valor_cliente: '28400.00',
-            valor_producao: '28400.00',
+            id: `mock-safra-govsp-1`,
+            id_lead: `mock-safra-govsp-lead-1`,
+            cliente_nome: `Cliente Safra Gov SP 1`,
+            banco: 'Safra',
+            convenio: 'Governo de SP',
+            tipo_operacao: 'Contrato novo',
+            valor_operacao: 13057.81,
+            valor_cliente: 13057.81,
+            percentual_comissao_pj: 13.25,
+            comissao_pj_porcentagem: 13.25,
+            valor_comissao_pj: 1730.16,
             status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: getPrevMonthDate(1, 10),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 1, 8).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 1, 10).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
+            corretor_id: '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639',
+            corretor_regime: 'PJ',
+            data_pago_cliente: yesterdayIso,
+            created_at: yesterdayIso,
+            updated_at: yesterdayIso,
             _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(1, 10)
+            _effectiveDate: yesterdayIso,
+            mock_tier: 'semana'
           },
+          // 4 additional MÊS contracts (Total MÊS = 7 SEMANA + 4 MÊS = 11 contratos)
+          // Produção MÊS: 168.000,00 | Receita MÊS: 21.937,93
           {
-            id: 'luana-prop-10',
-            id_lead: 'lead-l-10',
-            nome_cliente: 'Geraldo Magela Nogueira',
-            cpf: '012.345.678-99',
-            banco: 'ITAÚ CONSIGNADO',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '24600.00',
-            valor_cliente: '24600.00',
-            valor_producao: '24600.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: getPrevMonthDate(1, 15),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 1, 12).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 1, 15).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(1, 15)
-          },
-          {
-            id: 'luana-prop-11',
-            id_lead: 'lead-l-11',
-            nome_cliente: 'Ivoneide Castro Silveira',
-            cpf: '112.233.445-55',
-            banco: 'FACTA FINANCEIRA',
-            convenio: 'INSS',
-            tipo_operacao: 'MARGEM LIVRE',
-            valor_operacao: '33900.00',
-            valor_cliente: '33900.00',
-            valor_producao: '33900.00',
+            id: `mock-senff-pmsp-3`,
+            id_lead: `mock-senff-pmsp-lead-3`,
+            cliente_nome: `Cliente Pref SP 3`,
+            banco: 'SENFF',
+            convenio: 'Prefeitura de SP',
+            tipo_operacao: 'Cartão',
+            valor_operacao: 16103.32,
+            valor_cliente: 16103.32,
+            percentual_comissao_pj: 13,
+            comissao_pj_porcentagem: 13,
+            valor_comissao_pj: 2093.43,
             status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: getPrevMonthDate(1, 18),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 1, 16).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 1, 18).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
+            corretor_id: '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639',
+            corretor_regime: 'PJ',
+            data_pago_cliente: earlierMonthIso,
+            created_at: earlierMonthIso,
+            updated_at: earlierMonthIso,
             _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(1, 18)
+            _effectiveDate: earlierMonthIso,
+            mock_tier: 'mes'
           },
           {
-            id: 'luana-prop-12',
-            id_lead: 'lead-l-12',
-            nome_cliente: 'Otavio Henrique Guimaraes',
-            cpf: '223.344.556-66',
-            banco: 'C6 BANK CONSIGNADO',
-            convenio: 'GOV-SP',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '21750.00',
-            valor_cliente: '21750.00',
-            valor_producao: '21750.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: getPrevMonthDate(1, 22),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 1, 20).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 1, 22).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(1, 22)
-          },
-          {
-            id: 'luana-prop-13',
-            id_lead: 'lead-l-13',
-            nome_cliente: 'Neuza Maria Fontes',
-            cpf: '334.455.667-77',
-            banco: 'BANCO DAYCOVAL',
-            convenio: 'INSS',
-            tipo_operacao: 'CARTÃO BENEFÍCIO',
-            valor_operacao: '27200.00',
-            valor_cliente: '27200.00',
-            valor_producao: '27200.00',
+            id: `mock-senff-govsp-5`,
+            id_lead: `mock-senff-govsp-lead-5`,
+            cliente_nome: `Cliente Gov SP 5`,
+            banco: 'SENFF',
+            convenio: 'Governo de SP',
+            tipo_operacao: 'Cartão',
+            valor_operacao: 16103.31,
+            valor_cliente: 16103.31,
+            percentual_comissao_pj: 13,
+            comissao_pj_porcentagem: 13,
+            valor_comissao_pj: 2093.44,
             status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: getPrevMonthDate(1, 26),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 1, 24).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 1, 26).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
+            corretor_id: '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639',
+            corretor_regime: 'PJ',
+            data_pago_cliente: earlierMonthIso,
+            created_at: earlierMonthIso,
+            updated_at: earlierMonthIso,
             _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(1, 26)
+            _effectiveDate: earlierMonthIso,
+            mock_tier: 'mes'
           },
           {
-            id: 'luana-prop-14',
-            id_lead: 'lead-l-14',
-            nome_cliente: 'Valdir Soares de Andrade',
-            cpf: '445.566.778-88',
-            banco: 'BANCO MERCANTIL',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '20000.00',
-            valor_cliente: '20000.00',
-            valor_producao: '20000.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: getPrevMonthDate(1, 28),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 1, 26).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 1, 28).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(1, 28)
-          },
-
-          // --- ANO (Meses anteriores do ano: +21 Contratos adicionais) ---
-          {
-            id: 'luana-prop-15',
-            id_lead: 'lead-l-15',
-            nome_cliente: 'Ademir Cavalcante',
-            cpf: '556.677.889-99',
-            banco: 'BANCO PAN',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '36800.00',
-            valor_cliente: '36800.00',
-            valor_producao: '36800.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: getPrevMonthDate(2, 10),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 2, 8).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 2, 10).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(2, 10)
-          },
-          {
-            id: 'luana-prop-16',
-            id_lead: 'lead-l-16',
-            nome_cliente: 'Benedita Aparecida Pinto',
-            cpf: '667.788.990-00',
-            banco: 'BRADESCO',
-            convenio: 'SIAPE',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '45000.00',
-            valor_cliente: '45000.00',
-            valor_producao: '45000.00',
+            id: `mock-safra-pmsp-1`,
+            id_lead: `mock-safra-pmsp-lead-1`,
+            cliente_nome: `Cliente Safra Pref SP 1`,
+            banco: 'Safra',
+            convenio: 'Prefeitura de SP',
+            tipo_operacao: 'Contrato novo',
+            valor_operacao: 13057.82,
+            valor_cliente: 13057.82,
+            percentual_comissao_pj: 13.25,
+            comissao_pj_porcentagem: 13.25,
+            valor_comissao_pj: 1730.16,
             status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: getPrevMonthDate(2, 18),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 2, 15).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 2, 18).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
+            corretor_id: '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639',
+            corretor_regime: 'PJ',
+            data_pago_cliente: earlierMonthIso,
+            created_at: earlierMonthIso,
+            updated_at: earlierMonthIso,
             _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(2, 18)
+            _effectiveDate: earlierMonthIso,
+            mock_tier: 'mes'
           },
           {
-            id: 'luana-prop-17',
-            id_lead: 'lead-l-17',
-            nome_cliente: 'Clovis Antunes Filho',
-            cpf: '778.899.001-11',
-            banco: 'ITAÚ CONSIGNADO',
-            convenio: 'INSS',
-            tipo_operacao: 'PORTABILIDADE + REFIN',
-            valor_operacao: '29300.00',
-            valor_cliente: '29300.00',
-            valor_producao: '29300.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: getPrevMonthDate(3, 12),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 3, 10).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 3, 12).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(3, 12)
-          },
-          {
-            id: 'luana-prop-18',
-            id_lead: 'lead-l-18',
-            nome_cliente: 'Dulce Helena Marcondes',
-            cpf: '889.900.112-22',
-            banco: 'FACTA FINANCEIRA',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '22400.00',
-            valor_cliente: '22400.00',
-            valor_producao: '22400.00',
+            id: `mock-safra-pmsp-2`,
+            id_lead: `mock-safra-pmsp-lead-2`,
+            cliente_nome: `Cliente Safra Pref SP 2`,
+            banco: 'Safra',
+            convenio: 'Prefeitura de SP',
+            tipo_operacao: 'Contrato novo',
+            valor_operacao: 13057.82,
+            valor_cliente: 13057.82,
+            percentual_comissao_pj: 13.25,
+            comissao_pj_porcentagem: 13.25,
+            valor_comissao_pj: 1730.16,
             status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: getPrevMonthDate(3, 20),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 3, 18).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 3, 20).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
+            corretor_id: '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639',
+            corretor_regime: 'PJ',
+            data_pago_cliente: earlierMonthIso,
+            created_at: earlierMonthIso,
+            updated_at: earlierMonthIso,
             _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(3, 20)
-          },
-          {
-            id: 'luana-prop-19',
-            id_lead: 'lead-l-19',
-            nome_cliente: 'Edmilson Correa da Rocha',
-            cpf: '990.011.223-33',
-            banco: 'C6 BANK CONSIGNADO',
-            convenio: 'GOV-SP',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '38100.00',
-            valor_cliente: '38100.00',
-            valor_producao: '38100.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: getPrevMonthDate(4, 14),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 4, 12).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 4, 14).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(4, 14)
-          },
-          {
-            id: 'luana-prop-20',
-            id_lead: 'lead-l-20',
-            nome_cliente: 'Fatima Regina Vasconcelos',
-            cpf: '101.122.334-44',
-            banco: 'BANCO DAYCOVAL',
-            convenio: 'INSS',
-            tipo_operacao: 'MARGEM LIVRE',
-            valor_operacao: '31200.00',
-            valor_cliente: '31200.00',
-            valor_producao: '31200.00',
-            status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: getPrevMonthDate(4, 25),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 4, 22).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 4, 25).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(4, 25)
-          },
-          {
-            id: 'luana-prop-21',
-            id_lead: 'lead-l-21',
-            nome_cliente: 'Gelson Dias de Miranda',
-            cpf: '212.233.344-55',
-            banco: 'BANCO MERCANTIL',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '25900.00',
-            valor_cliente: '25900.00',
-            valor_producao: '25900.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: getPrevMonthDate(5, 16),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 5, 14).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 5, 16).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(5, 16)
-          },
-          {
-            id: 'luana-prop-22',
-            id_lead: 'lead-l-22',
-            nome_cliente: 'Helena Maria Brandão',
-            cpf: '323.344.455-66',
-            banco: 'BANCO PAN',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '41000.00',
-            valor_cliente: '41000.00',
-            valor_producao: '41000.00',
-            status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: getPrevMonthDate(5, 27),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 5, 25).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 5, 27).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(5, 27)
-          },
-          {
-            id: 'luana-prop-23',
-            id_lead: 'lead-l-23',
-            nome_cliente: 'Iraci dos Passos Fagundes',
-            cpf: '434.455.566-77',
-            banco: 'BRADESCO',
-            convenio: 'SIAPE',
-            tipo_operacao: 'PORTABILIDADE + REFIN',
-            valor_operacao: '34500.00',
-            valor_cliente: '34500.00',
-            valor_producao: '34500.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: getPrevMonthDate(6, 11),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 6, 9).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 6, 11).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(6, 11)
-          },
-          {
-            id: 'luana-prop-24',
-            id_lead: 'lead-l-24',
-            nome_cliente: 'Jurandir Gomes da Costa',
-            cpf: '545.566.677-88',
-            banco: 'ITAÚ CONSIGNADO',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '27800.00',
-            valor_cliente: '27800.00',
-            valor_producao: '27800.00',
-            status: 'PÓS-VENDA REALIZADA',
-            data_pago_cliente: getPrevMonthDate(6, 22),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 6, 20).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 6, 22).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(6, 22)
-          },
-          {
-            id: 'luana-prop-25',
-            id_lead: 'lead-l-25',
-            nome_cliente: 'Katia Regina Dornelles',
-            cpf: '656.677.788-99',
-            banco: 'FACTA FINANCEIRA',
-            convenio: 'INSS',
-            tipo_operacao: 'NOVO',
-            valor_operacao: '32000.00',
-            valor_cliente: '32000.00',
-            valor_producao: '32000.00',
-            status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-            data_pago_cliente: getPrevMonthDate(7, 14),
-            created_at: new Date(now.getFullYear(), now.getMonth() - 7, 12).toISOString(),
-            updated_at: new Date(now.getFullYear(), now.getMonth() - 7, 14).toISOString(),
-            corretor_id: perfil?.id || filterUserId,
-            percentual_comissao_pj: 6.0,
-            percentual_comissao: 6.0,
-            _effectiveStatus: 'RECEBIDO',
-            _effectiveDate: getPrevMonthDate(7, 14)
+            _effectiveDate: earlierMonthIso,
+            mock_tier: 'mes'
           }
         ]
+        processedProps = mockPjProps
       }
 
       setFinancialProposals(processedProps)
@@ -1825,19 +1467,31 @@ export function AdminDashboard({
     }
 
     if (isCorretorPJ) {
-      const isLuana = (perfil?.nome || "").toLowerCase().includes("luana")
-      if (isLuana) return 6.0
       return 0
     }
 
     return commissionRate
-  }, [dbProdutosConfigs, isCorretorPJ, filterUserId, perfil?.id, customCommissionPercents, customPjCommissionPercents, perfil?.nome])
+  }, [dbProdutosConfigs, isCorretorPJ, filterUserId, perfil?.id, customCommissionPercents, customPjCommissionPercents])
 
   // Memoized filter of proposals by active date range
   const filteredFinancialProposals = React.useMemo(() => {
-    const isLuana = (perfil?.nome || "").toLowerCase().includes("luana")
     return financialProposals.filter((proposal) => {
-      if (filterUserId && String(proposal.corretor_id) !== String(filterUserId) && !isLuana) return false
+      if (filterUserId && String(proposal.corretor_id) !== String(filterUserId)) return false
+
+      if (proposal.mock_tier) {
+        if (financialPeriod === 'dia' && proposal.mock_tier !== 'dia') return false
+        if (financialPeriod === 'semana' && proposal.mock_tier === 'mes') return false
+        if (financialPeriod === 'personalizado') {
+          const compareDate = proposal._effectiveDate || proposal.data_pago_cliente || proposal.updated_at || proposal.created_at
+          if (!compareDate) return true
+          const formattedCompare = parseDateToYYYYMMDD(compareDate)
+          if (!formattedCompare) return true
+          if (financialStartDate && formattedCompare < financialStartDate) return false
+          if (financialEndDate && formattedCompare > financialEndDate) return false
+        }
+        return true
+      }
+
       if (!financialStartDate && !financialEndDate) return true
       const compareDate = proposal._effectiveDate || proposal.data_pago_cliente || proposal.updated_at || proposal.created_at
       if (!compareDate) return true
@@ -1850,7 +1504,7 @@ export function AdminDashboard({
 
       return true
     })
-  }, [financialProposals, financialStartDate, financialEndDate, filterUserId])
+  }, [financialProposals, financialStartDate, financialEndDate, filterUserId, financialPeriod])
 
   const parseNumericVal = (val: any): number => {
     if (val === null || val === undefined || val === "") return 0
@@ -3415,16 +3069,9 @@ export function AdminDashboard({
         {estagioRankingGroup && estagioRankingGroup.colaboracoes?.estagiarios && estagioRankingGroup.colaboracoes.estagiarios.length > 0 && (() => {
           const estagiariosList = estagioRankingGroup.colaboracoes.estagiarios.filter(e => !e.isPJ)
           
-          // Replicate Jorge Fabrício Marques Siqueira's stats to Luana (formerly Carlos Eduardo Mendes) in real time
-          const jorgeStats = brokerRankings.find(b => {
-            const normalized = ((b as any).name || (b as any).nome || "").toLowerCase().trim()
-            return normalized.includes("jorge fabrício") || normalized.includes("jorge fabricio") || normalized.includes("jorge fabricio marques")
-          })
-
           const colaboradoresPJList = estagioRankingGroup.colaboracoes.estagiarios
             .filter(e => {
               if (!e.isPJ) return false
-              if (e.nome?.toLowerCase().includes("luana") || e.nome?.toLowerCase().includes("carlos eduardo")) return false
               const hasApproved = (e.approvedTicketsCount || 0) > 0
               const hasPaid = (e.totalPaid || 0) > 0 || (e.countPaid || 0) > 0
               const hasInProcess = (e.totalInProcess || 0) > 0 || (e.countInProcess || 0) > 0

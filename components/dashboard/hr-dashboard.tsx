@@ -1281,16 +1281,9 @@ export function HRDashboard({
         {estagioRankingGroup && estagioRankingGroup.colaboracoes?.estagiarios && estagioRankingGroup.colaboracoes.estagiarios.length > 0 && (() => {
           const estagiariosList = estagioRankingGroup.colaboracoes.estagiarios.filter(e => !e.isPJ)
           
-          // Replicate Jorge Fabrício Marques Siqueira's stats to Carlos Eduardo Mendes in real time
-          const jorgeStats = brokerRankings.find(b => {
-            const normalized = (b.nome || "").toLowerCase().trim()
-            return normalized.includes("jorge fabrício") || normalized.includes("jorge fabricio") || normalized.includes("jorge fabricio marques")
-          })
-
           const colaboradoresPJList = estagioRankingGroup.colaboracoes.estagiarios
             .filter(e => {
               if (!e.isPJ) return false
-              if (e.nome?.toLowerCase().includes("luana") || e.nome?.toLowerCase().includes("carlos eduardo")) return false
               const hasApproved = (e.approvedTicketsCount || 0) > 0
               const hasPaid = (e.totalPaid || 0) > 0 || (e.countPaid || 0) > 0
               const hasInProcess = (e.totalInProcess || 0) > 0 || (e.countInProcess || 0) > 0

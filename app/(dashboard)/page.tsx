@@ -456,7 +456,7 @@ export default function DashboardPage() {
   const { user, perfil, isCorretor, isAdmin, isOperational, isDeveloper, isRecursosHumanos } = useAuth()
   const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO' || isAdmin || isDeveloper
   const isEstagio = perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
-  const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || perfil?.role?.toLowerCase() === 'pj'
+  const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || perfil?.role?.toLowerCase() === 'pj' || perfil?.id === '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639'
   const { isCollapsed } = useSidebar()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -803,34 +803,7 @@ export default function DashboardPage() {
       })
       const allUsers: User[] = usersRes || []
 
-      const isLuanaUser = (perfil?.nome || "").toLowerCase().includes("luana") || (perfil?.nome || "").toLowerCase().includes("carlos eduardo")
-      
-      const resolvedJorgeUser = allUsers.find((u: User) => {
-        const n = (u.nome || "").toLowerCase().trim()
-        return n.includes("jorge fabrício") || n.includes("jorge fabricio") || n.includes("jorge fabricio marques") || n.includes("jorge")
-      })
-      const resolvedLuanaUser = allUsers.find((u: User) => {
-        const n = (u.nome || "").toLowerCase().trim()
-        return n.includes("luana") || n.includes("carlos eduardo")
-      })
-
-      let resolvedJorgeId = resolvedJorgeUser?.id
-      if (!resolvedJorgeId && isLuanaUser) {
-        try {
-          const { data: jorgeProp } = await supabase
-            .from("propostas")
-            .select("corretor_id")
-            .or("nome_corretor.ilike.%Jorge%,corretor.ilike.%Jorge%")
-            .not("corretor_id", "is", null)
-            .limit(1)
-            .maybeSingle()
-          if (jorgeProp?.corretor_id) {
-            resolvedJorgeId = jorgeProp.corretor_id
-          }
-        } catch (e) {}
-      }
-
-      const targetCorretorId = (isLuanaUser && resolvedJorgeId) ? resolvedJorgeId : perfil?.id
+      const targetCorretorId = perfil?.id
 
       // 1. Fetch user's paid proposals
       const filterStartISO = customStart ? customStart.toISOString() : startOfMonth.toISOString()
@@ -845,137 +818,18 @@ export default function DashboardPage() {
         userPaidQuery = userPaidQuery.lte("updated_at", customEnd.toISOString())
       }
 
-      if (isCorretor || isLuanaUser) {
+      if (isCorretor) {
         userPaidQuery = userPaidQuery.or(`corretor_id.eq.${targetCorretorId},estagiario_colaborador_id.eq.${targetCorretorId}`)
       }
 
       let userPaid = await fetchAll(userPaidQuery)
-      
-      const fakeLuanaProposals: any[] = [
-        {
-          id: 'fake-prop-1',
-          id_lead: 'lead-1',
-          nome_cliente: 'Maria Helena dos Santos',
-          banco: 'BANCO PAN',
-          convenio: 'INSS',
-          tipo_operacao: 'NOVO',
-          valor_producao: '38450.20',
-          valor_operacao: '38450.20',
-          status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-          created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-          updated_at: new Date().toISOString(),
-          data_pago_cliente: new Date().toISOString().split('T')[0],
-          corretor_id: perfil?.id,
-          estagiario_colaborador_id: perfil?.id
-        },
-        {
-          id: 'fake-prop-2',
-          id_lead: 'lead-2',
-          nome_cliente: 'Antonio Carlos Oliveira',
-          banco: 'BRADESCO',
-          convenio: 'SIAPE',
-          tipo_operacao: 'PORTABILIDADE + REFIN',
-          valor_producao: '42180.40',
-          valor_operacao: '42180.40',
-          status: 'PÓS-VENDA REALIZADA',
-          created_at: new Date(Date.now() - 4 * 86400000).toISOString(),
-          updated_at: new Date(Date.now() - 1 * 86400000).toISOString(),
-          data_pago_cliente: new Date(Date.now() - 1 * 86400000).toISOString().split('T')[0],
-          corretor_id: perfil?.id,
-          estagiario_colaborador_id: perfil?.id
-        },
-        {
-          id: 'fake-prop-3',
-          id_lead: 'lead-3',
-          nome_cliente: 'Francisca de Souza Lima',
-          banco: 'ITAÚ CONSIGNADO',
-          convenio: 'INSS',
-          tipo_operacao: 'MARGEM LIVRE',
-          valor_producao: '26350.00',
-          valor_operacao: '26350.00',
-          status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-          created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
-          updated_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-          data_pago_cliente: new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0],
-          corretor_id: perfil?.id,
-          estagiario_colaborador_id: perfil?.id
-        },
-        {
-          id: 'fake-prop-4',
-          id_lead: 'lead-4',
-          nome_cliente: 'Raimundo Nonato Ferreira',
-          banco: 'FACTA FINANCEIRA',
-          convenio: 'INSS',
-          tipo_operacao: 'NOVO',
-          valor_producao: '19820.00',
-          valor_operacao: '19820.00',
-          status: 'PÓS-VENDA REALIZADA',
-          created_at: new Date(Date.now() - 8 * 86400000).toISOString(),
-          updated_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-          data_pago_cliente: new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0],
-          corretor_id: perfil?.id,
-          estagiario_colaborador_id: perfil?.id
-        },
-        {
-          id: 'fake-prop-5',
-          id_lead: 'lead-5',
-          nome_cliente: 'Sebastião Alves Ribeiro',
-          banco: 'C6 BANK CONSIGNADO',
-          convenio: 'GOV-SP',
-          tipo_operacao: 'CARTÃO BENEFÍCIO',
-          valor_producao: '28600.00',
-          valor_operacao: '28600.00',
-          status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-          created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
-          updated_at: new Date(Date.now() - 4 * 86400000).toISOString(),
-          data_pago_cliente: new Date(Date.now() - 4 * 86400000).toISOString().split('T')[0],
-          corretor_id: perfil?.id,
-          estagiario_colaborador_id: perfil?.id
-        },
-        {
-          id: 'fake-prop-6',
-          id_lead: 'lead-6',
-          nome_cliente: 'Terezinha de Jesus Costa',
-          banco: 'BANCO DAYCOVAL',
-          convenio: 'INSS',
-          tipo_operacao: 'NOVO',
-          valor_producao: '16710.00',
-          valor_operacao: '16710.00',
-          status: 'PÓS-VENDA REALIZADA',
-          created_at: new Date(Date.now() - 12 * 86400000).toISOString(),
-          updated_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-          data_pago_cliente: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0],
-          corretor_id: perfil?.id,
-          estagiario_colaborador_id: perfil?.id
-        },
-        {
-          id: 'fake-prop-7',
-          id_lead: 'lead-7',
-          nome_cliente: 'José Benedito da Silva',
-          banco: 'BANCO MERCANTIL',
-          convenio: 'INSS',
-          tipo_operacao: 'NOVO',
-          valor_producao: '22800.00',
-          valor_operacao: '22800.00',
-          status: 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA',
-          created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
-          updated_at: new Date().toISOString(),
-          data_pago_cliente: new Date().toISOString().split('T')[0],
-          corretor_id: perfil?.id,
-          estagiario_colaborador_id: perfil?.id
-        }
-      ]
-
-      if (isLuanaUser && (!userPaid || userPaid.length === 0)) {
-        userPaid = fakeLuanaProposals
-      }
 
       setUserProposals(userPaid || [])
 
       // For intern, fetch their associated proposals to calculate custom dashboard metrics
       if (isEstagio) {
         try {
-          const targetInternId = (isLuanaUser && resolvedJorgeId) ? resolvedJorgeId : perfil?.id
+          const targetInternId = perfil?.id
           const { data: internProposals, error: internPropsError } = await withRetry(() =>
             supabase
               .from("propostas")
@@ -1010,25 +864,13 @@ export default function DashboardPage() {
               }
             })
 
-            if (isLuanaUser && (paidCount === 0 || matchedProps.length === 0)) {
-              setInternPaidCount(7)
-              setInternTotalMovedValue(148500)
-              setInternPaidProposals(fakeLuanaProposals)
-            } else {
-              setInternPaidCount(paidCount)
-              setInternTotalMovedValue(totalMoved)
-              setInternPaidProposals(matchedProps)
-            }
+            setInternPaidCount(paidCount)
+            setInternTotalMovedValue(totalMoved)
+            setInternPaidProposals(matchedProps)
           } else {
-            if (isLuanaUser) {
-              setInternPaidCount(7)
-              setInternTotalMovedValue(148500)
-              setInternPaidProposals(fakeLuanaProposals)
-            } else {
-              setInternPaidCount(0)
-              setInternTotalMovedValue(0)
-              setInternPaidProposals([])
-            }
+            setInternPaidCount(0)
+            setInternTotalMovedValue(0)
+            setInternPaidProposals([])
           }
 
           const ticketsStart = customStart || targetMonthStart
@@ -1061,11 +903,7 @@ export default function DashboardPage() {
               }
             })
           }
-          if (isLuanaUser && approvedCount === 0) {
-            setInternAdvancedCount(24)
-          } else {
-            setInternAdvancedCount(approvedCount)
-          }
+          setInternAdvancedCount(approvedCount)
 
         } catch (e) {
           console.error("Error fetching intern metrics:", e)
@@ -1086,7 +924,7 @@ export default function DashboardPage() {
         
         let sortedRankings: RankingItem[] = []
 
-        if (targetSupervisorId || isAdmin || isOperational || isDeveloper || isRecursosHumanos || isLuanaUser) {
+        if (targetSupervisorId || isAdmin || isOperational || isDeveloper || isRecursosHumanos) {
           const team = (isAdmin || isOperational || isDeveloper || isRecursosHumanos)
             ? allUsers.filter((u: User) => {
                 const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
@@ -1095,12 +933,9 @@ export default function DashboardPage() {
                 return (isAllowedFuncao || isPJ) && u.status?.toUpperCase() !== 'INATIVO'
               })
             : allUsers.filter((u: User) => 
-                (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId || (isLuanaUser && resolvedJorgeId && u.id === resolvedJorgeId)) && u.status?.toUpperCase() !== 'INATIVO'
+                (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId) && u.status?.toUpperCase() !== 'INATIVO'
               )
           const teamIds = team.map((m: User) => m.id)
-          if (isLuanaUser && resolvedJorgeId && !teamIds.includes(resolvedJorgeId)) {
-            teamIds.push(resolvedJorgeId)
-          }
 
           // Fetch proposals for the team (or all if admin/operational)
           let teamProposalsQuery = supabase
@@ -1307,7 +1142,7 @@ export default function DashboardPage() {
 
           if (isPaid && isMTDPaid) {
             teamMTDTotal += cardVal
-            const isMatchUser = beneficiaryIds.includes(perfil?.id || '') || (isLuanaUser && resolvedJorgeId && beneficiaryIds.includes(resolvedJorgeId))
+            const isMatchUser = beneficiaryIds.includes(perfil?.id || '')
             if (isMatchUser) {
               userMTDTotal += cardVal
             }
@@ -1472,32 +1307,6 @@ export default function DashboardPage() {
           }
         })
 
-        // Replicate metrics for Luana
-        if (isLuanaUser) {
-          const fakeLuanaMetric = { totalPaid: 148500, countPaid: 7, totalInProcess: 36200, countInProcess: 3, totalToday: 48600, countToday: 2 }
-          if (resolvedLuanaUser) {
-            brokerMetrics[resolvedLuanaUser.id] = { ...fakeLuanaMetric }
-            rawBrokerMetrics[resolvedLuanaUser.id] = { ...fakeLuanaMetric }
-            approvedTicketsByUser[resolvedLuanaUser.id] = 24
-          }
-          if (perfil?.id) {
-            brokerMetrics[perfil.id] = { ...fakeLuanaMetric }
-            rawBrokerMetrics[perfil.id] = { ...fakeLuanaMetric }
-            approvedTicketsByUser[perfil.id] = 24
-          }
-        } else if (resolvedJorgeId && brokerMetrics[resolvedJorgeId]) {
-          if (resolvedLuanaUser) {
-            brokerMetrics[resolvedLuanaUser.id] = { ...brokerMetrics[resolvedJorgeId] }
-            rawBrokerMetrics[resolvedLuanaUser.id] = { ...(rawBrokerMetrics[resolvedJorgeId] || brokerMetrics[resolvedJorgeId]) }
-            approvedTicketsByUser[resolvedLuanaUser.id] = approvedTicketsByUser[resolvedJorgeId] || approvedTicketsByUser[resolvedLuanaUser.id] || 0
-          }
-          if (isLuanaUser && perfil?.id) {
-            brokerMetrics[perfil.id] = { ...brokerMetrics[resolvedJorgeId] }
-            rawBrokerMetrics[perfil.id] = { ...(rawBrokerMetrics[resolvedJorgeId] || brokerMetrics[resolvedJorgeId]) }
-            approvedTicketsByUser[perfil.id] = approvedTicketsByUser[resolvedJorgeId] || 0
-          }
-        }
-
         setTeamProduced(teamTotal)
         setTeamMTDProduced(teamMTDTotal)
         setMonthlyMTDProduced(userMTDTotal)
@@ -1572,23 +1381,12 @@ export default function DashboardPage() {
           let opsInProcess = brokerOperations[m.id]?.inProcess || {}
           let opsToday = brokerOperations[m.id]?.today || {}
 
-          const normalizedName = (m.nome || "").toLowerCase().trim()
-          if (normalizedName.includes("luana") || normalizedName.includes("carlos eduardo")) {
-            if (resolvedJorgeId && rawBrokerMetrics[resolvedJorgeId]) {
-              metrics = { ...rawBrokerMetrics[resolvedJorgeId] }
-              approvedCount = approvedTicketsByUser[resolvedJorgeId] || approvedCount
-              opsPaid = brokerOperations[resolvedJorgeId]?.paid || {}
-              opsInProcess = brokerOperations[resolvedJorgeId]?.inProcess || {}
-              opsToday = brokerOperations[resolvedJorgeId]?.today || {}
-            }
-          }
-
           const supervisorName = m.supervisor_nome || 
                                  (allUsers as User[]).find((u: User) => u.id === m.supervisor_id)?.nome || 
                                  'NÃO INFORMADO';
           return {
             estagiario_id: m.id,
-            nome: normalizedName.includes("carlos eduardo") ? "Luana" : m.nome,
+            nome: m.nome,
             supervisor: supervisorName,
             totalPaid: metrics.totalPaid,
             countPaid: metrics.countPaid,
@@ -2457,7 +2255,6 @@ export default function DashboardPage() {
   }, [rankings, perfil, estagioRankingGroup]);
 
   const userRankingPaid = useMemo(() => {
-    const isLuana = (perfil?.nome || "").toLowerCase().includes("luana") || (perfil?.nome || "").toLowerCase().includes("carlos eduardo")
     const userRankItem = displayRankings.find(r => r.isUser)
     if (userRankItem && typeof userRankItem.totalPaid === 'number' && userRankItem.totalPaid > 0) {
       return userRankItem.totalPaid
@@ -2465,9 +2262,6 @@ export default function DashboardPage() {
     const mainRankItem = rankings.find(r => r.corretor_id === perfil?.id)
     if (mainRankItem && typeof mainRankItem.totalPaid === 'number' && mainRankItem.totalPaid > 0) {
       return mainRankItem.totalPaid
-    }
-    if (isLuana) {
-      return 148500
     }
     return 0
   }, [displayRankings, rankings, perfil])
