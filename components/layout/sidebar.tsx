@@ -310,9 +310,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
-        // Se for o link COMECE AQUI, visível somente para Administrador e Desenvolvedor
+        // Se for o link COMECE AQUI, visível somente para Corretor PJ, Administrador e Desenvolvedor
         if (item.name === "COMECE AQUI") {
-          if (isAdmin || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor') return true
+          if (isAdmin || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isCorretorPJ) return true
           return false
         }
 
