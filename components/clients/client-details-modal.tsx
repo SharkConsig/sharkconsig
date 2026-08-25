@@ -148,7 +148,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -673,8 +673,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           matricula: (r.matricula as string) || '---',
           orgao: r.orgao as string | null,
           uf: 'MG',
+          margem_70: r.margem_70 || 0.00,
           margem_emprestimo: r.margem_emprestimo || 0.00,
-          margem_beneficio: r.margem_beneficio || 0.00,
+          cartao_credito: r.cartao_credito || 0.00,
+          cartao_beneficio: r.cartao_beneficio || r.margem_beneficio || 0.00,
+          margem_beneficio: r.cartao_beneficio || r.margem_beneficio || 0.00,
           instituidores: []
         }))
 
@@ -834,6 +837,38 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           margem_cartao_beneficio: r.margem_cartao_beneficio || 0.00,
           margem_cartao_beneficio_saque: r.margem_cartao_beneficio_saque || 0.00,
           uf: 'AM',
+          instituidores: []
+        }))
+
+        setRegistrations(mappedRegs as unknown as Registration[])
+        setIsLoading(false)
+        return
+      }
+
+      // 15. Try search in Governo CE Clients
+      const { data: ceData } = await withRetry<ClientData | null>(async () => 
+        await supabase.from('governo_ce_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+      )
+
+      if (ceData) {
+        setClient(ceData)
+        setClientType('governo_ce')
+
+        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
+          await supabase.from('governo_ce_matriculas').select('*').eq('cliente_id', (ceData as ClientData).id)
+        )
+        if (regError) console.error("Erro ao buscar matrículas Governo CE:", regError)
+
+        const mappedRegs = (regData || []).map((r: Record<string, unknown>) => ({
+          ...r,
+          id: r.id as string,
+          numero_matricula: '---',
+          matricula: '---',
+          orgao: r.orgao as string | null,
+          secretaria: r.secretaria as string | null,
+          vinculo: r.vinculo as string | null,
+          salario: r.salario || 0.00,
+          uf: 'CE',
           instituidores: []
         }))
 
@@ -1910,19 +1945,21 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                             <div className="space-y-6 mt-6">
                               <div className="flex items-center gap-2">
                                 <div className="w-1 h-3.5 bg-amber-500 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens de Empréstimo & Benefício</h4>
+                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens Disponíveis</h4>
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {/* Saldo 70% */}
                                 {(() => {
-                                  const isPositive = (Number(activeReg.margem_emprestimo) || 0) > 0;
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_70) || 0;
+                                  const isPositive = val > 0;
                                   return (
                                     <div className={cn(
                                       "p-4 border rounded-2xl",
                                       isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
                                     )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Empréstimo</p>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Saldo 70%</p>
                                       <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(Number(activeReg.margem_emprestimo))}
+                                        {formatCurrency(val)}
                                       </p>
                                       <div className="flex items-center gap-1.5 mt-2">
                                         <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
@@ -1934,16 +1971,64 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                   );
                                 })()}
 
+                                {/* Margem Empréstimo */}
                                 {(() => {
-                                  const isPositive = (Number(activeReg.margem_beneficio) || 0) > 0;
+                                  const val = Number(activeReg.margem_emprestimo) || 0;
+                                  const isPositive = val > 0;
                                   return (
                                     <div className={cn(
                                       "p-4 border rounded-2xl",
                                       isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
                                     )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Benefício</p>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Empréstimo</p>
                                       <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(Number(activeReg.margem_beneficio))}
+                                        {formatCurrency(val)}
+                                      </p>
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                {/* Cartão Crédito */}
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).cartao_credito) || 0;
+                                  const isPositive = val > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Cartão Crédito</p>
+                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                        {formatCurrency(val)}
+                                      </p>
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                {/* Cartão Benefício */}
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).cartao_beneficio || (activeReg as unknown as Record<string, unknown>).margem_beneficio) || 0;
+                                  const isPositive = val > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Cartão Benefício</p>
+                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                        {formatCurrency(val)}
                                       </p>
                                       <div className="flex items-center gap-1.5 mt-2">
                                         <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
@@ -2323,6 +2408,58 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                           Margem Benefício Saque
                                         </p>
                                         <p className="text-xl font-black text-slate-900">
+                                          {formatCurrency(val)}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </>
+                        ) : clientType === 'governo_ce' ? (
+                          <>
+                            {/* Governo do Ceará */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "GOVERNO DO CEARÁ"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Secretaria</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {(((activeReg as unknown as Record<string, unknown>).secretaria as string) || "N/I")}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {(((activeReg as unknown as Record<string, unknown>).vinculo as string) || "N/I")}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-6 mt-6">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-3.5 bg-emerald-600 rounded-full"></div>
+                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Dados Financeiros</h4>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).salario) || 0;
+                                  const isPositive = val > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                    )}>
+                                      <div>
+                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-slate-400")}>
+                                          Salário Base
+                                        </p>
+                                        <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-slate-900")}>
                                           {formatCurrency(val)}
                                         </p>
                                       </div>

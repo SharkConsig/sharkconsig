@@ -142,7 +142,8 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
     'base_consulta_prefeitura_natal',
     'base_consulta_prefeitura_porto_velho',
     'base_consulta_governo_ba',
-    'base_consulta_governo_am'
+    'base_consulta_governo_am',
+    'base_consulta_governo_ce'
   ];
 
   const results: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
@@ -278,6 +279,8 @@ export default function DistribuicaoCampanhaPage() {
         'prefeitura_natal': 'base_consulta_prefeitura_natal',
         'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
         'governo_ba': 'base_consulta_governo_ba',
+        'governo_am': 'base_consulta_governo_am',
+        'governo_ce': 'base_consulta_governo_ce',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -307,6 +310,10 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_prefeitura_porto_velho';
       } else if (cNameUpper.includes('GOVERNO BA') || cNameUpper.includes('BAHIA')) {
         targetTable = 'base_consulta_governo_ba';
+      } else if (cNameUpper.includes('GOVERNO AM') || cNameUpper.includes('AMAZONAS')) {
+        targetTable = 'base_consulta_governo_am';
+      } else if (cNameUpper.includes('GOVERNO CE') || cNameUpper.includes('CEARÁ') || cNameUpper.includes('CEARA')) {
+        targetTable = 'base_consulta_governo_ce';
       }
 
       let clientsBatchList: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
@@ -491,6 +498,8 @@ export default function DistribuicaoCampanhaPage() {
         'prefeitura_natal': 'base_consulta_prefeitura_natal',
         'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
         'governo_ba': 'base_consulta_governo_ba',
+        'governo_am': 'base_consulta_governo_am',
+        'governo_ce': 'base_consulta_governo_ce',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -520,6 +529,10 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_prefeitura_porto_velho';
       } else if (cNameUpper.includes('GOVERNO BA') || cNameUpper.includes('BAHIA')) {
         targetTable = 'base_consulta_governo_ba';
+      } else if (cNameUpper.includes('GOVERNO AM') || cNameUpper.includes('AMAZONAS')) {
+        targetTable = 'base_consulta_governo_am';
+      } else if (cNameUpper.includes('GOVERNO CE') || cNameUpper.includes('CEARÁ') || cNameUpper.includes('CEARA')) {
+        targetTable = 'base_consulta_governo_ce';
       }
 
       let clientDetails: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];

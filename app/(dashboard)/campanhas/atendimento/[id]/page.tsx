@@ -2036,27 +2036,108 @@ export default function CampanhaAtendimentoPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 gap-4 mt-6">
-                            {/* Margem Empréstimo */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+                            {/* Saldo 70% */}
                             {(() => {
-                              const valConsig = activeReg.margem_disponivel_emprestimo ?? (activeInst?.margem_35 || 0);
-                              const isConsigAvailable = valConsig > 0;
+                              const val = Number(activeReg.margem_70) || 0;
+                              const isPositive = val > 0;
                               return (
                                 <div className={cn(
                                   "p-5 border rounded-2xl space-y-3 text-left",
-                                  isConsigAvailable ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                                  isPositive ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
                                 )}>
-                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600 truncate")}>
+                                    SALDO 70%
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isPositive ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(val)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Margem Empréstimo */}
+                            {(() => {
+                              const val = Number(activeReg.margem_emprestimo ?? activeReg.margem_disponivel_emprestimo ?? (activeInst?.margem_35 || 0));
+                              const isPositive = val > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isPositive ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isPositive ? "text-blue-600" : "text-red-600 truncate")}>
                                     MARGEM EMPRÉSTIMO
                                   </p>
                                   <div className="flex flex-col">
-                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isConsigAvailable ? "text-blue-700" : "text-red-700 font-bold")}>
-                                      {formatCurrency(valConsig)}
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isPositive ? "text-blue-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(val)}
                                     </p>
                                     <div className="flex items-center gap-2 mt-1">
-                                      <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
-                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
-                                        {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      <div className={cn("w-2 h-2 rounded-full", isPositive ? "bg-blue-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isPositive ? "text-blue-600" : "text-red-600")}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Cartão Crédito */}
+                            {(() => {
+                              const val = Number(activeReg.cartao_credito) || 0;
+                              const isPositive = val > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isPositive ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600 truncate")}>
+                                    CARTÃO CRÉDITO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isPositive ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(val)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Cartão Benefício */}
+                            {(() => {
+                              const val = Number(activeReg.cartao_beneficio ?? (activeReg as any).margem_beneficio) || 0;
+                              const isPositive = val > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isPositive ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600 truncate")}>
+                                    CARTÃO BENEFÍCIO
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isPositive ? "text-emerald-700" : "text-red-700 font-bold")}>
+                                      {formatCurrency(val)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
                                       </span>
                                     </div>
                                   </div>

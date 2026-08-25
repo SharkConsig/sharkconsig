@@ -107,7 +107,7 @@ interface ClientData {
 }
 
 interface ConvenioProfile {
-  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am';
+  type: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce';
   client: ClientData;
   registrations: Registration[];
 }
@@ -123,7 +123,7 @@ export default function SearchClientPage() {
   const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false)
   
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | null>(null)
+  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
@@ -1114,8 +1114,11 @@ export default function SearchClientPage() {
           matricula: (r.matricula as string) || '---',
           orgao: r.orgao as string | null,
           uf: 'MG',
+          margem_70: r.margem_70 || 0.00,
           margem_emprestimo: r.margem_emprestimo || 0.00,
-          margem_beneficio: r.margem_beneficio || 0.00,
+          cartao_credito: r.cartao_credito || 0.00,
+          cartao_beneficio: r.cartao_beneficio || r.margem_beneficio || 0.00,
+          margem_beneficio: r.cartao_beneficio || r.margem_beneficio || 0.00,
           instituidores: []
         }
       }) as unknown as Registration[]
@@ -1228,11 +1231,30 @@ export default function SearchClientPage() {
           instituidores: []
         }
       }) as unknown as Registration[]
+    } else if (type === 'governo_ce') {
+      const { data: regData, error: regError } = await withRetry(async () => 
+        await supabase.from('governo_ce_matriculas').select('*').eq('cliente_id', clientData.id)
+      )
+      if (regError) throw regError
+      return (regData || []).map((r: Record<string, unknown>) => {
+        return {
+          ...r,
+          id: r.id as string,
+          numero_matricula: '---',
+          matricula: '---',
+          orgao: r.orgao as string | null,
+          secretaria: r.secretaria as string | null,
+          vinculo: r.vinculo as string | null,
+          salario: r.salario || 0.00,
+          uf: 'CE',
+          instituidores: []
+        }
+      }) as unknown as Registration[]
     }
     return []
   }
 
-  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | null) => {
+  const loadProfilesForCpf = async (cpf: string, preferredType?: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | null) => {
     const tableMap = {
       siape: 'clientes',
       governo_sp: 'governo_sp_clientes',
@@ -1248,7 +1270,8 @@ export default function SearchClientPage() {
       prefeitura_natal: 'prefeitura_natal_clientes',
       prefeitura_porto_velho: 'prefeitura_porto_velho_clientes',
       governo_ba: 'governo_ba_clientes',
-      governo_am: 'governo_am_clientes'
+      governo_am: 'governo_am_clientes',
+      governo_ce: 'governo_ce_clientes'
     }
 
     const foundProfiles: ConvenioProfile[] = []
@@ -1361,6 +1384,7 @@ export default function SearchClientPage() {
         { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho' },
         { name: 'base_consulta_governo_ba', convenio: 'governo_ba' },
         { name: 'base_consulta_governo_am', convenio: 'governo_am' },
+        { name: 'base_consulta_governo_ce', convenio: 'governo_ce' },
       ];
 
       const results = await Promise.all(
@@ -1384,7 +1408,7 @@ export default function SearchClientPage() {
 
       const quickData = results.find(r => r !== null) || null;
 
-      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | null = null
+      let preferredType: 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | null = null
       let resolvedCpf = cleanCPF
 
       if (quickData) {
@@ -1405,6 +1429,7 @@ export default function SearchClientPage() {
         else if (source === 'prefeitura_porto_velho') preferredType = 'prefeitura_porto_velho'
         else if (source === 'governo_ba') preferredType = 'governo_ba'
         else if (source === 'governo_am') preferredType = 'governo_am'
+        else if (source === 'governo_ce') preferredType = 'governo_ce'
       }
 
       await loadProfilesForCpf(resolvedCpf, preferredType)
@@ -1524,6 +1549,7 @@ export default function SearchClientPage() {
         { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho' },
         { name: 'base_consulta_governo_ba', convenio: 'governo_ba' },
         { name: 'base_consulta_governo_am', convenio: 'governo_am' },
+        { name: 'base_consulta_governo_ce', convenio: 'governo_ce' },
       ];
 
       const results = await Promise.all(
@@ -1765,7 +1791,8 @@ export default function SearchClientPage() {
                       p.type === 'prefeitura_natal' ? 'PREFEITURA DE NATAL' :
                       p.type === 'prefeitura_porto_velho' ? 'PREFEITURA DE PORTO VELHO' :
                       p.type === 'governo_ba' ? 'GOVERNO BAHIA' :
-                      p.type === 'governo_am' ? 'GOVERNO AMAZONAS' : String(p.type).toUpperCase();
+                      p.type === 'governo_am' ? 'GOVERNO AMAZONAS' :
+                      p.type === 'governo_ce' ? 'GOVERNO CEARÁ' : String(p.type).toUpperCase();
                     
                     return (
                       <button
@@ -4395,12 +4422,49 @@ export default function SearchClientPage() {
                           <div className="space-y-8 sm:space-y-10">
                             <div className="flex items-center gap-3">
                               <div className="w-1 h-5 bg-amber-500 rounded-full"></div>
-                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Margens de Empréstimo & Benefício</h3>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Margens Disponíveis</h3>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                              {/* Saldo 70% */}
+                              {(() => {
+                                const val = Number(reg.margem_70) || 0;
+                                const isPositive = val > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                  )}>
+                                    <div>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-700/60" : "text-red-700/60"
+                                      )}>
+                                        Saldo 70%
+                                      </p>
+                                      <p className={cn(
+                                        "text-[17px] font-bold tracking-tight",
+                                        isPositive ? "text-emerald-700" : "text-red-700"
+                                      )}>
+                                        {formatCurrency(val)}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-600" : "bg-red-600")}></div>
+                                      <span className={cn(
+                                        "text-[8px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-600" : "text-red-600"
+                                      )}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
                               {/* Margem Empréstimo */}
                               {(() => {
-                                const isPositive = (Number(reg.margem_emprestimo) || 0) > 0;
+                                const val = Number(reg.margem_emprestimo) || 0;
+                                const isPositive = val > 0;
                                 return (
                                   <div className={cn(
                                     "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
@@ -4417,9 +4481,7 @@ export default function SearchClientPage() {
                                         "text-[17px] font-bold tracking-tight",
                                         isPositive ? "text-emerald-700" : "text-red-700"
                                       )}>
-                                        {typeof reg.margem_emprestimo === 'number' 
-                                          ? reg.margem_emprestimo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
-                                          : Number(reg.margem_emprestimo || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                        {formatCurrency(val)}
                                       </p>
                                     </div>
                                     <div className="flex items-center gap-1.5">
@@ -4435,9 +4497,10 @@ export default function SearchClientPage() {
                                 );
                               })()}
 
-                              {/* Margem Benefício */}
+                              {/* Cartão Crédito */}
                               {(() => {
-                                const isPositive = (Number(reg.margem_beneficio) || 0) > 0;
+                                const val = Number(reg.cartao_credito) || 0;
+                                const isPositive = val > 0;
                                 return (
                                   <div className={cn(
                                     "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
@@ -4448,15 +4511,49 @@ export default function SearchClientPage() {
                                         "text-[9px] font-bold uppercase tracking-widest",
                                         isPositive ? "text-emerald-700/60" : "text-red-700/60"
                                       )}>
-                                        Margem Benefício
+                                        Cartão Crédito
                                       </p>
                                       <p className={cn(
                                         "text-[17px] font-bold tracking-tight",
                                         isPositive ? "text-emerald-700" : "text-red-700"
                                       )}>
-                                        {typeof reg.margem_beneficio === 'number' 
-                                          ? reg.margem_beneficio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
-                                          : Number(reg.margem_beneficio || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                        {formatCurrency(val)}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-600" : "bg-red-600")}></div>
+                                      <span className={cn(
+                                        "text-[8px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-600" : "text-red-600"
+                                      )}>
+                                        {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Cartão Benefício */}
+                              {(() => {
+                                const val = Number(reg.cartao_beneficio || (reg as any).margem_beneficio) || 0;
+                                const isPositive = val > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                  )}>
+                                    <div>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-700/60" : "text-red-700/60"
+                                      )}>
+                                        Cartão Benefício
+                                      </p>
+                                      <p className={cn(
+                                        "text-[17px] font-bold tracking-tight",
+                                        isPositive ? "text-emerald-700" : "text-red-700"
+                                      )}>
+                                        {formatCurrency(val)}
                                       </p>
                                     </div>
                                     <div className="flex items-center gap-1.5">
@@ -4946,6 +5043,155 @@ export default function SearchClientPage() {
                                     tel3: unmaskPhone(client.telefone_3),
                                     origem: "pesquisa",
                                     convenio: "GOVERNO AMAZONAS"
+                                  });
+                                  router.push(`/propostas/nova?${params.toString()}`);
+                                }}
+                                className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-transparent border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 transition-all rounded-lg"
+                              >
+                                <FileEdit className="w-4 h-4 mr-2" />
+                                Digitar Proposta
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {clientType === 'governo_ce' && registrations.length > 0 && (() => {
+              return (
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                    {registrations.map((reg, idx) => (
+                      <button
+                        key={`tab-ce-${reg.id}-${idx}`}
+                        type="button"
+                        onClick={() => setActiveRegIndex(idx)}
+                        className={cn(
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px]",
+                          activeRegIndex === idx 
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                        )}
+                      >
+                        VÍNCULO {idx + 1}
+                      </button>
+                    ))}
+                  </div>
+
+                  {registrations[activeRegIndex] && (() => {
+                    const reg = registrations[activeRegIndex];
+                    const regObj = reg as unknown as Record<string, unknown>;
+                    
+                    return (
+                      <Card className="card-shadow border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                        <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-emerald-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações do Vínculo (GOVERNO DO CEARÁ)</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{reg.orgao || "GOVERNO DO CEARÁ"}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Secretaria</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{((regObj.secretaria as string) || "N/I")}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{((regObj.vinculo as string) || "N/I")}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Salário Card */}
+                          <div className="space-y-8 sm:space-y-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-emerald-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Dados Financeiros</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                              {(() => {
+                                const val = Number(regObj.salario) || 0;
+                                const isPositive = val > 0;
+                                return (
+                                  <div className={cn(
+                                    "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                    isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                  )}>
+                                    <div>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isPositive ? "text-emerald-700/60" : "text-slate-400"
+                                      )}>
+                                        Salário Base
+                                      </p>
+                                      <p className={cn(
+                                        "text-lg font-black tracking-tight leading-none mt-1",
+                                        isPositive ? "text-emerald-950" : "text-slate-900"
+                                      )}>
+                                        {formatCurrency(val)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {renderClientTicketsHistory()}
+                          {renderClientProposalsHistory()}
+
+                          {/* Footer Buttons for GOV CE */}
+                          <div className="flex flex-col md:flex-row items-center justify-end gap-4 pt-10 border-t border-slate-50">
+                            <Button
+                              type="button"
+                              onClick={() => setIsSimulationModalOpen(true)}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-xl shadow-slate-200 transition-all rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <Calculator className="w-4 h-4 mr-2" />
+                              Simular Proposta
+                            </Button>
+                            <Button 
+                              onClick={() => {
+                                const rawCpf = client.cpf || "";
+                                const formattedCpf = rawCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+
+                                const params = new URLSearchParams({
+                                  nome: client.nome || "NOME NÃO INFORMADO",
+                                  cpf: formattedCpf,
+                                  tel1: unmaskPhone(client.telefone_1),
+                                  tel2: unmaskPhone(client.telefone_2),
+                                  tel3: unmaskPhone(client.telefone_3),
+                                  convenio: "GOVERNO CEARÁ",
+                                  matricula: ""
+                                });
+                                router.push(`/chamados/novo?${params.toString()}`);
+                              }}
+                              className="w-full md:w-auto h-11 px-12 text-[12px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-xl shadow-slate-200 transition-all rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Abrir Chamado
+                            </Button>
+                            {!isUserEstagio && (
+                              <Button 
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    nome: client.nome || "NOME NÃO INFORMADO",
+                                    cpf: client.cpf,
+                                    nascimento: formatDate(client.data_nascimento),
+                                    tel1: unmaskPhone(client.telefone_1),
+                                    tel2: unmaskPhone(client.telefone_2),
+                                    tel3: unmaskPhone(client.telefone_3),
+                                    origem: "pesquisa",
+                                    convenio: "GOVERNO CEARÁ"
                                   });
                                   router.push(`/propostas/nova?${params.toString()}`);
                                 }}

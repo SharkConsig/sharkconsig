@@ -93,6 +93,8 @@ const TABLE_MAP: Record<string, string> = {
   'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
   'governo_ba': 'base_consulta_governo_ba',
   'governo_am': 'base_consulta_governo_am',
+  'governo_ce': 'base_consulta_governo_ce',
+  'governo_mg': 'base_consulta_governo_mg',
 };
 
 const TABLE_COLUMNS: Record<string, string[]> = {
@@ -144,6 +146,12 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   ],
   'base_consulta_governo_am': [
     'cpf', 'nome', 'data_nascimento', 'matricula', 'orgao', 'secretaria', 'cargo', 'situacao', 'margem_consignavel', 'margem_cartao', 'margem_cartao_beneficio', 'margem_cartao_beneficio_saque', 'telefone_1', 'telefone_2', 'telefone_3'
+  ],
+  'base_consulta_governo_ce': [
+    'cpf', 'nome', 'data_nascimento', 'salario', 'orgao', 'secretaria', 'vinculo', 'telefone_1', 'telefone_2', 'telefone_3'
+  ],
+  'base_consulta_governo_mg': [
+    'cpf', 'nome', 'telefone_1', 'telefone_2', 'telefone_3', 'matricula', 'orgao', 'margem_70', 'margem_emprestimo', 'cartao_credito', 'cartao_beneficio'
   ]
 };
 
@@ -151,6 +159,7 @@ const CONVENIOS = [
   { id: 'siape', label: 'SIAPE / FEDERAL' },
   { id: 'governo_sp', label: 'GOVERNO SP' },
   { id: 'prefeitura_sp', label: 'PREFEITURA SP' },
+  { id: 'governo_mg', label: 'GOVERNO MINAS GERAIS' },
   { id: 'governo_pi', label: 'GOVERNO PIAUÍ' },
   { id: 'governo_ma', label: 'GOVERNO MARANHÃO' },
   { id: 'governo_rr', label: 'GOVERNO RORAIMA' },
@@ -159,6 +168,7 @@ const CONVENIOS = [
   { id: 'prefeitura_porto_velho', label: 'PREFEITURA PORTO VELHO' },
   { id: 'governo_ba', label: 'GOVERNO BAHIA' },
   { id: 'governo_am', label: 'GOVERNO AMAZONAS' },
+  { id: 'governo_ce', label: 'GOVERNO CEARÁ' },
 ];
 
 export default function NewCampaignPage() {
@@ -248,6 +258,21 @@ export default function NewCampaignPage() {
 
         orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
         situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao).filter(Boolean) || [])).sort() as string[];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'governo_ce') {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: vinculosData } = await supabase
+          .from(tableName)
+          .select('vinculo')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(vinculosData?.map(i => i.vinculo).filter(Boolean) || [])).sort() as string[];
         regimes = [];
         ufs = [];
       } else if (activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') {
