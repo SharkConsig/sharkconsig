@@ -634,7 +634,7 @@ export function AdminDashboard({
         const earlierMonthIso = new Date(today.getFullYear(), today.getMonth(), 2).toISOString()
 
         const mockPjProps = [
-          // 1 DIA contract (SENFF Cartão - Prefeitura de SP) -> Produção: 16.103,32 | Receita: 2.093,43
+          // 1 DIA contract (SENFF Cartão - Prefeitura de SP) -> Produção: 16.450,54 | Receita: 2.138,57
           {
             id: `mock-senff-pmsp-1`,
             id_lead: `mock-senff-pmsp-lead-1`,
@@ -642,11 +642,11 @@ export function AdminDashboard({
             banco: 'SENFF',
             convenio: 'Prefeitura de SP',
             tipo_operacao: 'Cartão',
-            valor_operacao: 16103.32,
-            valor_cliente: 16103.32,
+            valor_operacao: 16450.54,
+            valor_cliente: 16450.54,
             percentual_comissao_pj: 13,
             comissao_pj_porcentagem: 13,
-            valor_comissao_pj: 2093.43,
+            valor_comissao_pj: 2138.57,
             status: 'PÓS-VENDA REALIZADA',
             corretor_id: '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639',
             corretor_regime: 'PJ',
@@ -658,7 +658,7 @@ export function AdminDashboard({
             mock_tier: 'dia'
           },
           // 6 additional SEMANA contracts (Total SEMANA = 1 DIA + 6 SEMANA = 7 contratos)
-          // Produção SEMANA: 109.677,73 | Receita SEMANA: 14.290,74
+          // Produção SEMANA: 110.024,95 | Receita SEMANA: 14.335,88
           {
             id: `mock-senff-pmsp-2`,
             id_lead: `mock-senff-pmsp-lead-2`,
@@ -726,7 +726,7 @@ export function AdminDashboard({
             mock_tier: 'semana'
           },
           // 4 additional MÊS contracts (Total MÊS = 7 SEMANA + 4 MÊS = 11 contratos)
-          // Produção MÊS: 168.000,00 | Receita MÊS: 21.937,93
+          // Produção MÊS: 168.347,22 | Receita MÊS: 21.983,07
           {
             id: `mock-senff-pmsp-3`,
             id_lead: `mock-senff-pmsp-lead-3`,
@@ -760,7 +760,7 @@ export function AdminDashboard({
             valor_cliente: 16103.31,
             percentual_comissao_pj: 13,
             comissao_pj_porcentagem: 13,
-            valor_comissao_pj: 2093.44,
+            valor_comissao_pj: 2093.43,
             status: 'PÓS-VENDA REALIZADA',
             corretor_id: '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639',
             corretor_regime: 'PJ',

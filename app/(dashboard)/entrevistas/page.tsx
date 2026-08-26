@@ -916,19 +916,20 @@ export default function EntrevistasPage() {
                     className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none cursor-pointer"
                   >
                     <option value="Todas">Fase: Todas</option>
-                    <option value="Em processo de contratação">Em processo de contratação</option>
                     <option value="Aprovado">Aprovado</option>
+                    <option value="Desistiu">Desistiu</option>
+                    <option value="Em processo de contratação">Em processo de contratação</option>
+                    <option value="Entrevista">Entrevista</option>
+                    <option value="Ligação">Ligação</option>
+                    <option value="N Resp. Form.">N Resp. Form.</option>
+                    <option value="Não atendeu">Não atendeu</option>
+                    <option value="Não compareceu">Não compareceu</option>
+                    <option value="Não veio para o teste">Não veio para o teste</option>
+                    <option value="Outra oportunidade">Outra oportunidade</option>
+                    <option value="Remarcar">Remarcar</option>
+                    <option value="Rep. formulário">Rep. formulário</option>
                     <option value="Reprovado">Reprovado</option>
                     <option value="Stand-by">Stand-by</option>
-                    <option value="Entrevista">Entrevista</option>
-                    <option value="Não compareceu">Não compareceu</option>
-                    <option value="Não atendeu">Não atendeu</option>
-                    <option value="Desistiu">Desistiu</option>
-                    <option value="Rep. formulário">Rep. formulário</option>
-                    <option value="N Resp. Form.">N Resp. Form.</option>
-                    <option value="Outra oportunidade">Outra oportunidade</option>
-                    <option value="Não veio para o teste">Não veio para o teste</option>
-                    <option value="Remarcar">Remarcar</option>
                   </select>
                 </div>
 
@@ -1377,19 +1378,20 @@ function PillDropdown({
 // -------------------------------------------------------------
 
 const faseOptions = [
-  { value: "Em processo de contratação", label: "Em processo de contratação", bg: "bg-[#dcfce7] hover:bg-[#dcfce7]/90", border: "border-[#bbf7d0]", text: "text-[#15803d]", arrowColor: "text-[#15803d]" },
   { value: "Aprovado", label: "Aprovado", bg: "bg-[#15803d] hover:bg-[#166534]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
+  { value: "Desistiu", label: "Desistiu", bg: "bg-[#e0f2fe] hover:bg-[#e0f2fe]/90", border: "border-[#bae6fd]", text: "text-[#0369a1]", arrowColor: "text-[#0369a1]" },
+  { value: "Em processo de contratação", label: "Em processo de contratação", bg: "bg-[#dcfce7] hover:bg-[#dcfce7]/90", border: "border-[#bbf7d0]", text: "text-[#15803d]", arrowColor: "text-[#15803d]" },
+  { value: "Entrevista", label: "Entrevista", bg: "bg-[#f3e8ff] hover:bg-[#f3e8ff]/90", border: "border-[#e9d5ff]", text: "text-[#6b21a8]", arrowColor: "text-[#6b21a8]" },
+  { value: "Ligação", label: "Ligação", bg: "bg-[#e0e7ff] hover:bg-[#e0e7ff]/90", border: "border-[#c7d2fe]", text: "text-[#4338ca]", arrowColor: "text-[#4338ca]" },
+  { value: "N Resp. Form.", label: "N Resp. Form.", bg: "bg-[#f8fafc] hover:bg-[#f1f5f9]", border: "border-[#e2e8f0]", text: "text-[#64748b]", arrowColor: "text-[#64748b]" },
+  { value: "Não atendeu", label: "Não atendeu", bg: "bg-[#ffedd5] hover:bg-[#ffedd5]/90", border: "border-[#fed7aa]", text: "text-[#c2410c]", arrowColor: "text-[#c2410c]" },
+  { value: "Não compareceu", label: "Não compareceu", bg: "bg-[#fee2e2] hover:bg-[#fee2e2]/90", border: "border-[#fecaca]", text: "text-[#b91c1c]", arrowColor: "text-[#b91c1c]" },
+  { value: "Não veio para o teste", label: "Não veio para o teste", bg: "bg-[#205361] hover:bg-[#1f4a56]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
+  { value: "Outra oportunidade", label: "Outra oportunidade", bg: "bg-[#5c1c1c] hover:bg-[#521c1c]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
+  { value: "Remarcar", label: "Remarcar", bg: "bg-[#f1f5f9] hover:bg-[#e2e8f0]", border: "border-[#cbd5e1]", text: "text-[#475569]", arrowColor: "text-[#475569]" },
+  { value: "Rep. formulário", label: "Rep. formulário", bg: "bg-[#f1f5f9] hover:bg-[#cbd5e1]/50", border: "border-[#cbd5e1]", text: "text-[#475569]", arrowColor: "text-[#475569]" },
   { value: "Reprovado", label: "Reprovado", bg: "bg-[#b91c1c] hover:bg-[#991b1b]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
   { value: "Stand-by", label: "Stand-by", bg: "bg-[#fef3c7] hover:bg-[#fef3c7]/90", border: "border-[#fde68a]", text: "text-[#d97706]", arrowColor: "text-[#d97706]" },
-  { value: "Entrevista", label: "Entrevista", bg: "bg-[#f3e8ff] hover:bg-[#f3e8ff]/90", border: "border-[#e9d5ff]", text: "text-[#6b21a8]", arrowColor: "text-[#6b21a8]" },
-  { value: "Não compareceu", label: "Não compareceu", bg: "bg-[#fee2e2] hover:bg-[#fee2e2]/90", border: "border-[#fecaca]", text: "text-[#b91c1c]", arrowColor: "text-[#b91c1c]" },
-  { value: "Não atendeu", label: "Não atendeu", bg: "bg-[#ffedd5] hover:bg-[#ffedd5]/90", border: "border-[#fed7aa]", text: "text-[#c2410c]", arrowColor: "text-[#c2410c]" },
-  { value: "Desistiu", label: "Desistiu", bg: "bg-[#e0f2fe] hover:bg-[#e0f2fe]/90", border: "border-[#bae6fd]", text: "text-[#0369a1]", arrowColor: "text-[#0369a1]" },
-  { value: "Rep. formulário", label: "Rep. formulário", bg: "bg-[#f1f5f9] hover:bg-[#cbd5e1]/50", border: "border-[#cbd5e1]", text: "text-[#475569]", arrowColor: "text-[#475569]" },
-  { value: "N Resp. Form.", label: "N Resp. Form.", bg: "bg-[#f8fafc] hover:bg-[#f1f5f9]", border: "border-[#e2e8f0]", text: "text-[#64748b]", arrowColor: "text-[#64748b]" },
-  { value: "Outra oportunidade", label: "Outra oportunidade", bg: "bg-[#5c1c1c] hover:bg-[#521c1c]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
-  { value: "Não veio para o teste", label: "Não veio para o teste", bg: "bg-[#205361] hover:bg-[#1f4a56]", border: "border-transparent", text: "text-white", arrowColor: "text-white" },
-  { value: "Remarcar", label: "Remarcar", bg: "bg-[#f1f5f9] hover:bg-[#e2e8f0]", border: "border-[#cbd5e1]", text: "text-[#475569]", arrowColor: "text-[#475569]" }
 ]
 
 const plataformaOptions = [

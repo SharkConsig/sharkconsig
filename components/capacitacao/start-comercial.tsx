@@ -500,27 +500,27 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
       screenshots: [
         {
           title: "Sustentabilidade e Receita",
-          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_1.png",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_atualizado_1.png",
           alt: "Sustentabilidade e Receita - SharkConsig"
         },
         {
           title: "Análise Comparativa",
-          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_2.png",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_atualizado_2.png",
           alt: "Análise Comparativa - SharkConsig"
         },
         {
           title: "Diagnóstico de Desempenho",
-          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_3.png",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_atualizado_3.png",
           alt: "Diagnóstico de Desempenho - SharkConsig"
         },
         {
           title: "Ranking de Performance por Canal",
-          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_4.png",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_atualizado_4.png",
           alt: "Ranking de Performance por Canal - SharkConsig"
         },
         {
           title: "Diagnóstico Financeiro e Estratégico",
-          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_5.png",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/dashboard_atualizado_5.png",
           alt: "Diagnóstico Financeiro e Estratégico - SharkConsig"
         }
       ]
