@@ -416,7 +416,7 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
       screenshots: [
         {
           title: "Quitação de Cartão",
-          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/proposta_reducao_RENATO_MENDES_CASTRO.jpg",
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/proposta_reducao_ROGERIO_JOSE_FIORINI.jpg",
           alt: "Quitação de Cartão - SharkConsig"
         }
       ]
@@ -1179,13 +1179,20 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
                                 })}
                                 className="cursor-pointer group relative rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white transition-all hover:ring-2 hover:ring-emerald-500"
                               >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={screen.url}
-                                  alt={screen.alt}
-                                  className="w-full h-auto object-contain rounded-lg block"
-                                />
-                                <div className="absolute inset-0 bg-slate-900/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                <div className="relative w-full">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={screen.url}
+                                    alt={screen.alt}
+                                    className="w-full h-auto object-contain rounded-lg block"
+                                  />
+                                  {/* Desfoque / Blur para ocultar nome e foto de usuário no cabeçalho superior direito */}
+                                  <div 
+                                    className="absolute top-[2.5%] right-[2.5%] w-[18%] h-[8%] backdrop-blur-md bg-white/70 rounded-md pointer-events-none z-10"
+                                    title="Identificação do usuário ocultada"
+                                  />
+                                </div>
+                                <div className="absolute inset-0 bg-slate-900/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-20">
                                   <span className="bg-slate-950/80 text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow">
                                     <ZoomIn className="w-3 h-3" /> Clique para Inspecionar
                                   </span>
@@ -1282,13 +1289,20 @@ Hoje faria mais sentido para você aumentar o valor ou manter essa estrutura em 
             </div>
 
             <div className="py-2">
-              <div className="rounded-xl overflow-hidden border border-slate-700 shadow-sm bg-white max-h-[70vh] flex items-center justify-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={previewModal.imageUrl}
-                  alt={previewModal.title}
-                  className="w-full h-auto max-h-[70vh] object-contain rounded-lg block"
-                />
+              <div className="rounded-xl overflow-hidden border border-slate-700 shadow-sm bg-white max-h-[70vh] flex items-center justify-center relative">
+                <div className="relative w-full max-h-[70vh] flex items-center justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewModal.imageUrl}
+                    alt={previewModal.title}
+                    className="w-full h-auto max-h-[70vh] object-contain rounded-lg block"
+                  />
+                  {/* Desfoque / Blur para ocultar nome e foto de usuário no cabeçalho superior direito */}
+                  <div 
+                    className="absolute top-[2.5%] right-[2.5%] w-[18%] h-[8%] backdrop-blur-md bg-white/70 rounded-md pointer-events-none z-10"
+                    title="Identificação do usuário ocultada"
+                  />
+                </div>
               </div>
             </div>
 
