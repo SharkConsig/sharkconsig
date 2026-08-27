@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { 
   MoreVertical, 
@@ -31,7 +32,8 @@ import {
   ChevronLeft, 
   ChevronRight,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Search
 } from "lucide-react"
 import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
@@ -65,6 +67,7 @@ export default function UsuariosPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [filtroFuncao, setFiltroFuncao] = useState("todas")
   const [filtroStatus, setFiltroStatus] = useState("todos")
+  const [buscaNome, setBuscaNome] = useState("")
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -214,13 +217,16 @@ export default function UsuariosPage() {
   const filteredUsers = usuarios.filter(user => {
     const matchFuncao = filtroFuncao === "todas" || user.funcao.toLowerCase() === filtroFuncao.toLowerCase()
     const matchStatus = filtroStatus === "todos" || user.status.toLowerCase() === filtroStatus.toLowerCase()
-    return matchFuncao && matchStatus
+    const matchNome = !buscaNome.trim() || 
+      user.nome.toLowerCase().includes(buscaNome.toLowerCase()) || 
+      user.email.toLowerCase().includes(buscaNome.toLowerCase())
+    return matchFuncao && matchStatus && matchNome
   })
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filtroFuncao, filtroStatus]);
+  }, [filtroFuncao, filtroStatus, buscaNome]);
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
@@ -313,6 +319,19 @@ export default function UsuariosPage() {
             {/* Filters Bar */}
             <div className="p-6 flex flex-col xl:flex-row xl:items-end justify-between gap-6 border-b border-slate-100">
               <div className="flex flex-wrap items-center gap-6">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Buscar por Nome</label>
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input 
+                      placeholder="Buscar usuário..." 
+                      value={buscaNome}
+                      onChange={(e) => setBuscaNome(e.target.value)}
+                      className="w-[400px] h-[38px] pl-9 bg-slate-50/50 border-slate-100 rounded-lg font-bold text-[11px] text-slate-700 placeholder:text-[11px] placeholder:font-bold placeholder:text-slate-700 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-slate-100 focus:outline-none focus:ring-0 focus:border-slate-100"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Filtrar Função</label>
                   <Select value={filtroFuncao} onValueChange={setFiltroFuncao}>
