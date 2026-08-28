@@ -94,6 +94,9 @@ const getRequiredHeadersKeysForType = (type: string): string[][] => {
   if (type === "GOVERNO_CE") {
     return [["cpf"], ["nome"], ["orgao"]];
   }
+  if (type === "GOVERNO_RO") {
+    return [["cpf"], ["nome"]];
+  }
   return [];
 };
 
@@ -133,6 +136,7 @@ export default function ImportBatchPage() {
   const [totalBaseGovBA, setTotalBaseGovBA] = useState(0);
   const [totalBaseGovAM, setTotalBaseGovAM] = useState(0);
   const [totalBaseGovCE, setTotalBaseGovCE] = useState(0);
+  const [totalBaseGovRO, setTotalBaseGovRO] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
   
   // Pagination State
@@ -200,7 +204,7 @@ export default function ImportBatchPage() {
       console.log("Estado da Sessão (fetchTotalBase):", `Logado como ${session.user.email}`);
       console.log("Token JWT (Tamanho):", session.access_token.length);
 
-      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes, govRJRes, prefSaRes, prefContagemRes, govMGRes, govMSRes, prefNatalRes, prefPortoVelhoRes, govBARes, govAMRes, govCERes] = await Promise.all([
+      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes, govRJRes, prefSaRes, prefContagemRes, govMGRes, govMSRes, prefNatalRes, prefPortoVelhoRes, govBARes, govAMRes, govCERes, govRORes] = await Promise.all([
         withRetry(async () => {
           return await supabase
             .from('clientes')
@@ -280,6 +284,11 @@ export default function ImportBatchPage() {
           return await supabase
             .from('governo_ce_clientes')
             .select('*', { count: 'exact', head: true });
+        }).catch(() => ({ count: 0, error: null })),
+        withRetry(async () => {
+          return await supabase
+            .from('governo_ro_clientes')
+            .select('*', { count: 'exact', head: true });
         }).catch(() => ({ count: 0, error: null }))
       ]);
       
@@ -331,6 +340,9 @@ export default function ImportBatchPage() {
       if (govCERes.error) {
         console.warn("Aviso Supabase (Total GOV CE):", govCERes.error.message);
       }
+      if (govRORes.error) {
+        console.warn("Aviso Supabase (Total GOV RO):", govRORes.error.message);
+      }
 
       setTotalBaseSiape(siapeRes.count || 0);
       setTotalBaseGovSP(govSPRes.count || 0);
@@ -348,6 +360,7 @@ export default function ImportBatchPage() {
       setTotalBaseGovBA(govBARes.count || 0);
       setTotalBaseGovAM(govAMRes.count || 0);
       setTotalBaseGovCE(govCERes.count || 0);
+      setTotalBaseGovRO(govRORes.count || 0);
     } catch (err: unknown) {
       const error = err as Error;
       console.warn("Aviso inesperado ao buscar total da base:", error?.message || error);
@@ -3116,6 +3129,135 @@ export default function ImportBatchPage() {
     if (identErr) throw new Error(`Erro ao salvar vínculos CE: ${identErr?.message}`);
   };
 
+  const processGovernoRoChunk = async (chunk: Record<string, unknown>[], currentBatchId: string) => {
+    const normalizedRows = chunk.map(row => {
+      const normRow = normalizeRowKeys(row as Record<string, string | undefined>);
+      return {
+        cpf: normalizeCPF(normRow.cpf || ""),
+        nome: normalizeText(normRow.nome || ""),
+        data_nascimento: normalizeDate(normRow.data_nascimento || normRow.data_de_nascimento || normRow.nascimento || ""),
+        matricula: normalizeText(normRow.matricula || normRow.numero_matricula || normRow.identificacao || ""),
+        orgao: normalizeText(normRow.orgao || "GOVERNO DE RONDÔNIA"),
+        secretaria: normalizeText(normRow.secretaria || normRow.lotacao || ""),
+        cargo: normalizeText(normRow.cargo || normRow.funcao || ""),
+        vinculo: normalizeText(normRow.vinculo || normRow.tipo_vinculo || normRow.situacao || normRow.situacao_funcional || ""),
+        salario: normalizeMoney(normRow.salario || normRow.renda || normRow.remuneracao || normRow.vencimentos || ""),
+        margem_emprestimo: normalizeMoney(normRow.margem_emprestimo || normRow.margem_consignavel || normRow.margem_disponivel || normRow.margem_liquida || normRow.margem_35 || ""),
+        margem_cartao: normalizeMoney(normRow.margem_cartao || normRow.margem_cartao_consignado || normRow.margem_liquida_cartao || normRow.cartao || normRow.margem_5 || ""),
+        margem_cartao_beneficio: normalizeMoney(normRow.margem_cartao_beneficio || normRow.margem_beneficio || normRow.cartao_beneficio || ""),
+        telefone_1: normalizePhone(normRow.telefone_1 || normRow.telefone || normRow.telefone1 || ""),
+        telefone_2: normalizePhone(normRow.telefone_2 || normRow.telefone2 || ""),
+        telefone_3: normalizePhone(normRow.telefone_3 || normRow.telefone3 || "")
+      };
+    }).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('governo_ro_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
+
+    const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
+      const v = String(val).trim();
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
+    };
+
+    const clientMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
+      const existingInMap = clientMap.get(row.cpf);
+
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      const data_nascimento = row.data_nascimento || ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+      const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        telefone_3,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const clientRows = Array.from(clientMap.values());
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      return await supabase.from('governo_ro_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes RO: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+
+    const clientIds = Array.from(cpfToClientId.values());
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_ro_matriculas', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula || ''}`, i]));
+
+    const identMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId) return;
+
+      const key = `${clientId}_${row.matricula || ''}`;
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
+      const currentInMap = identMap.get(key);
+
+      const matricula = !shouldPreserve(row.matricula) ? row.matricula : (currentInMap?.matricula || dbIdent?.matricula || null);
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || dbIdent?.orgao || null);
+      const secretaria = !shouldPreserve(row.secretaria) ? row.secretaria : (currentInMap?.secretaria || dbIdent?.secretaria || null);
+      const cargo = !shouldPreserve(row.cargo) ? row.cargo : (currentInMap?.cargo || dbIdent?.cargo || null);
+      const vinculo = !shouldPreserve(row.vinculo) ? row.vinculo : (currentInMap?.vinculo || dbIdent?.vinculo || null);
+      const salario = !shouldPreserve(row.salario) ? row.salario : (currentInMap?.salario ?? dbIdent?.salario ?? null);
+      const margem_emprestimo = !shouldPreserve(row.margem_emprestimo) ? row.margem_emprestimo : (currentInMap?.margem_emprestimo ?? dbIdent?.margem_emprestimo ?? null);
+      const margem_cartao = !shouldPreserve(row.margem_cartao) ? row.margem_cartao : (currentInMap?.margem_cartao ?? dbIdent?.margem_cartao ?? null);
+      const margem_cartao_beneficio = !shouldPreserve(row.margem_cartao_beneficio) ? row.margem_cartao_beneficio : (currentInMap?.margem_cartao_beneficio ?? dbIdent?.margem_cartao_beneficio ?? null);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        matricula,
+        orgao,
+        secretaria,
+        cargo,
+        vinculo,
+        salario,
+        margem_emprestimo,
+        margem_cartao,
+        margem_cartao_beneficio,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const identRows = Array.from(identMap.values());
+    const { error: identErr } = await withRetry(async () => {
+      return await supabase.from('governo_ro_matriculas')
+        .upsert(identRows, { onConflict: 'cliente_id,matricula' });
+    });
+
+    if (identErr) throw new Error(`Erro ao salvar matrículas RO: ${identErr?.message}`);
+  };
+
   const handleStartImport = async () => {
     console.log("Botão 'Iniciar Importação' clicado");
     setImportError(null);
@@ -3279,6 +3421,8 @@ export default function ImportBatchPage() {
                 await processGovernoAmChunk(results.data, currentBatch.id);
               } else if (type === "GOVERNO_CE") {
                 await processGovernoCeChunk(results.data, currentBatch.id);
+              } else if (type === "GOVERNO_RO") {
+                await processGovernoRoChunk(results.data, currentBatch.id);
               }
             });
             
@@ -3366,6 +3510,8 @@ export default function ImportBatchPage() {
               rpcFunctionName = 'refresh_base_consulta_governo_am';
             } else if (type === 'GOVERNO_CE') {
               rpcFunctionName = 'refresh_base_consulta_governo_ce';
+            } else if (type === 'GOVERNO_RO') {
+              rpcFunctionName = 'refresh_base_consulta_governo_ro';
             }
 
             console.log(`Disparando atualização rápida da tabela correspondente: ${rpcFunctionName}`);
@@ -3487,6 +3633,9 @@ export default function ImportBatchPage() {
     } else if (type === 'governo_ce') {
       headers = "cpf,nome,data_nascimento,salario,orgao,secretaria,vinculo,telefone_1,telefone_2,telefone_3";
       filename = "modelo_governo_ceara.csv";
+    } else if (type === 'governo_ro') {
+      headers = "cpf,nome,data_nascimento,matricula,orgao,secretaria,cargo,vinculo,salario,margem_emprestimo,margem_cartao,margem_cartao_beneficio,telefone_1,telefone_2,telefone_3";
+      filename = "modelo_governo_rondonia.csv";
     }
     
     const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
@@ -3536,6 +3685,7 @@ export default function ImportBatchPage() {
                     <option value="GOVERNO_BA">GOVERNO BAHIA</option>
                     <option value="GOVERNO_AM">GOVERNO AMAZONAS</option>
                     <option value="GOVERNO_CE">GOVERNO CEARÁ</option>
+                    <option value="GOVERNO_RO">GOVERNO RONDÔNIA</option>
                   </select>
                   <Input 
                     value={description}
@@ -3624,6 +3774,7 @@ export default function ImportBatchPage() {
                     { id: 'governo_ba', title: 'MODELO GOVERNO BAHIA', subtitle: 'Base Governo da Bahia' },
                     { id: 'governo_am', title: 'MODELO GOVERNO AMAZONAS', subtitle: 'Base Governo do Amazonas' },
                     { id: 'governo_ce', title: 'MODELO GOVERNO CEARÁ', subtitle: 'Base Governo do Ceará' },
+                    { id: 'governo_ro', title: 'MODELO GOVERNO RONDÔNIA', subtitle: 'Base Governo de Rondônia' },
                   ] as const;
 
                   const filteredModels = importModelsList.filter(m =>
@@ -3724,7 +3875,7 @@ export default function ImportBatchPage() {
                     </button>
                   </div>
                   <p className="text-[14px] font-black text-slate-900 tracking-tighter">
-                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0) + (totalBaseGovRJ || 0) + (totalBasePrefSa || 0) + (totalBasePrefContagem || 0) + (totalBaseGovMG || 0) + (totalBaseGovMS || 0) + (totalBasePrefNatal || 0) + (totalBasePrefPortoVelho || 0) + (totalBaseGovBA || 0) + (totalBaseGovAM || 0) + (totalBaseGovCE || 0)).toLocaleString('pt-BR')}
+                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0) + (totalBaseGovRJ || 0) + (totalBasePrefSa || 0) + (totalBasePrefContagem || 0) + (totalBaseGovMG || 0) + (totalBaseGovMS || 0) + (totalBasePrefNatal || 0) + (totalBasePrefPortoVelho || 0) + (totalBaseGovBA || 0) + (totalBaseGovAM || 0) + (totalBaseGovCE || 0) + (totalBaseGovRO || 0)).toLocaleString('pt-BR')}
                   </p>
                 </div>
 
@@ -3904,6 +4055,17 @@ export default function ImportBatchPage() {
                       </div>
                       <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-teal-700 transition-colors">
                         {totalBaseGovCE.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+
+                    {/* GOVERNO RONDÔNIA */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">GOV RONDÔNIA</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-emerald-600 transition-colors">
+                        {totalBaseGovRO.toLocaleString('pt-BR')}
                       </p>
                     </div>
                   </div>

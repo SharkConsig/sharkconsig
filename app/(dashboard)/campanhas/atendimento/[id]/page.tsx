@@ -461,6 +461,14 @@ export default function CampanhaAtendimentoPage() {
         table = 'base_consulta_prefeitura_natal'
       } else if (campaignName.includes("PORTO VELHO") || campaignName.includes("PREFEITURA PORTO VELHO")) {
         table = 'base_consulta_prefeitura_porto_velho'
+      } else if (campaignName.includes("GOVERNO BA") || campaignName.includes("BAHIA")) {
+        table = 'base_consulta_governo_ba'
+      } else if (campaignName.includes("GOVERNO AM") || campaignName.includes("AMAZONAS")) {
+        table = 'base_consulta_governo_am'
+      } else if (campaignName.includes("GOVERNO CE") || campaignName.includes("CEARÁ") || campaignName.includes("CEARA")) {
+        table = 'base_consulta_governo_ce'
+      } else if (campaignName.includes("GOVERNO RO") || campaignName.includes("RONDÔNIA") || campaignName.includes("RONDONIA")) {
+        table = 'base_consulta_governo_ro'
       }
       
       let data = null;
@@ -1017,6 +1025,10 @@ export default function CampanhaAtendimentoPage() {
           const isSantoAndre = table === 'base_consulta_prefeitura_santo_andre';
           const isPrefNatal = table === 'base_consulta_prefeitura_natal';
           const isPrefPortoVelho = table === 'base_consulta_prefeitura_porto_velho';
+          const isGovRo = table === 'base_consulta_governo_ro';
+          const isGovCe = table === 'base_consulta_governo_ce';
+          const isGovAm = table === 'base_consulta_governo_am';
+          const isGovBa = table === 'base_consulta_governo_ba';
 
           const mat = data.matricula || data.identificacao || data.numero_matricula || '---';
           const vinc = data.vinculo || data.situacao_funcional || '---';
@@ -1031,7 +1043,7 @@ export default function CampanhaAtendimentoPage() {
             salario: data.salario || 0,
             orgao: data.orgao,
             regime_juridico: data.regime_juridico,
-            uf: isSantoAndre ? 'SP' : (isGovPi ? 'PI' : (isGovRr ? 'RR' : (isPrefNatal ? 'RN' : (isPrefPortoVelho ? 'RO' : data.uf)))),
+            uf: isGovRo ? 'RO' : (isGovCe ? 'CE' : (isGovAm ? 'AM' : (isGovBa ? 'BA' : (isSantoAndre ? 'SP' : (isGovPi ? 'PI' : (isGovRr ? 'RR' : (isPrefNatal ? 'RN' : (isPrefPortoVelho ? 'RO' : data.uf)))))))),
             matricula: mat,
             vinculo: vinc,
             margem_disponivel_emprestimo: data.margem_disponivel_emprestimo ?? data.margem_emprestimo_consignado ?? data.margem_emprestimo,

@@ -94,6 +94,7 @@ const TABLE_MAP: Record<string, string> = {
   'governo_ba': 'base_consulta_governo_ba',
   'governo_am': 'base_consulta_governo_am',
   'governo_ce': 'base_consulta_governo_ce',
+  'governo_ro': 'base_consulta_governo_ro',
   'governo_mg': 'base_consulta_governo_mg',
 };
 
@@ -150,6 +151,9 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   'base_consulta_governo_ce': [
     'cpf', 'nome', 'data_nascimento', 'salario', 'orgao', 'secretaria', 'vinculo', 'telefone_1', 'telefone_2', 'telefone_3'
   ],
+  'base_consulta_governo_ro': [
+    'cpf', 'nome', 'data_nascimento', 'matricula', 'orgao', 'secretaria', 'cargo', 'vinculo', 'salario', 'margem_emprestimo', 'margem_cartao', 'margem_cartao_beneficio', 'telefone_1', 'telefone_2', 'telefone_3'
+  ],
   'base_consulta_governo_mg': [
     'cpf', 'nome', 'telefone_1', 'telefone_2', 'telefone_3', 'matricula', 'orgao', 'margem_70', 'margem_emprestimo', 'cartao_credito', 'cartao_beneficio'
   ]
@@ -169,6 +173,7 @@ const CONVENIOS = [
   { id: 'governo_ba', label: 'GOVERNO BAHIA' },
   { id: 'governo_am', label: 'GOVERNO AMAZONAS' },
   { id: 'governo_ce', label: 'GOVERNO CEARÁ' },
+  { id: 'governo_ro', label: 'GOVERNO RONDÔNIA' },
 ];
 
 export default function NewCampaignPage() {
@@ -260,7 +265,7 @@ export default function NewCampaignPage() {
         situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao).filter(Boolean) || [])).sort() as string[];
         regimes = [];
         ufs = [];
-      } else if (activeConvenio === 'governo_ce') {
+      } else if (activeConvenio === 'governo_ce' || activeConvenio === 'governo_ro') {
         const { data: orgaosData } = await supabase
           .from(tableName)
           .select('orgao')

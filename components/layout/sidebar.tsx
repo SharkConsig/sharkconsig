@@ -45,6 +45,13 @@ const allMenuItems = [
         roles: ["Administrador", "Desenvolvedor"] 
       },
       { 
+        name: "COMECE AQUI DEV", 
+        href: "/start-comercial-dev", 
+        icon: Rocket, 
+        isSpecialStart: true,
+        roles: ["Desenvolvedor"] 
+      },
+      { 
         name: "DASHBOARD", 
         href: "/", 
         icon: Landmark, 
@@ -310,6 +317,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
+        // Se for o link COMECE AQUI DEV, visível ESTRITAMENTE para Desenvolvedor
+        if (item.name === "COMECE AQUI DEV" || item.href === "/start-comercial-dev") {
+          return perfil?.role === 'Desenvolvedor' || user?.user_metadata?.role === 'Desenvolvedor'
+        }
+
         // Se for o link COMECE AQUI, visível somente para Corretor PJ, Administrador e Desenvolvedor
         if (item.name === "COMECE AQUI") {
           if (isAdmin || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isCorretorPJ) return true

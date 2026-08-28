@@ -143,7 +143,8 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
     'base_consulta_prefeitura_porto_velho',
     'base_consulta_governo_ba',
     'base_consulta_governo_am',
-    'base_consulta_governo_ce'
+    'base_consulta_governo_ce',
+    'base_consulta_governo_ro'
   ];
 
   const results: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
@@ -281,6 +282,7 @@ export default function DistribuicaoCampanhaPage() {
         'governo_ba': 'base_consulta_governo_ba',
         'governo_am': 'base_consulta_governo_am',
         'governo_ce': 'base_consulta_governo_ce',
+        'governo_ro': 'base_consulta_governo_ro',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -314,6 +316,8 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_governo_am';
       } else if (cNameUpper.includes('GOVERNO CE') || cNameUpper.includes('CEARÁ') || cNameUpper.includes('CEARA')) {
         targetTable = 'base_consulta_governo_ce';
+      } else if (cNameUpper.includes('GOVERNO RO') || cNameUpper.includes('RONDÔNIA') || cNameUpper.includes('RONDONIA')) {
+        targetTable = 'base_consulta_governo_ro';
       }
 
       let clientsBatchList: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
@@ -500,6 +504,7 @@ export default function DistribuicaoCampanhaPage() {
         'governo_ba': 'base_consulta_governo_ba',
         'governo_am': 'base_consulta_governo_am',
         'governo_ce': 'base_consulta_governo_ce',
+        'governo_ro': 'base_consulta_governo_ro',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -533,6 +538,8 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_governo_am';
       } else if (cNameUpper.includes('GOVERNO CE') || cNameUpper.includes('CEARÁ') || cNameUpper.includes('CEARA')) {
         targetTable = 'base_consulta_governo_ce';
+      } else if (cNameUpper.includes('GOVERNO RO') || cNameUpper.includes('RONDÔNIA') || cNameUpper.includes('RONDONIA')) {
+        targetTable = 'base_consulta_governo_ro';
       }
 
       let clientDetails: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];

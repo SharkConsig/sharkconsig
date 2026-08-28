@@ -589,6 +589,7 @@ export default function CampaignsPage() {
         'governo_ba': 'base_consulta_governo_ba',
         'governo_am': 'base_consulta_governo_am',
         'governo_ce': 'base_consulta_governo_ce',
+        'governo_ro': 'base_consulta_governo_ro',
         'governo_mg': 'base_consulta_governo_mg',
       };
 
@@ -616,6 +617,8 @@ export default function CampaignsPage() {
         targetTable = 'base_consulta_governo_am';
       } else if (campaignName.includes('CEARÁ') || campaignName.includes('CEARA') || campaignName.includes('GOVERNO CE')) {
         targetTable = 'base_consulta_governo_ce';
+      } else if (campaignName.includes('RONDÔNIA') || campaignName.includes('RONDONIA') || campaignName.includes('GOVERNO RO')) {
+        targetTable = 'base_consulta_governo_ro';
       }
 
       const isGovMg = targetTable === 'base_consulta_governo_mg';
@@ -626,6 +629,7 @@ export default function CampaignsPage() {
       const isGovMa = targetTable === 'base_consulta_governo_ma';
       const isGovAm = targetTable === 'base_consulta_governo_am';
       const isGovCe = targetTable === 'base_consulta_governo_ce';
+      const isGovRo = targetTable === 'base_consulta_governo_ro';
       const isSantoAndre = targetTable === 'base_consulta_prefeitura_santo_andre';
       const isPrefNatal = targetTable === 'base_consulta_prefeitura_natal';
       const isPrefPortoVelho = targetTable === 'base_consulta_prefeitura_porto_velho';
@@ -638,6 +642,8 @@ export default function CampaignsPage() {
         headersArray.push("MATRÍCULA", "ÓRGÃO", "SECRETARIA", "CARGO", "SITUAÇÃO", "MARGEM CONSIGNÁVEL", "MARGEM CARTÃO", "MARGEM CARTÃO BENEFÍCIO", "MARGEM BENEFÍCIO SAQUE");
       } else if (isGovCe) {
         headersArray.push("SALÁRIO", "ÓRGÃO", "SECRETARIA", "VÍNCULO");
+      } else if (isGovRo) {
+        headersArray.push("MATRÍCULA", "ÓRGÃO", "SECRETARIA", "CARGO", "VÍNCULO", "SALÁRIO", "MARGEM EMPRÉSTIMO", "MARGEM CARTÃO", "MARGEM CARTÃO BENEFÍCIO");
       } else if (isGovPi) {
         headersArray.push("MARGEM DISPONÍVEL EMPRÉSTIMO", "MARGEM CARTÃO CONSIGNADO", "MARGEM CARTÃO BENEFÍCIO");
       } else if (isGovRr) {
@@ -742,6 +748,7 @@ export default function CampaignsPage() {
           { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo, margem_cartao_consignado" },
           { name: 'base_consulta_governo_am', convenio: 'governo_am', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, situacao, margem_consignavel, margem_cartao, margem_cartao_beneficio, margem_cartao_beneficio_saque" },
           { name: 'base_consulta_governo_ce', convenio: 'governo_ce', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, salario, orgao, secretaria, vinculo" },
+          { name: 'base_consulta_governo_ro', convenio: 'governo_ro', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, vinculo, salario, margem_emprestimo, margem_cartao, margem_cartao_beneficio" },
         ];
 
         // 1. Buscar primeiro na tabela preferencial da campanha (targetTable)
@@ -875,6 +882,24 @@ export default function CampaignsPage() {
               (row as any).orgao || "",
               (row as any).secretaria || "",
               (row as any).vinculo || ""
+            ];
+          } else if (isGovRo) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).matricula || "",
+              (row as any).orgao || "",
+              (row as any).secretaria || "",
+              (row as any).cargo || "",
+              (row as any).vinculo || "",
+              (row as any).salario ?? "",
+              (row as any).margem_emprestimo ?? "",
+              (row as any).margem_cartao ?? "",
+              (row as any).margem_cartao_beneficio ?? ""
             ];
           } else if (isGovPi) {
             csvFields = [
@@ -1066,6 +1091,14 @@ export default function CampaignsPage() {
                 "GOVERNO CEARÁ",
                 "", (row as any).salario ?? "", "", "",
                 "", "", "", ""
+              ];
+            } else if (conv === "governo_ro") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO RONDÔNIA",
+                "", (row as any).margem_emprestimo ?? "", "", "",
+                (row as any).margem_cartao ?? "", (row as any).margem_cartao_beneficio ?? "", "", ""
               ];
             } else if (conv === "governo_mg") {
               csvFields = [
