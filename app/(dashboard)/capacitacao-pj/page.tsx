@@ -668,12 +668,7 @@ function CapacitacaoPJContent() {
   const { user } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const originParam = searchParams.get("origem")
-  const isComeceAquiDirect = originParam === "comece-aqui"
 
-  const [activeTab, setActiveTab] = useState<"start" | "capacitacao">(() => 
-    isComeceAquiDirect ? "start" : "capacitacao"
-  )
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([])
   const [activeModuleId, setActiveModuleId] = useState<string>("mod_1")
   const [activeLessonId, setActiveLessonId] = useState<string>("lesson_1_1")
@@ -686,15 +681,6 @@ function CapacitacaoPJContent() {
   const [loading, setLoading] = useState(true)
   const [savingLesson, setSavingLesson] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
-
-  // Synchronize activeTab when origin searchParam changes (e.g. clicking sidebar links)
-  useEffect(() => {
-    if (originParam === "comece-aqui") {
-      setActiveTab("start")
-    } else {
-      setActiveTab("capacitacao")
-    }
-  }, [originParam])
 
   // Calculate total lessons and progress percentage
   const allLessons = useMemo(() => {
@@ -845,139 +831,16 @@ function CapacitacaoPJContent() {
     })).filter(mod => mod.lessons.length > 0)
   }, [searchTerm])
 
-  const headerTitle = isComeceAquiDirect ? "START COMERCIAL" : "CAPACITAÇÃO"
-
   return (
     <div className="flex flex-col min-h-screen bg-slate-50/80">
-      <Header title={headerTitle} />
+      <Header title="CAPACITAÇÃO" />
 
       <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-[1600px] w-full mx-auto space-y-6">
-        
-        {/* TWO ENTRANCE DOORS - Only shown when NOT accessed directly from COMECE AQUI */}
-        {!isComeceAquiDirect && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          
-          {/* Door 1: START COMERCIAL (Comece Aqui) */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("start")}
-            className={cn(
-              "p-5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between space-y-2 relative overflow-hidden group shadow-sm",
-              activeTab === "start"
-                ? "bg-gradient-to-br from-slate-950 via-slate-900 to-[#1C2643] border-emerald-500 text-white shadow-lg ring-2 ring-emerald-500/20"
-                : "bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50/80"
-            )}
-          >
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2">
-                <div className={cn(
-                  "p-2 rounded-xl",
-                  activeTab === "start" ? "bg-emerald-500 text-slate-950 font-bold" : "bg-emerald-100 text-emerald-800"
-                )}>
-                  <Rocket className="w-5 h-5" />
-                </div>
-                <span className={cn(
-                  "text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border",
-                  activeTab === "start"
-                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                    : "bg-emerald-50 border-emerald-200 text-emerald-700"
-                )}>
-                  COMECE AQUI • OPERAÇÃO IMEDIATA
-                </span>
-              </div>
-              <Badge className={activeTab === "start" ? "bg-emerald-500 text-slate-950 font-black text-[10px]" : "bg-slate-100 text-slate-600 text-[10px]"}>
-                7 Etapas
-              </Badge>
-            </div>
-
-            <div className="space-y-1">
-              <h2 className={cn("text-base md:text-lg font-black tracking-tight", activeTab === "start" ? "text-white" : "text-slate-900")}>
-                START Comercial — Trilha de Vendas
-              </h2>
-              <p className={cn("text-xs leading-relaxed font-medium", activeTab === "start" ? "text-slate-300" : "text-slate-600")}>
-                O mínimo para começar a produzir hoje. Jornada guiada pela ordem da venda: <strong>Mensagem + Ação + Print + Próximo Passo</strong>.
-              </p>
-            </div>
-
-            <div className={cn(
-              "pt-2 flex items-center gap-2 text-xs font-extrabold",
-              activeTab === "start" ? "text-emerald-400" : "text-emerald-700"
-            )}>
-              <span>Abrir Trilha Guiada</span>
-              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </div>
-          </button>
-
-          {/* Door 2: CAPACITAÇÃO (Aprenda Mais) */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("capacitacao")}
-            className={cn(
-              "p-5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between space-y-2 relative overflow-hidden group shadow-sm",
-              activeTab === "capacitacao"
-                ? "bg-gradient-to-br from-slate-950 via-slate-900 to-[#1C2643] border-emerald-500 text-white shadow-lg ring-2 ring-emerald-500/20"
-                : "bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50/80"
-            )}
-          >
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2">
-                <div className={cn(
-                  "p-2 rounded-xl",
-                  activeTab === "capacitacao" ? "bg-emerald-500 text-slate-950 font-bold" : "bg-blue-100 text-blue-800"
-                )}>
-                  <BookOpen className="w-5 h-5" />
-                </div>
-                <span className={cn(
-                  "text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border",
-                  activeTab === "capacitacao"
-                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                    : "bg-blue-50 border-blue-200 text-blue-700"
-                )}>
-                  APRENDA MAIS • BIBLIOTECA COMPLETA
-                </span>
-              </div>
-              <Badge className={activeTab === "capacitacao" ? "bg-emerald-500 text-slate-950 font-black text-[10px]" : "bg-slate-100 text-slate-600 text-[10px]"}>
-                {totalLessonsCount} Aulas + PDFs
-              </Badge>
-            </div>
-
-            <div className="space-y-1">
-              <h2 className={cn("text-base md:text-lg font-black tracking-tight", activeTab === "capacitacao" ? "text-white" : "text-slate-900")}>
-                Capacitação — Aprofundamento
-              </h2>
-              <p className={cn("text-xs leading-relaxed font-medium", activeTab === "capacitacao" ? "text-slate-300" : "text-slate-600")}>
-                Biblioteca organizada por módulos (Fundamentos, Produtos, Sistema, Scripts) com PDFs oficiais para download.
-              </p>
-            </div>
-
-            <div className={cn(
-              "pt-2 flex items-center gap-2 text-xs font-extrabold",
-              activeTab === "capacitacao" ? "text-emerald-400" : "text-blue-700"
-            )}>
-              <span>Abrir Biblioteca Completa</span>
-              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </div>
-          </button>
-
-        </div>
-        )}
-
-        {/* CONDITIONAL CONTENT VIEW */}
-        {activeTab === "start" ? (
-          <StartComercial 
-            onNavigateToTopic={(topicId) => {
-              setActiveTab("capacitacao")
-              setActiveModuleId(topicId)
-              router.push("/capacitacao-pj")
-            }}
-          />
-        ) : (
-          <CapacitacaoAprofundamento
-            completedLessonIds={completedLessonIds}
-            onToggleComplete={handleToggleComplete}
-            initialModuleId={activeModuleId}
-          />
-        )}
+        <CapacitacaoAprofundamento
+          completedLessonIds={completedLessonIds}
+          onToggleComplete={handleToggleComplete}
+          initialModuleId={activeModuleId}
+        />
       </main>
     </div>
   )

@@ -39,17 +39,10 @@ const allMenuItems = [
     items: [
       { 
         name: "COMECE AQUI", 
-        href: "/capacitacao-pj?origem=comece-aqui", 
-        icon: Rocket, 
-        isSpecialStart: true,
-        roles: ["Administrador", "Desenvolvedor"] 
-      },
-      { 
-        name: "COMECE AQUI DEV", 
         href: "/start-comercial-dev", 
         icon: Rocket, 
         isSpecialStart: true,
-        roles: ["Desenvolvedor"] 
+        roles: ["Administrador", "Desenvolvedor"] 
       },
       { 
         name: "DASHBOARD", 
@@ -317,13 +310,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
-        // Se for o link COMECE AQUI DEV, visível ESTRITAMENTE para Desenvolvedor
-        if (item.name === "COMECE AQUI DEV" || item.href === "/start-comercial-dev") {
-          return perfil?.role === 'Desenvolvedor' || user?.user_metadata?.role === 'Desenvolvedor'
-        }
-
-        // Se for o link COMECE AQUI, visível somente para Corretor PJ, Administrador e Desenvolvedor
-        if (item.name === "COMECE AQUI") {
+        // Se for o link COMECE AQUI, visível ESTRITAMENTE para Administrador, Corretor PJ e Desenvolvedor
+        if (item.name === "COMECE AQUI" || item.href === "/start-comercial-dev") {
           if (isAdmin || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isCorretorPJ) return true
           return false
         }
@@ -450,13 +438,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   )}
                 >
                   {section.items.map((item) => {
-                    const isComeceAqui = item.name === "COMECE AQUI"
-                    const isCapacitacaoItem = item.href === "/capacitacao-pj"
-                    const isActive = isComeceAqui
-                      ? isComeceAquiActive
-                      : isCapacitacaoItem
-                      ? pathname === "/capacitacao-pj" && !isComeceAquiActive
-                      : pathname === item.href
+                    const isComeceAqui = item.name === "COMECE AQUI" || item.href === "/start-comercial-dev"
+                    const isActive = pathname === item.href
 
                     return (
                       <Link
@@ -475,7 +458,16 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                           item.name === "CONFIGURAÇÕES" && !effectiveCollapsed && "mt-6"
                         )}
                       >
-                        <item.icon className={cn("w-[18px] h-[18px] flex-shrink-0", isComeceAqui ? "text-emerald-400" : isActive ? "text-white" : "text-primary")} />
+                        <item.icon 
+                          className={cn(
+                            "w-[18px] h-[18px] flex-shrink-0", 
+                            isComeceAqui 
+                              ? "text-[#009966]" 
+                              : isActive 
+                              ? "text-white" 
+                              : "text-primary"
+                          )} 
+                        />
                         {!effectiveCollapsed && <span>{item.name}</span>}
                       </Link>
                     )
