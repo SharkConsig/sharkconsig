@@ -932,9 +932,12 @@ export default function DashboardPage() {
                 const isAllowedFuncao = ['corretor', 'supervisor', 'estágio', 'estagio', 'processo seletivo', 'gerente'].includes(func)
                 return (isAllowedFuncao || isPJ) && u.status?.toUpperCase() !== 'INATIVO'
               })
-            : allUsers.filter((u: User) => 
-                (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId) && u.status?.toUpperCase() !== 'INATIVO'
-              )
+            : allUsers.filter((u: User) => {
+                const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
+                // Corretores PJ não contabilizam para a equipe do supervisor
+                if (isPJ) return false
+                return (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId) && u.status?.toUpperCase() !== 'INATIVO'
+              })
           const teamIds = team.map((m: User) => m.id)
 
           // Fetch proposals for the team (or all if admin/operational)
