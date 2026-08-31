@@ -1,6 +1,8 @@
 "use client"
 
 import React, { useState } from "react"
+import Link from "next/link"
+import Image from "next/image"
 import { Header } from "@/components/layout/header"
 import { useAuth } from "@/context/auth-context"
 import { 
@@ -49,6 +51,7 @@ export default function StartComercialDevPage() {
   const [activeTab6, setActiveTab6] = useState<"senff" | "facultativa" | "reacoes" | "plano" | "quitacao" | "documentos">("senff")
   const [activeStep, setActiveStep] = useState<number | "all">(1)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [isCampaignImageModalOpen, setIsCampaignImageModalOpen] = useState(false)
 
   const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
   const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ'
@@ -341,7 +344,7 @@ export default function StartComercialDevPage() {
                   )}
                 </div>
                 <h3 className={cn("text-xs font-black uppercase tracking-wide", activeStep === 1 ? "text-white" : "text-emerald-950")}>
-                  1. ACIONEI O LEAD
+                  ACIONE O LEAD
                 </h3>
                 <p className={cn("text-[11px] font-semibold mt-1 leading-snug", activeStep === 1 ? "text-emerald-200" : "text-emerald-800")}>
                   Envie a mensagem inicial e busque resposta.
@@ -569,19 +572,15 @@ export default function StartComercialDevPage() {
               <ul className="space-y-2.5">
                 <li className="flex items-start gap-3 p-3.5 bg-slate-50 border border-slate-200/70 rounded-xl text-[12.75px] font-semibold text-slate-800">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Abra uma campanha ou base ativa.</span>
+                  <span>Abra uma campanha.</span>
                 </li>
                 <li className="flex items-start gap-3 p-3.5 bg-slate-50 border border-slate-200/70 rounded-xl text-[12.75px] font-semibold text-slate-800">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Pegue um cliente.</span>
+                  <span>Pegue o contato do cliente e abra o Whatsapp.</span>
                 </li>
                 <li className="flex items-start gap-3 p-3.5 bg-slate-50 border border-slate-200/70 rounded-xl text-[12.75px] font-semibold text-slate-800">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Confira somente o contexto essencial: <strong>nome</strong>, <strong>órgão/convênio</strong> e <strong>origem da campanha</strong>.</span>
-                </li>
-                <li className="flex items-start gap-3 p-3.5 bg-slate-50 border border-slate-200/70 rounded-xl text-[12.75px] font-semibold text-slate-800">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Vá para a abordagem.</span>
+                  <span>Escolha a mensagem na ETAPA 2 para abordar o cliente.</span>
                 </li>
               </ul>
             </div>
@@ -605,6 +604,92 @@ export default function StartComercialDevPage() {
                 <p className="text-[12.75px] text-rose-950 font-medium leading-relaxed">
                   Calcular todos os coeficientes, estudar contratos antigos e montar proposta completa antes de existir uma conversa real com o cliente.
                 </p>
+              </div>
+            </div>
+          </div>
+
+          {/* SEÇÃO: COMO ABRIR UMA CAMPANHA */}
+          <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-5 bg-emerald-600 rounded-full"></div>
+              <h3 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-wide">
+                COMO ABRIR UMA CAMPANHA
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+              {/* LADO ESQUERDO: ORIENTAÇÃO */}
+              <div className="lg:col-span-6 space-y-4">
+                <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
+                  Para abrir e trabalhar com os leads de uma campanha no SharkConsig, siga este passo a passo simples:
+                </p>
+
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-3.5 bg-white border border-slate-200/80 rounded-xl shadow-2xs">
+                    <span className="w-6 h-6 rounded-full bg-[#19223D] text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                      1
+                    </span>
+                    <div className="text-xs text-slate-800 leading-relaxed">
+                      No menu lateral (sidebar), clique no link <strong className="text-slate-950 font-black">ACESSAR CAMPANHA</strong>.
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3.5 bg-white border border-slate-200/80 rounded-xl shadow-2xs">
+                    <span className="w-6 h-6 rounded-full bg-[#19223D] text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                      2
+                    </span>
+                    <div className="text-xs text-slate-800 leading-relaxed">
+                      Na lista de campanhas disponíveis, escolha a campanha que deseja operar.
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3.5 bg-white border border-slate-200/80 rounded-xl shadow-2xs">
+                    <span className="w-6 h-6 rounded-full bg-[#009966] text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                      3
+                    </span>
+                    <div className="text-xs text-slate-800 leading-relaxed">
+                      Clique no botão <strong className="text-emerald-700 font-black">"INICIAR"</strong> para abrir a fila de atendimento e começar o contato com os clientes.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* LADO DIREITO: PREVIEW CLICÁVEL DA IMAGEM E BOTÃO */}
+              <div className="lg:col-span-6 flex flex-col space-y-3">
+                <div 
+                  onClick={() => setIsCampaignImageModalOpen(true)}
+                  className="group relative rounded-2xl overflow-hidden border-2 border-slate-200 hover:border-emerald-500 bg-slate-900 cursor-pointer transition-all shadow-md hover:shadow-xl"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsCampaignImageModalOpen(true) }}
+                >
+                  <div className="relative w-full aspect-[16/10] bg-slate-950">
+                    <Image
+                      src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/abrir_campanha.png"
+                      alt="Tela de como abrir uma campanha"
+                      fill
+                      className="object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+
+                  {/* OVERLAY INDICANDO CLIQUE PARA AMPLIAR */}
+                  <div className="absolute inset-0 bg-slate-950/30 group-hover:bg-slate-950/10 transition-colors flex items-center justify-center">
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950/80 backdrop-blur-xs text-white text-xs font-bold px-3 py-1.5 rounded-full border border-white/20 shadow-lg flex items-center gap-1.5">
+                      <Search className="w-3.5 h-3.5 text-emerald-400" /> Clique para ampliar
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <Link
+                    href="/campanhas/distribuicao"
+                    className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm cursor-pointer"
+                  >
+                    <span>clique aqui para acessar uma campanha</span>
+                    <ExternalLink className="w-4 h-4" />
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
@@ -1802,11 +1887,11 @@ export default function StartComercialDevPage() {
               <ul className="text-[12.75px] text-emerald-900 space-y-2 font-medium">
                 <li className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Valor exato de liberação na conta.</span>
+                  <span>Valor exato de liberação.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Parcela exata em folha.</span>
+                  <span>Parcela exata.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
@@ -1814,15 +1899,47 @@ export default function StartComercialDevPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Prazo contratual e duração projetada com amortizações.</span>
+                  <span>Prazo contratual e duração projetada quando houver amortização.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Banco, tabela e documentos necessários.</span>
+                  <span>Margem disponível/averbada.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Banco/tabela escolhidos.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Condição de quitação e documentos necessários.</span>
                 </li>
               </ul>
             </div>
 
+          </div>
+
+          {/* EXEMPLO ERRADO / EXEMPLO CERTO */}
+          <div className="space-y-3">
+            {/* EXEMPLO ERRADO */}
+            <div className="p-3.5 sm:px-4 bg-[#fef2f2] border border-[#ef4444] rounded-xl text-left">
+              <span className="text-[11px] font-black text-[#dc2626] uppercase tracking-wider block">
+                EXEMPLO ERRADO
+              </span>
+              <p className="text-[13px] text-slate-800 font-medium mt-0.5">
+                “Sua proposta é R$ 8.588,50 em 24 meses com taxa X” se o corretor ainda não abriu o cliente nem possui base para esses números.
+              </p>
+            </div>
+
+            {/* EXEMPLO CERTO */}
+            <div className="p-3.5 sm:px-4 bg-[#f0fdf4] border border-[#009966] rounded-xl text-left">
+              <span className="text-[11px] font-black text-[#009966] uppercase tracking-wider block">
+                EXEMPLO CERTO
+              </span>
+              <div className="text-[13px] text-slate-800 font-medium mt-0.5 space-y-1">
+                <p>“Temos uma condição que vale a pena conferir.</p>
+                <p>Vou abrir teu caso agora e enquadrar a condição mais favorável que está abrindo.”</p>
+              </div>
+            </div>
           </div>
 
           {/* MATRIZ DE DECISÃO RÁPIDA */}
@@ -2832,6 +2949,65 @@ export default function StartComercialDevPage() {
                 </button>
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE AMPLIAÇÃO DA IMAGEM: ABRIR CAMPANHA */}
+      {isCampaignImageModalOpen && (
+        <div 
+          className="fixed inset-0 z-[300] bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5"
+          onClick={() => setIsCampaignImageModalOpen(false)}
+        >
+          <div 
+            className="relative bg-slate-900 border border-slate-700 rounded-2xl sm:rounded-3xl max-w-5xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* CABEÇALHO DO MODAL */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-950 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide">
+                  Tela de Referência: Acessar e Iniciar Campanha
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsCampaignImageModalOpen(false)}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* CORPO DO MODAL COM IMAGEM AMPLIADA (SCROLL SE NECESSÁRIO E AJUSTE DE ALTURA) */}
+            <div className="relative w-full flex-1 min-h-0 bg-slate-950 p-2 sm:p-4 flex items-center justify-center overflow-auto">
+              <div className="relative w-full aspect-[16/10] max-h-[70vh]">
+                <Image
+                  src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/abrir_campanha.png"
+                  alt="Tela de como abrir uma campanha ampliada"
+                  fill
+                  className="object-contain"
+                  referrerPolicy="no-referrer"
+                  priority
+                />
+              </div>
+            </div>
+
+            {/* RODAPÉ DO MODAL */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-3 bg-slate-950 border-t border-slate-800 shrink-0">
+              <span className="text-xs text-slate-400 text-center sm:text-left">
+                Acesse o menu lateral &gt; <strong>ACESSAR CAMPANHA</strong> &gt; Clique no botão <strong>INICIAR</strong>
+              </span>
+              <Link
+                href="/campanhas/distribuicao"
+                onClick={() => setIsCampaignImageModalOpen(false)}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm w-full sm:w-auto"
+              >
+                <span>Acessar Campanha</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
             </div>
           </div>
         </div>
