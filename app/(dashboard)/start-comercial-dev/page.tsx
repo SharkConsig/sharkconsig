@@ -294,8 +294,8 @@ export default function StartComercialDevPage() {
               </div>
               <p className="text-xs sm:text-sm text-slate-600 font-medium mt-0.5">
                 {activeStep === "all" 
-                  ? "Exibindo todas as 6 etapas do fluxo comercial na página."
-                  : `Você está na Etapa ${activeStep} de 6. Siga as orientações focadas abaixo:`}
+                  ? "Exibindo todas as 9 etapas do fluxo comercial na página."
+                  : `Você está na Etapa ${activeStep} de 9. Siga as orientações focadas abaixo:`}
               </p>
             </div>
 
@@ -316,14 +316,14 @@ export default function StartComercialDevPage() {
             </div>
           </div>
 
-          {/* PIPELINE / STEPPER DE 6 CARDS INTERATIVOS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+          {/* PIPELINE / STEPPER DE 9 CARDS INTERATIVOS COM ROLAGEM HORIZONTAL */}
+          <div className="flex gap-3 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent snap-x">
             
             {/* ETAPA 1 */}
             <button
               onClick={() => goToStep(1)}
               className={cn(
-                "w-full text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
+                "min-w-[185px] w-[185px] shrink-0 snap-start text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
                 activeStep === 1
                   ? "bg-emerald-950 text-white border-emerald-500 shadow-md ring-2 ring-emerald-500/30 scale-[1.02]"
                   : "bg-emerald-50/70 hover:bg-emerald-100/80 border-emerald-300 text-emerald-950 hover:scale-[1.01]"
@@ -359,7 +359,7 @@ export default function StartComercialDevPage() {
             <button
               onClick={() => goToStep(2)}
               className={cn(
-                "w-full text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
+                "min-w-[185px] w-[185px] shrink-0 snap-start text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
                 activeStep === 2
                   ? "bg-blue-950 text-white border-blue-500 shadow-md ring-2 ring-blue-500/30 scale-[1.02]"
                   : "bg-blue-50/70 hover:bg-blue-100/80 border-blue-300 text-blue-950 hover:scale-[1.01]"
@@ -395,7 +395,7 @@ export default function StartComercialDevPage() {
             <button
               onClick={() => goToStep(3)}
               className={cn(
-                "w-full text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
+                "min-w-[185px] w-[185px] shrink-0 snap-start text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
                 activeStep === 3
                   ? "bg-amber-950 text-white border-amber-500 shadow-md ring-2 ring-amber-500/30 scale-[1.02]"
                   : "bg-amber-50/70 hover:bg-amber-100/80 border-amber-300 text-amber-950 hover:scale-[1.01]"
@@ -431,7 +431,7 @@ export default function StartComercialDevPage() {
             <button
               onClick={() => goToStep(4)}
               className={cn(
-                "w-full text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
+                "min-w-[185px] w-[185px] shrink-0 snap-start text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
                 activeStep === 4
                   ? "bg-indigo-950 text-white border-indigo-500 shadow-md ring-2 ring-indigo-500/30 scale-[1.02]"
                   : "bg-indigo-50/70 hover:bg-indigo-100/80 border-indigo-300 text-indigo-950 hover:scale-[1.01]"
@@ -467,7 +467,7 @@ export default function StartComercialDevPage() {
             <button
               onClick={() => goToStep(5)}
               className={cn(
-                "w-full text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
+                "min-w-[185px] w-[185px] shrink-0 snap-start text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
                 activeStep === 5
                   ? "bg-rose-950 text-white border-rose-500 shadow-md ring-2 ring-rose-500/30 scale-[1.02]"
                   : "bg-rose-50/70 hover:bg-rose-100/80 border-rose-300 text-rose-950 hover:scale-[1.01]"
@@ -503,7 +503,7 @@ export default function StartComercialDevPage() {
             <button
               onClick={() => goToStep(6)}
               className={cn(
-                "w-full text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
+                "min-w-[185px] w-[185px] shrink-0 snap-start text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
                 activeStep === 6
                   ? "bg-teal-950 text-white border-teal-500 shadow-md ring-2 ring-teal-500/30 scale-[1.02]"
                   : "bg-teal-50/70 hover:bg-teal-100/80 border-teal-300 text-teal-950 hover:scale-[1.01]"
@@ -524,14 +524,122 @@ export default function StartComercialDevPage() {
                   )}
                 </div>
                 <h3 className={cn("text-xs font-black uppercase tracking-wide", activeStep === 6 ? "text-white" : "text-teal-950")}>
-                  6. ACEITOU?
+                  6. APRESENTAR PROPOSTA
                 </h3>
                 <p className={cn("text-[11px] font-semibold mt-1 leading-snug", activeStep === 6 ? "text-teal-200" : "text-teal-800")}>
-                  SIM → Documentos / formalização. PAROU → Retome do ponto exato.
+                  Calcule, mostre poucos cenários e trate reações.
                 </p>
               </div>
               <div className="flex justify-end pt-2">
                 <ChevronRight className={cn("w-4 h-4 transition-transform", activeStep === 6 ? "text-teal-400 translate-x-1" : "text-teal-600")} />
+              </div>
+            </button>
+
+            {/* ETAPA 7 */}
+            <button
+              onClick={() => goToStep(7)}
+              className={cn(
+                "min-w-[185px] w-[185px] shrink-0 snap-start text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
+                activeStep === 7
+                  ? "bg-purple-950 text-white border-purple-500 shadow-md ring-2 ring-purple-500/30 scale-[1.02]"
+                  : "bg-purple-50/70 hover:bg-purple-100/80 border-purple-300 text-purple-950 hover:scale-[1.01]"
+              )}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={cn(
+                    "text-[10px] font-black uppercase px-2 py-0.5 rounded-md",
+                    activeStep === 7 ? "bg-purple-500 text-white" : "bg-purple-600 text-white"
+                  )}>
+                    Etapa 7
+                  </span>
+                  {activeStep === 7 && (
+                    <span className="text-[9px] font-black text-purple-400 uppercase tracking-wide">
+                      ● Ativa
+                    </span>
+                  )}
+                </div>
+                <h3 className={cn("text-xs font-black uppercase tracking-wide", activeStep === 7 ? "text-white" : "text-purple-950")}>
+                  7. PLANO AMORTIZAÇÃO
+                </h3>
+                <p className={cn("text-[11px] font-semibold mt-1 leading-snug", activeStep === 7 ? "text-purple-200" : "text-purple-800")}>
+                  Envie o plano e guie a leitura dos 3 pontos.
+                </p>
+              </div>
+              <div className="flex justify-end pt-2">
+                <ChevronRight className={cn("w-4 h-4 transition-transform", activeStep === 7 ? "text-purple-400 translate-x-1" : "text-purple-600")} />
+              </div>
+            </button>
+
+            {/* ETAPA 8 */}
+            <button
+              onClick={() => goToStep(8)}
+              className={cn(
+                "min-w-[185px] w-[185px] shrink-0 snap-start text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
+                activeStep === 8
+                  ? "bg-emerald-950 text-white border-emerald-500 shadow-md ring-2 ring-emerald-500/30 scale-[1.02]"
+                  : "bg-emerald-50/70 hover:bg-emerald-100/80 border-emerald-300 text-emerald-950 hover:scale-[1.01]"
+              )}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={cn(
+                    "text-[10px] font-black uppercase px-2 py-0.5 rounded-md",
+                    activeStep === 8 ? "bg-emerald-500 text-white" : "bg-emerald-600 text-white"
+                  )}>
+                    Etapa 8
+                  </span>
+                  {activeStep === 8 && (
+                    <span className="text-[9px] font-black text-emerald-400 uppercase tracking-wide">
+                      ● Ativa
+                    </span>
+                  )}
+                </div>
+                <h3 className={cn("text-xs font-black uppercase tracking-wide", activeStep === 8 ? "text-white" : "text-emerald-950")}>
+                  8. QUITAÇÃO DE CARTÃO
+                </h3>
+                <p className={cn("text-[11px] font-semibold mt-1 leading-snug", activeStep === 8 ? "text-emerald-200" : "text-emerald-800")}>
+                  Operação especial de quitação de saldo e redução de folha.
+                </p>
+              </div>
+              <div className="flex justify-end pt-2">
+                <ChevronRight className={cn("w-4 h-4 transition-transform", activeStep === 8 ? "text-emerald-400 translate-x-1" : "text-emerald-600")} />
+              </div>
+            </button>
+
+            {/* ETAPA 9 */}
+            <button
+              onClick={() => goToStep(9)}
+              className={cn(
+                "min-w-[185px] w-[185px] shrink-0 snap-start text-left rounded-2xl p-3.5 transition-all cursor-pointer flex flex-col justify-between relative border-2",
+                activeStep === 9
+                  ? "bg-slate-950 text-white border-slate-500 shadow-md ring-2 ring-slate-500/30 scale-[1.02]"
+                  : "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-950 hover:scale-[1.01]"
+              )}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={cn(
+                    "text-[10px] font-black uppercase px-2 py-0.5 rounded-md",
+                    activeStep === 9 ? "bg-slate-800 text-white" : "bg-slate-700 text-white"
+                  )}>
+                    Etapa 9
+                  </span>
+                  {activeStep === 9 && (
+                    <span className="text-[9px] font-black text-slate-300 uppercase tracking-wide">
+                      ● Ativa
+                    </span>
+                  )}
+                </div>
+                <h3 className={cn("text-xs font-black uppercase tracking-wide", activeStep === 9 ? "text-white" : "text-slate-950")}>
+                  9. DOCUMENTOS & ACEITOU
+                </h3>
+                <p className={cn("text-[11px] font-semibold mt-1 leading-snug", activeStep === 9 ? "text-slate-300" : "text-slate-700")}>
+                  Coleta documental e retomadas pelo ponto de parada.
+                </p>
+              </div>
+              <div className="flex justify-end pt-2">
+                <ChevronRight className={cn("w-4 h-4 transition-transform", activeStep === 9 ? "text-slate-400 translate-x-1" : "text-slate-600")} />
               </div>
             </button>
 
@@ -2179,6 +2287,27 @@ export default function StartComercialDevPage() {
                 <span>Envie a imagem e em seguida faça uma pergunta de decisão.</span>
               </li>
             </ul>
+
+            {/* EVITE */}
+            <div className="p-3.5 sm:px-4 bg-[#fef2f2] border border-[#ef4444] rounded-xl text-left space-y-1.5">
+              <span className="text-[11px] font-black text-[#dc2626] uppercase tracking-wider block">
+                EVITE
+              </span>
+              <ul className="text-[13px] text-slate-800 font-medium space-y-1">
+                <li className="flex items-start gap-2">
+                  <span className="text-slate-900 font-bold">•</span>
+                  <span>Mandar cinco cenários e pedir para o cliente escolher sozinho.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-slate-900 font-bold">•</span>
+                  <span>Responder “é a melhor taxa do mercado” sem comparação real.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-slate-900 font-bold">•</span>
+                  <span>Defender uma proposta que não atende ao objetivo que o próprio cliente informou.</span>
+                </li>
+              </ul>
+            </div>
           </div>
 
           {/* LISTA VERTICAL DE TÓPICOS DA ETAPA 6 */}
@@ -2271,291 +2400,614 @@ export default function StartComercialDevPage() {
             {/* 6.0B - MARGEM FACULTATIVA */}
             <div className="space-y-6 pt-6 border-t border-slate-100">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-blue-800 bg-blue-100 px-2.5 py-1 rounded-lg">
-                  6.0B MARGEM FACULTATIVA
-                </span>
-                <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
-                  • Exemplo de apresentação com amortização na margem facultativa
+                <span className="text-xs font-black text-blue-800 bg-blue-100 px-2.5 py-1 rounded-lg">
+                  Comparativo inicial | Margem Facultativa
                 </span>
               </div>
 
-              {/* GRID COMPARATIVO FACULTATIVA */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 border border-slate-800 shadow-md">
-                  <div className="text-center pb-2 border-b border-slate-800">
-                    <span className="text-emerald-400 text-lg font-black tracking-tight">36 Meses</span>
-                    <p className="text-[10px] text-slate-400 uppercase">Plano de Amortização</p>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Valor Liberado</span>
-                      <span className="text-emerald-400 font-bold">R$ 43.066,32</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Parcela Média</span>
-                      <span className="font-bold">R$ 1.455,23</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Taxa Mês</span>
-                      <span className="font-bold">1,10%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Total Previsto</span>
-                      <span className="font-bold">R$ 52.388,16</span>
-                    </div>
-                  </div>
-                  <div className="p-2.5 bg-emerald-950/60 border border-emerald-700/60 rounded-xl text-center">
-                    <p className="text-[9px] uppercase font-bold text-emerald-300">Economia no Total</p>
-                    <p className="text-sm font-black text-emerald-400">R$ 43.611,84</p>
-                  </div>
-                </div>
-
-                <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 border-2 border-blue-500 shadow-lg">
-                  <div className="text-center pb-2 border-b border-slate-800">
-                    <span className="text-emerald-400 text-lg font-black tracking-tight">48 Meses</span>
-                    <p className="text-[10px] text-slate-400 uppercase">Plano de Amortização</p>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Valor Liberado</span>
-                      <span className="text-emerald-400 font-bold">R$ 43.066,32</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Parcela Média</span>
-                      <span className="font-bold">R$ 1.216,99</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Taxa Mês</span>
-                      <span className="font-bold">1,32%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Total Previsto</span>
-                      <span className="font-bold">R$ 58.415,30</span>
-                    </div>
-                  </div>
-                  <div className="p-2.5 bg-emerald-950/60 border border-emerald-700/60 rounded-xl text-center">
-                    <p className="text-[9px] uppercase font-bold text-emerald-300">Economia no Total</p>
-                    <p className="text-sm font-black text-emerald-400">R$ 37.584,70</p>
-                  </div>
-                </div>
-
-                <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 border border-slate-800">
-                  <div className="text-center pb-2 border-b border-slate-800">
-                    <span className="text-emerald-400 text-lg font-black tracking-tight">60 Meses</span>
-                    <p className="text-[10px] text-slate-400 uppercase">Plano de Amortização</p>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Valor Liberado</span>
-                      <span className="text-emerald-400 font-bold">R$ 43.066,32</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Parcela Média</span>
-                      <span className="font-bold">R$ 1.093,60</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Taxa Mês</span>
-                      <span className="font-bold">1,50%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Total Previsto</span>
-                      <span className="font-bold">R$ 65.616,09</span>
-                    </div>
-                  </div>
-                  <div className="p-2.5 bg-emerald-950/60 border border-emerald-700/60 rounded-xl text-center">
-                    <p className="text-[9px] uppercase font-bold text-emerald-300">Economia no Total</p>
-                    <p className="text-sm font-black text-emerald-400">R$ 30.383,91</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Script para Transformar em Decisão</span>
-                <p className="text-xs font-mono text-slate-800">
-                  "Nessa comparação, qual cenário está mais dentro do que faz sentido para você?"
+              {/* CARD: COMO LER A REFERÊNCIA */}
+              <div className="p-4 bg-blue-50/60 border border-blue-200/80 rounded-2xl space-y-1 text-left">
+                <span className="text-[11px] font-black text-blue-900 uppercase tracking-wider block">
+                  COMO LER A REFERÊNCIA
+                </span>
+                <p className="text-[12.75px] text-slate-800 font-medium leading-relaxed">
+                  Na margem facultativa, a primeira imagem abaixo serve como referência da escolha de prazo/taxa dentro da calculadora. A segunda é o comparativo visual que pode ser usado como gancho com o cliente.
                 </p>
-                <button
-                  onClick={() => copyToClipboard("Nessa comparação, qual cenário está mais dentro do que faz sentido para você?", "fac-dec")}
-                  className="w-full sm:w-auto px-6 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg transition-all"
-                >
-                  {copiedId === "fac-dec" ? "Copiado!" : "Copiar Pergunta"}
-                </button>
+              </div>
+
+              {/* IMAGENS DE REFERÊNCIA FACULTATIVA */}
+              <div className="space-y-6">
+                {/* IMAGEM 1 */}
+                <div className="space-y-2">
+                  <div className="flex justify-center">
+                    <div className="w-full max-w-[40%] rounded-2xl overflow-hidden border border-slate-200 shadow-md bg-slate-900">
+                      <img
+                        src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/selecao_prazo.png"
+                        alt="Referência interna - seleção de prazo e taxa na margem facultativa"
+                        className="w-full h-auto object-contain block rounded-2xl"
+                        loading="lazy"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-center text-xs text-slate-600 italic">
+                    1. Referência interna - seleção de prazo e taxa na margem facultativa.
+                  </p>
+                </div>
+
+                {/* IMAGEM 2 */}
+                <div className="space-y-2">
+                  <div className="flex justify-center">
+                    <div className="w-full max-w-[80%] rounded-2xl overflow-hidden border border-slate-200 shadow-md bg-slate-900">
+                      <img
+                        src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/comparar_facultativa.png"
+                        alt="Referência de apresentação - comparativo visual da margem facultativa"
+                        className="w-full h-auto object-contain block rounded-2xl"
+                        loading="lazy"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-center text-xs text-slate-600 italic">
+                    2. Referência de apresentação - comparativo visual da margem facultativa.
+                  </p>
+                </div>
+              </div>
+
+              {/* SCRIPTS DE ENVIO FACULTATIVA */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* ANTES DE ENVIAR O COMPARATIVO - FACULTATIVA */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    ANTES DE ENVIAR O COMPARATIVO - FACULTATIVA
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Levantei aqui o teu cenário pela <strong>margem facultativa</strong> e montei uma comparação para ficar simples de enxergar.</p>
+                      <p className="mt-2">Vou te enviar a imagem e te aponto exatamente <strong>o que vale observar</strong> antes de qualquer decisão.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Quando o cálculo já estiver validado dentro da margem facultativa.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Levantei aqui o teu cenário pela *margem facultativa* e montei uma comparação para ficar simples de enxergar.\n\nVou te enviar a imagem e te aponto exatamente *o que vale observar* antes de qualquer decisão.", "fac-env-1")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "fac-env-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "fac-env-1" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* LEITURA DA IMAGEM - FACULTATIVA */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    LEITURA DA IMAGEM - FACULTATIVA
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Nessa comparação, qual cenário está mais dentro do que faz sentido para você?</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Depois da imagem, para transformar o comparativo em decisão.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Nessa comparação, qual cenário está mais dentro do que faz sentido para você?", "fac-env-2")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "fac-env-2" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "fac-env-2" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* REAÇÕES À PROPOSTA */}
+            {/* O CLIENTE REAGIU À PROPOSTA. E AGORA? */}
             <div className="space-y-4 pt-6 border-t border-slate-100">
               <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
-                REAÇÕES À PROPOSTA
+                O CLIENTE REAGIU À PROPOSTA. E AGORA?
               </span>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Quer mais valor</span>
-                  <p className="text-xs font-mono text-slate-800 whitespace-pre-line">
-                    Consigo tentar puxar a estrutura para liberação.{'\n\n'}Me diz só uma coisa: existe um valor mínimo que faria sentido para você?
-                  </p>
-                  <button onClick={() => copyToClipboard("Consigo tentar puxar a estrutura para liberação.\n\nMe diz só uma coisa: existe um valor mínimo que faria sentido para você?", "reac-1")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                    {copiedId === "reac-1" ? "Copiado!" : "Copiar"}
-                  </button>
-                </div>
+                {/* 1. QUER MAIS VALOR */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    QUER MAIS VALOR
+                  </span>
 
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Quer prazo menor</span>
-                  <p className="text-xs font-mono text-slate-800 whitespace-pre-line">
-                    Perfeito.{'\n\n'}Vou reduzir a duração e te mostro quanto muda no valor para você decidir.
-                  </p>
-                  <button onClick={() => copyToClipboard("Perfeito.\n\nVou reduzir a duração e te mostro quanto muda no valor para você decidir.", "reac-2")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                    {copiedId === "reac-2" ? "Copiado!" : "Copiar"}
-                  </button>
-                </div>
-
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">A parcela ficou alta</span>
-                  <p className="text-xs font-mono text-slate-800 whitespace-pre-line">
-                    Entendi.{'\n\n'}Qual faixa de parcela cabe com tranquilidade no teu orçamento?{'\n\n'}Eu ajusto em cima disso.
-                  </p>
-                  <button onClick={() => copyToClipboard("Entendi.\n\nQual faixa de parcela cabe com tranquilidade no teu orçamento?\n\nEu ajusto em cima disso.", "reac-3")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                    {copiedId === "reac-3" ? "Copiado!" : "Copiar"}
-                  </button>
-                </div>
-
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Essa taxa está baixa demais. Não confio.</span>
-                  <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
-                    Boa pergunta.{'\n\n'}Essa é a taxa que pagará na prática deixando a duração do contrato em X meses.{'\n\n'}Vou te mandar o plano completo em que você poderá visualizar, calcular e tirar dúvidas.
-                  </p>
-                  <button onClick={() => copyToClipboard("Boa pergunta.\n\nEssa é a taxa que pagará na prática deixando a duração do contrato em X meses.\n\nVou te mandar o plano completo em que você poderá visualizar, calcular e tirar dúvidas.", "reac-4")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                    {copiedId === "reac-4" ? "Copiado!" : "Copiar"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* PLANO DE AMORTIZAÇÃO */}
-            <div className="space-y-6 pt-6 border-t border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
-                  PLANO DE AMORTIZAÇÃO
-                </span>
-              </div>
-
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Regra do Plano de Amortização</span>
-                <p className="text-[12.75px] text-slate-800 font-medium leading-relaxed">
-                  Primeiro o cliente precisa entender <strong>POR QUE</strong> a estrutura é boa. Depois, ele entende <strong>COMO</strong> o plano realiza a duração projetada.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Mensagem Antes do Link/PDF</span>
-                  <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
-                    Vou te mandar agora o *Plano de Amortização*.{'\n\n'}Ele serve para você enxergar como a operação é organizada ao longo do tempo e como chegamos à *duração projetada* que eu te apresentei.{'\n\n'}Quando abrir, não precisa tentar interpretar tudo sozinho. Eu vou te mostrar os *pontos que realmente importam*.
-                  </p>
-                  <button onClick={() => copyToClipboard("Vou te mandar agora o *Plano de Amortização*.\n\nEle serve para você enxergar como a operação é organizada ao longo do tempo e como chegamos à *duração projetada* que eu te apresentei.\n\nQuando abrir, não precisa tentar interpretar tudo sozinho. Eu vou te mostrar os *pontos que realmente importam*.", "plano-1")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                    {copiedId === "plano-1" ? "Copiado!" : "Copiar"}
-                  </button>
-                </div>
-
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Mensagem Junto com o Link/PDF</span>
-                  <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
-                    Segue o plano, [Nome].{'\n\n'}Repara principalmente em 3 pontos:{'\n'}1. a parcela que fica em folha{'\n'}2. as amortizações previstas{'\n'}3. a duração projetada da operação{'\n\n'}Se quiser, eu já te explico a linha do teu caso sem você precisar ler isso como uma planilha.
-                  </p>
-                  <button onClick={() => copyToClipboard("Segue o plano, [Nome].\n\nRepara principalmente em 3 pontos:\n1. a parcela que fica em folha\n2. as amortizações previstas\n3. a duração projetada da operação\n\nSe quiser, eu já te explico a linha do teu caso sem você precisar ler isso como uma planilha.", "plano-2")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                    {copiedId === "plano-2" ? "Copiado!" : "Copiar"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* QUITAÇÃO DE CARTÃO */}
-            <div className="space-y-6 pt-6 border-t border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-lg">
-                  QUITAÇÃO DE CARTÃO (OPERAÇÃO ESPECIAL)
-                </span>
-              </div>
-
-              <div className="p-4 bg-emerald-100/80 border border-emerald-400 rounded-2xl space-y-1">
-                <p className="text-[12.75px] text-emerald-950 font-medium leading-relaxed">
-                  Quando a proposta for quitação de cartão, a liberação ocorre pela margem facultativa, liberando valor para quitar o saldo devedor e reduzir a folha.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Cálculo Rápido de Saldo Devedor</span>
-                  <div className="space-y-2 text-[12.75px] font-semibold text-slate-800">
-                    <p className="p-2.5 bg-white border rounded-lg">1. Saldo prévio: Margem Bruta do Benefício - Margem Líquida = Margem Averbada</p>
-                    <p className="p-2.5 bg-white border rounded-lg">2. Saldo devedor prévio = Margem Averbada × 16,6667</p>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Mensagem de Abordagem para Quitação</span>
-                  <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
-                    Oi, [NOME], Mais de *R$ 15 mil* estão saindo do seu bolso por causa de 1 desconto!{'\n\n'}Resolvemos isso em *menos de 48h*. Posso mostrar a diferença?
-                  </p>
-                  <button onClick={() => copyToClipboard("Oi, [NOME], Mais de *R$ 15 mil* estão saindo do seu bolso por causa de 1 desconto!\n\nResolvemos isso em *menos de 48h*. Posso mostrar a diferença?", "quit-1")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                    {copiedId === "quit-1" ? "Copiado!" : "Copiar"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* DOCUMENTOS & ACEITOU */}
-            <div className="space-y-6 pt-6 border-t border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
-                  DOCUMENTOS & ACEITOU
-                </span>
-              </div>
-
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Coleta de Documentos</span>
-                <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
-                  Perfeito, [Nome].{'\n\n'}Para eu deixar essa condição pronta para você conferir, preciso de:{'\n'}- Foto RG ou CNH;{'\n'}- Endereço e e-mail por escrito;{'\n'}- Último contracheque.{'\n\n'}Assim que receber, eu digito e te devolvo o *próximo passo*.
-                </p>
-                <button onClick={() => copyToClipboard("Perfeito, [Nome].\n\nPara eu deixar essa condição pronta para você conferir, preciso de:\n- Foto RG ou CNH;\n- Endereço e e-mail por escrito;\n- Último contracheque.\n\nAssim que receber, eu digito e te devolvo o *próximo passo*.", "doc-1")} className="w-full sm:w-auto px-6 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg">
-                  {copiedId === "doc-1" ? "Copiado!" : "Copiar Mensagem"}
-                </button>
-              </div>
-
-              {/* RETOMADAS PELO PONTO ONDE PAROU */}
-              <div className="space-y-3 pt-4 border-t border-slate-100">
-                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Retomadas pelo Ponto Onde Parou</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">Parou Depois da Proposta</p>
-                    <p className="text-[12.75px] text-slate-800">"[Nome], deixei teu cenário separado aqui. Antes de eu encerrar, me diz o que travou: valor, parcela, prazo ou segurança?"</p>
-                    <button onClick={() => copyToClipboard("[Nome], deixei teu cenário separado aqui.\n\nAntes de eu encerrar, me diz o que travou: valor, parcela, prazo ou segurança da operação?", "ret-p-1")} className="w-full py-1.5 bg-white border text-[11px] font-bold rounded">Copiar</button>
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Consigo tentar puxar a estrutura para liberação.</p>
+                      <p className="mt-2">Me diz só uma coisa: existe um valor mínimo que faria sentido para você?</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">Parou nos Documentos</p>
-                    <p className="text-[12.75px] text-slate-800">"[Nome], ficou pendente apenas [DOCUMENTO]. Assim que você me enviar, eu consigo dar sequência com prioridade."</p>
-                    <button onClick={() => copyToClipboard("[Nome], ficou pendente apenas [DOCUMENTO].\n\nAssim que você me enviar, eu consigo dar sequência na proposta com prioridade sem refazer a análise.", "ret-p-2")} className="w-full py-1.5 bg-white border text-[11px] font-bold rounded">Copiar</button>
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Antes de recalcular, transforme "mais" em objetivo.
+                    </p>
                   </div>
 
-                  <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">Parou na Formalização</p>
-                    <p className="text-[12.75px] text-slate-800">"[Nome], falta apenas um detalhe para o pagamento. Se travou em alguma tela ou validação, me fala onde parou que eu te direciono."</p>
-                    <button onClick={() => copyToClipboard("[Nome], falta apenas um detalhe para o pagamento.\n\nSe travou em alguma tela ou validação, me fala onde parou que eu te direciono.", "ret-p-3")} className="w-full py-1.5 bg-white border text-[11px] font-bold rounded">Copiar</button>
+                  <button
+                    onClick={() => copyToClipboard("Consigo tentar puxar a estrutura para liberação.\n\nMe diz só uma coisa: existe um valor mínimo que faria sentido para você?", "reac-1")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "reac-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "reac-1" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* 2. QUER PRAZO MENOR */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    QUER PRAZO MENOR
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Perfeito.</p>
+                      <p className="mt-2">Vou reduzir a duração e te mostro quanto muda no valor para você decidir.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
                   </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Recalcule em vez de justificar demais.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Perfeito.\n\nVou reduzir a duração e te mostro quanto muda no valor para você decidir.", "reac-2")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "reac-2" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "reac-2" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* 3. ESTÁ COMPARANDO COM OUTRA PROPOSTA */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    ESTÁ COMPARANDO COM OUTRA PROPOSTA
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Me passa o valor, a <strong>parcela</strong> e o <strong>prazo</strong> que te apresentaram.</p>
+                      <p className="mt-2">Eu coloco pela mesma referência e te mostro a diferença real.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Evita "a nossa é melhor" sem comparação.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Me passa o valor, a *parcela* e o *prazo* que te apresentaram.\n\nEu coloco pela mesma referência e te mostro a diferença real.", "reac-3")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "reac-3" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "reac-3" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* 4. PERGUNTA A TAXA */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    PERGUNTA A TAXA
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Nesse cenário validado, a taxa é [TAXA] ao mês.</p>
+                      <p className="mt-2">Agora vamos olhar junto valor, <strong>parcela</strong> e <strong>prazo</strong> para você comparar a condição completa.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Depois de existir taxa validada.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Nesse cenário validado, a taxa é [TAXA] ao mês.\n\nAgora vamos olhar junto valor, *parcela* e *prazo* para você comparar a condição completa.", "reac-4")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "reac-4" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "reac-4" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* 5. "A PARCELA FICOU ALTA" */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    "A PARCELA FICOU ALTA"
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Entendi.</p>
+                      <p className="mt-2">Qual faixa de <strong>parcela</strong> cabe com tranquilidade no teu orçamento?</p>
+                      <p className="mt-2">Eu ajusto em cima disso.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Transforma objeção em dado de recálculo.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Entendi.\n\nQual faixa de *parcela* cabe com tranquilidade no teu orçamento?\n\nEu ajusto em cima disso.", "reac-5")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "reac-5" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "reac-5" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* 6. "O VALOR É BAIXO" */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    "O VALOR É BAIXO"
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Entendi.</p>
+                      <p className="mt-2">Qual valor faria a operação valer a pena para você?</p>
+                      <p className="mt-2">Eu vejo se a margem sustenta algo próximo e te respondo sem rodeio.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Evita tentar convencer o cliente de que valor baixo é suficiente.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Entendi.\n\nQual valor faria a operação valer a pena para você?\n\nEu vejo se a margem sustenta algo próximo e te respondo sem rodeio.", "reac-6")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "reac-6" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "reac-6" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* 7. "ESSA TAXA ESTÁ BAIXA DEMAIS. NÃO CONFIO." */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    "ESSA TAXA ESTÁ BAIXA DEMAIS. NÃO CONFIO."
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Boa pergunta.</p>
+                      <p className="mt-2">Essa é a taxa que pagará na prática deixando a duração do contrato em X meses.</p>
+                      <p className="mt-2">Vou te mandar o plano completo em que você poderá visualizar, calcular e tirar dúvidas.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Converte desconfiança em validação objetiva.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Boa pergunta.\n\nEssa é a taxa que pagará na prática deixando a duração do contrato em X meses.\n\nVou te mandar o plano completo em que você poderá visualizar, calcular e tirar dúvidas.", "reac-7")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "reac-7" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "reac-7" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
                 </div>
               </div>
             </div>
 
           </div>
 
-          {/* NAVEGAÇÃO INFERIOR */}
+          {/* NAVEGAÇÃO INFERIOR DA ETAPA 6 */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-6 border-t border-slate-100">
             <button
               onClick={() => goToStep(5)}
               className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" /> Etapa 5 (Chamado Técnico)
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsDrawerOpen(true)}
+                className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+              >
+                <Zap className="w-3.5 h-3.5 text-emerald-600" /> Objeções Rápidas
+              </button>
+              <button
+                onClick={() => goToStep(7)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                Avançar para Etapa 7 (Plano de Amortização) <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </section>
+        )}
+
+        {/* ========================================================================= */}
+        {/* ETAPA 7: PLANO DE AMORTIZAÇÃO */}
+        {/* ========================================================================= */}
+        {(activeStep === 7 || activeStep === "all") && (
+        <section id="etapa-7" className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-sm space-y-8 scroll-mt-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-purple-700 text-white font-black text-xl flex items-center justify-center shadow-md shadow-purple-700/20">
+                7
+              </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight">
+                  Plano de Amortização
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-700 font-semibold">
+                  Apresentar e orientar a leitura da redução projetada por amortização.
+                </p>
+              </div>
+            </div>
+            <span className="px-3 py-1 bg-purple-50 text-purple-800 text-xs font-bold rounded-lg border border-purple-200">
+              Projeção & Amortização
+            </span>
+          </div>
+
+          <div className="space-y-6">
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Regra do Plano de Amortização</span>
+              <p className="text-[12.75px] text-slate-800 font-medium leading-relaxed">
+                Primeiro o cliente precisa entender <strong>POR QUE</strong> a estrutura é boa. Depois, ele entende <strong>COMO</strong> o plano realiza a duração projetada.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Mensagem Antes do Link/PDF</span>
+                <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
+                  Vou te mandar agora o *Plano de Amortização*.{'\n\n'}Ele serve para você enxergar como a operação é organizada ao longo do tempo e como chegamos à *duração projetada* que eu te apresentei.{'\n\n'}Quando abrir, não precisa tentar interpretar tudo sozinho. Eu vou te mostrar os *pontos que realmente importam*.
+                </p>
+                <button onClick={() => copyToClipboard("Vou te mandar agora o *Plano de Amortização*.\n\nEle serve para você enxergar como a operação é organizada ao longo do tempo e como chegamos à *duração projetada* que eu te apresentei.\n\nQuando abrir, não precisa tentar interpretar tudo sozinho. Eu vou te mostrar os *pontos que realmente importam*.", "plano-1")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
+                  {copiedId === "plano-1" ? "Copiado!" : "Copiar"}
+                </button>
+              </div>
+
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Mensagem Junto com o Link/PDF</span>
+                <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
+                  Segue o plano, [Nome].{'\n\n'}Repara principalmente em 3 pontos:{'\n'}1. a parcela que fica em folha{'\n'}2. as amortizações previstas{'\n'}3. a duração projetada da operação{'\n\n'}Se quiser, eu já te explico a linha do teu caso sem você precisar ler isso como uma planilha.
+                </p>
+                <button onClick={() => copyToClipboard("Segue o plano, [Nome].\n\nRepara principalmente em 3 pontos:\n1. a parcela que fica em folha\n2. as amortizações previstas\n3. a duração projetada da operação\n\nSe quiser, eu já te explico a linha do teu caso sem você precisar ler isso como uma planilha.", "plano-2")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
+                  {copiedId === "plano-2" ? "Copiado!" : "Copiar"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* NAVEGAÇÃO INFERIOR DA ETAPA 7 */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-6 border-t border-slate-100">
+            <button
+              onClick={() => goToStep(6)}
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" /> Etapa 6 (Apresentar Proposta)
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsDrawerOpen(true)}
+                className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+              >
+                <Zap className="w-3.5 h-3.5 text-emerald-600" /> Objeções Rápidas
+              </button>
+              <button
+                onClick={() => goToStep(8)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                Avançar para Etapa 8 (Quitação de Cartão) <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </section>
+        )}
+
+        {/* ========================================================================= */}
+        {/* ETAPA 8: QUITAÇÃO DE CARTÃO (OPERAÇÃO ESPECIAL) */}
+        {/* ========================================================================= */}
+        {(activeStep === 8 || activeStep === "all") && (
+        <section id="etapa-8" className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-sm space-y-8 scroll-mt-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white font-black text-xl flex items-center justify-center shadow-md shadow-emerald-600/20">
+                8
+              </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight">
+                  Quitação de Cartão
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-700 font-semibold">
+                  Operação especial para quitar saldo devedor e reduzir desconto na folha.
+                </p>
+              </div>
+            </div>
+            <span className="px-3 py-1 bg-emerald-50 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-200">
+              Operação Especial
+            </span>
+          </div>
+
+          <div className="space-y-6">
+            <div className="p-4 bg-emerald-100/80 border border-emerald-400 rounded-2xl space-y-1">
+              <p className="text-[12.75px] text-emerald-950 font-medium leading-relaxed">
+                Quando a proposta for quitação de cartão, a liberação ocorre pela margem facultativa, liberando valor para quitar o saldo devedor e reduzir a folha.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Cálculo Rápido de Saldo Devedor</span>
+                <div className="space-y-2 text-[12.75px] font-semibold text-slate-800">
+                  <p className="p-2.5 bg-white border rounded-lg">1. Saldo prévio: Margem Bruta do Benefício - Margem Líquida = Margem Averbada</p>
+                  <p className="p-2.5 bg-white border rounded-lg">2. Saldo devedor prévio = Margem Averbada × 16,6667</p>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Mensagem de Abordagem para Quitação</span>
+                <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
+                  Oi, [NOME], Mais de *R$ 15 mil* estão saindo do seu bolso por causa de 1 desconto!{'\n\n'}Resolvemos isso em *menos de 48h*. Posso mostrar a diferença?
+                </p>
+                <button onClick={() => copyToClipboard("Oi, [NOME], Mais de *R$ 15 mil* estão saindo do seu bolso por causa de 1 desconto!\n\nResolvemos isso em *menos de 48h*. Posso mostrar a diferença?", "quit-1")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
+                  {copiedId === "quit-1" ? "Copiado!" : "Copiar"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* NAVEGAÇÃO INFERIOR DA ETAPA 8 */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-6 border-t border-slate-100">
+            <button
+              onClick={() => goToStep(7)}
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" /> Etapa 7 (Plano de Amortização)
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsDrawerOpen(true)}
+                className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+              >
+                <Zap className="w-3.5 h-3.5 text-emerald-600" /> Objeções Rápidas
+              </button>
+              <button
+                onClick={() => goToStep(9)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                Avançar para Etapa 9 (Documentos & Aceitou) <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </section>
+        )}
+
+        {/* ========================================================================= */}
+        {/* ETAPA 9: DOCUMENTOS & ACEITOU */}
+        {/* ========================================================================= */}
+        {(activeStep === 9 || activeStep === "all") && (
+        <section id="etapa-9" className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-sm space-y-8 scroll-mt-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white font-black text-xl flex items-center justify-center shadow-md shadow-slate-900/20">
+                9
+              </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight">
+                  Documentos & Aceitou
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-700 font-semibold">
+                  Coleta rápida de documentos para digitação e retomadas estruturadas do ponto onde o cliente parou.
+                </p>
+              </div>
+            </div>
+            <span className="px-3 py-1 bg-slate-100 text-slate-800 text-xs font-bold rounded-lg border border-slate-200">
+              Formalização & Retomada
+            </span>
+          </div>
+
+          <div className="space-y-6">
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Coleta de Documentos</span>
+              <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
+                Perfeito, [Nome].{'\n\n'}Para eu deixar essa condição pronta para você conferir, preciso de:{'\n'}- Foto RG ou CNH;{'\n'}- Endereço e e-mail por escrito;{'\n'}- Último contracheque.{'\n\n'}Assim que receber, eu digito e te devolvo o *próximo passo*.
+              </p>
+              <button onClick={() => copyToClipboard("Perfeito, [Nome].\n\nPara eu deixar essa condição pronta para você conferir, preciso de:\n- Foto RG ou CNH;\n- Endereço e e-mail por escrito;\n- Último contracheque.\n\nAssim que receber, eu digito e te devolvo o *próximo passo*.", "doc-1")} className="w-full sm:w-auto px-6 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg">
+                {copiedId === "doc-1" ? "Copiado!" : "Copiar Mensagem"}
+              </button>
+            </div>
+
+            {/* RETOMADAS PELO PONTO ONDE PAROU */}
+            <div className="space-y-3 pt-4 border-t border-slate-100">
+              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Retomadas pelo Ponto Onde Parou</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">Parou Depois da Proposta</p>
+                  <p className="text-[12.75px] text-slate-800">"[Nome], deixei teu cenário separado aqui. Antes de eu encerrar, me diz o que travou: valor, parcela, prazo ou segurança?"</p>
+                  <button onClick={() => copyToClipboard("[Nome], deixei teu cenário separado aqui.\n\nAntes de eu encerrar, me diz o que travou: valor, parcela, prazo ou segurança da operação?", "ret-p-1")} className="w-full py-1.5 bg-white border text-[11px] font-bold rounded">Copiar</button>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">Parou nos Documentos</p>
+                  <p className="text-[12.75px] text-slate-800">"[Nome], ficou pendente apenas [DOCUMENTO]. Assim que você me enviar, eu consigo dar sequência com prioridade."</p>
+                  <button onClick={() => copyToClipboard("[Nome], ficou pendente apenas [DOCUMENTO].\n\nAssim que você me enviar, eu consigo dar sequência na proposta com prioridade sem refazer a análise.", "ret-p-2")} className="w-full py-1.5 bg-white border text-[11px] font-bold rounded">Copiar</button>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">Parou na Formalização</p>
+                  <p className="text-[12.75px] text-slate-800">"[Nome], falta apenas um detalhe para o pagamento. Se travou em alguma tela ou validação, me fala onde parou que eu te direciono."</p>
+                  <button onClick={() => copyToClipboard("[Nome], falta apenas um detalhe para o pagamento.\n\nSe travou em alguma tela ou validação, me fala onde parou que eu te direciono.", "ret-p-3")} className="w-full py-1.5 bg-white border text-[11px] font-bold rounded">Copiar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* NAVEGAÇÃO INFERIOR DA ETAPA 9 */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-6 border-t border-slate-100">
+            <button
+              onClick={() => goToStep(8)}
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" /> Etapa 8 (Quitação de Cartão)
             </button>
             <div className="flex items-center gap-2">
               <button
