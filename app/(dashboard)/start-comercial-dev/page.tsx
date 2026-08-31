@@ -1384,6 +1384,10 @@ export default function StartComercialDevPage() {
                       </div>
                     </div>
                   </div>
+
+                  <p className="text-[11.75px] text-slate-500 italic">
+                    <strong>Quando usar:</strong> Primeiro identifica se existe referência concorrente.
+                  </p>
                 </div>
 
                 <button
@@ -1416,6 +1420,10 @@ export default function StartComercialDevPage() {
                       </div>
                     </div>
                   </div>
+
+                  <p className="text-[11.75px] text-slate-500 italic">
+                    <strong>Quando usar:</strong> Puxe valor + prazo. Taxa/parcela só se necessário depois.
+                  </p>
                 </div>
 
                 <button
@@ -1446,6 +1454,10 @@ export default function StartComercialDevPage() {
                       </div>
                     </div>
                   </div>
+
+                  <p className="text-[11.75px] text-slate-500 italic">
+                    <strong>Quando usar:</strong> Define a direção do cálculo.
+                  </p>
                 </div>
 
                 <button
@@ -1478,6 +1490,10 @@ export default function StartComercialDevPage() {
                       </div>
                     </div>
                   </div>
+
+                  <p className="text-[11.75px] text-slate-500 italic">
+                    <strong>Quando usar:</strong> Diferencia falta de necessidade de falta total de oportunidade.
+                  </p>
                 </div>
 
                 <button
@@ -1486,6 +1502,149 @@ export default function StartComercialDevPage() {
                 >
                   {copiedId === "sonde-4" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                   {copiedId === "sonde-4" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                </button>
+              </div>
+
+              {/* SCRIPT 5 */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded uppercase">
+                      "Preciso pensar / Analisar"
+                    </span>
+                  </div>
+
+                  {/* MOCK WHATSAPP */}
+                  <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Claro.</p>
+                      <p className="mt-2">Para eu não ficar te procurando sem contexto: o que você quer analisar melhor - necessidade do valor, <strong>parcela, prazo</strong> ou segurança da operação?</p>
+                      <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[11.75px] text-slate-500 italic">
+                    <strong>Quando usar:</strong> Transforma "vou pensar" em um motivo concreto.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => copyToClipboard("Claro.\n\nPara eu não ficar te procurando sem contexto: o que você quer analisar melhor - necessidade do valor, *parcela, prazo* ou segurança da operação?", "sonde-5")}
+                  className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {copiedId === "sonde-5" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copiedId === "sonde-5" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                </button>
+              </div>
+
+              {/* SCRIPT 6 */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded uppercase">
+                      "Não tenho interesse em nova liberação"
+                    </span>
+                  </div>
+
+                  {/* MOCK WHATSAPP */}
+                  <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Entendi.</p>
+                      <p className="mt-2">Então não vou insistir em nova liberação.</p>
+                      <p className="mt-2">Se a operação permitir melhoria em algo que você já tem, eu posso conferir isso; se não houver ganho real, encerramos.</p>
+                      <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[11.75px] text-slate-500 italic">
+                    <strong>Quando usar:</strong> Use somente quando existir de fato uma alternativa de otimização no produto/campanha.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => copyToClipboard("Entendi.\n\nEntão não vou insistir em nova liberação.\n\nSe a operação permitir melhoria em algo que você já tem, eu posso conferir isso; se não houver ganho real, encerramos.", "sonde-6")}
+                  className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {copiedId === "sonde-6" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copiedId === "sonde-6" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                </button>
+              </div>
+
+              {/* SCRIPT 7 */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded uppercase">
+                      "O valor ficou baixo"
+                    </span>
+                  </div>
+
+                  {/* MOCK WHATSAPP */}
+                  <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Entendi.</p>
+                      <p className="mt-2">Qual valor faria sentido para você considerar?</p>
+                      <p className="mt-2">Se a margem não sustentar algo próximo disso, eu já te digo e não estico a conversa.</p>
+                      <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[11.75px] text-slate-500 italic">
+                    <strong>Quando usar:</strong> Converte "baixo" em critério objetivo.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => copyToClipboard("Entendi.\n\nQual valor faria sentido para você considerar?\n\nSe a margem não sustentar algo próximo disso, eu já te digo e não estico a conversa.", "sonde-7")}
+                  className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {copiedId === "sonde-7" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copiedId === "sonde-7" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                </button>
+              </div>
+
+              {/* SCRIPT 8 */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded uppercase">
+                      "Não tenho margem"
+                    </span>
+                  </div>
+
+                  {/* MOCK WHATSAPP */}
+                  <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Pode ser que você esteja olhando uma margem diferente da que o sistema considera para essa operação.</p>
+                      <p className="mt-2">Eu confiro antes de concluir.</p>
+                      <p className="mt-2">Se realmente não houver espaço, eu te aviso.</p>
+                      <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[11.75px] text-slate-500 italic">
+                    <strong>Quando usar:</strong> Não discuta com o cliente; valide a leitura.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => copyToClipboard("Pode ser que você esteja olhando uma margem diferente da que o sistema considera para essa operação.\n\nEu confiro antes de concluir.\n\nSe realmente não houver espaço, eu te aviso.", "sonde-8")}
+                  className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {copiedId === "sonde-8" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copiedId === "sonde-8" ? "Copiado com Negrito!" : "Copiar Mensagem"}
                 </button>
               </div>
             </div>
@@ -1505,6 +1664,16 @@ export default function StartComercialDevPage() {
               </span>
             </div>
 
+            {/* CARD DE REGRA */}
+            <div className="p-3.5 sm:px-4 bg-[#f0fdf4] border border-[#009966] rounded-xl text-left">
+              <span className="text-[11px] font-black text-[#009966] uppercase tracking-wider block">
+                REGRA
+              </span>
+              <p className="text-[13px] text-slate-800 font-medium mt-0.5">
+                Quando o cliente demonstra intenção clara de avançar, não continue vendendo o que já foi vendido.
+              </p>
+            </div>
+
             <div className="overflow-x-auto rounded-2xl border border-slate-200">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
@@ -1516,11 +1685,11 @@ export default function StartComercialDevPage() {
                 <tbody className="divide-y divide-slate-100 font-medium">
                   <tr className="hover:bg-slate-50/80">
                     <td className="p-3.5 sm:px-6 font-bold text-slate-900 text-[12.75px]">“O que precisa para fazer?”</td>
-                    <td className="p-3.5 sm:px-6 text-emerald-700 font-semibold text-[12.75px]">Responda objetivamente e avance direto para a coleta de documentos.</td>
+                    <td className="p-3.5 sm:px-6 text-emerald-700 font-semibold text-[12.75px]">Responda e avance direto para a coleta de documentos.</td>
                   </tr>
                   <tr className="hover:bg-slate-50/80">
                     <td className="p-3.5 sm:px-6 font-bold text-slate-900 text-[12.75px]">“Como eu assino?”</td>
-                    <td className="p-3.5 sm:px-6 text-emerald-700 font-semibold text-[12.75px]">Explique a formalização digital e envie o fluxo.</td>
+                    <td className="p-3.5 sm:px-6 text-emerald-700 font-semibold text-[12.75px]">Explique a formalização e avance.</td>
                   </tr>
                   <tr className="hover:bg-slate-50/80">
                     <td className="p-3.5 sm:px-6 font-bold text-slate-900 text-[12.75px]">“Quando o dinheiro cai?”</td>
@@ -1528,11 +1697,11 @@ export default function StartComercialDevPage() {
                   </tr>
                   <tr className="hover:bg-slate-50/80">
                     <td className="p-3.5 sm:px-6 font-bold text-slate-900 text-[12.75px]">“Pode seguir.”</td>
-                    <td className="p-3.5 sm:px-6 text-emerald-700 font-semibold text-[12.75px]">Não volte a vender nem justifique taxas. Apenas execute a digitação.</td>
+                    <td className="p-3.5 sm:px-6 text-emerald-700 font-semibold text-[12.75px]">Não volte a vender. Execute.</td>
                   </tr>
                   <tr className="hover:bg-slate-50/80">
                     <td className="p-3.5 sm:px-6 font-bold text-slate-900 text-[12.75px]">“Esse valor é líquido?”</td>
-                    <td className="p-3.5 sm:px-6 text-emerald-700 font-semibold text-[12.75px]">Confirme objetivamente ("Sim, direto na sua conta") e peça o próximo passo.</td>
+                    <td className="p-3.5 sm:px-6 text-emerald-700 font-semibold text-[12.75px]">Responda objetivamente e confirme o próximo passo</td>
                   </tr>
                 </tbody>
               </table>
