@@ -2020,52 +2020,60 @@ export default function StartComercialDevPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* ABRA CHAMADO QUANDO */}
-            <div className="p-5 bg-rose-100/80 border border-rose-400 rounded-2xl space-y-3">
-              <div className="flex items-center gap-2 text-rose-900">
-                <AlertTriangle className="w-4 h-4 text-rose-700" />
+            <div className="p-5 bg-emerald-100/80 border border-emerald-400 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2 text-emerald-900">
+                <CheckCircle2 className="w-4 h-4 text-emerald-700" />
                 <h3 className="text-xs font-black uppercase tracking-wider">Abra Chamado Quando</h3>
               </div>
-              <ul className="text-[12.75px] text-rose-950 space-y-2 font-medium">
+              <ul className="text-[12.75px] text-emerald-950 space-y-2 font-medium">
                 <li className="flex items-start gap-2">
-                  <span className="text-rose-600 font-bold">•</span>
+                  <span className="text-emerald-600 font-bold">•</span>
                   <span>Margem exibida não faz sentido ou diverge do contracheque.</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-rose-600 font-bold">•</span>
+                  <span className="text-emerald-600 font-bold">•</span>
                   <span>Contrato ou desconto possui informação que você não consegue interpretar.</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-rose-600 font-bold">•</span>
+                  <span className="text-emerald-600 font-bold">•</span>
                   <span>O cálculo não fecha com as regras operacionais do sistema.</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-rose-600 font-bold">•</span>
-                  <span>É necessário enviar contracheque ou documento para análise da mesa.</span>
+                  <span className="text-emerald-600 font-bold">•</span>
+                  <span>É necessário enviar contracheque ou documento para análise.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-emerald-600 font-bold">•</span>
+                  <span>O caso foge do padrão que você conhece.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-emerald-600 font-bold">•</span>
+                  <span>A condição depende de validação de enquadramento ou retaguarda.</span>
                 </li>
               </ul>
             </div>
 
             {/* NÃO PRECISA ABRIR CHAMADO QUANDO */}
-            <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-              <div className="flex items-center gap-2 text-slate-900">
-                <HelpCircle className="w-4 h-4 text-slate-600" />
+            <div className="p-5 bg-rose-100/80 border border-rose-400 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2 text-rose-900">
+                <AlertTriangle className="w-4 h-4 text-rose-700" />
                 <h3 className="text-xs font-black uppercase tracking-wider">Não Precisa Abrir Chamado Quando</h3>
               </div>
-              <ul className="text-[12.75px] text-slate-700 space-y-2 font-medium">
+              <ul className="text-[12.75px] text-rose-950 space-y-2 font-medium">
                 <li className="flex items-start gap-2">
-                  <span className="text-slate-400 font-bold">•</span>
-                  <span>A informação está claramente na tela do cliente.</span>
+                  <span className="text-rose-600 font-bold">•</span>
+                  <span>A informação está claramente na tela.</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-slate-400 font-bold">•</span>
+                  <span className="text-rose-600 font-bold">•</span>
                   <span>A dúvida é "o cliente quer mais valor ou prazo menor?" (pergunte a ele).</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-slate-400 font-bold">•</span>
-                  <span>Você ainda nem fez a consulta básica do CPF.</span>
+                  <span className="text-rose-600 font-bold">•</span>
+                  <span>Você ainda nem fez a consulta básica.</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-slate-400 font-bold">•</span>
+                  <span className="text-rose-600 font-bold">•</span>
                   <span>O cliente ainda não respondeu e não existe dúvida técnica.</span>
                 </li>
               </ul>
@@ -2073,18 +2081,29 @@ export default function StartComercialDevPage() {
 
           </div>
 
-          <div className="p-4 bg-emerald-100/80 border border-emerald-400 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-900">Modelo de Chamado Objetivo</p>
-              <p className="text-xs font-bold text-emerald-950 mt-0.5">“CONSULTAR MARGEM ATUAL DO CLIENTE.”</p>
-              <p className="text-[11.75px] text-emerald-800 mt-1">Chamado curto e contextualizado para a retaguarda decidir rápido.</p>
+          {/* MODELO DE CHAMADO */}
+          <div className="p-4 bg-emerald-50/80 border border-emerald-400 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <p className="text-xs font-black uppercase tracking-wider text-emerald-700">MODELO DE CHAMADO</p>
+              <p className="text-sm font-bold text-slate-900">CONSULTAR MARGEM ATUAL DO CLIENTE.</p>
+              <p className="text-xs text-slate-800">
+                <strong className="font-black text-slate-900">Quando usar:</strong> Chamado curto, com contexto suficiente para a retaguarda decidir.
+              </p>
             </div>
             <button
               onClick={() => copyToClipboard("CONSULTAR MARGEM ATUAL DO CLIENTE.", "chamado-mod")}
-              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition-all shrink-0"
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer"
             >
               {copiedId === "chamado-mod" ? "Copiado!" : "Copiar Modelo"}
             </button>
+          </div>
+
+          {/* REGRA */}
+          <div className="p-4 bg-rose-50/80 border border-rose-400 rounded-2xl space-y-1.5">
+            <p className="text-xs font-black uppercase tracking-wider text-rose-700">REGRA</p>
+            <p className="text-xs sm:text-sm text-slate-800 font-medium">
+              Não invente resposta para manter a conversa andando. Dúvida técnica não é objeção comercial.
+            </p>
           </div>
 
           {/* NAVEGAÇÃO INFERIOR */}
@@ -2125,241 +2144,139 @@ export default function StartComercialDevPage() {
               </div>
               <div>
                 <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight">
-                  Calcular, Apresentar & Aceite
+                  Calcular e escolher o que mostrar
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-700 font-semibold">
-                  Transforme a sondagem em uma proposta clara, conduza o plano, quitação e formalização.
+                  Transformar a sondagem em uma proposta que o cliente entenda em poucos segundos.
                 </p>
               </div>
             </div>
             <span className="px-3 py-1 bg-emerald-50 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-200">
-              Fechamento & Formalização
+              Proposta Simples
             </span>
           </div>
 
-          {/* NAVEGAÇÃO DE ABAS DA ETAPA 6 */}
-          <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
-            <button
-              onClick={() => setActiveTab6("senff")}
-              className={cn(
-                "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all",
-                activeTab6 === "senff"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              )}
-            >
-              6.0A Comparativo Senff
-            </button>
-            <button
-              onClick={() => setActiveTab6("facultativa")}
-              className={cn(
-                "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all",
-                activeTab6 === "facultativa"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              )}
-            >
-              6.0B Margem Facultativa
-            </button>
-            <button
-              onClick={() => setActiveTab6("reacoes")}
-              className={cn(
-                "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all",
-                activeTab6 === "reacoes"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              )}
-            >
-              Reações à Proposta
-            </button>
-            <button
-              onClick={() => setActiveTab6("plano")}
-              className={cn(
-                "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all",
-                activeTab6 === "plano"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              )}
-            >
-              Plano de Amortização
-            </button>
-            <button
-              onClick={() => setActiveTab6("quitacao")}
-              className={cn(
-                "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all",
-                activeTab6 === "quitacao"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              )}
-            >
-              Quitação de Cartão
-            </button>
-            <button
-              onClick={() => setActiveTab6("documentos")}
-              className={cn(
-                "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all",
-                activeTab6 === "documentos"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              )}
-            >
-              Documentos & Aceitou
-            </button>
+          {/* FAÇA AGORA */}
+          <div className="space-y-4">
+            <h3 className="text-base sm:text-lg font-black text-slate-900 uppercase tracking-tight">
+              FAÇA AGORA
+            </h3>
+            <ul className="text-xs sm:text-sm text-slate-800 font-medium space-y-2">
+              <li className="flex items-start gap-2">
+                <span className="text-slate-900 font-bold">•</span>
+                <span>Calcule de acordo com a prioridade identificada.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-slate-900 font-bold">•</span>
+                <span>Mostre poucos cenários. O cliente não precisa receber todas as tabelas que você testou.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-slate-900 font-bold">•</span>
+                <span>Use o comparativo para destacar UMA vantagem principal.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-slate-900 font-bold">•</span>
+                <span>Envie a imagem e em seguida faça uma pergunta de decisão.</span>
+              </li>
+            </ul>
           </div>
 
-          {/* CONTEÚDO TAB SENFF */}
-          {activeTab6 === "senff" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-2xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded">
-                    Identificador Visível: CARTÃO SENFF (MARGEM COMPLEMENTAR)
-                  </span>
-                  <p className="text-xs text-emerald-950 font-semibold mt-1">
-                    Comparativo Real de Duração Reduzida vs Referência Bancária
-                  </p>
-                </div>
+          {/* LISTA VERTICAL DE TÓPICOS DA ETAPA 6 */}
+          <div className="space-y-10 pt-4 border-t border-slate-100">
+
+            {/* 6.0A - COMPARATIVO SENFF */}
+            <div className="space-y-6">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-lg">
+                  Comparativo inicial | Margem complementar (utilizando operação cartão Senff)
+                </span>
               </div>
 
-              {/* CARD VISUAL DO COMPARATIVO REAL SENFF */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                
-                {/* 12 MESES */}
-                <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 border border-slate-800 shadow-md">
-                  <div className="text-center pb-2 border-b border-slate-800">
-                    <span className="text-emerald-400 text-lg font-black tracking-tight">12 Meses</span>
-                    <p className="text-[10px] text-slate-400 uppercase">Plano de Amortização</p>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Valor Liberado</span>
-                      <span className="text-emerald-400 font-bold">R$ 10.385,41</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Parcela Média</span>
-                      <span className="font-bold">R$ 913,01</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Taxa Mês</span>
-                      <span className="font-bold">0,82%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Total Previsto</span>
-                      <span className="font-bold">R$ 10.956,06</span>
-                    </div>
-                  </div>
-                  <div className="p-2.5 bg-emerald-950/60 border border-emerald-700/60 rounded-xl text-center">
-                    <p className="text-[9px] uppercase font-bold text-emerald-300">Economia no Total</p>
-                    <p className="text-sm font-black text-emerald-400">R$ 32.243,94</p>
-                  </div>
+              {/* IMAGEM DO COMPARATIVO REAL SENFF */}
+              <div className="flex justify-center">
+                <div className="w-full max-w-[80%] rounded-2xl overflow-hidden border border-slate-200 shadow-md bg-slate-900">
+                  <img
+                    src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/comparar.png"
+                    alt="Comparativo inicial - Margem complementar Senff"
+                    className="w-full h-auto object-contain block rounded-2xl"
+                    loading="lazy"
+                  />
                 </div>
-
-                {/* 24 MESES */}
-                <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 border-2 border-emerald-500 shadow-lg relative">
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-600 text-[9px] font-black uppercase tracking-wider px-3 py-0.5 rounded-full">
-                    Mais Escolhido
-                  </div>
-                  <div className="text-center pb-2 border-b border-slate-800">
-                    <span className="text-emerald-400 text-lg font-black tracking-tight">24 Meses</span>
-                    <p className="text-[10px] text-slate-400 uppercase">Plano de Amortização</p>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Valor Liberado</span>
-                      <span className="text-emerald-400 font-bold">R$ 10.385,41</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Parcela Média</span>
-                      <span className="font-bold">R$ 486,72</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Taxa Mês</span>
-                      <span className="font-bold">0,96%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Total Previsto</span>
-                      <span className="font-bold">R$ 11.681,28</span>
-                    </div>
-                  </div>
-                  <div className="p-2.5 bg-emerald-950/60 border border-emerald-700/60 rounded-xl text-center">
-                    <p className="text-[9px] uppercase font-bold text-emerald-300">Economia no Total</p>
-                    <p className="text-sm font-black text-emerald-400">R$ 31.518,72</p>
-                  </div>
-                </div>
-
-                {/* 96 MESES */}
-                <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 border border-slate-800 opacity-80">
-                  <div className="text-center pb-2 border-b border-slate-800">
-                    <span className="text-slate-200 text-lg font-black tracking-tight">96 Meses</span>
-                    <p className="text-[10px] text-slate-400 uppercase">Tabela Bancária Padrão</p>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Valor Liberado</span>
-                      <span className="text-emerald-400 font-bold">R$ 10.385,41</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Parcela Média</span>
-                      <span className="font-bold">R$ 450,00</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Taxa Mês</span>
-                      <span className="font-bold">4,03%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Total Previsto</span>
-                      <span className="font-bold">R$ 43.200,00</span>
-                    </div>
-                  </div>
-                  <div className="p-2.5 bg-slate-800/80 rounded-xl text-center">
-                    <p className="text-[9px] uppercase font-bold text-slate-400">Sem Economia</p>
-                    <p className="text-sm font-bold text-slate-400">Custo Total Elevado</p>
-                  </div>
-                </div>
-
               </div>
 
               {/* SCRIPTS DE ENVIO */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Antes de Enviar a Imagem</span>
-                  <p className="text-xs text-slate-800 font-mono">
-                    "Fiz a simulação e essa é a diferença que eu queria te mostrar.{'\n\n'}Olha a vantagem que está aberta."
+                {/* ANTES DE ENVIAR A IMAGEM */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    Antes de Enviar a Imagem
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Fiz a simulação e essa é a diferença que eu queria te mostrar.</p>
+                      <p className="mt-2 font-semibold text-slate-900">Olha a vantagem que está aberta.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-600 italic">
+                    <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Prepara o olhar para o ponto certo do comparativo.
                   </p>
+
                   <button
                     onClick={() => copyToClipboard("Fiz a simulação e essa é a diferença que eu queria te mostrar.\n\nOlha a vantagem que está aberta.", "s-env-1")}
-                    className="w-full py-2 bg-slate-900 hover:bg-black text-white text-[11px] font-bold rounded-lg transition-all"
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                   >
-                    {copiedId === "s-env-1" ? "Copiado!" : "Copiar"}
+                    {copiedId === "s-env-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "s-env-1" ? "Copiado!" : "Copiar Mensagem"}
                   </button>
                 </div>
 
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Junto / Logo Após a Imagem</span>
-                  <p className="text-xs text-slate-800 font-mono">
-                    "Observe cada cenário.{'\n\n'}A ideia não é escolher só pela menor taxa. É enxergar qual formato entrega o melhor equilíbrio entre *valor*, *parcela* e *duração* para o que você busca hoje."
+                {/* LEITURA DA IMAGEM - SENFF */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    LEITURA DA IMAGEM - SENFF
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Observe cada cenário.</p>
+                      <p className="mt-2">A ideia não é escolher só pela menor taxa. É enxergar qual formato entrega o melhor equilíbrio entre <strong>valor</strong>, <strong>parcela</strong> e <strong>duração</strong> para o que você busca hoje.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-600 italic">
+                    <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Junto ou imediatamente após o envio da imagem.
                   </p>
+
                   <button
                     onClick={() => copyToClipboard("Observe cada cenário.\n\nA ideia não é escolher só pela menor taxa. É enxergar qual formato entrega o melhor equilíbrio entre *valor*, *parcela* e *duração* para o que você busca hoje.", "s-env-2")}
-                    className="w-full py-2 bg-slate-900 hover:bg-black text-white text-[11px] font-bold rounded-lg transition-all"
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                   >
-                    {copiedId === "s-env-2" ? "Copiado!" : "Copiar"}
+                    {copiedId === "s-env-2" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "s-env-2" ? "Copiado!" : "Copiar Mensagem"}
                   </button>
                 </div>
               </div>
             </div>
-          )}
 
-          {/* CONTEÚDO TAB FACULTATIVA */}
-          {activeTab6 === "facultativa" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-2xl">
-                <span className="text-[10px] font-black uppercase tracking-wider text-blue-800 bg-blue-200/80 px-2 py-0.5 rounded">
-                  Identificador Visível: MARGEM FACULTATIVA
+            {/* 6.0B - MARGEM FACULTATIVA */}
+            <div className="space-y-6 pt-6 border-t border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-blue-800 bg-blue-100 px-2.5 py-1 rounded-lg">
+                  6.0B MARGEM FACULTATIVA
                 </span>
-                <p className="text-xs text-blue-950 font-semibold mt-1">
-                  Exemplo de apresentação com amortização na margem facultativa
-                </p>
+                <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
+                  • Exemplo de apresentação com amortização na margem facultativa
+                </span>
               </div>
 
               {/* GRID COMPARATIVO FACULTATIVA */}
@@ -2465,56 +2382,63 @@ export default function StartComercialDevPage() {
                 </button>
               </div>
             </div>
-          )}
 
-          {/* CONTEÚDO TAB REAÇÕES À PROPOSTA */}
-          {activeTab6 === "reacoes" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in duration-200">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Quer mais valor</span>
-                <p className="text-xs font-mono text-slate-800 whitespace-pre-line">
-                  Consigo tentar puxar a estrutura para liberação.{'\n\n'}Me diz só uma coisa: existe um valor mínimo que faria sentido para você?
-                </p>
-                <button onClick={() => copyToClipboard("Consigo tentar puxar a estrutura para liberação.\n\nMe diz só uma coisa: existe um valor mínimo que faria sentido para você?", "reac-1")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                  {copiedId === "reac-1" ? "Copiado!" : "Copiar"}
-                </button>
-              </div>
+            {/* REAÇÕES À PROPOSTA */}
+            <div className="space-y-4 pt-6 border-t border-slate-100">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
+                REAÇÕES À PROPOSTA
+              </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Quer mais valor</span>
+                  <p className="text-xs font-mono text-slate-800 whitespace-pre-line">
+                    Consigo tentar puxar a estrutura para liberação.{'\n\n'}Me diz só uma coisa: existe um valor mínimo que faria sentido para você?
+                  </p>
+                  <button onClick={() => copyToClipboard("Consigo tentar puxar a estrutura para liberação.\n\nMe diz só uma coisa: existe um valor mínimo que faria sentido para você?", "reac-1")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
+                    {copiedId === "reac-1" ? "Copiado!" : "Copiar"}
+                  </button>
+                </div>
 
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Quer prazo menor</span>
-                <p className="text-xs font-mono text-slate-800 whitespace-pre-line">
-                  Perfeito.{'\n\n'}Vou reduzir a duração e te mostro quanto muda no valor para você decidir.
-                </p>
-                <button onClick={() => copyToClipboard("Perfeito.\n\nVou reduzir a duração e te mostro quanto muda no valor para você decidir.", "reac-2")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                  {copiedId === "reac-2" ? "Copiado!" : "Copiar"}
-                </button>
-              </div>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Quer prazo menor</span>
+                  <p className="text-xs font-mono text-slate-800 whitespace-pre-line">
+                    Perfeito.{'\n\n'}Vou reduzir a duração e te mostro quanto muda no valor para você decidir.
+                  </p>
+                  <button onClick={() => copyToClipboard("Perfeito.\n\nVou reduzir a duração e te mostro quanto muda no valor para você decidir.", "reac-2")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
+                    {copiedId === "reac-2" ? "Copiado!" : "Copiar"}
+                  </button>
+                </div>
 
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">A parcela ficou alta</span>
-                <p className="text-xs font-mono text-slate-800 whitespace-pre-line">
-                  Entendi.{'\n\n'}Qual faixa de parcela cabe com tranquilidade no teu orçamento?{'\n\n'}Eu ajusto em cima disso.
-                </p>
-                <button onClick={() => copyToClipboard("Entendi.\n\nQual faixa de parcela cabe com tranquilidade no teu orçamento?\n\nEu ajusto em cima disso.", "reac-3")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                  {copiedId === "reac-3" ? "Copiado!" : "Copiar"}
-                </button>
-              </div>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">A parcela ficou alta</span>
+                  <p className="text-xs font-mono text-slate-800 whitespace-pre-line">
+                    Entendi.{'\n\n'}Qual faixa de parcela cabe com tranquilidade no teu orçamento?{'\n\n'}Eu ajusto em cima disso.
+                  </p>
+                  <button onClick={() => copyToClipboard("Entendi.\n\nQual faixa de parcela cabe com tranquilidade no teu orçamento?\n\nEu ajusto em cima disso.", "reac-3")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
+                    {copiedId === "reac-3" ? "Copiado!" : "Copiar"}
+                  </button>
+                </div>
 
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Essa taxa está baixa demais. Não confio.</span>
-                <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
-                  Boa pergunta.{'\n\n'}Essa é a taxa que pagará na prática deixando a duração do contrato em X meses.{'\n\n'}Vou te mandar o plano completo em que você poderá visualizar, calcular e tirar dúvidas.
-                </p>
-                <button onClick={() => copyToClipboard("Boa pergunta.\n\nEssa é a taxa que pagará na prática deixando a duração do contrato em X meses.\n\nVou te mandar o plano completo em que você poderá visualizar, calcular e tirar dúvidas.", "reac-4")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                  {copiedId === "reac-4" ? "Copiado!" : "Copiar"}
-                </button>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Essa taxa está baixa demais. Não confio.</span>
+                  <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
+                    Boa pergunta.{'\n\n'}Essa é a taxa que pagará na prática deixando a duração do contrato em X meses.{'\n\n'}Vou te mandar o plano completo em que você poderá visualizar, calcular e tirar dúvidas.
+                  </p>
+                  <button onClick={() => copyToClipboard("Boa pergunta.\n\nEssa é a taxa que pagará na prática deixando a duração do contrato em X meses.\n\nVou te mandar o plano completo em que você poderá visualizar, calcular e tirar dúvidas.", "reac-4")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
+                    {copiedId === "reac-4" ? "Copiado!" : "Copiar"}
+                  </button>
+                </div>
               </div>
             </div>
-          )}
 
-          {/* CONTEÚDO TAB PLANO */}
-          {activeTab6 === "plano" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            {/* PLANO DE AMORTIZAÇÃO */}
+            <div className="space-y-6 pt-6 border-t border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
+                  PLANO DE AMORTIZAÇÃO
+                </span>
+              </div>
+
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Regra do Plano de Amortização</span>
                 <p className="text-[12.75px] text-slate-800 font-medium leading-relaxed">
@@ -2544,13 +2468,16 @@ export default function StartComercialDevPage() {
                 </div>
               </div>
             </div>
-          )}
 
-          {/* CONTEÚDO TAB QUITAÇÃO */}
-          {activeTab6 === "quitacao" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            {/* QUITAÇÃO DE CARTÃO */}
+            <div className="space-y-6 pt-6 border-t border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-lg">
+                  QUITAÇÃO DE CARTÃO (OPERAÇÃO ESPECIAL)
+                </span>
+              </div>
+
               <div className="p-4 bg-emerald-100/80 border border-emerald-400 rounded-2xl space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-900">Quitação de Cartão (Operação Especial)</span>
                 <p className="text-[12.75px] text-emerald-950 font-medium leading-relaxed">
                   Quando a proposta for quitação de cartão, a liberação ocorre pela margem facultativa, liberando valor para quitar o saldo devedor e reduzir a folha.
                 </p>
@@ -2576,11 +2503,15 @@ export default function StartComercialDevPage() {
                 </div>
               </div>
             </div>
-          )}
 
-          {/* CONTEÚDO TAB DOCUMENTOS & ACEITOU */}
-          {activeTab6 === "documentos" && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            {/* DOCUMENTOS & ACEITOU */}
+            <div className="space-y-6 pt-6 border-t border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
+                  DOCUMENTOS & ACEITOU
+                </span>
+              </div>
+
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                 <span className="text-[10px] font-bold text-slate-500 uppercase">Coleta de Documentos</span>
                 <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
@@ -2615,7 +2546,8 @@ export default function StartComercialDevPage() {
                 </div>
               </div>
             </div>
-          )}
+
+          </div>
 
           {/* NAVEGAÇÃO INFERIOR */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-6 border-t border-slate-100">
@@ -2639,141 +2571,6 @@ export default function StartComercialDevPage() {
                 Iniciar Novo Lead (Etapa 1) <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-          </div>
-        </section>
-        )}
-
-        {/* ========================================================================= */}
-        {/* APOIO RÁPIDO TRANSVERSAL: "CLIENTE DISSE..." COM BUSCA E FILTROS */}
-        {/* ========================================================================= */}
-        {(activeStep === "all" || activeStep === 6) && (
-        <section id="apoio-rapido" className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-sm space-y-8 scroll-mt-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
-            <div>
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-emerald-600" />
-                <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight">
-                  APOIO RÁPIDO ÀS OBJEÇÕES DO CLIENTE
-                </h2>
-              </div>
-              <p className="text-xs sm:text-sm text-slate-700 font-semibold mt-1">
-                Biblioteca para encontrar respostas exatas a qualquer momento da conversa.
-              </p>
-            </div>
-
-            {/* BOTÃO VOLTAR AO ÍNDICE */}
-            <button
-              onClick={() => goToStep(1)}
-              className="text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl transition-all self-start md:self-auto cursor-pointer"
-            >
-              Voltar ao Início ↑
-            </button>
-          </div>
-
-          {/* BARRA DE PESQUISA E CATEGORIAS */}
-          <div className="space-y-4">
-            <div className="relative">
-              <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Digite o que o cliente disse (ex: golpe, banco, não tenho interesse, prazo, boleto, pensar...)"
-                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all shadow-inner"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {[
-                { id: "todos", label: "Todas as Situações" },
-                { id: "interesse", label: "Interesse / Decisão" },
-                { id: "banco", label: "Comparação / Banco" },
-                { id: "seguranca", label: "Segurança / Golpe" },
-                { id: "valor", label: "Valor / Margem" },
-                { id: "plano", label: "Formalização / Plano" }
-              ].map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={cn(
-                    "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all",
-                    activeCategory === cat.id
-                      ? "bg-emerald-700 text-white shadow-xs"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  )}
-                >
-                  {cat.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* LISTA DE RESULTADOS DO APOIO RÁPIDO */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredApoio.map((item) => (
-              <div
-                key={item.id}
-                className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 flex flex-col justify-between hover:border-slate-300 transition-all shadow-xs"
-              >
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-900 bg-white border px-2.5 py-1 rounded-lg">
-                      “{item.clientSays}”
-                    </span>
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      {item.nextStep}
-                    </span>
-                  </div>
-
-                  <div className="p-3.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 font-mono leading-relaxed whitespace-pre-line select-all">
-                    {item.response}
-                  </div>
-
-                  <p className="text-[11px] text-slate-500 italic">
-                    <strong>Quando usar:</strong> {item.whenToUse}
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => copyToClipboard(item.response, item.id)}
-                  className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2"
-                >
-                  {copiedId === item.id ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                  {copiedId === item.id ? "Copiado com Negrito!" : "Copiar Resposta"}
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* KIT OFICIAL DE CONFIANÇA */}
-          <div className="p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                <h4 className="text-sm font-black uppercase tracking-wider">Kit Oficial de Confiança</h4>
-              </div>
-              <p className="text-xs text-slate-300">
-                Mais de 35 mil servidores atendidos no Brasil • 5 estrelas no Google • Verificada no Reclame Aqui
-              </p>
-            </div>
-            <a
-              href="https://instagram.com/acertofacilpromotora"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase rounded-xl transition-all flex items-center gap-2 shrink-0"
-            >
-              Instagram Oficial <ArrowUpRight className="w-4 h-4" />
-            </a>
-          </div>
-
-          {/* NAVEGAÇÃO INFERIOR */}
-          <div className="flex items-center justify-end pt-6 border-t border-slate-100">
-            <button
-              onClick={() => goToStep(1)}
-              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <ArrowUp className="w-4 h-4" /> Voltar ao Início
-            </button>
           </div>
         </section>
         )}
