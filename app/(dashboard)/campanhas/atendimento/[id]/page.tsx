@@ -433,6 +433,10 @@ export default function CampanhaAtendimentoPage() {
         'governo_ms': 'base_consulta_governo_ms',
         'prefeitura_natal': 'base_consulta_prefeitura_natal',
         'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
+        'governo_ba': 'base_consulta_governo_ba',
+        'governo_am': 'base_consulta_governo_am',
+        'governo_ce': 'base_consulta_governo_ce',
+        'governo_ro': 'base_consulta_governo_ro',
       }
 
       if (convenioKey && TABLE_MAP[convenioKey || '']) {
@@ -674,6 +678,10 @@ export default function CampanhaAtendimentoPage() {
               { name: 'base_consulta_governo_ms', convenio: 'governo_ms' },
               { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal' },
               { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho' },
+              { name: 'base_consulta_governo_ba', convenio: 'governo_ba' },
+              { name: 'base_consulta_governo_am', convenio: 'governo_am' },
+              { name: 'base_consulta_governo_ce', convenio: 'governo_ce' },
+              { name: 'base_consulta_governo_ro', convenio: 'governo_ro' },
             ];
 
             // 1. Determinar tabela preferencial de consulta

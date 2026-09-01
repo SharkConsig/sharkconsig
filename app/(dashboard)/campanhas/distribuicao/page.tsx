@@ -89,6 +89,8 @@ async function fetchClientDetailsFromTable(
     try {
       const selectCols = targetTable === 'base_consulta_governo_ma' 
         ? 'cpf, nome, telefone_1' 
+        : targetTable === 'base_consulta_governo_ba'
+        ? 'cpf, nome, telefone'
         : 'cpf, nome, telefone_1, telefone_2, telefone_3';
 
       const { data, error } = await supabase
@@ -106,11 +108,11 @@ async function fetchClientDetailsFromTable(
           const normCpf = item.cpf.replace(/\D/g, "").padStart(11, '0');
           if (!foundCpfs.has(normCpf)) {
             foundCpfs.add(normCpf);
-            const phoneObj = item as { telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null };
+            const phoneObj = item as { telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null; telefone?: string | null };
             results.push({
               cpf: item.cpf,
               nome: item.nome,
-              telefone_1: phoneObj.telefone_1,
+              telefone_1: phoneObj.telefone_1 || phoneObj.telefone || null,
               telefone_2: phoneObj.telefone_2 || null,
               telefone_3: phoneObj.telefone_3 || null
             });

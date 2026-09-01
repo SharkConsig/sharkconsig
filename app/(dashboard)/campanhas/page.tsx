@@ -591,6 +591,9 @@ export default function CampaignsPage() {
         'governo_ce': 'base_consulta_governo_ce',
         'governo_ro': 'base_consulta_governo_ro',
         'governo_mg': 'base_consulta_governo_mg',
+        'governo_rj': 'base_consulta_governo_rj',
+        'governo_ms': 'base_consulta_governo_ms',
+        'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
       };
 
       if (convenioKey && TABLE_MAP[convenioKey]) {
@@ -619,6 +622,8 @@ export default function CampaignsPage() {
         targetTable = 'base_consulta_governo_ce';
       } else if (campaignName.includes('RONDÔNIA') || campaignName.includes('RONDONIA') || campaignName.includes('GOVERNO RO')) {
         targetTable = 'base_consulta_governo_ro';
+      } else if (campaignName.includes('GOVERNO BA') || campaignName.includes('BAHIA')) {
+        targetTable = 'base_consulta_governo_ba';
       }
 
       const isGovMg = targetTable === 'base_consulta_governo_mg';
@@ -630,6 +635,7 @@ export default function CampaignsPage() {
       const isGovAm = targetTable === 'base_consulta_governo_am';
       const isGovCe = targetTable === 'base_consulta_governo_ce';
       const isGovRo = targetTable === 'base_consulta_governo_ro';
+      const isGovBa = targetTable === 'base_consulta_governo_ba';
       const isSantoAndre = targetTable === 'base_consulta_prefeitura_santo_andre';
       const isPrefNatal = targetTable === 'base_consulta_prefeitura_natal';
       const isPrefPortoVelho = targetTable === 'base_consulta_prefeitura_porto_velho';
@@ -644,6 +650,8 @@ export default function CampaignsPage() {
         headersArray.push("SALÁRIO", "ÓRGÃO", "SECRETARIA", "VÍNCULO");
       } else if (isGovRo) {
         headersArray.push("MATRÍCULA", "ÓRGÃO", "SECRETARIA", "CARGO", "VÍNCULO", "SALÁRIO", "MARGEM EMPRÉSTIMO", "MARGEM CARTÃO", "MARGEM CARTÃO BENEFÍCIO");
+      } else if (isGovBa) {
+        headersArray.push("MATRÍCULA", "ÓRGÃO", "SECRETARIA", "SITUAÇÃO", "TIPO SERVIDOR", "MARGEM EMPRÉSTIMO TOTAL", "MARGEM EMPRÉSTIMO DISPONÍVEL");
       } else if (isGovPi) {
         headersArray.push("MARGEM DISPONÍVEL EMPRÉSTIMO", "MARGEM CARTÃO CONSIGNADO", "MARGEM CARTÃO BENEFÍCIO");
       } else if (isGovRr) {
@@ -680,7 +688,7 @@ export default function CampaignsPage() {
       
       allCsvRows.push(headers)
       
-      const pageSize = 100 // Lotes menores reduzem chance de timeout individual
+      const pageSize = 500 // Lote otimizado para alta velocidade e baixo consumo de requisições
       let totalProcessed = 0
       
       // Obter contagem exata e real-time de membros na campanha_membros
@@ -729,103 +737,215 @@ export default function CampaignsPage() {
           break;
         }
 
+        // Expand CPFs to include all common formats for database matches
+        const expandedCpfs = Array.from(new Set(cpfs.flatMap((cpf: string) => {
+          const clean = cpf.replace(/\D/g, "");
+          if (!clean) return [cpf];
+          const padded = clean.padStart(11, '0');
+          const unpadded = clean.replace(/^0+/, '');
+          const formatted = `${padded.substring(0, 3)}.${padded.substring(3, 6)}.${padded.substring(6, 9)}-${padded.substring(9, 11)}`;
+          return [cpf, clean, padded, unpadded, formatted];
+        })));
+
         const detectedConvenios = new Map<string, string>();
         let bcrData: Record<string, unknown>[] = [];
 
         const tablesList = [
-          { name: 'base_consulta_siape', convenio: 'siape', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo" },
-          { name: 'base_consulta_governo_sp', convenio: 'governo_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_governo_pi', convenio: 'governo_pi', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio" },
-          { name: 'base_consulta_governo_ma', convenio: 'governo_ma', columns: "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf" },
-          { name: 'base_consulta_governo_rr', convenio: 'governo_rr', columns: "cpf, nome, data_de_nascimento, data_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao" },
-          { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao" },
-          { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_governo_mg', convenio: 'governo_mg', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_governo_rj', convenio: 'governo_rj', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_governo_ms', convenio: 'governo_ms', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo_consignado, margem_cartao_consignado, margem_cartao_beneficio" },
-          { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo, margem_cartao_consignado" },
-          { name: 'base_consulta_governo_am', convenio: 'governo_am', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, situacao, margem_consignavel, margem_cartao, margem_cartao_beneficio, margem_cartao_beneficio_saque" },
-          { name: 'base_consulta_governo_ce', convenio: 'governo_ce', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, salario, orgao, secretaria, vinculo" },
-          { name: 'base_consulta_governo_ro', convenio: 'governo_ro', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, vinculo, salario, margem_emprestimo, margem_cartao, margem_cartao_beneficio" },
+          { name: 'base_consulta_siape', prodTable: 'clientes', convenio: 'siape', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo" },
+          { name: 'base_consulta_governo_ba', prodTable: 'governo_ba_clientes', convenio: 'governo_ba', columns: "cpf, nome, telefone, matricula, margem_emprestimo_total, margem_emprestimo_disponivel, orgao, secretaria, situacao, tipo_servidor" },
+          { name: 'base_consulta_governo_sp', prodTable: 'governo_sp_clientes', convenio: 'governo_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_prefeitura_sp', prodTable: 'prefeitura_sp_clientes', convenio: 'prefeitura_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_pi', prodTable: 'governo_pi_clientes', convenio: 'governo_pi', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio" },
+          { name: 'base_consulta_governo_ma', prodTable: 'governo_ma_clientes', convenio: 'governo_ma', columns: "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf" },
+          { name: 'base_consulta_governo_rr', prodTable: 'governo_rr_clientes', convenio: 'governo_rr', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao" },
+          { name: 'base_consulta_prefeitura_santo_andre', prodTable: 'prefeitura_santo_andre_clientes', convenio: 'prefeitura_santo_andre', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao" },
+          { name: 'base_consulta_prefeitura_contagem', prodTable: 'prefeitura_contagem_clientes', convenio: 'prefeitura_contagem', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_mg', prodTable: 'governo_mg_clientes', convenio: 'governo_mg', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_rj', prodTable: 'governo_rj_clientes', convenio: 'governo_rj', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_ms', prodTable: 'governo_ms_clientes', convenio: 'governo_ms', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_prefeitura_natal', prodTable: 'prefeitura_natal_clientes', convenio: 'prefeitura_natal', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo_consignado, margem_cartao_consignado, margem_cartao_beneficio" },
+          { name: 'base_consulta_prefeitura_porto_velho', prodTable: 'prefeitura_porto_velho_clientes', convenio: 'prefeitura_porto_velho', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo, margem_cartao_consignado" },
+          { name: 'base_consulta_governo_am', prodTable: 'governo_am_clientes', convenio: 'governo_am', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, situacao, margem_consignavel, margem_cartao, margem_cartao_beneficio, margem_cartao_beneficio_saque" },
+          { name: 'base_consulta_governo_ce', prodTable: 'governo_ce_clientes', convenio: 'governo_ce', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, salario, orgao, secretaria, vinculo" },
+          { name: 'base_consulta_governo_ro', prodTable: 'governo_ro_clientes', convenio: 'governo_ro', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, vinculo, salario, margem_emprestimo, margem_cartao, margem_cartao_beneficio" },
         ];
 
-        // 1. Buscar primeiro na tabela preferencial da campanha (targetTable)
+        // 1. Buscar primeiro na tabela preferencial da campanha (targetTable) com lotes paralelos de 150
         const targetTableObj = tablesList.find(t => t.name === targetTable) || tablesList[0];
-        const { data: primaryData, error: bcrError } = await withRetry(() =>
-          supabase.from(targetTable).select(targetTableObj.columns).in('cpf', cpfs)
-        );
-        if (bcrError) throw bcrError;
+        let primaryData: Record<string, unknown>[] = [];
+        
+        const chunkArray = <T,>(arr: T[], size: number): T[][] => {
+          const res: T[][] = [];
+          for (let i = 0; i < arr.length; i += size) res.push(arr.slice(i, i + size));
+          return res;
+        };
 
-        const foundCpfSet = new Set((primaryData || []).map(r => r.cpf));
-        const missingCpfs = cpfs.filter(cpf => !foundCpfSet.has(cpf));
+        const primaryChunks = chunkArray(expandedCpfs, 150);
+        const primaryResults = await Promise.all(
+          primaryChunks.map(async (pChunk) => {
+            try {
+              const { data, error } = await supabase.from(targetTable).select(targetTableObj.columns).in('cpf', pChunk);
+              if (!error && data && data.length > 0) {
+                return data;
+              } else if (error) {
+                const { data: fallbackData } = await supabase.from(targetTable).select('*').in('cpf', pChunk);
+                if (fallbackData && fallbackData.length > 0) {
+                  return fallbackData;
+                }
+              }
+            } catch (queryErr) {
+              console.warn(`Aviso ao buscar lote em ${targetTable}:`, queryErr);
+            }
+            return [];
+          })
+        );
+        primaryData = primaryResults.flat();
+
+        const foundNormCpfSet = new Set((primaryData || []).map(r => String(r.cpf || "").replace(/\D/g, "").padStart(11, '0')));
+        const missingCpfs = cpfs.filter((cpf: string) => !foundNormCpfSet.has(cpf.replace(/\D/g, "").padStart(11, '0')));
 
         const tempBcrData = [...(primaryData || [])];
 
-        // 2. Se houver CPFs ausentes, buscar nas outras tabelas em paralelo
+        // 2. Se houver CPFs ausentes, buscar nas outras tabelas de base_consulta em paralelo
         if (missingCpfs.length > 0) {
+          const missingExpandedCpfs = Array.from(new Set(missingCpfs.flatMap((cpf: string) => {
+            const clean = cpf.replace(/\D/g, "");
+            if (!clean) return [cpf];
+            const padded = clean.padStart(11, '0');
+            const unpadded = clean.replace(/^0+/, '');
+            const formatted = `${padded.substring(0, 3)}.${padded.substring(3, 6)}.${padded.substring(6, 9)}-${padded.substring(9, 11)}`;
+            return [cpf, clean, padded, unpadded, formatted];
+          })));
+
+          const missingChunks = chunkArray(missingExpandedCpfs, 150);
           const otherTablesList = tablesList.filter(t => t.name !== targetTable);
-          const queriesResults = await Promise.all(
-            otherTablesList.map(async (t) => {
-              try {
-                const { data, error } = await supabase.from(t.name).select(t.columns).in('cpf', missingCpfs);
-                if (!error && data) {
-                  return { data, convenio: t.convenio };
-                }
-              } catch (e) {
-                console.error(`Erro ao buscar na tabela ${t.name} para exportação:`, e);
-              }
-              return { data: [], convenio: t.convenio };
-            })
-          );
 
-          const matchedCpfs = new Set<string>();
-          queriesResults.forEach(({ data, convenio }) => {
-            if (data && data.length > 0) {
-              (data as Record<string, unknown>[]).forEach((row) => {
-                if (row && row.cpf && !foundCpfSet.has(row.cpf as string) && !matchedCpfs.has(row.cpf as string)) {
-                  matchedCpfs.add(row.cpf as string);
-                  detectedConvenios.set(row.cpf as string, convenio);
-                  tempBcrData.push(row);
-
-                  const currentMember = (memberBatch as { cliente_cpf: string | null; convenio?: string | null }[]).find((m) => m.cliente_cpf === row.cpf);
-                  if (currentMember && (!currentMember.convenio || currentMember.convenio === "detect" || currentMember.convenio === "importado" || currentMember.convenio === "multi")) {
-                    supabase
-                      .from('campanha_membros')
-                      .update({ convenio })
-                      .eq('campanha_id', campaign.id)
-                      .eq('cliente_cpf', row.cpf as string)
-                      .then(() => {});
+          for (const mChunk of missingChunks) {
+            const queriesResults = await Promise.all(
+              otherTablesList.map(async (t) => {
+                try {
+                  const { data, error } = await supabase.from(t.name).select(t.columns).in('cpf', mChunk);
+                  if (!error && data && data.length > 0) {
+                    return { data, convenio: t.convenio };
                   }
+                } catch (e) {
+                  console.error(`Erro ao buscar na tabela ${t.name} para exportação:`, e);
                 }
-              });
-            }
-          });
+                return { data: [], convenio: t.convenio };
+              })
+            );
+
+            queriesResults.forEach(({ data, convenio }) => {
+              if (data && data.length > 0) {
+                (data as Record<string, unknown>[]).forEach((row) => {
+                  const rowNormCpf = String(row.cpf || "").replace(/\D/g, "").padStart(11, '0');
+                  if (row && row.cpf && !foundNormCpfSet.has(rowNormCpf)) {
+                    foundNormCpfSet.add(rowNormCpf);
+                    detectedConvenios.set(rowNormCpf, convenio);
+                    tempBcrData.push(row);
+
+                    const currentMember = (memberBatch as { cliente_cpf: string | null; convenio?: string | null }[]).find((m) => String(m.cliente_cpf || "").replace(/\D/g, "").padStart(11, '0') === rowNormCpf);
+                    if (currentMember && (!currentMember.convenio || currentMember.convenio === "detect" || currentMember.convenio === "importado" || currentMember.convenio === "multi")) {
+                      supabase
+                        .from('campanha_membros')
+                        .update({ convenio })
+                        .eq('campanha_id', campaign.id)
+                        .eq('cliente_cpf', row.cpf as string)
+                        .then(() => {});
+                    }
+                  }
+                });
+              }
+            });
+          }
+        }
+
+        // 3. Fallback adicional nas tabelas de produção de clientes caso ainda restem registros não encontrados
+        const stillMissingCpfs = cpfs.filter((cpf: string) => !foundNormCpfSet.has(cpf.replace(/\D/g, "").padStart(11, '0')));
+        if (stillMissingCpfs.length > 0) {
+          const stillExpanded = Array.from(new Set(stillMissingCpfs.flatMap((cpf: string) => {
+            const clean = cpf.replace(/\D/g, "");
+            if (!clean) return [cpf];
+            const padded = clean.padStart(11, '0');
+            const unpadded = clean.replace(/^0+/, '');
+            const formatted = `${padded.substring(0, 3)}.${padded.substring(3, 6)}.${padded.substring(6, 9)}-${padded.substring(9, 11)}`;
+            return [cpf, clean, padded, unpadded, formatted];
+          })));
+
+          const prodChunks = chunkArray(stillExpanded, 150);
+          for (const pChunk of prodChunks) {
+            // Prioriza a tabela de produção do convênio da campanha
+            const prodTablesToTry = [
+              targetTableObj.prodTable,
+              'governo_ba_clientes',
+              'governo_mg_clientes',
+              'governo_sp_clientes',
+              'prefeitura_sp_clientes',
+              'clientes'
+            ];
+            const uniqueProdTables = Array.from(new Set(prodTablesToTry.filter(Boolean)));
+
+            await Promise.all(
+              uniqueProdTables.map(async (pTable) => {
+                try {
+                  const { data, error } = await supabase.from(pTable).select('*').in('cpf', pChunk);
+                  if (!error && data && data.length > 0) {
+                    data.forEach((pRow: Record<string, unknown>) => {
+                      const rowNormCpf = String(pRow.cpf || "").replace(/\D/g, "").padStart(11, '0');
+                      if (pRow && pRow.cpf && !foundNormCpfSet.has(rowNormCpf)) {
+                        foundNormCpfSet.add(rowNormCpf);
+                        tempBcrData.push(pRow);
+                      }
+                    });
+                  }
+                } catch (e) {
+                  // Fallback silencioso
+                }
+              })
+            );
+          }
         }
 
         bcrData = tempBcrData;
 
         const memberConvenioMap = new Map<string, string>(
           memberBatch.map((m: { cliente_cpf: string | null; convenio?: string | null }) => {
-            const cpf = m.cliente_cpf || "";
+            const rawCpf = m.cliente_cpf || "";
+            const normCpf = rawCpf.replace(/\D/g, "").padStart(11, '0');
             const conv = m.convenio && m.convenio !== "detect" && m.convenio !== "importado" && m.convenio !== "multi"
               ? m.convenio
-              : (detectedConvenios.get(cpf) || "siape");
-            return [cpf, conv];
+              : (detectedConvenios.get(normCpf) || (targetTableObj.convenio || "siape"));
+            return [normCpf, conv];
           })
         );
 
-        // O(N) Maps lookup para preservar a ordem exata de ordem_fila sem loops lineares complexos
-        const bcrMap = new Map<string, ICampaignMembroRow>(
-          (bcrData || []).map((row) => [row.cpf as string, row as unknown as ICampaignMembroRow])
-        );
+        // O(N) Maps lookup por CPF normalizado (11 dígitos)
+        const bcrMap = new Map<string, ICampaignMembroRow>();
+        (bcrData || []).forEach((row) => {
+          if (row.cpf) {
+            const nCpf = String(row.cpf).replace(/\D/g, "").padStart(11, '0');
+            if (!bcrMap.has(nCpf)) {
+              bcrMap.set(nCpf, row as unknown as ICampaignMembroRow);
+            }
+          }
+        });
 
         const sortedBatchData: ICampaignMembroRow[] = [];
         cpfs.forEach((cpf: string) => {
-          const matchedRow = bcrMap.get(cpf);
+          const norm = cpf.replace(/\D/g, "").padStart(11, '0');
+          const matchedRow = bcrMap.get(norm);
           if (matchedRow) {
             sortedBatchData.push(matchedRow);
+          } else {
+            // Garantir que 100% dos clientes da campanha sejam exportados mesmo se ausentes da tabela
+            sortedBatchData.push({
+              cpf,
+              nome: "CLIENTE DA CAMPANHA",
+              data_nascimento: "",
+              telefone_1: "",
+              telefone_2: "",
+              telefone_3: ""
+            } as ICampaignMembroRow);
           }
         });
 
@@ -900,6 +1020,22 @@ export default function CampaignsPage() {
               (row as any).margem_emprestimo ?? "",
               (row as any).margem_cartao ?? "",
               (row as any).margem_cartao_beneficio ?? ""
+            ];
+          } else if (isGovBa) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || (row as any).telefone || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).matricula || "",
+              (row as any).orgao || "",
+              (row as any).secretaria || "",
+              (row as any).situacao || "",
+              (row as any).tipo_servidor || "",
+              (row as any).margem_emprestimo_total ?? "",
+              (row as any).margem_emprestimo_disponivel ?? ""
             ];
           } else if (isGovPi) {
             csvFields = [
@@ -1108,6 +1244,14 @@ export default function CampaignsPage() {
                 (row as any).margem_70 ?? "", (row as any).margem_emprestimo ?? "", "", "",
                 (row as any).cartao_credito ?? "", "", "", (row as any).cartao_beneficio ?? ""
               ];
+            } else if (conv === "governo_ba") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || (row as any).telefone || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO BAHIA",
+                "", (row as any).margem_emprestimo_disponivel ?? (row as any).margem_emprestimo_total ?? "", "", "",
+                "", "", "", ""
+              ];
             } else {
               csvFields = [
                 row.cpf, row.nome, row.data_nascimento || "",
@@ -1165,14 +1309,38 @@ export default function CampaignsPage() {
         return
       }
 
-      const error = err as { code?: string; message?: string };
-      const idTimeout = error?.code === "57014"; // Postgres timeout
+      const anyErr = (typeof err === "object" && err !== null ? err : {}) as Record<string, unknown>;
+      const errorCode = anyErr.code as string | undefined;
+      const isTimeout = errorCode === "57014" || errorCode === "P0001";
 
-      const errorMsg = idTimeout 
-        ? "Tempo limite do banco de dados excedido. Tente reduzir o intervalo de exportação ou simplificar os filtros." 
-        : (err instanceof Error ? err.message : "Erro desconhecido. Verifique o console.");
+      let errorMsg = "Erro desconhecido. Verifique o console.";
+      if (isTimeout) {
+        errorMsg = "Tempo limite do banco de dados excedido. Tente reduzir o intervalo de exportação ou simplificar os filtros.";
+      } else if (err instanceof Error && err.message) {
+        errorMsg = err.message;
+      } else if (typeof anyErr.message === "string" && anyErr.message) {
+        errorMsg = anyErr.message;
+      } else if (typeof anyErr.details === "string" && anyErr.details) {
+        errorMsg = anyErr.details;
+      } else if (typeof anyErr.error_description === "string" && anyErr.error_description) {
+        errorMsg = anyErr.error_description;
+      } else if (typeof err === "string") {
+        errorMsg = err;
+      } else {
+        try {
+          errorMsg = JSON.stringify(err);
+        } catch {
+          errorMsg = String(err);
+        }
+      }
 
-      console.error("ERRO DETALHADO NA EXPORTAÇÃO:", err)
+      console.error("ERRO DETALHADO NA EXPORTAÇÃO:", {
+        raw: err,
+        message: anyErr.message,
+        details: anyErr.details,
+        code: anyErr.code,
+        hint: anyErr.hint,
+      })
       alert(`Erro ao exportar campanha: ${errorMsg}`)
     } finally {
       setIsExporting(null)
