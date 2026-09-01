@@ -52,6 +52,7 @@ export default function StartComercialDevPage() {
   const [activeStep, setActiveStep] = useState<number | "all">(1)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [isCampaignImageModalOpen, setIsCampaignImageModalOpen] = useState(false)
+  const [isPropostaQuitacaoModalOpen, setIsPropostaQuitacaoModalOpen] = useState(false)
 
   const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
   const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ'
@@ -63,6 +64,8 @@ export default function StartComercialDevPage() {
     user?.user_metadata?.role === 'Desenvolvedor' || 
     perfil?.role === 'Administrador' || 
     user?.user_metadata?.role === 'Administrador' || 
+    perfil?.role === 'Supervisor' || 
+    user?.user_metadata?.role === 'Supervisor' || 
     isCorretorPJ ||
     user?.email === "donajericoescritorio@gmail.com"
 
@@ -263,6 +266,14 @@ export default function StartComercialDevPage() {
       response: "Sem problema.\n\nNão envie enquanto não estiver confortável.\n\nPrimeiro eu te explico a *condição*, a *empresa* e o *fluxo de formalização*; depois você decide se quer avançar.",
       whenToUse: "Gera segurança antes da coleta documental.",
       nextStep: "ESCLARECER PROCESSO"
+    },
+    {
+      id: "apoio-16",
+      category: "referencias",
+      clientSays: "Referências da empresa",
+      response: "Já atendemos mais de 35 mil servidores no Brasil. Atuamos com foco em servidores públicos, todos os bancos, exceto cooperativas.\n\nCentenas de comentários no Google, 5 estrelas e verificada no RA.\n\nhttps://instagram.com/acertofacilpromotora",
+      whenToUse: "Apresenta credenciais e canais oficiais da empresa para gerar total confiança.",
+      nextStep: "ENVIAR REFERÊNCIAS"
     }
   ]
 
@@ -563,7 +574,7 @@ export default function StartComercialDevPage() {
                   7. PLANO AMORTIZAÇÃO
                 </h3>
                 <p className={cn("text-[11px] font-semibold mt-1 leading-snug", activeStep === 7 ? "text-purple-200" : "text-purple-800")}>
-                  Envie o plano e guie a leitura dos 3 pontos.
+                  Envie o plano e guie e leitura.
                 </p>
               </div>
               <div className="flex justify-end pt-2">
@@ -2255,7 +2266,7 @@ export default function StartComercialDevPage() {
                   Calcular e escolher o que mostrar
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-700 font-semibold">
-                  Transformar a sondagem em uma proposta que o cliente entenda em poucos segundos.
+                  Transforme a sondagem em uma proposta que o cliente entenda em poucos segundos.
                 </p>
               </div>
             </div>
@@ -2266,44 +2277,45 @@ export default function StartComercialDevPage() {
 
           {/* FAÇA AGORA */}
           <div className="space-y-4">
-            <h3 className="text-base sm:text-lg font-black text-slate-900 uppercase tracking-tight">
-              FAÇA AGORA
-            </h3>
-            <ul className="text-xs sm:text-sm text-slate-800 font-medium space-y-2">
-              <li className="flex items-start gap-2">
-                <span className="text-slate-900 font-bold">•</span>
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-4 bg-emerald-600 rounded-full"></div>
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Faça Agora</h3>
+            </div>
+            <ul className="space-y-2.5">
+              <li className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl text-[12.75px] font-bold text-slate-800 shadow-xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>Calcule de acordo com a prioridade identificada.</span>
               </li>
-              <li className="flex items-start gap-2">
-                <span className="text-slate-900 font-bold">•</span>
+              <li className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl text-[12.75px] font-bold text-slate-800 shadow-xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>Mostre poucos cenários. O cliente não precisa receber todas as tabelas que você testou.</span>
               </li>
-              <li className="flex items-start gap-2">
-                <span className="text-slate-900 font-bold">•</span>
+              <li className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl text-[12.75px] font-bold text-slate-800 shadow-xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>Use o comparativo para destacar UMA vantagem principal.</span>
               </li>
-              <li className="flex items-start gap-2">
-                <span className="text-slate-900 font-bold">•</span>
+              <li className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl text-[12.75px] font-bold text-slate-800 shadow-xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>Envie a imagem e em seguida faça uma pergunta de decisão.</span>
               </li>
             </ul>
 
             {/* EVITE */}
-            <div className="p-3.5 sm:px-4 bg-[#fef2f2] border border-[#ef4444] rounded-xl text-left space-y-1.5">
+            <div className="p-3.5 sm:px-4 bg-[#fef2f2] border border-[#ef4444] rounded-2xl text-left space-y-1.5 shadow-xs">
               <span className="text-[11px] font-black text-[#dc2626] uppercase tracking-wider block">
                 EVITE
               </span>
-              <ul className="text-[13px] text-slate-800 font-medium space-y-1">
+              <ul className="text-[13px] text-slate-800 font-medium space-y-1.5">
                 <li className="flex items-start gap-2">
-                  <span className="text-slate-900 font-bold">•</span>
+                  <span className="text-rose-600 font-bold">•</span>
                   <span>Mandar cinco cenários e pedir para o cliente escolher sozinho.</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-slate-900 font-bold">•</span>
+                  <span className="text-rose-600 font-bold">•</span>
                   <span>Responder “é a melhor taxa do mercado” sem comparação real.</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-slate-900 font-bold">•</span>
+                  <span className="text-rose-600 font-bold">•</span>
                   <span>Defender uma proposta que não atende ao objetivo que o próprio cliente informou.</span>
                 </li>
               </ul>
@@ -2521,7 +2533,7 @@ export default function StartComercialDevPage() {
 
             {/* O CLIENTE REAGIU À PROPOSTA. E AGORA? */}
             <div className="space-y-4 pt-6 border-t border-slate-100">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg inline-block mb-[6px]">
                 O CLIENTE REAGIU À PROPOSTA. E AGORA?
               </span>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2794,10 +2806,10 @@ export default function StartComercialDevPage() {
               </div>
               <div>
                 <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight">
-                  Plano de Amortização
+                  Comparativo primeiro. Plano depois.
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-700 font-semibold">
-                  Apresentar e orientar a leitura da redução projetada por amortização.
+                  Explique amortização somente quando ela ajuda a decisão, sem transformar a venda em aula financeira.
                 </p>
               </div>
             </div>
@@ -2807,32 +2819,365 @@ export default function StartComercialDevPage() {
           </div>
 
           <div className="space-y-6">
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Regra do Plano de Amortização</span>
-              <p className="text-[12.75px] text-slate-800 font-medium leading-relaxed">
-                Primeiro o cliente precisa entender <strong>POR QUE</strong> a estrutura é boa. Depois, ele entende <strong>COMO</strong> o plano realiza a duração projetada.
+            {/* REGRA */}
+            <div className="p-3.5 sm:px-4 bg-[#f0fdf4] border border-[#10b981] rounded-xl text-left space-y-1.5">
+              <span className="text-[11px] font-black text-[#059669] uppercase tracking-wider block">
+                REGRA
+              </span>
+              <p className="text-[13px] text-slate-800 font-medium leading-relaxed">
+                Primeiro o cliente precisa entender POR QUE a estrutura é boa. Depois, ele entende COMO o plano realiza a duração projetada.
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Mensagem Antes do Link/PDF</span>
-                <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
-                  Vou te mandar agora o *Plano de Amortização*.{'\n\n'}Ele serve para você enxergar como a operação é organizada ao longo do tempo e como chegamos à *duração projetada* que eu te apresentei.{'\n\n'}Quando abrir, não precisa tentar interpretar tudo sozinho. Eu vou te mostrar os *pontos que realmente importam*.
-                </p>
-                <button onClick={() => copyToClipboard("Vou te mandar agora o *Plano de Amortização*.\n\nEle serve para você enxergar como a operação é organizada ao longo do tempo e como chegamos à *duração projetada* que eu te apresentei.\n\nQuando abrir, não precisa tentar interpretar tudo sozinho. Eu vou te mostrar os *pontos que realmente importam*.", "plano-1")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                  {copiedId === "plano-1" ? "Copiado!" : "Copiar"}
+              {/* MENSAGEM ANTES DO LINK */}
+              <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                  MENSAGEM ANTES DO LINK
+                </span>
+
+                <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                  <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                    <p>Vou te mandar agora o <strong>Plano de Amortização</strong>.</p>
+                    <p className="mt-2">Ele serve para você enxergar <strong>como a operação é organizada ao longo do tempo</strong> e como chegamos à duração projetada que eu te apresentei.</p>
+                    <p className="mt-2">Quando abrir, não precisa tentar interpretar tudo sozinho. Eu vou te mostrar <strong>os pontos que realmente importam</strong>.</p>
+                    <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                      <span>Agora</span>
+                      <Check className="w-3 h-3 text-sky-500" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1 text-xs text-slate-600">
+                  <p className="italic">
+                    <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Imediatamente antes de enviar o link/PDF do plano.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => copyToClipboard("Vou te mandar agora o *Plano de Amortização*.\n\nEle serve para você enxergar *como a operação é organizada ao longo do tempo* e como chegamos à duração projetada que eu te apresentei.\n\nQuando abrir, não precisa tentar interpretar tudo sozinho. Eu vou te mostrar *os pontos que realmente importam*.", "plano-1")}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                >
+                  {copiedId === "plano-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copiedId === "plano-1" ? "Copiado!" : "Copiar Mensagem"}
                 </button>
               </div>
 
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Mensagem Junto com o Link/PDF</span>
-                <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
-                  Segue o plano, [Nome].{'\n\n'}Repara principalmente em 3 pontos:{'\n'}1. a parcela que fica em folha{'\n'}2. as amortizações previstas{'\n'}3. a duração projetada da operação{'\n\n'}Se quiser, eu já te explico a linha do teu caso sem você precisar ler isso como uma planilha.
-                </p>
-                <button onClick={() => copyToClipboard("Segue o plano, [Nome].\n\nRepara principalmente em 3 pontos:\n1. a parcela que fica em folha\n2. as amortizações previstas\n3. a duração projetada da operação\n\nSe quiser, eu já te explico a linha do teu caso sem você precisar ler isso como uma planilha.", "plano-2")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                  {copiedId === "plano-2" ? "Copiado!" : "Copiar"}
+              {/* MENSAGEM JUNTO COM O LINK */}
+              <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                  MENSAGEM JUNTO COM O LINK
+                </span>
+
+                <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                  <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                    <p>Segue o plano, [Nome].</p>
+                    <p className="mt-2">Repara principalmente em <strong>3 pontos:</strong></p>
+                    <p className="mt-1"><strong>1. a parcela que fica em folha</strong></p>
+                    <p className="mt-1"><strong>2. as amortizações previstas</strong></p>
+                    <p className="mt-1"><strong>3. a duração projetada da operação</strong></p>
+                    <p className="mt-2">Se quiser, eu já te explico a linha do teu caso sem você precisar ler isso como uma planilha.</p>
+                    <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                      <span>Agora</span>
+                      <Check className="w-3 h-3 text-sky-500" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1 text-xs text-slate-600">
+                  <p className="italic">
+                    <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> No momento do envio do link ou PDF.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => copyToClipboard("Segue o plano, [Nome].\n\nRepara principalmente em *3 pontos:*\n\n*1. a parcela que fica em folha*\n*2. as amortizações previstas*\n*3. a duração projetada da operação*\n\nSe quiser, eu já te explico a linha do teu caso sem você precisar ler isso como uma planilha.", "plano-2")}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                >
+                  {copiedId === "plano-2" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copiedId === "plano-2" ? "Copiado!" : "Copiar Mensagem"}
                 </button>
+              </div>
+            </div>
+
+            {/* REGRA DE SEGURANÇA */}
+            <div className="p-3.5 sm:px-4 bg-[#fffbeb] border border-[#f59e0b] rounded-xl text-left space-y-1.5">
+              <span className="text-[11px] font-black text-[#d97706] uppercase tracking-wider block">
+                REGRA DE SEGURANÇA
+              </span>
+              <p className="text-[13px] text-slate-800 font-medium leading-relaxed">
+                Use essa fala apenas depois de o plano estar validado para a operação. Mês de início, valores de amortização, canal de boleto/código de barras e duração projetada devem seguir a regra real daquela proposta.
+              </p>
+            </div>
+
+            {/* EVITE */}
+            <div className="p-3.5 sm:px-4 bg-[#fef2f2] border border-[#ef4444] rounded-xl text-left space-y-1.5">
+              <span className="text-[11px] font-black text-[#dc2626] uppercase tracking-wider block">
+                EVITE
+              </span>
+              <ul className="text-[13px] text-slate-800 font-medium space-y-1">
+                <li className="flex items-start gap-2">
+                  <span className="text-slate-900 font-bold">•</span>
+                  <span>Dizer que “24x está no contrato” quando o contrato mostra outro prazo.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-slate-900 font-bold">•</span>
+                  <span>Chamar o plano de amortização de boleto.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-slate-900 font-bold">•</span>
+                  <span>Prometer que valores nunca mudam se a regra da operação admitir variação.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-slate-900 font-bold">•</span>
+                  <span>Usar explicações longas em áudio quando uma imagem + duas frases resolvem.</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* EXPLICAÇÃO SIMPLES */}
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg inline-block">
+                Explicação simples
+              </span>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    PLANO EM UMA FRASE
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>O contrato do banco segue a tabela da operação.</p>
+                      <p className="mt-2">O plano mostra como as amortizações antecipam <strong>parcelas</strong> para reduzir a duração efetiva até [MÊS/OBJETIVO VALIDADO].</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Primeira explicação. Só aprofunde se o cliente perguntar.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("O contrato do banco segue a tabela da operação.\n\nO plano mostra como as amortizações antecipam *parcelas* para reduzir a duração efetiva até [MÊS/OBJETIVO VALIDADO].", "plano-frase")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "plano-frase" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "plano-frase" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* DÚVIDAS COMUNS */}
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg inline-block">
+                DÚVIDAS COMUNS
+              </span>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* DÚVIDA 1 */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    “POR QUE APARECE 96X NO CONTRATO SE VOCÊ FALOU 24 MESES?”
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Porque 96x é o <strong>prazo</strong> contratual da tabela bancária.</p>
+                      <p className="mt-2">Os <strong>24 meses</strong> são a <strong>duração projetada</strong> pela estratégia de amortização, com a programação do plano executada.</p>
+                      <p className="mt-2">Eu te mostro separado o que fica em folha e o que é amortizado.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Resposta deve diferenciar prazo contratual de duração projetada.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Porque 96x é o *prazo* contratual da tabela bancária.\n\nOs *24 meses* são a *duração projetada* pela estratégia de amortização, com a programação do plano executada.\n\nEu te mostro separado o que fica em folha e o que é amortizado.", "duvida-plano-1")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "duvida-plano-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "duvida-plano-1" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* DÚVIDA 2 */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    “ENTÃO QUANTO EU PAGO POR MÊS?”
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Na folha fica R$ [<strong>PARCELA</strong> FIXA].</p>
+                      <p className="mt-2">Nos meses com amortização, o plano prevê mais R$ [VALOR/FAIXA VALIDADA], totalizando R$ [TOTAL VALIDADO].</p>
+                      <p className="mt-2">Vou te mostrar mês a mês para não ficar nenhuma dúvida.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Nunca responda apenas &quot;parcela X&quot; quando existe complemento previsto.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Na folha fica R$ [*PARCELA* FIXA].\n\nNos meses com amortização, o plano prevê mais R$ [VALOR/FAIXA VALIDADA], totalizando R$ [TOTAL VALIDADO].\n\nVou te mostrar mês a mês para não ficar nenhuma dúvida.", "duvida-plano-2")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "duvida-plano-2" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "duvida-plano-2" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* DÚVIDA 3 */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    “A PARCELA VAI SUBINDO?”
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>A <strong>parcela</strong> descontada em folha é a que consta no contrato.</p>
+                      <p className="mt-2">O que pode existir além dela são amortizações previstas no plano.</p>
+                      <p className="mt-2">Eu vou te mostrar exatamente os valores previstos antes de formalizar.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Se houver variação real no plano, mostre; não diga &quot;não muda&quot; genericamente.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("A *parcela* descontada em folha é a que consta no contrato.\n\nO que pode existir além dela são amortizações previstas no plano.\n\nEu vou te mostrar exatamente os valores previstos antes de formalizar.", "duvida-plano-3")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "duvida-plano-3" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "duvida-plano-3" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* DÚVIDA 4 */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    “ESSE PDF É O BOLETO?”
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Não.</p>
+                      <p className="mt-2">Esse arquivo é o plano de amortização, para você visualizar a programação.</p>
+                      <p className="mt-2">O boleto/código de barras é o instrumento de pagamento usado no momento da amortização, conforme o fluxo da instituição.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Evita confundir plano com boleto.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Não.\n\nEsse arquivo é o plano de amortização, para você visualizar a programação.\n\nO boleto/código de barras é o instrumento de pagamento usado no momento da amortização, conforme o fluxo da instituição.", "duvida-plano-4")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "duvida-plano-4" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "duvida-plano-4" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* DÚVIDA 5 */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    “COMO VOU RECEBER/SOLICITAR O BOLETO?”
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Eu te passo o passo a passo do canal oficial definido para essa operação.</p>
+                      <p className="mt-2">Se houver qualquer dúvida na solicitação, eu acompanho com você.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> O canal exato deve vir da regra operacional, não da memória do corretor.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Eu te passo o passo a passo do canal oficial definido para essa operação.\n\nSe houver qualquer dúvida na solicitação, eu acompanho com você.", "duvida-plano-5")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "duvida-plano-5" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "duvida-plano-5" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* DÚVIDA 6 */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                  <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                    “TENHO MEDO DE VIR UM BOLETO MAIOR DO QUE VOCÊ FALOU.”
+                  </span>
+
+                  <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <p>Esse ponto precisa estar fechado antes de você avançar.</p>
+                      <p className="mt-2">Vou conferir o plano validado e te mostrar o valor previsto de cada etapa.</p>
+                      <p className="mt-2">Se houver qualquer faixa variável, eu te explico agora.</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <p className="italic">
+                      <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Se o corretor não souber, abrir chamado.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Esse ponto precisa estar fechado antes de você avançar.\n\nVou conferir o plano validado e te mostrar o valor previsto de cada etapa.\n\nSe houver qualquer faixa variável, eu te explico agora.", "duvida-plano-6")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "duvida-plano-6" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "duvida-plano-6" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2878,7 +3223,7 @@ export default function StartComercialDevPage() {
                   Quitação de Cartão
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-700 font-semibold">
-                  Operação especial para quitar saldo devedor e reduzir desconto na folha.
+                  Reconhecer a oportunidade e saber encaminhar - sem tentar formar um especialista nesta etapa.
                 </p>
               </div>
             </div>
@@ -2895,22 +3240,116 @@ export default function StartComercialDevPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Cálculo Rápido de Saldo Devedor</span>
-                <div className="space-y-2 text-[12.75px] font-semibold text-slate-800">
-                  <p className="p-2.5 bg-white border rounded-lg">1. Saldo prévio: Margem Bruta do Benefício - Margem Líquida = Margem Averbada</p>
-                  <p className="p-2.5 bg-white border rounded-lg">2. Saldo devedor prévio = Margem Averbada × 16,6667</p>
+              <div className="space-y-3">
+                {/* 3 CARDS NUMERADOS */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl shadow-xs">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-black shrink-0">
+                      1
+                    </span>
+                    <p className="text-[12.75px] text-slate-800 font-medium leading-tight">
+                      Saldo prévio: margem bruta do benefício – margem líquida = margem averbada.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl shadow-xs">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-black shrink-0">
+                      2
+                    </span>
+                    <p className="text-[12.75px] text-slate-800 font-medium leading-tight">
+                      Margem averbada × 16,6667 = saldo devedor prévio.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl shadow-xs">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-black shrink-0">
+                      3
+                    </span>
+                    <p className="text-[12.75px] text-slate-800 font-medium leading-tight">
+                      Em Acessar Cliente → Simular Proposta → usar a opção Quitação para criar a apresentação visual.
+                    </p>
+                  </div>
+                </div>
+
+                {/* IMAGEM DA PROPOSTA AMPLIÁVEL */}
+                <div 
+                  onClick={() => setIsPropostaQuitacaoModalOpen(true)}
+                  className="group relative rounded-2xl overflow-hidden border-2 border-slate-200 hover:border-emerald-500 bg-slate-900 cursor-pointer transition-all shadow-md hover:shadow-xl"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsPropostaQuitacaoModalOpen(true) }}
+                >
+                  <div className="relative w-full aspect-[16/10] bg-slate-950">
+                    <Image
+                      src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/proposta_reducao_ROGERIO_JOSE_FIORINI.jpg"
+                      alt="Exemplo de Proposta de Redução e Quitação de Cartão"
+                      fill
+                      className="object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+
+                  {/* OVERLAY INDICANDO CLIQUE PARA AMPLIAR */}
+                  <div className="absolute inset-0 bg-slate-950/30 group-hover:bg-slate-950/10 transition-colors flex items-center justify-center">
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950/80 backdrop-blur-xs text-white text-xs font-bold px-3 py-1.5 rounded-full border border-white/20 shadow-lg flex items-center gap-1.5">
+                      <Search className="w-3.5 h-3.5 text-emerald-400" /> Clique para ampliar
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Mensagem de Abordagem para Quitação</span>
-                <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
-                  Oi, [NOME], Mais de *R$ 15 mil* estão saindo do seu bolso por causa de 1 desconto!{'\n\n'}Resolvemos isso em *menos de 48h*. Posso mostrar a diferença?
-                </p>
-                <button onClick={() => copyToClipboard("Oi, [NOME], Mais de *R$ 15 mil* estão saindo do seu bolso por causa de 1 desconto!\n\nResolvemos isso em *menos de 48h*. Posso mostrar a diferença?", "quit-1")} className="w-full py-2 bg-slate-900 text-white text-[11px] font-bold rounded-lg">
-                  {copiedId === "quit-1" ? "Copiado!" : "Copiar"}
-                </button>
+              {/* MENSAGEM DE ABORDAGEM PARA QUITAÇÃO */}
+              <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
+                <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                  MENSAGEM DE ABORDAGEM PARA QUITAÇÃO
+                </span>
+
+                <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                  <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                    <p>Oi, [NOME]! Mais de <strong>R$ 15 mil</strong> estão saindo do seu bolso por causa de 1 desconto!</p>
+                    <p className="mt-2">Resolvemos isso em <strong>menos de 48h</strong>. Posso mostrar a diferença?</p>
+
+                    {/* IMAGEM BAIXÁVEL */}
+                    <div 
+                      onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/quitacaodecartao.png", "quitacaodecartao.png")}
+                      className="mt-3 group relative rounded-xl overflow-hidden border border-slate-200 cursor-pointer bg-black/90 shadow-sm"
+                      title="Clique para baixar a imagem"
+                    >
+                      <img
+                        src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/quitacaodecartao.png"
+                        alt="Quitação de Cartão"
+                        className="w-full max-h-56 object-cover object-top transition-transform duration-300 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white">
+                        <Download className="w-6 h-6 text-white" />
+                        <span className="text-xs font-bold">Clique para baixar a imagem</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                      <span>Agora</span>
+                      <Check className="w-3 h-3 text-sky-500" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/quitacaodecartao.png", "quitacaodecartao.png")}
+                    className="px-3.5 py-2.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+                    title="Baixar imagem"
+                  >
+                    <Download className="w-4 h-4 text-slate-600" />
+                    Baixar Imagem
+                  </button>
+                  <button
+                    onClick={() => copyToClipboard("Oi, [NOME]! Mais de *R$ 15 mil* estão saindo do seu bolso por causa de 1 desconto!\n\nResolvemos isso em *menos de 48h*. Posso mostrar a diferença?", "quit-1")}
+                    className="flex-1 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {copiedId === "quit-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "quit-1" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2953,10 +3392,10 @@ export default function StartComercialDevPage() {
               </div>
               <div>
                 <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight">
-                  Documentos & Aceitou
+                  Documentos, Digitação e Acompanhamento
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-700 font-semibold">
-                  Coleta rápida de documentos para digitação e retomadas estruturadas do ponto onde o cliente parou.
+                  Transformar o aceite em execução rápida, clara e acompanhada.
                 </p>
               </div>
             </div>
@@ -2965,38 +3404,266 @@ export default function StartComercialDevPage() {
             </span>
           </div>
 
-          <div className="space-y-6">
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Coleta de Documentos</span>
-              <p className="text-[12.75px] font-mono text-slate-800 whitespace-pre-line">
-                Perfeito, [Nome].{'\n\n'}Para eu deixar essa condição pronta para você conferir, preciso de:{'\n'}- Foto RG ou CNH;{'\n'}- Endereço e e-mail por escrito;{'\n'}- Último contracheque.{'\n\n'}Assim que receber, eu digito e te devolvo o *próximo passo*.
-              </p>
-              <button onClick={() => copyToClipboard("Perfeito, [Nome].\n\nPara eu deixar essa condição pronta para você conferir, preciso de:\n- Foto RG ou CNH;\n- Endereço e e-mail por escrito;\n- Último contracheque.\n\nAssim que receber, eu digito e te devolvo o *próximo passo*.", "doc-1")} className="w-full sm:w-auto px-6 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg">
-                {copiedId === "doc-1" ? "Copiado!" : "Copiar Mensagem"}
-              </button>
+          <div className="space-y-8">
+            {/* FAÇA AGORA */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-emerald-600 rounded-full"></div>
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Faça Agora</h3>
+              </div>
+              <ul className="space-y-2.5">
+                <li className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl text-[12.75px] font-bold text-slate-800 shadow-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Confirme o cenário que o cliente aceitou.</span>
+                </li>
+                <li className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl text-[12.75px] font-bold text-slate-800 shadow-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Peça somente os documentos exigidos pela operação/tabela escolhida.</span>
+                </li>
+                <li className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl text-[12.75px] font-bold text-slate-800 shadow-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Digite e acompanhe o status.</span>
+                </li>
+                <li className="flex items-center gap-3 p-3 sm:px-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl text-[12.75px] font-bold text-slate-800 shadow-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Se houver pendência, retome exatamente a pendência - não recomece a venda.</span>
+                </li>
+              </ul>
             </div>
 
-            {/* RETOMADAS PELO PONTO ONDE PAROU */}
-            <div className="space-y-3 pt-4 border-t border-slate-100">
-              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Retomadas pelo Ponto Onde Parou</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase">Parou Depois da Proposta</p>
-                  <p className="text-[12.75px] text-slate-800">"[Nome], deixei teu cenário separado aqui. Antes de eu encerrar, me diz o que travou: valor, parcela, prazo ou segurança?"</p>
-                  <button onClick={() => copyToClipboard("[Nome], deixei teu cenário separado aqui.\n\nAntes de eu encerrar, me diz o que travou: valor, parcela, prazo ou segurança da operação?", "ret-p-1")} className="w-full py-1.5 bg-white border text-[11px] font-bold rounded">Copiar</button>
+            {/* SEÇÃO: COLETA DE DOCUMENTOS (2 CARDS WHATSAPP) */}
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg inline-block">
+                Coleta de Documentos
+              </span>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* CARD 1: COLETA DE DOCUMENTOS */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                      COLETA DE DOCUMENTOS
+                    </span>
+
+                    <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                        <p>Perfeito, [Nome].</p>
+                        <p className="mt-2">Para eu deixar essa condição pronta para você conferir, preciso de:</p>
+                        <ul className="mt-2 space-y-1 pl-2">
+                          <li>- Foto RG ou CNH;</li>
+                          <li>- Endereço e e-mail por escrito;</li>
+                          <li>- Último contracheque.</li>
+                        </ul>
+                        <p className="mt-2">Assim que receber, eu digito e te devolvo o <strong>próximo passo</strong>.</p>
+                        <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                          <span>Agora</span>
+                          <Check className="w-3 h-3 text-sky-500" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs text-slate-600">
+                      <p className="italic">
+                        <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Use checklist dinâmico conforme banco/produto.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Perfeito, [Nome].\n\nPara eu deixar essa condição pronta para você conferir, preciso de:\n\n- Foto RG ou CNH;\n- Endereço e e-mail por escrito;\n- Último contracheque.\n\nAssim que receber, eu digito e te devolvo o *próximo passo*.", "doc-coleta")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs mt-2"
+                  >
+                    {copiedId === "doc-coleta" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "doc-coleta" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
                 </div>
 
-                <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase">Parou nos Documentos</p>
-                  <p className="text-[12.75px] text-slate-800">"[Nome], ficou pendente apenas [DOCUMENTO]. Assim que você me enviar, eu consigo dar sequência com prioridade."</p>
-                  <button onClick={() => copyToClipboard("[Nome], ficou pendente apenas [DOCUMENTO].\n\nAssim que você me enviar, eu consigo dar sequência na proposta com prioridade sem refazer a análise.", "ret-p-2")} className="w-full py-1.5 bg-white border text-[11px] font-bold rounded">Copiar</button>
+                {/* CARD 2: CLIENTE PERGUNTA CONTRACHEQUE DE QUAL MÊS */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                      CLIENTE PERGUNTA “CONTRACHEQUE DE QUAL MÊS?”
+                    </span>
+
+                    <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                        <p>Precisamos do [REGRA DA OPERAÇÃO: mais recente / competência específica].</p>
+                        <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                          <span>Agora</span>
+                          <Check className="w-3 h-3 text-sky-500" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs text-slate-600">
+                      <p className="italic">
+                        <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Se a regra não estiver explícita, consultar antes de pedir.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("Precisamos do [REGRA DA OPERAÇÃO: mais recente / competência específica].", "doc-mes")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs mt-2"
+                  >
+                    {copiedId === "doc-mes" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "doc-mes" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* SEÇÃO: RETOMADAS PELO PONTO ONDE PAROU (4 CARDS WHATSAPP + CARD VERDE) */}
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg inline-block">
+                Retomadas pelo Ponto Onde Parou
+              </span>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* CARD RETOMADA 1: PAROU DEPOIS DA PROPOSTA */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                      PAROU DEPOIS DA PROPOSTA
+                    </span>
+
+                    <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                        <p>[Nome], deixei teu cenário separado aqui.</p>
+                        <p className="mt-2">Antes de eu encerrar, me diz o que travou: valor, <strong>parcela</strong>, <strong>prazo</strong> ou segurança da operação?</p>
+                        <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                          <span>Agora</span>
+                          <Check className="w-3 h-3 text-sky-500" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs text-slate-600">
+                      <p className="italic">
+                        <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Retoma o motivo, não a primeira abordagem.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("[Nome], deixei teu cenário separado aqui.\n\nAntes de eu encerrar, me diz o que travou: valor, *parcela*, *prazo* ou segurança da operação?", "ret-1")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs mt-2"
+                  >
+                    {copiedId === "ret-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "ret-1" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
                 </div>
 
-                <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase">Parou na Formalização</p>
-                  <p className="text-[12.75px] text-slate-800">"[Nome], falta apenas um detalhe para o pagamento. Se travou em alguma tela ou validação, me fala onde parou que eu te direciono."</p>
-                  <button onClick={() => copyToClipboard("[Nome], falta apenas um detalhe para o pagamento.\n\nSe travou em alguma tela ou validação, me fala onde parou que eu te direciono.", "ret-p-3")} className="w-full py-1.5 bg-white border text-[11px] font-bold rounded">Copiar</button>
+                {/* CARD RETOMADA 2: DISSE "VOU PENSAR" */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                      DISSE “VOU PENSAR”
+                    </span>
+
+                    <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                        <p>[Nome], retomando pelo ponto que você queria analisar: ficou alguma dúvida em [MOTIVO IDENTIFICADO] ou você decidiu não seguir?</p>
+                        <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                          <span>Agora</span>
+                          <Check className="w-3 h-3 text-sky-500" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs text-slate-600">
+                      <p className="italic">
+                        <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Use o motivo levantado na sondagem.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("[Nome], retomando pelo ponto que você queria analisar: ficou alguma dúvida em [MOTIVO IDENTIFICADO] ou você decidiu não seguir?", "ret-2")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs mt-2"
+                  >
+                    {copiedId === "ret-2" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "ret-2" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
                 </div>
+
+                {/* CARD RETOMADA 3: PAROU NOS DOCUMENTOS */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                      PAROU NOS DOCUMENTOS
+                    </span>
+
+                    <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                        <p>[Nome], ficou pendente apenas <strong>[DOCUMENTO]</strong>.</p>
+                        <p className="mt-2">Assim que você me enviar, eu consigo dar sequência na proposta com prioridade sem refazer a análise.</p>
+                        <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                          <span>Agora</span>
+                          <Check className="w-3 h-3 text-sky-500" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs text-slate-600">
+                      <p className="italic">
+                        <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Objetiva e operacional.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("[Nome], ficou pendente apenas *[DOCUMENTO]*.\n\nAssim que você me enviar, eu consigo dar sequência na proposta com prioridade sem refazer a análise.", "ret-3")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs mt-2"
+                  >
+                    {copiedId === "ret-3" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "ret-3" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+
+                {/* CARD RETOMADA 4: PAROU NA FORMALIZAÇÃO */}
+                <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <span className="text-[11px] font-black tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md uppercase inline-block">
+                      PAROU NA FORMALIZAÇÃO
+                    </span>
+
+                    <div className="bg-[#efeae2] p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-inner">
+                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                        <p>[Nome], falta apenas um detalhe para o pagamento.</p>
+                        <p className="mt-2">Se travou em alguma tela ou validação, me fala onde parou que eu te direciono.</p>
+                        <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                          <span>Agora</span>
+                          <Check className="w-3 h-3 text-sky-500" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs text-slate-600">
+                      <p className="italic">
+                        <strong className="font-semibold text-slate-700 not-italic">Quando usar:</strong> Não volte a vender o benefício inteiro.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard("[Nome], falta apenas um detalhe para o pagamento.\n\nSe travou em alguma tela ou validação, me fala onde parou que eu te direciono.", "ret-4")}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs mt-2"
+                  >
+                    {copiedId === "ret-4" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === "ret-4" ? "Copiado!" : "Copiar Mensagem"}
+                  </button>
+                </div>
+              </div>
+
+              {/* CARD VERDE: REGRA DE FOLLOW-UP */}
+              <div className="p-4 sm:p-5 bg-emerald-50/70 border border-emerald-500 rounded-2xl space-y-1.5 mt-4">
+                <span className="text-[11px] font-black text-emerald-800 uppercase tracking-wider block">
+                  REGRA DE FOLLOW-UP
+                </span>
+                <p className="text-[13px] text-emerald-950 font-medium leading-relaxed">
+                  Retomada não é repetir a primeira mensagem. É voltar exatamente ao ponto onde o cliente parou, relembrando a vantagem ou a pendência que já existia.
+                </p>
               </div>
             </div>
           </div>
@@ -3111,6 +3778,7 @@ export default function StartComercialDevPage() {
                     { id: "interesse", label: "Interesse" },
                     { id: "banco", label: "Banco / Taxa" },
                     { id: "seguranca", label: "Segurança / Golpe" },
+                    { id: "referencias", label: "Referências da empresa" },
                     { id: "valor", label: "Valor / Margem" },
                     { id: "plano", label: "Fechamento" }
                   ].map((cat) => (
@@ -3257,6 +3925,63 @@ export default function StartComercialDevPage() {
                 <span>Acessar Campanha</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE AMPLIAÇÃO DA IMAGEM: PROPOSTA DE QUITAÇÃO */}
+      {isPropostaQuitacaoModalOpen && (
+        <div 
+          className="fixed inset-0 z-[300] bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5"
+          onClick={() => setIsPropostaQuitacaoModalOpen(false)}
+        >
+          <div 
+            className="relative bg-slate-900 border border-slate-700 rounded-2xl sm:rounded-3xl max-w-5xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* CABEÇALHO DO MODAL */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-950 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide">
+                  Exemplo de Proposta: Redução e Quitação de Cartão
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsPropostaQuitacaoModalOpen(false)}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* CORPO DO MODAL COM IMAGEM AMPLIADA */}
+            <div className="relative w-full flex-1 min-h-0 bg-slate-950 p-2 sm:p-4 flex items-center justify-center overflow-auto">
+              <div className="relative w-full aspect-[16/10] max-h-[75vh]">
+                <Image
+                  src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/proposta_reducao_ROGERIO_JOSE_FIORINI.jpg"
+                  alt="Proposta de Redução e Quitação de Cartão ampliada"
+                  fill
+                  className="object-contain"
+                  referrerPolicy="no-referrer"
+                  priority
+                />
+              </div>
+            </div>
+
+            {/* RODAPÉ DO MODAL */}
+            <div className="flex items-center justify-between gap-3 px-5 py-3 bg-slate-950 border-t border-slate-800 shrink-0">
+              <span className="text-xs text-slate-400">
+                Acesse o cliente &gt; <strong>Simular Proposta</strong> &gt; Selecione a opção <strong>Quitação</strong>
+              </span>
+              <button
+                onClick={() => setIsPropostaQuitacaoModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>

@@ -42,7 +42,7 @@ const allMenuItems = [
         href: "/start-comercial-dev", 
         icon: Rocket, 
         isSpecialStart: true,
-        roles: ["Administrador", "Desenvolvedor"] 
+        roles: ["Administrador", "Desenvolvedor", "Supervisor"] 
       },
       { 
         name: "DASHBOARD", 
@@ -310,9 +310,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
-        // Se for o link COMECE AQUI, visível ESTRITAMENTE para Administrador, Corretor PJ e Desenvolvedor
+        // Se for o link COMECE AQUI, visível ESTRITAMENTE para Corretor PJ, Administrador, Supervisor e Desenvolvedor
         if (item.name === "COMECE AQUI" || item.href === "/start-comercial-dev") {
-          if (isAdmin || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isCorretorPJ) return true
+          if (isAdmin || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || perfil?.role === 'Supervisor' || isCorretorPJ) return true
           return false
         }
 

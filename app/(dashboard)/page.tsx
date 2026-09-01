@@ -411,9 +411,54 @@ export const getRemainingBusinessDays = () => {
   const today = now.getDate()
   const lastDay = new Date(year, month + 1, 0).getDate()
   
-  const holidays = [
-    { month: 4, day: 1 }, // May 1st
-    { month: 5, day: 4 }, // June 4th (Corpus Christi / Feriado de Junho)
+  // Cálculo da Páscoa (Algoritmo de Meeus/Jones/Butcher)
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const easterMonth = Math.floor((h + l - 7 * m + 114) / 31) - 1 // 0-indexed (2=Março, 3=Abril)
+  const easterDay = ((h + l - 7 * m + 114) % 31) + 1
+  const easterDate = new Date(year, easterMonth, easterDay)
+
+  const addDays = (base: Date, days: number) => {
+    const res = new Date(base)
+    res.setDate(res.getDate() + days)
+    return { month: res.getMonth(), day: res.getDate() }
+  }
+
+  // Feriados móveis nacionais
+  const carnavalSegunda = addDays(easterDate, -48)
+  const carnavalTerca = addDays(easterDate, -47)
+  const sextaFeiraSanta = addDays(easterDate, -2)
+  const corpusChristi = addDays(easterDate, 60)
+
+  // Feriados Nacionais Fixos do Brasil
+  const fixedHolidays = [
+    { month: 0, day: 1 },   // 01/01 - Confraternização Universal
+    { month: 3, day: 21 },  // 21/04 - Tiradentes
+    { month: 4, day: 1 },   // 01/05 - Dia do Trabalho
+    { month: 8, day: 7 },   // 07/09 - Independência do Brasil
+    { month: 9, day: 12 },  // 12/10 - Nossa Senhora Aparecida
+    { month: 10, day: 2 },  // 02/11 - Finados
+    { month: 10, day: 15 }, // 15/11 - Proclamação da República
+    { month: 10, day: 20 }, // 20/11 - Consciência Negra
+    { month: 11, day: 25 }, // 25/12 - Natal
+  ]
+
+  const allHolidays = [
+    ...fixedHolidays,
+    carnavalSegunda,
+    carnavalTerca,
+    sextaFeiraSanta,
+    corpusChristi
   ]
 
   let count = 0
@@ -421,7 +466,7 @@ export const getRemainingBusinessDays = () => {
     const date = new Date(year, month, d)
     const dayOfWeek = date.getDay()
     if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-      const isHoliday = holidays.some(h => h.month === month && h.day === d)
+      const isHoliday = allHolidays.some(h => h.month === month && h.day === d)
       if (!isHoliday) count++
     }
   }
