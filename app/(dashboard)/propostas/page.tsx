@@ -607,40 +607,21 @@ export default function ProposalsPage() {
     if (!perfil) return
     if (!isSilent) setIsLoading(true)
     try {
-      let query = supabase.from('propostas').select('*')
-      
-      if (isCorretor) {
-        query = query.eq('corretor_id', perfil.id)
-      }
-      // Se for operacional, supervisor, administrador ou desenvolvedor, não filtra (vê tudo)
-
-      const { data, error } = await query.order('updated_at', { ascending: true })
-      
-      if (error) {
-        console.error("Erro Supabase ao buscar propostas:", error.message)
-        if (!isSilent) toast.error("Erro ao conectar com o banco de dados.")
-        setIsLoading(false)
-        return
-      }
-
-      if (!data || data.length === 0) {
-        setProposals([])
-        setIsLoading(false)
-        return
-      }
-
-      // Fetch users list to map missing names
+      // Fetch users list to map missing names and handle supervisor filtering
       interface UserSummary {
         id: string;
         nome: string;
+        supervisor_id?: string;
+        padrinho_id?: string;
         supervisor_nome?: string;
       }
       
       const usersMap = new Map<string, { nome: string, equipe: string }>()
+      let usersList: UserSummary[] = []
       try {
         const usersResponse = await fetch("/api/usuarios")
         if (usersResponse.ok) {
-          const usersList: UserSummary[] = await usersResponse.json()
+          usersList = await usersResponse.json()
           usersList.forEach((u) => {
             usersMap.set(u.id, {
               nome: u.nome || "-",
@@ -651,6 +632,32 @@ export default function ProposalsPage() {
       } catch (err) {
         console.warn("Erro ao buscar usuários para mapeamento:", err)
       }
+
+      let query = supabase.from('propostas').select('*')
+      
+      const isUserSupervisorOnly = (isSupervisor || perfil.role === 'Supervisor') && !isAdmin && !isDeveloper && !isOperational;
+
+      if (isCorretor) {
+        // Se corretor tiver estagiários vinculados (padrinho), inclui também
+        const myEstagiarios = usersList
+          .filter((u) => u.padrinho_id === perfil.id)
+          .map((u) => u.id)
+        if (myEstagiarios.length > 0) {
+          query = query.in('corretor_id', [perfil.id, ...myEstagiarios])
+        } else {
+          query = query.eq('corretor_id', perfil.id)
+        }
+      } else if (isUserSupervisorOnly) {
+        // Supervisor vê apenas as suas propostas e as propostas dos corretores/estagiários da sua equipe
+        const subordinates = usersList
+          .filter((u) => u.supervisor_id === perfil.id || u.padrinho_id === perfil.id)
+          .map((u) => u.id)
+        
+        query = query.in('corretor_id', [...subordinates, perfil.id])
+      }
+      // Se for operacional, administrador ou desenvolvedor, não filtra por equipe (vê tudo)
+
+      const { data, error } = await query.order('updated_at', { ascending: true })
 
       const formattedData = data.map((p: Proposal) => {
         // Normalizar status para garantir que apareça nas abas corretas (com espaços ao redor da barra)
@@ -687,7 +694,7 @@ export default function ProposalsPage() {
     }
   }
 
-  const stabilizedFetchProposals = useCallback(fetchProposals, [perfil?.id, isCorretor])
+  const stabilizedFetchProposals = useCallback(fetchProposals, [perfil?.id, perfil?.role, isCorretor, isSupervisor, isAdmin, isDeveloper, isOperational])
 
   useEffect(() => {
     if (perfil?.id) {
