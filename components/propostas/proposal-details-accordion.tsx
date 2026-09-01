@@ -887,14 +887,36 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         }];
       });
 
-      const option = allOptions.find(opt => {
+      const targetPrazoMatch = formData.coeficiente_prazo.match(/(\d+)\s*x/i);
+      const targetPrazo = targetPrazoMatch ? parseInt(targetPrazoMatch[1], 10) : (proposal.prazo ? Number(proposal.prazo) : null);
+      
+      const targetCoefMatch = formData.coeficiente_prazo.match(/(?:x\s*[| ]\s*|\|\s*)([0-9]+[.,][0-9]+)/i) || formData.coeficiente_prazo.match(/([0-9]+[.,][0-9]+)/);
+      const targetCoef = targetCoefMatch ? parseFloat(targetCoefMatch[1].replace(',', '.')) : (proposal.coeficiente ? Number(proposal.coeficiente) : null);
+
+      let option = allOptions.find(opt => {
         const labelText = opt.nome_tabela 
           ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
           : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente}`;
+        const labelTextCommas = opt.nome_tabela
+          ? `${opt.nome_tabela} (${opt.prazo}x | ${String(opt.coeficiente).replace('.', ',')})`
+          : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${String(opt.coeficiente).replace('.', ',')}`;
         
-        return labelText === formData.coeficiente_prazo || 
-               (opt.nome_tabela && formData.coeficiente_prazo.startsWith(opt.nome_tabela));
+        return labelText === formData.coeficiente_prazo || labelTextCommas === formData.coeficiente_prazo;
       });
+
+      if (!option && targetPrazo !== null && targetCoef !== null) {
+        option = allOptions.find(opt => 
+          opt.prazo === targetPrazo && Math.abs(opt.coeficiente - targetCoef) < 0.0001
+        );
+      }
+
+      if (!option && targetCoef !== null) {
+        option = allOptions.find(opt => Math.abs(opt.coeficiente - targetCoef) < 0.0001);
+      }
+
+      if (!option && targetPrazo !== null) {
+        option = allOptions.find(opt => opt.prazo === targetPrazo);
+      }
 
       if (option) {
         setSelectedCoefValue(option.coeficiente);
@@ -950,48 +972,6 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
     }
     fetchConfigs()
   }, [])
-
-  useEffect(() => {
-    if (dbProdutosConfigs.length > 0 && formData.coeficiente_prazo) {
-      // Expand todas as configs para encontrar a correta
-      const allOptions = (dbProdutosConfigs as ProdutoConfig[]).flatMap(config => {
-        if (config.regras && config.regras.length > 0) {
-          return config.regras
-            .filter((r: Regra) => r.ativo !== false)
-            .map((regra: Regra) => ({
-              nome_tabela: config.nome_tabela,
-              convenioNome: config.convenios?.nome,
-              prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
-              coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
-              percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
-            }));
-        }
-        return [{
-          nome_tabela: config.nome_tabela,
-          convenioNome: config.convenios?.nome,
-          prazo: config.prazo || 0,
-          coeficiente: config.coeficiente || 0,
-          percentual_producao: config.percentual_producao || 0,
-        }];
-      });
-
-      const option = allOptions.find(opt => {
-        const labelText = opt.nome_tabela 
-          ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
-          : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente}`;
-        
-        // Comparação exata ou se o valor salvo contém o nome da tabela (para lidar com variações de sufixo)
-        return labelText === formData.coeficiente_prazo || 
-               (opt.nome_tabela && formData.coeficiente_prazo.startsWith(opt.nome_tabela));
-      })
-
-      if (option) {
-        setSelectedCoefValue(option.coeficiente)
-        setSelectedPrazoValue(option.prazo)
-        setSelectedProdPercent(option.percentual_producao)
-      }
-    }
-  }, [dbProdutosConfigs, formData.coeficiente_prazo])
 
   const handleSearchCEP = async () => {
     const cep = formData.cep.replace(/\D/g, "")
@@ -1575,6 +1555,11 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           let matchedConfig: any = null;
 
           if (curCoefPrazoStr) {
+            const targetPrazoMatch = curCoefPrazoStr.match(/(\d+)\s*x/i);
+            const targetPrazo = targetPrazoMatch ? parseInt(targetPrazoMatch[1], 10) : (foundPrazo || null);
+            const targetCoefMatch = curCoefPrazoStr.match(/(?:x\s*[| ]\s*|\|\s*)([0-9]+[.,][0-9]+)/i) || curCoefPrazoStr.match(/([0-9]+[.,][0-9]+)/);
+            const targetCoef = targetCoefMatch ? parseFloat(targetCoefMatch[1].replace(',', '.')) : (foundCoef || null);
+
             for (const config of configsToUse) {
               if (config.regras && config.regras.length > 0) {
                 for (const r of config.regras) {
@@ -1585,13 +1570,14 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                     ? `${config.nome_tabela} (${pVal}x | ${cVal})`
                     : `${config.convenios?.nome || 'Tabela'} - ${pVal}x ${cVal}`;
                   const label2 = `${config.convenios?.nome || 'Tabela'} - ${pVal}x ${cVal}`;
+                  const label1Commas = config.nome_tabela 
+                    ? `${config.nome_tabela} (${pVal}x | ${String(cVal).replace('.', ',')})`
+                    : `${config.convenios?.nome || 'Tabela'} - ${pVal}x ${String(cVal).replace('.', ',')}`;
 
-                  if (
-                    curCoefPrazoStr === label1 ||
-                    curCoefPrazoStr === label2 ||
-                    (config.nome_tabela && curCoefPrazoStr.startsWith(config.nome_tabela)) ||
-                    (foundPrazo && foundCoef && pVal === foundPrazo && Math.abs(cVal - foundCoef) < 0.0001)
-                  ) {
+                  const isExact = curCoefPrazoStr === label1 || curCoefPrazoStr === label2 || curCoefPrazoStr === label1Commas;
+                  const isMathMatch = targetPrazo !== null && targetCoef !== null && pVal === targetPrazo && Math.abs(cVal - targetCoef) < 0.0001;
+
+                  if (isExact || isMathMatch) {
                     matchedRegra = r;
                     matchedConfig = config;
                     break;
@@ -1604,13 +1590,14 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                   ? `${config.nome_tabela} (${pVal}x | ${cVal})`
                   : `${config.convenios?.nome || 'Tabela'} - ${pVal}x ${cVal}`;
                 const label2 = `${config.convenios?.nome || 'Tabela'} - ${pVal}x ${cVal}`;
+                const label1Commas = config.nome_tabela 
+                  ? `${config.nome_tabela} (${pVal}x | ${String(cVal).replace('.', ',')})`
+                  : `${config.convenios?.nome || 'Tabela'} - ${pVal}x ${String(cVal).replace('.', ',')}`;
 
-                if (
-                  curCoefPrazoStr === label1 ||
-                  curCoefPrazoStr === label2 ||
-                  (config.nome_tabela && curCoefPrazoStr.startsWith(config.nome_tabela)) ||
-                  (foundPrazo && foundCoef && pVal === foundPrazo && Math.abs(cVal - foundCoef) < 0.0001)
-                ) {
+                const isExact = curCoefPrazoStr === label1 || curCoefPrazoStr === label2 || curCoefPrazoStr === label1Commas;
+                const isMathMatch = targetPrazo !== null && targetCoef !== null && pVal === targetPrazo && Math.abs(cVal - targetCoef) < 0.0001;
+
+                if (isExact || isMathMatch) {
                   matchedConfig = config;
                 }
               }

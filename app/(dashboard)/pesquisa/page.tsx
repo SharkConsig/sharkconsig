@@ -1315,9 +1315,9 @@ export default function SearchClientPage() {
             telefone_2: (data.telefone_2 || data.telefone_recado) as string | null,
             telefone_3: data.telefone_3 as string | null,
           }
-          const regs = await fetchRegistrationsForType(type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho', clientObj)
+          const regs = await fetchRegistrationsForType(type as ConvenioProfile['type'], clientObj)
           return {
-            type: type as 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho',
+            type: type as ConvenioProfile['type'],
             client: clientObj,
             registrations: regs
           }

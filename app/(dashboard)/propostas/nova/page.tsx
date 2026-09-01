@@ -220,14 +220,35 @@ function NewProposalForm() {
         }];
       });
 
-      const option = allOptions.find(opt => {
+      const targetPrazoMatch = formData.coeficiente_prazo.match(/(\d+)\s*x/i);
+      const targetPrazo = targetPrazoMatch ? parseInt(targetPrazoMatch[1], 10) : null;
+      const targetCoefMatch = formData.coeficiente_prazo.match(/(?:x\s*[| ]\s*|\|\s*)([0-9]+[.,][0-9]+)/i) || formData.coeficiente_prazo.match(/([0-9]+[.,][0-9]+)/);
+      const targetCoef = targetCoefMatch ? parseFloat(targetCoefMatch[1].replace(',', '.')) : null;
+
+      let option = allOptions.find(opt => {
         const labelText = opt.nome_tabela 
           ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
           : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente}`;
+        const labelTextCommas = opt.nome_tabela
+          ? `${opt.nome_tabela} (${opt.prazo}x | ${String(opt.coeficiente).replace('.', ',')})`
+          : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${String(opt.coeficiente).replace('.', ',')}`;
         
-        return labelText === formData.coeficiente_prazo || 
-               (opt.nome_tabela && formData.coeficiente_prazo.startsWith(opt.nome_tabela));
+        return labelText === formData.coeficiente_prazo || labelTextCommas === formData.coeficiente_prazo;
       });
+
+      if (!option && targetPrazo !== null && targetCoef !== null) {
+        option = allOptions.find(opt => 
+          opt.prazo === targetPrazo && Math.abs(opt.coeficiente - targetCoef) < 0.0001
+        );
+      }
+
+      if (!option && targetCoef !== null) {
+        option = allOptions.find(opt => Math.abs(opt.coeficiente - targetCoef) < 0.0001);
+      }
+
+      if (!option && targetPrazo !== null) {
+        option = allOptions.find(opt => opt.prazo === targetPrazo);
+      }
 
       if (option) {
         setSelectedCoefValue(option.coeficiente);

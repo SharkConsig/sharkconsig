@@ -131,6 +131,14 @@ interface ClientData {
   [key: string]: unknown;
 }
 
+type ConvenioType = 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | 'governo_ro';
+
+interface ConvenioProfile {
+  type: ConvenioType;
+  client: ClientData;
+  registrations: Registration[];
+}
+
 function ensureArray<T>(val: unknown): T[] {
   if (!val) return [];
   if (Array.isArray(val)) return val as T[];
@@ -148,8 +156,9 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   const [client, setClient] = useState<ClientData | null>(null)
-  const [clientType, setClientType] = useState<'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | 'governo_ro' | null>(null)
+  const [clientType, setClientType] = useState<ConvenioType | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
+  const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
@@ -159,11 +168,13 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
     setClient(null)
     setClientType(null)
     setRegistrations([])
+    setProfiles([])
     setActiveRegIndex(0)
 
     try {
       const digits = cpf.replace(/\D/g, "")
       const paddedCpf = digits.padStart(11, '0')
+      const foundProfiles: ConvenioProfile[] = []
       
       // 1. Try search in SIAPE Clients
       const { data: siapeData } = await withRetry<ClientData | null>(async () => 
@@ -171,9 +182,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (siapeData) {
-        setClient(siapeData)
-        setClientType('siape')
-
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase
             .from('matriculas')
@@ -188,9 +196,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
         )
 
         if (regError) console.error("Erro ao buscar matrículas SIAPE:", regError)
-        setRegistrations((regData as Registration[]) || [])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'siape',
+          client: siapeData,
+          registrations: (regData as Registration[]) || []
+        })
       }
 
       // 2. Try search in Governo SP Clients
@@ -199,9 +209,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (govSpData) {
-        setClient(govSpData)
-        setClientType('governo_sp')
-
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('governo_sp_identificacoes')
@@ -232,9 +239,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           }
         })
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'governo_sp',
+          client: govSpData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 3. Try search in Prefeitura SP Clients
@@ -243,9 +252,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (pmspData) {
-        setClient(pmspData)
-        setClientType('prefeitura_sp')
-
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('prefeitura_sp_identificacoes')
@@ -276,9 +282,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           }
         })
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'prefeitura_sp',
+          client: pmspData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 4. Try search in Governo PI Clients
@@ -287,9 +295,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (govPiData) {
-        setClient(govPiData)
-        setClientType('governo_pi')
-
         interface BasePiData {
           matricula?: string;
           vinculo?: string;
@@ -390,9 +395,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           });
         }
 
-        setRegistrations(mappedIdData)
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'governo_pi',
+          client: govPiData,
+          registrations: mappedIdData
+        })
       }
 
       // 5. Try search in Governo MA Clients
@@ -401,9 +408,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (govMaData) {
-        setClient(govMaData)
-        setClientType('governo_ma')
-
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('governo_ma_identificacoes')
@@ -437,9 +441,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           }
         })
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'governo_ma',
+          client: govMaData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 6. Try search in Governo RR Clients
@@ -448,9 +454,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (govRrData) {
-        setClient(govRrData)
-        setClientType('governo_rr')
-
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('governo_rr_matriculas')
@@ -543,9 +546,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           }
         }
 
-        setRegistrations(mappedIdData as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'governo_rr',
+          client: govRrData,
+          registrations: mappedIdData as unknown as Registration[]
+        })
       }
 
       // 7. Try search in Governo RJ Clients
@@ -554,9 +559,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (govRjData) {
-        setClient(govRjData)
-        setClientType('governo_rj')
-
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase.from('governo_rj_matriculas').select('*').eq('cliente_id', (govRjData as ClientData).id)
         )
@@ -575,9 +577,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           instituidores: []
         }))
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'governo_rj',
+          client: govRjData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 8. Try search in Prefeitura Santo André Clients
@@ -586,9 +590,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (saData) {
-        setClient(saData)
-        setClientType('prefeitura_santo_andre')
-
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase.from('prefeitura_santo_andre_matriculas').select('*').eq('cliente_id', (saData as ClientData).id)
         )
@@ -610,9 +611,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           instituidores: []
         }))
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'prefeitura_santo_andre',
+          client: saData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 9. Try search in Prefeitura Contagem Clients
@@ -621,9 +624,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (contagemData) {
-        setClient(contagemData)
-        setClientType('prefeitura_contagem')
-
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase.from('prefeitura_contagem_matriculas').select('*').eq('cliente_id', (contagemData as ClientData).id)
         )
@@ -647,9 +647,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           instituidores: []
         }))
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'prefeitura_contagem',
+          client: contagemData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 10. Try search in Governo MG Clients
@@ -658,9 +660,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (mgData) {
-        setClient(mgData)
-        setClientType('governo_mg')
-
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase.from('governo_mg_matriculas').select('*').eq('cliente_id', (mgData as ClientData).id)
         )
@@ -681,9 +680,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           instituidores: []
         }))
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'governo_mg',
+          client: mgData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 11. Try search in Prefeitura Natal Clients
@@ -692,9 +693,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (natalData) {
-        setClient(natalData)
-        setClientType('prefeitura_natal')
-
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('prefeitura_natal_identificacoes')
@@ -725,9 +723,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           }
         })
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'prefeitura_natal',
+          client: natalData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 12. Try search in Prefeitura Porto Velho Clients
@@ -736,9 +736,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (portoVelhoData) {
-        setClient(portoVelhoData)
-        setClientType('prefeitura_porto_velho')
-
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
           await supabase
             .from('prefeitura_porto_velho_identificacoes')
@@ -769,9 +766,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           }
         })
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'prefeitura_porto_velho',
+          client: portoVelhoData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 13. Try search in Governo BA Clients
@@ -780,9 +779,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (baData) {
-        setClient(baData)
-        setClientType('governo_ba')
-
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase.from('governo_ba_matriculas').select('*').eq('cliente_id', (baData as ClientData).id)
         )
@@ -803,9 +799,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           instituidores: []
         }))
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'governo_ba',
+          client: baData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 14. Try search in Governo AM Clients
@@ -814,9 +812,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (amData) {
-        setClient(amData)
-        setClientType('governo_am')
-
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase.from('governo_am_matriculas').select('*').eq('cliente_id', (amData as ClientData).id)
         )
@@ -840,9 +835,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           instituidores: []
         }))
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'governo_am',
+          client: amData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 15. Try search in Governo CE Clients
@@ -851,9 +848,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (ceData) {
-        setClient(ceData)
-        setClientType('governo_ce')
-
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase.from('governo_ce_matriculas').select('*').eq('cliente_id', (ceData as ClientData).id)
         )
@@ -872,9 +866,11 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           instituidores: []
         }))
 
-        setRegistrations(mappedRegs as unknown as Registration[])
-        setIsLoading(false)
-        return
+        foundProfiles.push({
+          type: 'governo_ce',
+          client: ceData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
       }
 
       // 16. Try search in Governo RO Clients
@@ -883,9 +879,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       )
 
       if (roData) {
-        setClient(roData)
-        setClientType('governo_ro')
-
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase.from('governo_ro_matriculas').select('*').eq('cliente_id', (roData as ClientData).id)
         )
@@ -908,7 +901,33 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           instituidores: []
         }))
 
-        setRegistrations(mappedRegs as unknown as Registration[])
+        foundProfiles.push({
+          type: 'governo_ro',
+          client: roData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
+      }
+
+      if (foundProfiles.length > 0) {
+        setProfiles(foundProfiles)
+        // Select first profile or match initialMatricula if present
+        let selectedProfile = foundProfiles[0]
+        if (initialMatricula) {
+          const matchProfile = foundProfiles.find(p => 
+            p.registrations.some(r => 
+              r.matricula === initialMatricula || 
+              r.numero_matricula === initialMatricula || 
+              r.identificacao === initialMatricula ||
+              (r.instituidores && r.instituidores.some(i => i.numero_matricula === initialMatricula))
+            )
+          )
+          if (matchProfile) {
+            selectedProfile = matchProfile
+          }
+        }
+        setClient(selectedProfile.client)
+        setClientType(selectedProfile.type)
+        setRegistrations(selectedProfile.registrations)
         setIsLoading(false)
         return
       }
@@ -920,7 +939,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
     } finally {
       setIsLoading(false)
     }
-  }, [cpf])
+  }, [cpf, initialMatricula])
 
   useEffect(() => {
     if (isOpen && cpf) {
@@ -1036,6 +1055,55 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           </div>
         ) : client && (
           <div className="p-6 space-y-6">
+            {profiles.length > 1 && (
+              <div className="flex flex-col gap-2.5 bg-white border border-slate-200 p-4 rounded-xl shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#171717]/60">
+                  Convênios Vinculados a este CPF ({profiles.length})
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {profiles.map((p) => {
+                    const isActive = clientType === p.type;
+                    const convenioDisplayName = 
+                      p.type === 'siape' ? 'SIAPE' :
+                      p.type === 'governo_sp' ? 'GOVERNO SP' :
+                      p.type === 'prefeitura_sp' ? 'PREFEITURA SP' :
+                      p.type === 'governo_pi' ? 'GOVERNO PIAUÍ' :
+                      p.type === 'governo_ma' ? 'GOVERNO MARANHÃO' :
+                      p.type === 'governo_rr' ? 'GOVERNO RORAIMA' :
+                      p.type === 'governo_rj' ? 'GOVERNO RIO DE JANEIRO' :
+                      p.type === 'prefeitura_santo_andre' ? 'PREFEITURA SANTO ANDRÉ' :
+                      p.type === 'prefeitura_contagem' ? 'PREFEITURA CONTAGEM' :
+                      p.type === 'governo_mg' ? 'GOVERNO MINAS GERAIS' : 
+                      p.type === 'prefeitura_natal' ? 'PREFEITURA DE NATAL' :
+                      p.type === 'prefeitura_porto_velho' ? 'PREFEITURA DE PORTO VELHO' :
+                      p.type === 'governo_ba' ? 'GOVERNO BAHIA' :
+                      p.type === 'governo_am' ? 'GOVERNO AMAZONAS' :
+                      p.type === 'governo_ce' ? 'GOVERNO CEARÁ' :
+                      p.type === 'governo_ro' ? 'GOVERNO RONDÔNIA' : String(p.type).toUpperCase();
+                    
+                    return (
+                      <button
+                        key={`profile-tab-${p.type}`}
+                        type="button"
+                        onClick={() => {
+                          setClient(p.client);
+                          setClientType(p.type);
+                          setRegistrations(p.registrations);
+                          setActiveRegIndex(0);
+                        }}
+                        className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all border cursor-pointer ${
+                          isActive 
+                            ? "bg-[#171717] text-white border-[#171717] shadow-sm font-black scale-102" 
+                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        {convenioDisplayName}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {/* Dados Pessoais */}
             <Card className="card-shadow bg-white border border-slate-200">
               <CardContent className="p-6 space-y-6">
