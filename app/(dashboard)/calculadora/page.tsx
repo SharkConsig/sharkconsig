@@ -18,7 +18,11 @@ import {
   Printer,
   CheckCircle2,
   Info,
-  Pencil
+  Pencil,
+  Crown,
+  Sparkles,
+  Receipt,
+  LayoutGrid
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { cn } from "@/lib/utils"
@@ -365,7 +369,9 @@ interface CalculadoraPageProps {
 }
 
 export default function CalculadoraPage({ clientMargins, isEmbedded, client: passedClient, orgao: passedOrgao, onProposalSaved }: CalculadoraPageProps = {}) {
-  const { perfil, isAdmin } = useAuth()
+  const { perfil, isAdmin, isSupervisor, isDeveloper } = useAuth()
+  const canChangeTheme = Boolean(isAdmin || isSupervisor || isDeveloper || perfil?.role === 'Administrador' || perfil?.role === 'Supervisor')
+  const [resultTheme, setResultTheme] = useState<'clean' | 'vip' | 'ticket' | 'compact'>('clean')
 
   const [clienteNome, setClienteNome] = useState<string>(passedClient?.nome || "")
   const lastSavedProposalRef = useRef<{ key: string; time: number } | null>(null)
@@ -2525,141 +2531,602 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
               </div>
 
               {/* RIGHT COLUMN: RESULTADO & RESUMO AMORTIZAÇÃO */}
-              <div className="lg:col-span-5 space-y-6">
-                <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
-                  <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-[#00D492]">
-                    <Calculator className="w-4 h-4 text-[#00D492]" />
-                    <span>RESULTADO</span>
+              <div className="lg:col-span-5 space-y-3">
+                {/* 4 Theme Switcher Buttons (Only for Administrador and Supervisor) */}
+                {canChangeTheme && (
+                  <div className="flex items-center gap-1.5 p-1 bg-slate-100 border border-slate-200 rounded-xl text-xs overflow-x-auto">
+                    <button
+                      type="button"
+                      onClick={() => setResultTheme("clean")}
+                      className={cn(
+                        "flex-1 py-1.5 px-2.5 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer",
+                        resultTheme === "clean"
+                          ? "bg-white text-slate-900 shadow-sm border border-slate-300"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                      )}
+                      title="Modelo 1: Padrão / Clean (Primeiro envio oficial)"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-[#00D492]" />
+                      <span>1. Padrão</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setResultTheme("ticket")}
+                      className={cn(
+                        "flex-1 py-1.5 px-2.5 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer",
+                        resultTheme === "ticket"
+                          ? "bg-emerald-700 text-white shadow-sm border border-emerald-800"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                      )}
+                      title="Modelo 2: Destaque Verde / Aprovação Rápida"
+                    >
+                      <Receipt className="w-3.5 h-3.5 text-emerald-200" />
+                      <span>2. Card Verde</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setResultTheme("compact")}
+                      className={cn(
+                        "flex-1 py-1.5 px-2.5 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer",
+                        resultTheme === "compact"
+                          ? "bg-[#0F172B] text-white shadow-sm border border-[#0F172B]"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                      )}
+                      title="Modelo 3: Resumo Executivo / Cartão Compacto"
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5 text-slate-300" />
+                      <span>3. Compacto</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setResultTheme("vip")}
+                      className={cn(
+                        "flex-1 py-1.5 px-2.5 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer",
+                        resultTheme === "vip"
+                          ? "bg-slate-950 text-amber-400 shadow-sm border border-amber-500/50"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                      )}
+                      title="Modelo 4: Destaque VIP (Dark Mode de Alto Impacto)"
+                    >
+                      <span>4. VIP</span>
+                    </button>
                   </div>
+                )}
 
-                  {/* Black Banner Metrics */}
-                  <div>
-                    <div className="bg-slate-900 text-white p-4 rounded-xl space-y-1 shadow-sm">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        VALOR LIBERADO
-                      </p>
-                      <p className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
-                        {formatBRL(valorLiberado)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Summary Rows */}
-                  <div className="divide-y divide-slate-100 text-xs">
-                    <div className="py-2.5 flex justify-between items-center">
-                      <span className="font-semibold text-slate-500">{activeResult.labelParcela}</span>
-                      <span className="font-bold text-slate-900">{formatBRL(activeResult.parcela)}</span>
+                {/* THEME 1: PADRÃO / CLEAN */}
+                {resultTheme === "clean" && (
+                  <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
+                    <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-[#00D492]">
+                      <Calculator className="w-4 h-4 text-[#00D492]" />
+                      <span>RESULTADO</span>
                     </div>
 
-                    <div className="py-2.5 flex justify-between items-center">
-                      <span className="font-semibold text-slate-500">Taxa implícita</span>
-                      <span className="font-bold text-slate-900">{formatPercent(activeResult.taxa)}</span>
-                    </div>
-
-                    <div className="py-2.5 flex justify-between items-center">
-                      <span className="font-semibold text-slate-500">Duração</span>
-                      <span className="font-bold text-slate-900">{activeResult.prazo} meses</span>
-                    </div>
-
-                    {Boolean(valorBolsoInput?.trim()) && (
-                      <div className="my-1.5 px-3 py-2 bg-[#79ABDE] border border-[#1B74CE] rounded-xl flex justify-between items-center">
-                        <span className="font-bold text-slate-900">Valor em Mãos</span>
-                        <span className="font-extrabold text-slate-950">{formatBRL(valorBolso)}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* RESUMO AMORTIZAÇÃO (If active) */}
-                  {resumoAmortizacao && (
-                    <div className="pt-2 space-y-4 border-t border-slate-200">
-                      <div className="font-bold text-xs uppercase tracking-wider text-[#00D492]">
-                        RESUMO AMORTIZAÇÃO
-                      </div>
-
-                      <div className="divide-y divide-slate-100 text-xs">
-                        <div className="py-2 flex justify-between items-center">
-                          <span className="font-semibold text-slate-500">Valor p/ antecipação</span>
-                          <span className="font-bold text-slate-900">
-                            {formatBRL(resumoAmortizacao.valorAntecipacao)}
-                          </span>
-                        </div>
-
-                        <div className="py-2 flex justify-between items-center">
-                          <span className="font-semibold text-slate-500">Quanto antecipado</span>
-                          <span className="font-bold text-slate-900">
-                            {formatBRL(resumoAmortizacao.quantoAntecipado)}
-                          </span>
-                        </div>
-
-                        <div className="py-2 flex justify-between items-center">
-                          <span className="font-semibold text-slate-500">Parcelas quitadas</span>
-                          <span className="font-bold text-slate-900">
-                            {resumoAmortizacao.parcelasQuitadas} parcelas
-                          </span>
-                        </div>
-
-                        <div className="py-2 flex justify-between items-center">
-                          <span className="font-semibold text-slate-500">Remanescentes</span>
-                          <span className="font-bold text-slate-900">
-                            {resumoAmortizacao.remanescentes} meses
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* SALDO PARA PORT */}
-                      <div className="bg-slate-900 text-white p-4 rounded-xl space-y-1 shadow-md">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#00D492]">
-                          SALDO PARA PORT
+                    {/* Black Banner Metrics */}
+                    <div>
+                      <div className="bg-slate-900 text-white p-4 rounded-xl space-y-1 shadow-sm">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          VALOR LIBERADO
                         </p>
-                        <p className="text-2xl font-black text-white tracking-tight">
-                          {formatBRL(resumoAmortizacao.saldoParaPort)}
+                        <p className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
+                          {formatBRL(valorLiberado)}
                         </p>
                       </div>
                     </div>
-                  )}
 
-                  {/* Action Buttons */}
-                  <div className={cn(
-                    "pt-4 grid gap-2",
-                    valorBolsoInput?.trim() ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"
-                  )}>
-                    <button
-                      onClick={() => setActiveTab("amort_liberacao")}
-                      className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-3 px-2 rounded-xl transition-all flex items-center justify-center gap-1"
-                    >
-                      <TableIcon className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Tabela</span>
-                    </button>
+                    {/* Summary Rows */}
+                    <div className="divide-y divide-slate-100 text-xs">
+                      <div className="py-2.5 flex justify-between items-center">
+                        <span className="font-semibold text-slate-500">{activeResult.labelParcela}</span>
+                        <span className="font-bold text-slate-900">{formatBRL(activeResult.parcela)}</span>
+                      </div>
 
-                    <button
-                      onClick={() => setShowSummaryModal(true)}
-                      className="bg-[#00D492] hover:bg-[#00b87f] text-slate-900 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1"
-                    >
-                      <FileText className="w-3.5 h-3.5" />
-                      <span>Resumo</span>
-                    </button>
+                      <div className="py-2.5 flex justify-between items-center">
+                        <span className="font-semibold text-slate-500">Taxa implícita</span>
+                        <span className="font-bold text-slate-900">{formatPercent(activeResult.taxa)}</span>
+                      </div>
 
-                    {!valorBolsoInput?.trim() && (
-                      <>
-                        <button
-                          onClick={handleOpenCompareModal}
-                          className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-amber-600 cursor-pointer"
-                        >
-                          <ArrowLeftRight className="w-3.5 h-3.5 text-slate-950" />
-                          <span>Comparar</span>
-                        </button>
+                      <div className="py-2.5 flex justify-between items-center">
+                        <span className="font-semibold text-slate-500">Duração</span>
+                        <span className="font-bold text-slate-900">{activeResult.prazo} meses</span>
+                      </div>
 
-                        <button
-                          onClick={handleGerarPDF}
-                          className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-slate-800"
-                        >
-                          <FileText className="w-3.5 h-3.5 text-[#00D492]" />
-                          <span>Ver Plano</span>
-                        </button>
-                      </>
+                      {Boolean(valorBolsoInput?.trim()) && (
+                        <div className="my-1.5 px-3 py-2 bg-[#79ABDE] border border-[#1B74CE] rounded-xl flex justify-between items-center">
+                          <span className="font-bold text-slate-900">Valor em Mãos</span>
+                          <span className="font-extrabold text-slate-950">{formatBRL(valorBolso)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* RESUMO AMORTIZAÇÃO (If active) */}
+                    {resumoAmortizacao && (
+                      <div className="pt-2 space-y-4 border-t border-slate-200">
+                        <div className="font-bold text-xs uppercase tracking-wider text-[#00D492]">
+                          RESUMO AMORTIZAÇÃO
+                        </div>
+
+                        <div className="divide-y divide-slate-100 text-xs">
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="font-semibold text-slate-500">Valor p/ antecipação</span>
+                            <span className="font-bold text-slate-900">
+                              {formatBRL(resumoAmortizacao.valorAntecipacao)}
+                            </span>
+                          </div>
+
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="font-semibold text-slate-500">Quanto antecipado</span>
+                            <span className="font-bold text-slate-900">
+                              {formatBRL(resumoAmortizacao.quantoAntecipado)}
+                            </span>
+                          </div>
+
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="font-semibold text-slate-500">Parcelas quitadas</span>
+                            <span className="font-bold text-slate-900">
+                              {resumoAmortizacao.parcelasQuitadas} parcelas
+                            </span>
+                          </div>
+
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="font-semibold text-slate-500">Remanescentes</span>
+                            <span className="font-bold text-slate-900">
+                              {resumoAmortizacao.remanescentes} meses
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* SALDO PARA PORT */}
+                        <div className="bg-slate-900 text-white p-4 rounded-xl space-y-1 shadow-md">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-[#00D492]">
+                            SALDO PARA PORT
+                          </p>
+                          <p className="text-2xl font-black text-white tracking-tight">
+                            {formatBRL(resumoAmortizacao.saldoParaPort)}
+                          </p>
+                        </div>
+                      </div>
                     )}
+
+                    {/* Action Buttons */}
+                    <div className={cn(
+                      "pt-4 grid gap-2",
+                      valorBolsoInput?.trim() ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"
+                    )}>
+                      <button
+                        onClick={() => setActiveTab("amort_liberacao")}
+                        className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-3 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <TableIcon className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Tabela</span>
+                      </button>
+
+                      <button
+                        onClick={() => setShowSummaryModal(true)}
+                        className="bg-[#00D492] hover:bg-[#00b87f] text-slate-900 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Resumo</span>
+                      </button>
+
+                      {!valorBolsoInput?.trim() && (
+                        <>
+                          <button
+                            onClick={handleOpenCompareModal}
+                            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-amber-600 cursor-pointer"
+                          >
+                            <ArrowLeftRight className="w-3.5 h-3.5 text-slate-950" />
+                            <span>Comparar</span>
+                          </button>
+
+                          <button
+                            onClick={handleGerarPDF}
+                            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-slate-800 cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-[#00D492]" />
+                            <span>Ver Plano</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* THEME 2: DESTAQUE VIP (Dark Mode de Alto Impacto / Dourado & Verde Neon) */}
+                {resultTheme === "vip" && (
+                  <div className="bg-[#0B0F17] text-white rounded-2xl p-6 border-2 border-amber-500/50 shadow-2xl space-y-6 relative overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-black text-xs uppercase tracking-wider text-amber-400">
+                        <span>RESULTADO</span>
+                      </div>
+                    </div>
+
+                    {/* VIP Highlight Value Banner */}
+                    <div>
+                      <div className="bg-gradient-to-br from-slate-900 via-[#101927] to-[#0B0F17] border-2 border-amber-500/60 text-white p-5 rounded-xl space-y-1 shadow-[0_0_20px_rgba(245,158,11,0.15)] text-center sm:text-left">
+                        <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest">
+                          VALOR TOTAL LIBERADO
+                        </p>
+                        <p className="text-2xl sm:text-3xl font-black text-[#00FF9D] tracking-tight drop-shadow-[0_0_12px_rgba(0,255,157,0.35)]">
+                          {formatBRL(valorLiberado)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Summary Rows VIP */}
+                    <div className="divide-y divide-slate-800 text-xs">
+                      <div className="py-2.5 flex justify-between items-center">
+                        <span className="font-medium text-slate-400">{activeResult.labelParcela}</span>
+                        <span className="font-black text-white text-sm">{formatBRL(activeResult.parcela)}</span>
+                      </div>
+
+                      <div className="py-2.5 flex justify-between items-center">
+                        <span className="font-medium text-slate-400">Taxa</span>
+                        <span className="font-bold text-amber-400">{formatPercent(activeResult.taxa)}</span>
+                      </div>
+
+                      <div className="py-2.5 flex justify-between items-center">
+                        <span className="font-medium text-slate-400">Duração</span>
+                        <span className="font-bold text-white">{activeResult.prazo} meses</span>
+                      </div>
+
+                      {Boolean(valorBolsoInput?.trim()) && (
+                        <div className="my-1.5 px-3 py-2 bg-emerald-950/80 border border-emerald-500/50 rounded-xl flex justify-between items-center text-emerald-200">
+                          <span className="font-bold">Valor em Mãos</span>
+                          <span className="font-black text-emerald-400">{formatBRL(valorBolso)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* RESUMO AMORTIZAÇÃO (VIP) */}
+                    {resumoAmortizacao && (
+                      <div className="pt-2 space-y-4 border-t border-slate-800">
+                        <div className="font-bold text-xs uppercase tracking-wider text-amber-400">
+                          RESUMO AMORTIZAÇÃO
+                        </div>
+
+                        <div className="divide-y divide-slate-800 text-xs">
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="text-slate-400">Valor p/ antecipação</span>
+                            <span className="font-bold text-white">
+                              {formatBRL(resumoAmortizacao.valorAntecipacao)}
+                            </span>
+                          </div>
+
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="text-slate-400">Quanto antecipado</span>
+                            <span className="font-bold text-white">
+                              {formatBRL(resumoAmortizacao.quantoAntecipado)}
+                            </span>
+                          </div>
+
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="text-slate-400">Parcelas quitadas</span>
+                            <span className="font-bold text-white">
+                              {resumoAmortizacao.parcelasQuitadas} parcelas
+                            </span>
+                          </div>
+
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="text-slate-400">Remanescentes</span>
+                            <span className="font-bold text-white">
+                              {resumoAmortizacao.remanescentes} meses
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* SALDO PARA PORT */}
+                        <div className="bg-slate-900 border border-amber-500/40 text-white p-4 rounded-xl space-y-1 shadow-md">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                            SALDO PARA PORT
+                          </p>
+                          <p className="text-2xl font-black text-[#00FF9D] tracking-tight">
+                            {formatBRL(resumoAmortizacao.saldoParaPort)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Action Buttons VIP */}
+                    <div className={cn(
+                      "pt-4 grid gap-2",
+                      valorBolsoInput?.trim() ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"
+                    )}>
+                      <button
+                        onClick={() => setActiveTab("amort_liberacao")}
+                        className="bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-bold text-xs py-3 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <TableIcon className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Tabela</span>
+                      </button>
+
+                      <button
+                        onClick={() => setShowSummaryModal(true)}
+                        className="bg-[#00D492] hover:bg-[#00b87f] text-slate-950 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-slate-950" />
+                        <span>Resumo</span>
+                      </button>
+
+                      {!valorBolsoInput?.trim() && (
+                        <>
+                          <button
+                            onClick={handleOpenCompareModal}
+                            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-amber-600 cursor-pointer"
+                          >
+                            <ArrowLeftRight className="w-3.5 h-3.5 text-slate-950" />
+                            <span>Comparar</span>
+                          </button>
+
+                          <button
+                            onClick={handleGerarPDF}
+                            className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-amber-400 cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-slate-950" />
+                            <span>Ver Plano</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* THEME 3: DESTAQUE ESMERALDA / CARD VERDE (Visual Moderno e Sofisticado) */}
+                {resultTheme === "ticket" && (
+                  <div className="bg-white rounded-2xl p-6 border-2 border-emerald-600 shadow-sm space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-emerald-700">
+                        <Calculator className="w-4 h-4 text-emerald-600" />
+                        <span>RESULTADO</span>
+                      </div>
+                    </div>
+
+                    {/* Green Gradient Banner Metrics */}
+                    <div>
+                      <div className="bg-gradient-to-br from-emerald-900 to-slate-900 text-white p-4 rounded-xl space-y-1 shadow-sm border border-emerald-700/50">
+                        <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">
+                          VALOR LIBERADO
+                        </p>
+                        <p className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
+                          {formatBRL(valorLiberado)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Summary Rows */}
+                    <div className="divide-y divide-slate-100 text-xs">
+                      <div className="py-2.5 flex justify-between items-center">
+                        <span className="font-semibold text-slate-500">{activeResult.labelParcela}</span>
+                        <span className="font-bold text-slate-900">{formatBRL(activeResult.parcela)}</span>
+                      </div>
+
+                      <div className="py-2.5 flex justify-between items-center">
+                        <span className="font-semibold text-slate-500">Taxa</span>
+                        <span className="font-bold text-emerald-700">{formatPercent(activeResult.taxa)}</span>
+                      </div>
+
+                      <div className="py-2.5 flex justify-between items-center">
+                        <span className="font-semibold text-slate-500">Duração</span>
+                        <span className="font-bold text-slate-900">{activeResult.prazo} meses</span>
+                      </div>
+
+                      {Boolean(valorBolsoInput?.trim()) && (
+                        <div className="my-1.5 px-3 py-2 bg-emerald-50 border border-emerald-300 rounded-xl flex justify-between items-center">
+                          <span className="font-bold text-emerald-900">Valor em Mãos</span>
+                          <span className="font-extrabold text-emerald-950">{formatBRL(valorBolso)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* RESUMO AMORTIZAÇÃO (If active) */}
+                    {resumoAmortizacao && (
+                      <div className="pt-2 space-y-4 border-t border-slate-200">
+                        <div className="font-bold text-xs uppercase tracking-wider text-emerald-700">
+                          RESUMO AMORTIZAÇÃO
+                        </div>
+
+                        <div className="divide-y divide-slate-100 text-xs">
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="font-semibold text-slate-500">Valor p/ antecipação</span>
+                            <span className="font-bold text-slate-900">
+                              {formatBRL(resumoAmortizacao.valorAntecipacao)}
+                            </span>
+                          </div>
+
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="font-semibold text-slate-500">Quanto antecipado</span>
+                            <span className="font-bold text-slate-900">
+                              {formatBRL(resumoAmortizacao.quantoAntecipado)}
+                            </span>
+                          </div>
+
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="font-semibold text-slate-500">Parcelas quitadas</span>
+                            <span className="font-bold text-slate-900">
+                              {resumoAmortizacao.parcelasQuitadas} parcelas
+                            </span>
+                          </div>
+
+                          <div className="py-2 flex justify-between items-center">
+                            <span className="font-semibold text-slate-500">Remanescentes</span>
+                            <span className="font-bold text-slate-900">
+                              {resumoAmortizacao.remanescentes} meses
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* SALDO PARA PORT */}
+                        <div className="bg-emerald-950 text-white p-4 rounded-xl space-y-1 shadow-md border border-emerald-800">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                            SALDO PARA PORT
+                          </p>
+                          <p className="text-2xl font-black text-white tracking-tight">
+                            {formatBRL(resumoAmortizacao.saldoParaPort)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className={cn(
+                      "pt-4 grid gap-2",
+                      valorBolsoInput?.trim() ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"
+                    )}>
+                      <button
+                        onClick={() => setActiveTab("amort_liberacao")}
+                        className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-3 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <TableIcon className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Tabela</span>
+                      </button>
+
+                      <button
+                        onClick={() => setShowSummaryModal(true)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Resumo</span>
+                      </button>
+
+                      {!valorBolsoInput?.trim() && (
+                        <>
+                          <button
+                            onClick={handleOpenCompareModal}
+                            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-amber-600 cursor-pointer"
+                          >
+                            <ArrowLeftRight className="w-3.5 h-3.5 text-slate-950" />
+                            <span>Comparar</span>
+                          </button>
+
+                          <button
+                            onClick={handleGerarPDF}
+                            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-slate-800 cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Ver Plano</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* THEME 4: RESUMO EXECUTIVO / CARTÃO COMPACTO (Foco nas 3 Informações Essenciais) */}
+                {resultTheme === "compact" && (
+                  <div className="bg-white rounded-2xl p-5 border-2 border-[#0F172B] shadow-md space-y-5">
+                    {/* Compact Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-black text-xs uppercase tracking-wider text-[#0F172B]">
+                        <LayoutGrid className="w-4 h-4 text-[#0F172B]" />
+                        <span>PROPOSTA</span>
+                      </div>
+                    </div>
+
+                    {/* 3 Essential Metric Blocks */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div className="bg-slate-100/90 border border-slate-300 rounded-xl p-3 text-center space-y-1">
+                        <p className="text-[10px] font-extrabold text-[#0F172B] uppercase tracking-wider">
+                          VALOR LIBERADO
+                        </p>
+                        <p className="text-base sm:text-lg font-black text-[#0F172B] tracking-tight">
+                          {formatBRL(valorLiberado)}
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center space-y-1">
+                        <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                          PARCELA
+                        </p>
+                        <p className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                          {formatBRL(activeResult.parcela)}
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center space-y-1">
+                        <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                          PRAZO
+                        </p>
+                        <p className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                          {activeResult.prazo}x
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Compact Secondary Summary */}
+                    <div className="flex items-center justify-between text-xs px-2 text-slate-600 font-medium border-t border-slate-100 pt-3">
+                      <span>Taxa: <strong className="text-slate-900 font-bold">{formatPercent(activeResult.taxa)}</strong></span>
+                      {Boolean(valorBolsoInput?.trim()) && (
+                        <span>No bolso: <strong className="text-[#0F172B] font-bold">{formatBRL(valorBolso)}</strong></span>
+                      )}
+                    </div>
+
+                    {/* RESUMO AMORTIZAÇÃO (Compact) */}
+                    {resumoAmortizacao && (
+                      <div className="pt-2 space-y-3 border-t border-slate-200">
+                        <div className="font-bold text-xs uppercase tracking-wider text-[#0F172B]">
+                          RESUMO AMORTIZAÇÃO
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                            <span className="text-[10px] text-slate-500 block">Antecipação</span>
+                            <span className="font-bold text-slate-900">{formatBRL(resumoAmortizacao.valorAntecipacao)}</span>
+                          </div>
+                          <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                            <span className="text-[10px] text-slate-500 block">Quitadas / Restam</span>
+                            <span className="font-bold text-slate-900">{resumoAmortizacao.parcelasQuitadas}x / {resumoAmortizacao.remanescentes}m</span>
+                          </div>
+                        </div>
+
+                        <div className="bg-[#0F172B] text-white p-3 rounded-xl flex items-center justify-between shadow-sm">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Saldo Port:</span>
+                          <span className="text-lg font-black text-white">{formatBRL(resumoAmortizacao.saldoParaPort)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Action Buttons Compact */}
+                    <div className={cn(
+                      "pt-3 grid gap-2",
+                      valorBolsoInput?.trim() ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"
+                    )}>
+                      <button
+                        onClick={() => setActiveTab("amort_liberacao")}
+                        className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-2.5 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <TableIcon className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Tabela</span>
+                      </button>
+
+                      <button
+                        onClick={() => setShowSummaryModal(true)}
+                        className="bg-[#00D492] hover:bg-[#00b87f] text-slate-900 font-bold text-xs py-2.5 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Resumo</span>
+                      </button>
+
+                      {!valorBolsoInput?.trim() && (
+                        <>
+                          <button
+                            onClick={handleOpenCompareModal}
+                            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-2.5 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-amber-600 cursor-pointer"
+                          >
+                            <ArrowLeftRight className="w-3.5 h-3.5 text-slate-950" />
+                            <span>Comparar</span>
+                          </button>
+
+                          <button
+                            onClick={handleGerarPDF}
+                            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 border border-slate-800 cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-[#00D492]" />
+                            <span>Ver Plano</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
