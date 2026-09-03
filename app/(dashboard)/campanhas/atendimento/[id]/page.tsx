@@ -316,6 +316,7 @@ export default function CampanhaAtendimentoPage() {
   
   const hasRegisteredSession = useRef(false)
   const hasRegisteredExit = useRef(false)
+  const locallyTabulatedCpfs = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -529,23 +530,41 @@ export default function CampanhaAtendimentoPage() {
           }
         })
 
-        // 1. Obter todos os CPFs já tabulados (atendidos) ou reservados nesta campanha para filtrá-los em tempo real na listagem
-        const { data: attendedRows, error: attendedErr } = await withRetry(() =>
-          supabase
-            .from('campanha_atendimentos')
-            .select('cliente_cpf, tabulacao, created_at, corretor_id')
-            .eq('campanha_id', camp.id)
-            .neq('cliente_cpf', '00000000000')
-        )
-        if (attendedErr) {
-          console.warn("Erro ao buscar atendimentos existentes:", attendedErr)
+        // 1. Obter todos os CPFs já tabulados (atendidos) ou reservados nesta campanha para filtrá-los em tempo real na listagem (paginado em lotes para superar o limite de 1000 do Supabase)
+        let attendedRows: any[] = []
+        let hasMoreAttended = true
+        let attendedOffset = 0
+        const attendedLimit = 1000
+
+        while (hasMoreAttended) {
+          const { data: attendedBatch, error: attendedErr } = await withRetry(() =>
+            supabase
+              .from('campanha_atendimentos')
+              .select('cliente_cpf, tabulacao, created_at, corretor_id')
+              .eq('campanha_id', camp.id)
+              .neq('cliente_cpf', '00000000000')
+              .range(attendedOffset, attendedOffset + attendedLimit - 1)
+          )
+          if (attendedErr) {
+            console.warn("Erro ao buscar atendimentos existentes:", attendedErr)
+            break
+          }
+          if (attendedBatch && attendedBatch.length > 0) {
+            attendedRows.push(...attendedBatch)
+            attendedOffset += attendedBatch.length
+            if (attendedBatch.length < attendedLimit) {
+              hasMoreAttended = false
+            }
+          } else {
+            hasMoreAttended = false
+          }
         }
 
         const attendedCpfs = new Set<string>()
         const reservedCpfs = new Set<string>()
         const nowMs = Date.now()
 
-        if (attendedRows) {
+        if (attendedRows.length > 0) {
           const finalTabulatedCpfs = new Set<string>()
           const activeReservations = new Map<string, { timestamp: number; corretorId: string }>()
 
@@ -573,6 +592,9 @@ export default function CampanhaAtendimentoPage() {
             }
           })
         }
+
+        // Adiciona garantidamente todos os CPFs tabulados pelo corretor nesta sessão (evita reincidência por latência)
+        locallyTabulatedCpfs.current.forEach(cpf => attendedCpfs.add(cpf))
 
         // 2. Obter todos os vínculos (claims) ativos de outros corretores
         // Fallback backward-compatible db fetch for campanha_vinculos (wrapped in try/catch to suppress failures)
@@ -1181,19 +1203,36 @@ export default function CampanhaAtendimentoPage() {
         }
       }
 
-      // 2. Count unique CPFs progress for this broker
-      const { data: attendedRowsForBroker, error: countError } = await withRetry(() => 
-        supabase
-          .from('campanha_atendimentos')
-          .select('cliente_cpf')
-          .eq('campanha_id', campaignId)
-          .eq('corretor_id', userId)
-          .neq('cliente_cpf', '00000000000')
-      )
-      
-      if (countError) {
-        console.error("Erro Supabase (Count):", countError)
-        throw countError
+      // 2. Count unique CPFs progress for this broker (paginado em lotes)
+      let attendedRowsForBroker: any[] = []
+      let hasMoreBroker = true
+      let brokerOffset = 0
+
+      while (hasMoreBroker) {
+        const { data: brokerBatch, error: countError } = await withRetry(() => 
+          supabase
+            .from('campanha_atendimentos')
+            .select('cliente_cpf')
+            .eq('campanha_id', campaignId)
+            .eq('corretor_id', userId)
+            .neq('cliente_cpf', '00000000000')
+            .range(brokerOffset, brokerOffset + 999)
+        )
+        
+        if (countError) {
+          console.error("Erro Supabase (Count):", countError)
+          break
+        }
+
+        if (brokerBatch && brokerBatch.length > 0) {
+          attendedRowsForBroker.push(...brokerBatch)
+          brokerOffset += brokerBatch.length
+          if (brokerBatch.length < 1000) {
+            hasMoreBroker = false
+          }
+        } else {
+          hasMoreBroker = false
+        }
       }
       
       const finishedCount = attendedRowsForBroker
@@ -1234,11 +1273,16 @@ export default function CampanhaAtendimentoPage() {
      
      setIsSubmitting(true)
      try {
+       const cleanLeadCpf = currentLead.cpf ? currentLead.cpf.replace(/\D/g, "").padStart(11, '0') : ""
+       if (cleanLeadCpf) {
+         locallyTabulatedCpfs.current.add(cleanLeadCpf)
+       }
+
        const { error } = await withRetry(() => 
          supabase.from('campanha_atendimentos').insert({
            campanha_id: campaign.id,
            corretor_id: userId,
-           cliente_cpf: currentLead.cpf,
+           cliente_cpf: cleanLeadCpf || currentLead.cpf,
            tabulacao,
            
          })
@@ -1302,11 +1346,16 @@ export default function CampanhaAtendimentoPage() {
       
       setIsSubmitting(true)
       try {
+        const cleanLeadCpf = currentLead.cpf ? currentLead.cpf.replace(/\D/g, "").padStart(11, '0') : ""
+        if (cleanLeadCpf) {
+          locallyTabulatedCpfs.current.add(cleanLeadCpf)
+        }
+
         const { error } = await withRetry(() => 
           supabase.from('campanha_atendimentos').insert({
             campanha_id: campaign.id,
             corretor_id: userId,
-            cliente_cpf: currentLead.cpf,
+            cliente_cpf: cleanLeadCpf || currentLead.cpf,
             tabulacao
           })
         )

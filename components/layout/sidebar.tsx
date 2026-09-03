@@ -45,6 +45,12 @@ const allMenuItems = [
         roles: ["Administrador", "Desenvolvedor", "Supervisor"] 
       },
       { 
+        name: "TREINAMENTO", 
+        href: "/treinamento", 
+        icon: GraduationCap, 
+        roles: ["Desenvolvedor"] 
+      },
+      { 
         name: "DASHBOARD", 
         href: "/", 
         icon: Landmark, 

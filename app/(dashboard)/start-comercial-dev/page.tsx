@@ -52,6 +52,7 @@ export default function StartComercialDevPage() {
   const [activeStep, setActiveStep] = useState<number | "all">(1)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [isCampaignImageModalOpen, setIsCampaignImageModalOpen] = useState(false)
+  const [isLeadImageModalOpen, setIsLeadImageModalOpen] = useState(false)
   const [isPropostaQuitacaoModalOpen, setIsPropostaQuitacaoModalOpen] = useState(false)
 
   const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
@@ -799,18 +800,91 @@ export default function StartComercialDevPage() {
                     </span>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
 
-                <div className="text-center">
-                  <Link
-                    href="/campanhas/distribuicao"
-                    className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm cursor-pointer"
-                  >
-                    <span>clique aqui para acessar uma campanha</span>
-                    <ExternalLink className="w-4 h-4" />
-                  </Link>
+          {/* SEÇÃO: COMO APARECERÃO OS DADOS DO LEAD */}
+          <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-5 bg-emerald-600 rounded-full"></div>
+              <h3 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-wide">
+                COMO APARECERÃO OS DADOS DO LEAD
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+              {/* LADO ESQUERDO: PASSOS */}
+              <div className="lg:col-span-6 space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-3.5 bg-white border border-slate-200/80 rounded-xl shadow-2xs">
+                    <span className="w-6 h-6 rounded-full bg-[#19223D] text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                      1
+                    </span>
+                    <div className="text-xs text-slate-800 leading-relaxed font-medium">
+                      Pegue o whatsapp e chame o cliente.
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3.5 bg-white border border-slate-200/80 rounded-xl shadow-2xs">
+                    <span className="w-6 h-6 rounded-full bg-[#19223D] text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                      2
+                    </span>
+                    <div className="text-xs text-slate-800 leading-relaxed font-medium">
+                      Após isso, selecione o status e clique em próximo cliente para avançar para o próximo lead.
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3.5 bg-white border border-slate-200/80 rounded-xl shadow-2xs">
+                    <span className="w-6 h-6 rounded-full bg-[#009966] text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                      3
+                    </span>
+                    <div className="text-xs text-slate-800 leading-relaxed font-medium">
+                      Você só conseguirá sair da campanha, após selecionar a tabulação.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* LADO DIREITO: IMAGEM */}
+              <div className="lg:col-span-6 flex flex-col space-y-3">
+                <div 
+                  onClick={() => setIsLeadImageModalOpen(true)}
+                  className="group relative rounded-2xl overflow-hidden border-2 border-slate-200 hover:border-emerald-500 bg-slate-900 cursor-pointer transition-all shadow-md hover:shadow-xl"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsLeadImageModalOpen(true) }}
+                >
+                  <div className="relative w-full aspect-[16/10] bg-slate-950">
+                    <Image
+                      src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/lead_campanha.png"
+                      alt="Como aparecerão os dados do lead"
+                      fill
+                      className="object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+
+                  {/* OVERLAY INDICANDO CLIQUE PARA AMPLIAR */}
+                  <div className="absolute inset-0 bg-slate-950/30 group-hover:bg-slate-950/10 transition-colors flex items-center justify-center">
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950/80 backdrop-blur-xs text-white text-xs font-bold px-3 py-1.5 rounded-full border border-white/20 shadow-lg flex items-center gap-1.5">
+                      <Search className="w-3.5 h-3.5 text-emerald-400" /> Clique para ampliar
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* BOTÃO PARA ACESSAR A CAMPANHA */}
+          <div>
+            <Link
+              href="/campanhas/distribuicao"
+              className="inline-flex items-center justify-center gap-2 w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm cursor-pointer"
+            >
+              <span>clique aqui para acessar uma campanha</span>
+              <ExternalLink className="w-4 h-4" />
+            </Link>
           </div>
 
           {/* NAVEGAÇÃO INFERIOR */}
@@ -3925,6 +3999,50 @@ export default function StartComercialDevPage() {
                 <span>Acessar Campanha</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE AMPLIAÇÃO DA IMAGEM: DADOS DO LEAD */}
+      {isLeadImageModalOpen && (
+        <div 
+          className="fixed inset-0 z-[300] bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5"
+          onClick={() => setIsLeadImageModalOpen(false)}
+        >
+          <div 
+            className="relative bg-slate-900 border border-slate-700 rounded-2xl sm:rounded-3xl max-w-5xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* CABEÇALHO DO MODAL */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-950 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide">
+                  Tela de Referência: Como Aparecerão os Dados do Lead
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsLeadImageModalOpen(false)}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* CORPO DO MODAL */}
+            <div className="relative w-full flex-1 min-h-0 bg-slate-950 p-2 sm:p-4 flex items-center justify-center overflow-auto">
+              <div className="relative w-full aspect-[16/10] max-h-[70vh]">
+                <Image
+                  src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/lead_campanha.png"
+                  alt="Como aparecerão os dados do lead ampliado"
+                  fill
+                  className="object-contain"
+                  referrerPolicy="no-referrer"
+                  priority
+                />
+              </div>
             </div>
           </div>
         </div>
