@@ -34,11 +34,13 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Info,
+  AlertCircle,
   X,
   SlidersHorizontal,
   Compass,
   CheckCheck,
-  Download
+  Download,
+  Mic
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -47,13 +49,95 @@ export default function StartComercialDevPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState<string>("todos")
-  const [activeTab2, setActiveTab2] = useState<"inicial" | "contexto">("inicial")
   const [activeTab6, setActiveTab6] = useState<"senff" | "facultativa" | "reacoes" | "plano" | "quitacao" | "documentos">("senff")
   const [activeStep, setActiveStep] = useState<number | "all">(1)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [isCampaignImageModalOpen, setIsCampaignImageModalOpen] = useState(false)
   const [isLeadImageModalOpen, setIsLeadImageModalOpen] = useState(false)
   const [isPropostaQuitacaoModalOpen, setIsPropostaQuitacaoModalOpen] = useState(false)
+  const [isImageBankModalOpen, setIsImageBankModalOpen] = useState(false)
+  const [downloadingImage, setDownloadingImage] = useState<string | null>(null)
+
+  const BANCO_DE_IMAGENS = [
+    {
+      id: "alteracao",
+      title: "Alteração",
+      filename: "alteracao.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/alteracao.jpeg"
+    },
+    {
+      id: "alteracao_pmsp",
+      title: "Alteração PM SP",
+      filename: "alteracao_pmsp.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/alteracao_pmsp.jpeg"
+    },
+    {
+      id: "alteracao_pref_sp",
+      title: "Alteração Prefeitura SP",
+      filename: "alteracao_pref_sp.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/alteracao_pref_sp.jpeg"
+    },
+    {
+      id: "alteracao_seu_contrato",
+      title: "Alteração Seu Contrato",
+      filename: "alteracao_seu_contrato.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/alteracao_seu_contrato.jpeg"
+    },
+    {
+      id: "carencia",
+      title: "Carência",
+      filename: "carencia.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/carencia.jpeg"
+    },
+    {
+      id: "contra_cheque_atualizado",
+      title: "Contra Cheque Atualizado",
+      filename: "contra_cheque_atualizado.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/contra_cheque_atualizado.jpeg"
+    },
+    {
+      id: "matriculas_spprev",
+      title: "Matrículas SPPREV",
+      filename: "matriculas_spprev.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/matriculas_spprev.jpeg"
+    },
+    {
+      id: "mudanca_entrou_em_vigor",
+      title: "Mudança Entrou em Vigor",
+      filename: "mudanca_entrou_em_vigor.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/mudanca_entrou_em_vigor.jpeg"
+    },
+    {
+      id: "nova_alteracao",
+      title: "Nova Alteração",
+      filename: "nova_alteracao.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/nova_alteracao.jpeg"
+    },
+    {
+      id: "pagar_taxas_como_estas",
+      title: "Pagar Taxas Como Estas",
+      filename: "pagar_taxas_como_estas.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/pagar_taxas_como_estas.jpeg"
+    },
+    {
+      id: "pm_sp",
+      title: "PM SP",
+      filename: "pm_sp.png",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/pm_sp.png"
+    },
+    {
+      id: "prejudicando_voce",
+      title: "Prejudicando Você",
+      filename: "prejudicando_voce.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/prejudicando_voce.jpeg"
+    },
+    {
+      id: "voce_tem_aprovacao",
+      title: "Você Tem Aprovação",
+      filename: "voce_tem_aprovacao.jpeg",
+      url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/voce_tem_aprovacao.jpeg"
+    }
+  ]
 
   const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
   const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ'
@@ -877,13 +961,13 @@ export default function StartComercialDevPage() {
           </div>
 
           {/* BOTÃO PARA ACESSAR A CAMPANHA */}
-          <div>
+          <div className="flex justify-center">
             <Link
               href="/campanhas/distribuicao"
-              className="inline-flex items-center justify-center gap-2 w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 w-4/5 py-2.5 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold uppercase tracking-wider rounded-xl transition-all shadow-sm cursor-pointer"
             >
               <span>clique aqui para acessar uma campanha</span>
-              <ExternalLink className="w-4 h-4" />
+              <ExternalLink className="w-3.5 h-3.5" />
             </Link>
           </div>
 
@@ -933,67 +1017,43 @@ export default function StartComercialDevPage() {
 
           <div className="p-5 bg-emerald-50/70 border border-emerald-500 rounded-xl space-y-1.5">
             <span className="text-xs font-black text-emerald-800 uppercase tracking-wider block">
-              REGRA PARA O NOVO
+              REGRA PARA O NOVO CLIENTE
             </span>
             <p className="text-[13px] text-slate-800 font-medium leading-relaxed">
               A primeira mensagem não precisa explicar banco, amortização, engenharia da operação ou todas as condições. Ela precisa dar contexto, mostrar uma vantagem e gerar resposta.
             </p>
           </div>
 
-          {/* SCRIPTS COPIÁVEIS COM ABAS */}
+          {/* SCRIPTS COPIÁVEIS */}
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3 pb-2.5 border-b border-slate-200">
-              <div className="flex items-center gap-2 mr-1">
-                <div className={cn("w-1.5 h-4.5 rounded-full transition-colors", activeTab2 === "inicial" ? "bg-blue-600" : "bg-emerald-600")}></div>
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">
-                  O Que Falar
-                </h3>
-              </div>
-
-              {/* TABS DE MENSAGENS COM MAIOR DESTAQUE E APROXIMADAS */}
-              <div className="flex items-center bg-slate-200/90 p-1 rounded-xl border border-slate-300/80 shadow-inner">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab2("inicial")}
-                  className={cn(
-                    "px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer",
-                    activeTab2 === "inicial"
-                      ? "bg-blue-600 text-white shadow-md ring-2 ring-blue-600/30"
-                      : "text-slate-700 hover:text-slate-950 hover:bg-slate-100/60"
-                  )}
-                >
-                  <Sparkles className={cn("w-3.5 h-3.5", activeTab2 === "inicial" ? "text-amber-300" : "text-blue-600")} />
-                  MENSAGEM INICIAL
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab2("contexto")}
-                  className={cn(
-                    "px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer",
-                    activeTab2 === "contexto"
-                      ? "bg-emerald-600 text-white shadow-md ring-2 ring-emerald-600/30"
-                      : "text-slate-700 hover:text-slate-950 hover:bg-slate-100/60"
-                  )}
-                >
-                  <MessageSquare className={cn("w-3.5 h-3.5", activeTab2 === "contexto" ? "text-white" : "text-emerald-600")} />
-                  ESCOLHA CONFORME O CONTEXTO
-                </button>
-              </div>
+            <div className="flex items-center gap-2 pb-2.5 border-b border-slate-200">
+              <div className="w-1.5 h-4.5 bg-blue-600 rounded-full"></div>
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">
+                O Que Falar - Mensagem Inicial
+              </h3>
             </div>
 
-            {/* ABA 1: MENSAGEM INICIAL (COM CRIATIVO / IMAGEM BAIXÁVEL) */}
-            {activeTab2 === "inicial" && (
-              <div className="space-y-4">
-                <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between gap-3 text-xs text-blue-900">
-                  <div className="flex items-center gap-2">
-                    <Info className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>
-                      Modelos de abordagem inicial com o criativo de <strong>Nova Parametrização</strong>. Clique na imagem para baixar diretamente para o seu computador.
-                    </span>
-                  </div>
+            {/* LISTA COMPLETA DE MENSAGENS INICIAIS E DE CONTEXTO */}
+            <div className="space-y-4">
+              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-900">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>
+                    Modelos de abordagem inicial para novos clientes. Utilize o botão <strong>BANCO DE IMAGENS</strong> para escolher e baixar os criativos diretamente para seu computador.
+                  </span>
                 </div>
+                <button
+                  id="btn-banco-de-imagens"
+                  onClick={() => setIsImageBankModalOpen(true)}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-[10px] font-bold rounded-lg shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 self-start sm:self-auto"
+                  title="Abrir banco de imagens para mensagens"
+                >
+                  <Download className="w-3.5 h-3.5 text-white" />
+                  <span>BANCO DE IMAGENS</span>
+                </button>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* MODELO INICIAL 1 */}
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
                     <div className="space-y-3">
@@ -1011,23 +1071,6 @@ export default function StartComercialDevPage() {
                           <p className="mt-2 font-semibold text-slate-900">24 meses no consignado e taxa na casa de 1%.</p>
                           <p className="mt-2">Recebeu alguma proposta nesse sentido, [Nome]?</p>
 
-                          {/* IMAGEM BAIXÁVEL */}
-                          <div 
-                            onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png", "nova_parametrizacao_pm_sp.png")}
-                            className="mt-3 group relative rounded-xl overflow-hidden border border-slate-200 cursor-pointer bg-black/90 shadow-sm"
-                            title="Clique para baixar a imagem"
-                          >
-                            <img
-                              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png"
-                              alt="Nova Parametrização - PM SP"
-                              className="w-full max-h-56 object-cover object-top transition-transform duration-300 group-hover:scale-105"
-                            />
-                            <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white">
-                              <Download className="w-6 h-6 text-white" />
-                              <span className="text-xs font-bold">Clique para baixar a imagem</span>
-                            </div>
-                          </div>
-
                           <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
                             <span>Agora</span>
                             <Check className="w-3 h-3 text-sky-500" />
@@ -1036,23 +1079,13 @@ export default function StartComercialDevPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png", "nova_parametrizacao_pm_sp.png")}
-                        className="px-3 py-2.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                        title="Baixar imagem do criativo"
-                      >
-                        <Download className="w-4 h-4 text-slate-600" />
-                        Baixar Imagem
-                      </button>
-                      <button
-                        onClick={() => copyToClipboard("E aí, [Nome]! Como anda por aí?\n\nPessoal da PM foi surpreendido com uma notícia positiva. E estou priorizando você e seus colegas:\n\n24 meses no consignado e taxa na casa de 1%.\n\nRecebeu alguma proposta nesse sentido, [Nome]?", "ini-1")}
-                        className="flex-1 py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        {copiedId === "ini-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                        {copiedId === "ini-1" ? "Copiado com Negrito!" : "Copiar Mensagem"}
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => copyToClipboard("E aí, [Nome]! Como anda por aí?\n\nPessoal da PM foi surpreendido com uma notícia positiva. E estou priorizando você e seus colegas:\n\n24 meses no consignado e taxa na casa de 1%.\n\nRecebeu alguma proposta nesse sentido, [Nome]?", "ini-1")}
+                      className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedId === "ini-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedId === "ini-1" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                    </button>
                   </div>
 
                   {/* MODELO INICIAL 2 */}
@@ -1072,23 +1105,6 @@ export default function StartComercialDevPage() {
                           <p className="mt-2 font-semibold text-slate-900">24 meses no consignado e taxa na casa de 1%.</p>
                           <p className="mt-2">Recebeu alguma proposta nesse sentido ou posso trazer o cenário do teu caso, [Nome]?</p>
 
-                          {/* IMAGEM BAIXÁVEL */}
-                          <div 
-                            onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png", "nova_parametrizacao_pm_sp.png")}
-                            className="mt-3 group relative rounded-xl overflow-hidden border border-slate-200 cursor-pointer bg-black/90 shadow-sm"
-                            title="Clique para baixar a imagem"
-                          >
-                            <img
-                              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png"
-                              alt="Nova Parametrização - PM SP"
-                              className="w-full max-h-56 object-cover object-top transition-transform duration-300 group-hover:scale-105"
-                            />
-                            <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white">
-                              <Download className="w-6 h-6 text-white" />
-                              <span className="text-xs font-bold">Clique para baixar a imagem</span>
-                            </div>
-                          </div>
-
                           <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
                             <span>Agora</span>
                             <Check className="w-3 h-3 text-sky-500" />
@@ -1097,23 +1113,13 @@ export default function StartComercialDevPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png", "nova_parametrizacao_pm_sp.png")}
-                        className="px-3 py-2.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                        title="Baixar imagem do criativo"
-                      >
-                        <Download className="w-4 h-4 text-slate-600" />
-                        Baixar Imagem
-                      </button>
-                      <button
-                        onClick={() => copyToClipboard("Oi, [Nome]! Tudo certo por aí?\n\nFaz um tempo que atendo o pessoal da [ÓRGÃO CLIENTE], e estou conversando com mais servidores sobre:\n\n24 meses no consignado e taxa na casa de 1%.\n\nRecebeu alguma proposta nesse sentido ou posso trazer o cenário do teu caso, [Nome]?", "ini-2")}
-                        className="flex-1 py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        {copiedId === "ini-2" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                        {copiedId === "ini-2" ? "Copiado com Negrito!" : "Copiar Mensagem"}
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => copyToClipboard("Oi, [Nome]! Tudo certo por aí?\n\nFaz um tempo que atendo o pessoal da [ÓRGÃO CLIENTE], e estou conversando com mais servidores sobre:\n\n24 meses no consignado e taxa na casa de 1%.\n\nRecebeu alguma proposta nesse sentido ou posso trazer o cenário do teu caso, [Nome]?", "ini-2")}
+                      className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedId === "ini-2" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedId === "ini-2" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                    </button>
                   </div>
 
                   {/* MODELO INICIAL 3 */}
@@ -1133,23 +1139,6 @@ export default function StartComercialDevPage() {
                           <p className="mt-2">As condições variam de 0,82% a 1,32% conforme seu órgão e tempo de contrato, por isso o valor pode mudar se você não confirmar logo.</p>
                           <p className="mt-2 font-medium text-slate-900">Consulta rápida, sem compromisso, só dar <strong>*Oi*</strong> 👇</p>
 
-                          {/* IMAGEM BAIXÁVEL */}
-                          <div 
-                            onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png", "nova_parametrizacao_pm_sp.png")}
-                            className="mt-3 group relative rounded-xl overflow-hidden border border-slate-200 cursor-pointer bg-black/90 shadow-sm"
-                            title="Clique para baixar a imagem"
-                          >
-                            <img
-                              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png"
-                              alt="Nova Parametrização - PM SP"
-                              className="w-full max-h-56 object-cover object-top transition-transform duration-300 group-hover:scale-105"
-                            />
-                            <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white">
-                              <Download className="w-6 h-6 text-white" />
-                              <span className="text-xs font-bold">Clique para baixar a imagem</span>
-                            </div>
-                          </div>
-
                           <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
                             <span>Agora</span>
                             <Check className="w-3 h-3 text-sky-500" />
@@ -1158,23 +1147,13 @@ export default function StartComercialDevPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png", "nova_parametrizacao_pm_sp.png")}
-                        className="px-3 py-2.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                        title="Baixar imagem do criativo"
-                      >
-                        <Download className="w-4 h-4 text-slate-600" />
-                        Baixar Imagem
-                      </button>
-                      <button
-                        onClick={() => copyToClipboard("[Nome], tudo bem?\nLocalizamos uma aprovação no seu CPF pela condição especial para servidores da [ÓRGÃO CLIENTE].\n\nAs condições variam de 0,82% a 1,32% conforme seu órgão e tempo de contrato, por isso o valor pode mudar se você não confirmar logo.\n\nConsulta rápida, sem compromisso, só dar *Oi* 👇", "ini-3")}
-                        className="flex-1 py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        {copiedId === "ini-3" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                        {copiedId === "ini-3" ? "Copiado com Negrito!" : "Copiar Mensagem"}
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => copyToClipboard("[Nome], tudo bem?\nLocalizamos uma aprovação no seu CPF pela condição especial para servidores da [ÓRGÃO CLIENTE].\n\nAs condições variam de 0,82% a 1,32% conforme seu órgão e tempo de contrato, por isso o valor pode mudar se você não confirmar logo.\n\nConsulta rápida, sem compromisso, só dar *Oi* 👇", "ini-3")}
+                      className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedId === "ini-3" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedId === "ini-3" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                    </button>
                   </div>
 
                   {/* MODELO INICIAL 4 */}
@@ -1193,23 +1172,6 @@ export default function StartComercialDevPage() {
                           <p className="mt-2">Antes de eu encerrar sua análise, quero confirmar se você já aproveitou a condição de 1% ou ainda posso verificar para você?</p>
                           <p className="mt-2 font-medium text-slate-900">Me responde aqui que mostro antes do encerramento.</p>
 
-                          {/* IMAGEM BAIXÁVEL */}
-                          <div 
-                            onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png", "nova_parametrizacao_pm_sp.png")}
-                            className="mt-3 group relative rounded-xl overflow-hidden border border-slate-200 cursor-pointer bg-black/90 shadow-sm"
-                            title="Clique para baixar a imagem"
-                          >
-                            <img
-                              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png"
-                              alt="Nova Parametrização - PM SP"
-                              className="w-full max-h-56 object-cover object-top transition-transform duration-300 group-hover:scale-105"
-                            />
-                            <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white">
-                              <Download className="w-6 h-6 text-white" />
-                              <span className="text-xs font-bold">Clique para baixar a imagem</span>
-                            </div>
-                          </div>
-
                           <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
                             <span>Agora</span>
                             <Check className="w-3 h-3 text-sky-500" />
@@ -1218,23 +1180,13 @@ export default function StartComercialDevPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png", "nova_parametrizacao_pm_sp.png")}
-                        className="px-3 py-2.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                        title="Baixar imagem do criativo"
-                      >
-                        <Download className="w-4 h-4 text-slate-600" />
-                        Baixar Imagem
-                      </button>
-                      <button
-                        onClick={() => copyToClipboard("[Nome]! 👀 Atualizou uma alteração que beneficiou a sua matrícula, com possibilidade de 12, 24 e 36 meses no seu consignado.\n\nAntes de eu encerrar sua análise, quero confirmar se você já aproveitou a condição de 1% ou ainda posso verificar para você?\n\nMe responde aqui que mostro antes do encerramento.", "ini-4")}
-                        className="flex-1 py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        {copiedId === "ini-4" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                        {copiedId === "ini-4" ? "Copiado com Negrito!" : "Copiar Mensagem"}
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => copyToClipboard("[Nome]! 👀 Atualizou uma alteração que beneficiou a sua matrícula, com possibilidade de 12, 24 e 36 meses no seu consignado.\n\nAntes de eu encerrar sua análise, quero confirmar se você já aproveitou a condição de 1% ou ainda posso verificar para você?\n\nMe responde aqui que mostro antes do encerramento.", "ini-4")}
+                      className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedId === "ini-4" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedId === "ini-4" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                    </button>
                   </div>
 
                   {/* MODELO INICIAL 5 */}
@@ -1254,23 +1206,6 @@ export default function StartComercialDevPage() {
                           <p className="mt-2 font-semibold text-slate-900">24 meses e taxa de 0.96%.</p>
                           <p className="mt-2">Você recebeu alguma proposta sobre isso recentemente?</p>
 
-                          {/* IMAGEM BAIXÁVEL */}
-                          <div 
-                            onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png", "nova_parametrizacao_pm_sp.png")}
-                            className="mt-3 group relative rounded-xl overflow-hidden border border-slate-200 cursor-pointer bg-black/90 shadow-sm"
-                            title="Clique para baixar a imagem"
-                          >
-                            <img
-                              src="https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png"
-                              alt="Nova Parametrização - PM SP"
-                              className="w-full max-h-56 object-cover object-top transition-transform duration-300 group-hover:scale-105"
-                            />
-                            <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white">
-                              <Download className="w-6 h-6 text-white" />
-                              <span className="text-xs font-bold">Clique para baixar a imagem</span>
-                            </div>
-                          </div>
-
                           <div className="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
                             <span>Agora</span>
                             <Check className="w-3 h-3 text-sky-500" />
@@ -1279,173 +1214,157 @@ export default function StartComercialDevPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        onClick={() => downloadImage("https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images/pm_sp.png", "nova_parametrizacao_pm_sp.png")}
-                        className="px-3 py-2.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                        title="Baixar imagem do criativo"
-                      >
-                        <Download className="w-4 h-4 text-slate-600" />
-                        Baixar Imagem
-                      </button>
-                      <button
-                        onClick={() => copyToClipboard("Oi, [Nome]! Tudo bem?\n\nIdentifiquei que o seu CPF ficou temporariamente enquadrado em um consignado com:\n24 meses e taxa de 0.96%.\n\nVocê recebeu alguma proposta sobre isso recentemente?", "ini-5")}
-                        className="flex-1 py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        {copiedId === "ini-5" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                        {copiedId === "ini-5" ? "Copiado com Negrito!" : "Copiar Mensagem"}
-                      </button>
+                    <button
+                      onClick={() => copyToClipboard("Oi, [Nome]! Tudo bem?\n\nIdentifiquei que o seu CPF ficou temporariamente enquadrado em um consignado com:\n24 meses e taxa de 0.96%.\n\nVocê recebeu alguma proposta sobre isso recentemente?", "ini-5")}
+                      className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedId === "ini-5" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedId === "ini-5" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                    </button>
+                  </div>
+
+                  {/* MODELO 6 */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
+                          6. Contexto + Comparação
+                        </span>
+                        <span className="text-[10px] text-blue-700 font-bold bg-blue-50 border border-blue-200/80 px-1.5 py-0.5 rounded">Opção Principal</span>
+                      </div>
+
+                      {/* MOCK WHATSAPP */}
+                      <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
+                        <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                          <p>Oi, [Nome].</p>
+                          <p className="mt-2">Tudo certo por aí?</p>
+                          <p className="mt-2">Estou falando com alguns servidores da <strong>[ÓRGÃO]</strong> porque abriu uma condição que pode <strong>reduzir bastante a duração</strong> do consignado.</p>
+                          <p className="mt-2">Você recebeu alguma proposta recente ou ainda não chegou a comparar?</p>
+                          <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                            <span>Agora</span>
+                            <Check className="w-3 h-3 text-sky-500" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-[11.75px] text-slate-500 italic">
+                        <strong>Quando usar:</strong> Boa opção genérica quando você ainda vai consultar o caso.
+                      </p>
                     </div>
+                    <button
+                      onClick={() => copyToClipboard("Oi, [Nome].\n\nTudo certo por aí?\n\nEstou falando com alguns servidores da *[ÓRGÃO]* porque abriu uma condição que pode *reduzir bastante a duração* do consignado.\n\nVocê recebeu alguma proposta recente ou ainda não chegou a comparar?", "p-1")}
+                      className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedId === "p-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedId === "p-1" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                    </button>
+                  </div>
+
+                  {/* MODELO 7 */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
+                          7. Condição Já Liberada para a Base
+                        </span>
+                      </div>
+
+                      {/* MOCK WHATSAPP */}
+                      <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
+                        <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                          <p>Oi, [Nome].</p>
+                          <p className="mt-2">Para servidores da <strong>[ÓRGÃO]</strong>, estamos trabalhando uma estrutura de <strong>duração reduzida</strong> e taxa na casa de <strong>[REFERÊNCIA DA CAMPANHA]</strong>.</p>
+                          <p className="mt-2">Você já recebeu alguma proposta nesse formato ou posso conferir o teu cenário?</p>
+                          <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                            <span>Agora</span>
+                            <Check className="w-3 h-3 text-sky-500" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-[11.75px] text-slate-500 italic">
+                        <strong>Quando usar:</strong> Use somente quando a campanha realmente sustenta a referência anunciada. Não transforme condição de campanha em número fechado do cliente antes da consulta.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard("Oi, [Nome].\n\nPara servidores da *[ÓRGÃO]*, estamos trabalhando uma estrutura de *duração reduzida* e taxa na casa de *[REFERÊNCIA DA CAMPANHA]*.\n\nVocê já recebeu alguma proposta nesse formato ou posso conferir o teu cenário?", "p-2")}
+                      className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedId === "p-2" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedId === "p-2" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                    </button>
+                  </div>
+
+                  {/* MODELO 8 */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
+                          8. Direta e Curta
+                        </span>
+                      </div>
+
+                      {/* MOCK WHATSAPP */}
+                      <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
+                        <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                          <p>[Nome], tudo bem?</p>
+                          <p className="mt-2">0.96% no teu consignado hoje pode ser uma boa opção.</p>
+                          <p className="mt-2">Você já recebeu proposta recentemente?</p>
+                          <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                            <span>Agora</span>
+                            <Check className="w-3 h-3 text-sky-500" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-[11.75px] text-slate-500 italic">
+                        <strong>Quando usar:</strong> Quando o canal/base pede mensagem mais enxuta.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard("[Nome], tudo bem?\n\n0.96% no teu consignado hoje pode ser uma boa opção.\n\nVocê já recebeu proposta recentemente?", "p-3")}
+                      className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedId === "p-3" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedId === "p-3" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                    </button>
+                  </div>
+
+                  {/* MODELO 9 */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
+                          9. Reativação
+                        </span>
+                      </div>
+
+                      {/* MOCK WHATSAPP */}
+                      <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
+                        <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                          <p>[Nome], antes de eu encerrar tua análise por aqui: você chegou a comparar alguma condição com o <strong>prazo reduzido</strong> ou ainda não olhou isso?</p>
+                          <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                            <span>Agora</span>
+                            <Check className="w-3 h-3 text-sky-500" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-[11.75px] text-slate-500 italic">
+                        <strong>Quando usar:</strong> Lead que já foi acionado anteriormente.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard("[Nome], antes de eu encerrar tua análise por aqui: você chegou a comparar alguma condição com o *prazo reduzido* ou ainda não olhou isso?", "p-4")}
+                      className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedId === "p-4" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedId === "p-4" ? "Copiado com Negrito!" : "Copiar Mensagem"}
+                    </button>
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* ABA 2: ESCOLHA CONFORME O CONTEXTO */}
-            {activeTab2 === "contexto" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* SCRIPT 1 */}
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded">
-                        1. Contexto + Comparação
-                      </span>
-                      <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.5 rounded">Opção Principal</span>
-                    </div>
-
-                    {/* MOCK WHATSAPP */}
-                    <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
-                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
-                        <p>Oi, [Nome].</p>
-                        <p className="mt-2">Tudo certo por aí?</p>
-                        <p className="mt-2">Estou falando com alguns servidores da <strong>[ÓRGÃO]</strong> porque abriu uma condição que pode <strong>reduzir bastante a duração</strong> do consignado.</p>
-                        <p className="mt-2">Você recebeu alguma proposta recente ou ainda não chegou a comparar?</p>
-                        <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
-                          <span>Agora</span>
-                          <Check className="w-3 h-3 text-sky-500" />
-                        </div>
-                      </div>
-                    </div>
-
-                    <p className="text-[11.75px] text-slate-500 italic">
-                      <strong>Quando usar:</strong> Boa opção genérica quando você ainda vai consultar o caso.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard("Oi, [Nome].\n\nTudo certo por aí?\n\nEstou falando com alguns servidores da *[ÓRGÃO]* porque abriu uma condição que pode *reduzir bastante a duração* do consignado.\n\nVocê recebeu alguma proposta recente ou ainda não chegou a comparar?", "p-1")}
-                    className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    {copiedId === "p-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    {copiedId === "p-1" ? "Copiado com Negrito!" : "Copiar Mensagem"}
-                  </button>
-                </div>
-
-                {/* SCRIPT 2 */}
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded">
-                        2. CAMPANHA COM CONDIÇÃO JÁ LIBERADA PARA A BASE
-                      </span>
-                    </div>
-
-                    {/* MOCK WHATSAPP */}
-                    <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
-                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
-                        <p>Oi, [Nome].</p>
-                        <p className="mt-2">Para servidores da <strong>[ÓRGÃO]</strong>, estamos trabalhando uma estrutura de <strong>duração reduzida</strong> e taxa na casa de <strong>[REFERÊNCIA DA CAMPANHA]</strong>.</p>
-                        <p className="mt-2">Você já recebeu alguma proposta nesse formato ou posso conferir o teu cenário?</p>
-                        <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
-                          <span>Agora</span>
-                          <Check className="w-3 h-3 text-sky-500" />
-                        </div>
-                      </div>
-                    </div>
-
-                    <p className="text-[11.75px] text-slate-500 italic">
-                      <strong>Quando usar:</strong> Use somente quando a campanha realmente sustenta a referência anunciada. Não transforme condição de campanha em número fechado do cliente antes da consulta.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard("Oi, [Nome].\n\nPara servidores da *[ÓRGÃO]*, estamos trabalhando uma estrutura de *duração reduzida* e taxa na casa de *[REFERÊNCIA DA CAMPANHA]*.\n\nVocê já recebeu alguma proposta nesse formato ou posso conferir o teu cenário?", "p-2")}
-                    className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    {copiedId === "p-2" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    {copiedId === "p-2" ? "Copiado com Negrito!" : "Copiar Mensagem"}
-                  </button>
-                </div>
-
-                {/* SCRIPT 3 */}
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded">
-                        3. Direta e Curta
-                      </span>
-                    </div>
-
-                    {/* MOCK WHATSAPP */}
-                    <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
-                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
-                        <p>[Nome], tudo bem?</p>
-                        <p className="mt-2">0.96% no teu consignado hoje pode ser uma boa opção.</p>
-                        <p className="mt-2">Você já recebeu proposta recentemente?</p>
-                        <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
-                          <span>Agora</span>
-                          <Check className="w-3 h-3 text-sky-500" />
-                        </div>
-                      </div>
-                    </div>
-
-                    <p className="text-[11.75px] text-slate-500 italic">
-                      <strong>Quando usar:</strong> Quando o canal/base pede mensagem mais enxuta.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard("[Nome], tudo bem?\n\n0.96% no teu consignado hoje pode ser uma boa opção.\n\nVocê já recebeu proposta recentemente?", "p-3")}
-                    className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    {copiedId === "p-3" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    {copiedId === "p-3" ? "Copiado com Negrito!" : "Copiar Mensagem"}
-                  </button>
-                </div>
-
-                {/* SCRIPT 4 */}
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded">
-                        4. Reativação
-                      </span>
-                    </div>
-
-                    {/* MOCK WHATSAPP */}
-                    <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
-                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
-                        <p>[Nome], antes de eu encerrar tua análise por aqui: você chegou a comparar alguma condição com o <strong>prazo reduzido</strong> ou ainda não olhou isso?</p>
-                        <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
-                          <span>Agora</span>
-                          <Check className="w-3 h-3 text-sky-500" />
-                        </div>
-                      </div>
-                    </div>
-
-                    <p className="text-[11.75px] text-slate-500 italic">
-                      <strong>Quando usar:</strong> Lead que já foi acionado anteriormente.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard("[Nome], antes de eu encerrar tua análise por aqui: você chegou a comparar alguma condição com o *prazo reduzido* ou ainda não olhou isso?", "p-4")}
-                    className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    {copiedId === "p-4" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    {copiedId === "p-4" ? "Copiado com Negrito!" : "Copiar Mensagem"}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
 
           {/* 2.1 E SE O CLIENTE NÃO RESPONDER? */}
           <div className="pt-6 border-t border-slate-100 space-y-6">
@@ -1456,7 +1375,7 @@ export default function StartComercialDevPage() {
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* RETOMADA 1 */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
                 <div className="space-y-3">
@@ -1477,8 +1396,11 @@ export default function StartComercialDevPage() {
                     </div>
                   </div>
 
-                  <p className="text-[11.75px] text-slate-500 italic">
-                    <strong>Uso:</strong> Primeira retomada sem repetir a mensagem inteira.
+                  <p className="text-[12.75px] font-medium text-black/90 italic flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-black/90 shrink-0 not-italic" />
+                    <span>
+                      <strong className="font-bold">Observação:</strong> <span className="font-semibold">Turno inverso da mensagem inicial.</span>
+                    </span>
                   </p>
                 </div>
                 <button
@@ -1488,6 +1410,70 @@ export default function StartComercialDevPage() {
                   {copiedId === "ret-1" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                   {copiedId === "ret-1" ? "Copiado com Negrito!" : "Copiar Mensagem"}
                 </button>
+              </div>
+
+              {/* RETOMADA COM ÁUDIO (POSIÇÃO 2) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded">
+                      Retomada com Áudio
+                    </span>
+                  </div>
+
+                  {/* MOCK WHATSAPP */}
+                  <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
+                    <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[95%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed select-all">
+                      <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-100 not-italic select-none">
+                        <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                          <Mic className="w-4 h-4 text-white" />
+                        </div>
+                        <span className="text-[11px] font-extrabold text-emerald-800 uppercase tracking-wider bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
+                          Gravar em Áudio
+                        </span>
+                      </div>
+                      <p>[NOME CLIENTE], Pessoal da [ÓRGÃO CLIENTE] que atendo muito, na grande maioria tem gostado bastante da opção que surgiu no consignado.</p>
+                      <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                        <span>Agora</span>
+                        <Check className="w-3 h-3 text-sky-500" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-1">
+                  {/* OBSERVAÇÃO ABAIXO DE ENVIAR ÁUDIO */}
+                  <p className="text-[12.75px] font-semibold text-black/90 italic flex items-start gap-1.5 leading-snug">
+                    <AlertCircle className="w-4 h-4 text-black/90 shrink-0 not-italic mt-0.5" />
+                    <span className="text-black/90">
+                      (Pular um dia após a ultima retomada, se enviou a retomada anterior na segunda-feira, envie o áudio na quarta-feira, em horário diferente).
+                    </span>
+                  </p>
+
+                  {/* TEXTO COMPLEMENTAR */}
+                  <div className="space-y-2">
+                    <p className="text-[12px] font-semibold text-emerald-700 leading-snug">
+                      Texto complementar para enviar 2 horas após o envio do áudio, caso cliente não tenha interagido:
+                    </p>
+                    <div className="bg-[#efeae2] p-3 rounded-2xl border border-slate-200 shadow-inner relative">
+                      <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-sm max-w-[92%] border border-slate-100 text-[12.75px] text-slate-800 font-sans leading-relaxed space-y-1 select-all">
+                        <p>Pensei em você porque os colegas tem gostado.</p>
+                        <p>Você recebeu o comparativo?</p>
+                        <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                          <span>Agora</span>
+                          <Check className="w-3 h-3 text-sky-500" />
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard("Pensei em você porque os colegas tem gostado.\n\nVocê recebeu o comparativo?", "ret-audio-comp")}
+                      className="w-full py-2.5 bg-[#0f172a] hover:bg-black text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedId === "ret-audio-comp" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copiedId === "ret-audio-comp" ? "Copiado!" : "Copiar Texto Complementar"}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* RETOMADA 2 */}
@@ -1567,6 +1553,7 @@ export default function StartComercialDevPage() {
                 <li>Mandar cálculo completo em imagem sem o cliente ter respondido ou demonstrado interesse.</li>
                 <li>Criar falsa urgência dizendo que "a proposta encerra hoje às 18h" se isso não for regra real do banco.</li>
                 <li>Afirmar que o CPF já está "aprovado" se o sistema ainda não processou a esteira.</li>
+                <li>Enviar volume do tipo Ctrl C e Ctrl V de uma única mensagem para diversos clientes ou enviar muitas mensagens variadas em curto espaço de tempo.</li>
               </ul>
             </div>
           </div>
@@ -4097,6 +4084,116 @@ export default function StartComercialDevPage() {
               <button
                 onClick={() => setIsPropostaQuitacaoModalOpen(false)}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL BANCO DE IMAGENS */}
+      {isImageBankModalOpen && (
+        <div 
+          id="modal-banco-de-imagens"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsImageBankModalOpen(false)
+          }}
+        >
+          <div className="relative w-full max-w-5xl max-h-[92vh] bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* CABEÇALHO DO MODAL */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-600 text-white rounded-xl shadow-xs">
+                  <Download className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Banco de Imagens - Criativos para Mensagens</h3>
+                  <p className="text-xs text-slate-500">Clique na miniatura desejada para baixar a imagem original para seu computador</p>
+                </div>
+              </div>
+              <button
+                id="btn-fechar-modal-banco-imagens"
+                onClick={() => setIsImageBankModalOpen(false)}
+                className="p-1.5 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 transition-colors cursor-pointer"
+                title="Fechar banco de imagens"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* GRID DE MINIATURAS */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 bg-slate-100/60">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {BANCO_DE_IMAGENS.map((item) => {
+                  const isDownloading = downloadingImage === item.id
+                  return (
+                    <div
+                      key={item.id}
+                      id={`card-imagem-${item.id}`}
+                      onClick={async () => {
+                        if (isDownloading) return
+                        setDownloadingImage(item.id)
+                        try {
+                          await downloadImage(item.url, item.filename)
+                        } finally {
+                          setDownloadingImage(null)
+                        }
+                      }}
+                      className="group relative bg-white border border-slate-200 hover:border-blue-500 rounded-xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col cursor-pointer"
+                      title={`Clique para baixar ${item.title}`}
+                    >
+                      {/* PREVIEW CONTAINER */}
+                      <div className="relative w-full aspect-[4/3] bg-slate-900 flex items-center justify-center overflow-hidden">
+                        <img
+                          src={item.url}
+                          alt={item.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                        />
+                        {/* OVERLAY DE DOWNLOAD */}
+                        <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white p-2 text-center">
+                          {isDownloading ? (
+                            <>
+                              <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+                              <span className="text-[11px] font-bold">Baixando...</span>
+                            </>
+                          ) : (
+                            <>
+                              <div className="p-2 rounded-full bg-blue-600 shadow-md">
+                                <Download className="w-4 h-4 text-white" />
+                              </div>
+                              <span className="text-[11px] font-bold">Clique para baixar</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* LEGENDA / NOME */}
+                      <div className="p-2.5 bg-white border-t border-slate-100 flex items-center justify-between gap-1.5">
+                        <span className="text-xs font-semibold text-slate-800 truncate" title={item.title}>
+                          {item.title}
+                        </span>
+                        <span className="text-[10px] text-blue-600 font-bold shrink-0 flex items-center gap-0.5">
+                          <Download className="w-3 h-3" />
+                          Baixar
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* RODAPÉ DO MODAL */}
+            <div className="flex items-center justify-between gap-3 px-5 py-3 bg-white border-t border-slate-200 shrink-0">
+              <span className="text-xs text-slate-500">
+                Total de <strong>{BANCO_DE_IMAGENS.length} imagens</strong> disponíveis para download
+              </span>
+              <button
+                onClick={() => setIsImageBankModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
               >
                 Fechar
               </button>
