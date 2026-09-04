@@ -2381,10 +2381,6 @@ export default function StartComercialDevPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-rose-600 font-bold">•</span>
-                  <span>Você ainda nem fez a consulta básica.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-rose-600 font-bold">•</span>
                   <span>O cliente ainda não respondeu e não existe dúvida técnica.</span>
                 </li>
               </ul>
