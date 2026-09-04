@@ -42,7 +42,7 @@ const allMenuItems = [
         href: "/start-comercial-dev", 
         icon: Rocket, 
         isSpecialStart: true,
-        roles: ["Administrador", "Desenvolvedor", "Supervisor"] 
+        roles: ["Administrador", "Supervisor", "Operacional", "Corretor", "Monitoramento", "Estágio", "Desenvolvedor", "RH"] 
       },
       { 
         name: "TREINAMENTO", 
@@ -316,10 +316,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
-        // Se for o link COMECE AQUI, visível ESTRITAMENTE para Corretor PJ, Administrador, Supervisor e Desenvolvedor
+        // Se for o link COMECE AQUI, visível para todos os usuários do sistema
         if (item.name === "COMECE AQUI" || item.href === "/start-comercial-dev") {
-          if (isAdmin || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || perfil?.role === 'Supervisor' || isCorretorPJ) return true
-          return false
+          return true
         }
 
         // Se for o link de capacitação e for Corretor PJ, permite!

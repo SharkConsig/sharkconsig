@@ -160,17 +160,8 @@ export default function StartComercialDevPage() {
   const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
   const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ'
 
-  const isAuthorized = 
-    isAdmin || 
-    isDeveloper || 
-    perfil?.role === 'Desenvolvedor' || 
-    user?.user_metadata?.role === 'Desenvolvedor' || 
-    perfil?.role === 'Administrador' || 
-    user?.user_metadata?.role === 'Administrador' || 
-    perfil?.role === 'Supervisor' || 
-    user?.user_metadata?.role === 'Supervisor' || 
-    isCorretorPJ ||
-    user?.email === "donajericoescritorio@gmail.com"
+  // Acesso liberado para todos os usuários do sistema (Administrador, Supervisor, Operacional, Corretor, Corretor PJ, Monitoramento, Estágio, Desenvolvedor, RH)
+  const isAuthorized = true
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
