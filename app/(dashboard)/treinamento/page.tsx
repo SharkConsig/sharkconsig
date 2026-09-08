@@ -1103,17 +1103,10 @@ export default function TreinamentoPage() {
         return { liberado: true, dataHoraLiberacao: targetSpDate }
       }
 
-      const diaFormatado = targetSpDate.toLocaleDateString("pt-BR", {
-        weekday: "short",
-        day: "2-digit",
-        month: "2-digit"
-      })
-      const horaFormatada = "14:00"
-
       return {
         liberado: false,
         dataHoraLiberacao: targetSpDate,
-        mensagemBloqueio: `Disponível no próximo dia útil (${diaFormatado}) às ${horaFormatada}.`
+        mensagemBloqueio: "Disponível no próximo dia útil."
       }
     } catch {
       return { liberado: true }
@@ -1132,18 +1125,26 @@ export default function TreinamentoPage() {
   // Nunca conta se o dia estiver bloqueado (cor laranja). Isenção para Administrador, Supervisor, Operacional, Desenvolvedor e Corretor PJ.
   const [tempoRestante, setTempoRestante] = useState<number>(30 * 60)
 
-  // Bloqueio do sistema: enquanto o usuário estiver executando a aula (iniciouCurso = true),
-  // todo o restante do sistema (sidebar, barra do topo de sair, etc.) fica bloqueado para não-isentos.
+  // Bloqueio do sistema: o bloqueio SOMENTE deve ocorrer enquanto o usuário estiver em um dia (aula) ainda não concluído.
+  // Se o dia (aula) estiver finalizado (histórico), ou o outro dia estiver bloqueado e o usuário não estiver em aula ativa,
+  // as outras áreas do sistema não ficam bloqueadas; assim que ele concluir, deve liberar as outras áreas.
+  const isAulaAtivaNaoConcluida = Boolean(
+    iniciouCurso &&
+    !diasConcluidos.includes(selectedDia) &&
+    calcularLiberacaoDia(selectedDia).liberado &&
+    !isIsentoBloqueioGeral
+  )
+
   useEffect(() => {
     if (setIsTrainingBlocked) {
-      setIsTrainingBlocked(Boolean(iniciouCurso && !isIsentoBloqueioGeral))
+      setIsTrainingBlocked(isAulaAtivaNaoConcluida)
     }
     return () => {
       if (setIsTrainingBlocked) {
         setIsTrainingBlocked(false)
       }
     }
-  }, [iniciouCurso, isIsentoBloqueioGeral, setIsTrainingBlocked])
+  }, [isAulaAtivaNaoConcluida, setIsTrainingBlocked])
 
   // Atualiza/sincroniza o tempo restante do dia selecionado
   useEffect(() => {
@@ -1577,8 +1578,8 @@ export default function TreinamentoPage() {
                   Clique na etiqueta do dia concluído para revisitar o conteúdo quando desejar.
                 </p>
               </div>
-              {/* Botão de Início apenas liberado para perfis isentos durante a realização da aula */}
-              {isIsentoBloqueioGeral && (
+              {/* Botão de Início liberado se não estiver em aula ativa não concluída ou para perfis isentos */}
+              {(!isAulaAtivaNaoConcluida || isIsentoBloqueioGeral) && (
                 <button
                   type="button"
                   onClick={() => setIniciouCurso(false)}
