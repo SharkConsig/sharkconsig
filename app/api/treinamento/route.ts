@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const supabaseAdmin = createAdminClient()
     const { data, error } = await supabaseAdmin
       .from("treinamento")
-      .select("dia, resposta_aberta, decisao_opcao_idx, decisao_opcao_texto, decisao_acertou, concluido")
+      .select("dia, resposta_aberta, decisao_opcao_idx, decisao_opcao_texto, decisao_acertou, concluido, data_hora_conclusao, updated_at, created_at")
       .eq("user_id", userId)
 
     if (error) {

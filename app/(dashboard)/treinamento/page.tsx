@@ -26,7 +26,8 @@ import {
   AlertCircle,
   Lightbulb,
   Check,
-  X
+  X,
+  Clock
 } from "lucide-react"
 
 // Types
@@ -1001,10 +1002,22 @@ export default function TreinamentoPage() {
   const isDevUser = Boolean(isDeveloper || perfil?.role === "Desenvolvedor")
   const isAdminOrDev = Boolean(isDeveloper || perfil?.role === "Desenvolvedor" || perfil?.role === "Administrador")
 
+  // Perfis autorizados a acessar a área de Treinamento
+  const temAcessoTreinamento = Boolean(
+    isDeveloper ||
+    ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Monitoramento", "Corretor", "Estágio", "Recursos Humanos"].includes(perfil?.role as string)
+  )
+
+  // Determinar se o usuário está isento da regra de 1 aula por dia útil (apenas PJ e Desenvolvedor)
+  const regimeUsuario = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || "").toUpperCase().trim()
+  const isPJ = regimeUsuario.includes("PJ")
+  const isIsentoLimiteDiario = Boolean(isDevUser || isPJ)
+
   const [selectedDia, setSelectedDia] = useState<number>(1)
   const [respostasAbertas, setRespostasAbertas] = useState<Record<number, string>>({})
   const [decisoesTomadas, setDecisoesTomadas] = useState<Record<number, number>>({})
   const [diasConcluidos, setDiasConcluidos] = useState<number[]>([])
+  const [datasConclusao, setDatasConclusao] = useState<Record<number, string>>({})
   const [savedStatus, setSavedStatus] = useState<string | null>(null)
   const [iniciouCurso, setIniciouCurso] = useState<boolean>(false)
   const [carregandoDados, setCarregandoDados] = useState<boolean>(true)
@@ -1013,6 +1026,140 @@ export default function TreinamentoPage() {
   const [calcMargem, setCalcMargem] = useState<number>(1000)
   const [calcCoef, setCalcCoef] = useState<number>(0.04333)
   const [calcPrazo, setCalcPrazo] = useState<number>(96)
+
+  // Cálculo da liberação da aula às 14h do próximo dia útil (Horário de São Paulo)
+  // Aplica-se para todos exceto Desenvolvedor e Corretor PJ
+  const calcularLiberacaoDia = (diaAlvo: number): { liberado: boolean; dataHoraLiberacao?: Date; mensagemBloqueio?: string } => {
+    // Dias já concluídos ou dia 1 sempre liberados
+    if (diasConcluidos.includes(diaAlvo) || diaAlvo <= 1) {
+      return { liberado: true }
+    }
+
+    // Se o usuário é isento (PJ ou Desenvolvedor), libera imediatamente o dia em sequência
+    if (isIsentoLimiteDiario) {
+      return { liberado: true }
+    }
+
+    // Para o dia N, depende da conclusão do dia anterior (N - 1)
+    const diaAnterior = diaAlvo - 1
+    if (!diasConcluidos.includes(diaAnterior)) {
+      return { liberado: false, mensagemBloqueio: `Conclua a aula do DIA ${diaAnterior} primeiro.` }
+    }
+
+    const dataConclusaoIso = datasConclusao[diaAnterior]
+    if (!dataConclusaoIso) {
+      return { liberado: true }
+    }
+
+    try {
+      const dataConclusao = new Date(dataConclusaoIso)
+      const spDateStr = dataConclusao.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })
+      const spDate = new Date(spDateStr)
+
+      const targetSpDate = new Date(spDate)
+      const dayOfWeek = spDate.getDay() // 0 = Domingo, 5 = Sexta, 6 = Sábado
+
+      let daysToAdd = 1
+      if (dayOfWeek === 5) { // Sexta -> Segunda
+        daysToAdd = 3
+      } else if (dayOfWeek === 6) { // Sábado -> Segunda
+        daysToAdd = 2
+      } else if (dayOfWeek === 0) { // Domingo -> Segunda
+        daysToAdd = 1
+      }
+
+      targetSpDate.setDate(targetSpDate.getDate() + daysToAdd)
+      targetSpDate.setHours(14, 0, 0, 0)
+
+      const agoraSp = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }))
+
+      if (agoraSp >= targetSpDate) {
+        return { liberado: true, dataHoraLiberacao: targetSpDate }
+      }
+
+      const diaFormatado = targetSpDate.toLocaleDateString("pt-BR", {
+        weekday: "short",
+        day: "2-digit",
+        month: "2-digit"
+      })
+      const horaFormatada = "14:00"
+
+      return {
+        liberado: false,
+        dataHoraLiberacao: targetSpDate,
+        mensagemBloqueio: `Disponível no próximo dia útil (${diaFormatado}) às ${horaFormatada}.`
+      }
+    } catch {
+      return { liberado: true }
+    }
+  }
+
+  // Dia ativo em curso (próximo dia a ser concluído)
+  const diaAtivoEmCurso = diasConcluidos.length > 0
+    ? Math.min(22, Math.max(...diasConcluidos) + 1)
+    : 1
+
+  const statusLiberacaoDiaAtivo = calcularLiberacaoDia(diaAtivoEmCurso)
+
+  // Cronômetro da aula (30 minutos = 1800 segundos contínuos para cada aula em estudo)
+  // REGRA ESTRITA: O cronômetro só inicia e conta quando o dia estiver liberado E quando o usuário estiver dentro da aula (iniciouCurso = true)
+  // Nunca conta se o dia estiver bloqueado (cor laranja).
+  const [tempoRestante, setTempoRestante] = useState<number>(30 * 60)
+
+  // Atualiza/sincroniza o tempo restante do dia selecionado
+  useEffect(() => {
+    if (typeof window === "undefined" || isPJ) return
+
+    // Se o usuário ainda não entrou na aula, ou se o dia selecionado está bloqueado, não inicia contagem
+    if (!iniciouCurso) return
+
+    const statusDia = calcularLiberacaoDia(selectedDia)
+    if (!statusDia.liberado) {
+      setTempoRestante(0)
+      return
+    }
+
+    const storageKey = `shark_treinamento_timer_dia_${selectedDia}_${user?.id || "anon"}`
+    const duracaoTotal = 30 * 60 // 1800s
+
+    let startTime = localStorage.getItem(storageKey)
+    if (!startTime) {
+      // Inicia a contagem apenas agora que o usuário acessou a aula liberada
+      startTime = Date.now().toString()
+      localStorage.setItem(storageKey, startTime)
+    }
+
+    const segundosPassados = Math.floor((Date.now() - parseInt(startTime, 10)) / 1000)
+    const restante = Math.max(0, duracaoTotal - segundosPassados)
+    setTempoRestante(restante)
+  }, [user?.id, isPJ, iniciouCurso, selectedDia, diasConcluidos, datasConclusao])
+
+  // Contagem regressiva ativa (continua apenas enquanto estiver dentro de aula liberada)
+  useEffect(() => {
+    if (typeof window === "undefined" || isPJ || !iniciouCurso || tempoRestante <= 0) return
+
+    const statusDia = calcularLiberacaoDia(selectedDia)
+    if (!statusDia.liberado) return
+
+    const storageKey = `shark_treinamento_timer_dia_${selectedDia}_${user?.id || "anon"}`
+    const duracaoTotal = 30 * 60
+
+    const timer = setInterval(() => {
+      const startTime = localStorage.getItem(storageKey)
+      if (startTime) {
+        const segundosPassados = Math.floor((Date.now() - parseInt(startTime, 10)) / 1000)
+        const restante = Math.max(0, duracaoTotal - segundosPassados)
+        setTempoRestante(restante)
+        if (restante <= 0) {
+          clearInterval(timer)
+        }
+      } else {
+        setTempoRestante(prev => Math.max(0, prev - 1))
+      }
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [user?.id, isPJ, iniciouCurso, selectedDia, tempoRestante, diasConcluidos, datasConclusao])
 
   // Load state directly and exclusively from API / Supabase
   useEffect(() => {
@@ -1049,6 +1196,7 @@ export default function TreinamentoPage() {
           const remoteRespostas: Record<number, string> = {}
           const remoteDecisoes: Record<number, number> = {}
           const remoteConcluidos: number[] = []
+          const remoteDatasConclusao: Record<number, string> = {}
 
           data.forEach((item: any) => {
             if (item.resposta_aberta) remoteRespostas[item.dia] = item.resposta_aberta
@@ -1058,22 +1206,28 @@ export default function TreinamentoPage() {
             if (item.concluido && !remoteConcluidos.includes(item.dia)) {
               remoteConcluidos.push(item.dia)
             }
+            if (item.data_hora_conclusao || item.updated_at || item.created_at) {
+              remoteDatasConclusao[item.dia] = item.data_hora_conclusao || item.updated_at || item.created_at
+            }
           })
 
           setRespostasAbertas(remoteRespostas)
           setDecisoesTomadas(remoteDecisoes)
           setDiasConcluidos(remoteConcluidos)
+          setDatasConclusao(remoteDatasConclusao)
         } else {
           // Se não houver registros no banco (ou se tiverem sido apagados), reseta tudo
           setRespostasAbertas({})
           setDecisoesTomadas({})
           setDiasConcluidos([])
+          setDatasConclusao({})
         }
       } catch (err) {
         console.error("Erro ao carregar dados do treinamento:", err)
         setRespostasAbertas({})
         setDecisoesTomadas({})
         setDiasConcluidos([])
+        setDatasConclusao({})
       } finally {
         setCarregandoDados(false)
       }
@@ -1189,25 +1343,34 @@ export default function TreinamentoPage() {
 
   const handleAvancarProximoDia = async () => {
     const diaAtual = currentDiaData.dia
+    const respostaAtual = (respostasAbertas[diaAtual] || "").trim()
+    const decisaoAtual = decisoesTomadas[diaAtual]
+
     // O bloqueio do dia ocorre exclusivamente ao clicar em 'Próximo Dia'
     if (!diasConcluidos.includes(diaAtual)) {
+      if (!respostaAtual || decisaoAtual === undefined || decisaoAtual === null) {
+        return
+      }
+      const agoraIso = new Date().toISOString()
       const newConcluidos = [...diasConcluidos, diaAtual]
       setDiasConcluidos(newConcluidos)
-      await sincronizarSupabase(diaAtual, { concluido: true })
+      setDatasConclusao(prev => ({ ...prev, [diaAtual]: agoraIso }))
+      await sincronizarSupabase(diaAtual, { concluido: true, data_hora_conclusao: agoraIso })
+
+      // Se o usuário não for isento (ou seja, é CLT, Estágio, RH, Operacional, Supervisor, Admin, etc.)
+      // o próximo dia só será liberado às 14h do próximo dia útil. Volta para a tela inicial informando o status.
+      if (!isIsentoLimiteDiario) {
+        setIniciouCurso(false)
+        return
+      }
     }
     setSelectedDia(prev => Math.min(22, prev + 1))
   }
 
   const currentDiaData = DIAS_TREINAMENTO.find(d => d.dia === selectedDia) || DIAS_TREINAMENTO[0]
 
-  // Dia ativo em curso (próximo dia a ser concluído)
-  const diaAtivoEmCurso = diasConcluidos.length > 0
-    ? Math.min(22, Math.max(...diasConcluidos) + 1)
-    : 1
-
-
-  // If user is not developer, show friendly access notice
-  if (!isDevUser) {
+  // Acesso à página: usuários autorizados (Desenvolvedor, Administrador, Supervisor, Operacional, Monitoramento, Corretor CLT/PJ, Estágio, RH)
+  if (!temAcessoTreinamento) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center space-y-4">
         <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700">
@@ -1215,7 +1378,7 @@ export default function TreinamentoPage() {
         </div>
         <h1 className="text-xl font-extrabold text-slate-900">Área Restrita: Treinamento</h1>
         <p className="text-sm text-slate-500 max-w-md">
-          Esta área está em fase de homologação comercial e é restrita aos usuários com perfil de <strong>Desenvolvedor</strong>.
+          Seu perfil não possui permissão para acessar o Treinamento.
         </p>
       </div>
     )
@@ -1304,20 +1467,49 @@ export default function TreinamentoPage() {
                 <p className="text-sm sm:text-[15px] text-slate-600 leading-relaxed">
                   Você já concluiu <strong>{totalConcluidos} {totalConcluidos === 1 ? "dia" : "dias"}</strong>. Retome de onde parou e bons estudos!
                 </p>
+
+                {/* Aviso quando o próximo dia ainda não foi liberado (apenas para não-isentos) */}
+                {!statusLiberacaoDiaAtivo.liberado && (
+                  <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-xs font-semibold text-amber-900 max-w-md mx-auto space-y-1">
+                    <div className="flex items-center justify-center gap-1.5 font-black text-amber-950 uppercase tracking-wider text-[11px]">
+                      <Clock className="w-3.5 h-3.5 text-amber-700" />
+                      <span>AULA DO DIA {diaAtivoEmCurso} AGUARDANDO LIBERAÇÃO</span>
+                    </div>
+                    <p className="text-amber-800">
+                      {statusLiberacaoDiaAtivo.mensagemBloqueio}
+                    </p>
+                    <p className="text-[11px] text-amber-700">
+                      Você pode revisitar os dias concluídos a qualquer momento.
+                    </p>
+                  </div>
+                )}
               </div>
 
-              <div className="pt-2">
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
                 <button
                   type="button"
+                  disabled={!statusLiberacaoDiaAtivo.liberado}
                   onClick={() => {
                     setSelectedDia(diaAtivoEmCurso)
                     setIniciouCurso(true)
                   }}
-                  className="inline-flex items-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs sm:text-xs py-2.5 px-6 rounded-xl shadow-sm hover:shadow transition-all cursor-pointer"
+                  className="inline-flex items-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs sm:text-xs py-2.5 px-6 rounded-xl shadow-sm hover:shadow transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  <span>CONTINUAR</span>
+                  <span>{statusLiberacaoDiaAtivo.liberado ? "CONTINUAR (DIA " + diaAtivoEmCurso + ")" : "DIA " + diaAtivoEmCurso + " BLOQUEADO"}</span>
                   <ArrowRight className="w-3.5 h-3.5 text-[#00D492]" />
                 </button>
+                {diasConcluidos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDia(Math.max(...diasConcluidos))
+                      setIniciouCurso(true)
+                    }}
+                    className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold text-xs py-2.5 px-5 rounded-xl transition-all cursor-pointer"
+                  >
+                    <span>Revisar Aulas Anteriores</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1381,22 +1573,80 @@ export default function TreinamentoPage() {
 
               {/* Dia Ativo (Em curso) */}
               {!diasConcluidos.includes(diaAtivoEmCurso) && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedDia(diaAtivoEmCurso)}
-                  className="px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5 bg-[#0F172B] hover:bg-slate-800 text-white shadow-xs"
-                  title={`Voltar para o DIA ${diaAtivoEmCurso}`}
-                >
-                  <CheckCircle2 className="w-3 h-3 text-[#00D492]" />
-                  <span>DIA {diaAtivoEmCurso}</span>
-                </button>
+                statusLiberacaoDiaAtivo.liberado ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDia(diaAtivoEmCurso)}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5 bg-[#0F172B] hover:bg-slate-800 text-white shadow-xs"
+                    title={`Ir para o DIA ${diaAtivoEmCurso}`}
+                  >
+                    <CheckCircle2 className="w-3 h-3 text-[#00D492]" />
+                    <span>DIA {diaAtivoEmCurso}</span>
+                  </button>
+                ) : (
+                  <div
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-300 opacity-80 cursor-not-allowed"
+                    title={`DIA ${diaAtivoEmCurso}: ${statusLiberacaoDiaAtivo.mensagemBloqueio}`}
+                  >
+                    <Clock className="w-3 h-3 text-amber-600" />
+                    <span>DIA {diaAtivoEmCurso} (ÀS 14H)</span>
+                  </div>
+                )
               )}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 relative">
+        {/* Cronômetro Flutuante ao lado direito do conteúdo da aula (não exibido para Corretor PJ) */}
+        {!isPJ && (() => {
+          const statusDiaAtual = calcularLiberacaoDia(currentDiaData.dia)
+          const isBloqueada = !statusDiaAtual.liberado
+          const tempoExibido = isBloqueada ? 0 : tempoRestante
+
+          return (
+            <div className="fixed right-4 sm:right-6 lg:right-8 top-28 sm:top-32 z-40">
+              <div className="bg-[#0F172B]/95 backdrop-blur-md text-white border border-slate-700/80 shadow-2xl rounded-2xl p-3 sm:p-3.5 flex items-center gap-3 transition-all hover:scale-[1.02]">
+                <div className={cn(
+                  "w-9 h-9 rounded-xl flex items-center justify-center font-black shrink-0 transition-colors",
+                  isBloqueada
+                    ? "bg-amber-500/20 text-amber-400"
+                    : tempoExibido <= 300
+                      ? "bg-rose-500/20 text-rose-400 animate-pulse"
+                      : "bg-emerald-500/20 text-[#00D492]"
+                )}>
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col pr-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      TEMPO DA AULA
+                    </span>
+                    <span className={cn(
+                      "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded",
+                      isBloqueada ? "bg-amber-900/60 text-amber-300" : "bg-slate-800 text-slate-400"
+                    )}>
+                      DIA {currentDiaData.dia}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className={cn(
+                      "font-mono font-black text-lg sm:text-xl tracking-tight",
+                      isBloqueada ? "text-amber-300" : tempoExibido <= 300 ? "text-rose-400" : "text-white"
+                    )}>
+                      {String(Math.floor(tempoExibido / 60)).padStart(2, "0")}:{String(tempoExibido % 60).padStart(2, "0")}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-semibold">
+                      / 30:00
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
         <div className="max-w-4xl mx-auto space-y-6">
             {/* Day Header Bar */}
             <div className="pt-4 pb-2">
@@ -1418,6 +1668,28 @@ export default function TreinamentoPage() {
                   </h2>
                 </div>
               </div>
+
+              {/* Banner de Bloqueio se o dia selecionado ainda não foi liberado */}
+              {(() => {
+                const statusDiaAtual = calcularLiberacaoDia(currentDiaData.dia)
+                if (!statusDiaAtual.liberado) {
+                  return (
+                    <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-black text-amber-900 uppercase tracking-wider">
+                        <Clock className="w-4 h-4 text-amber-700" />
+                        <span>AULA AGUARDANDO LIBERAÇÃO</span>
+                      </div>
+                      <p className="text-xs sm:text-sm font-semibold text-amber-800 leading-relaxed">
+                        Esta etapa do treinamento será liberada às 14:00 (horário de Brasília) do próximo dia útil.
+                      </p>
+                      <p className="text-[11px] text-amber-700 font-medium">
+                        {statusDiaAtual.mensagemBloqueio}
+                      </p>
+                    </div>
+                  )
+                }
+                return null
+              })()}
 
               {/* 1. VOCÊ ESTÁ AQUI (Card Neutro) */}
               <div className="bg-slate-100/80 border border-slate-300 rounded-2xl p-5 space-y-1.5">
@@ -1609,7 +1881,7 @@ export default function TreinamentoPage() {
                               <span
                                 className={cn(
                                   "w-5 h-5 rounded-full flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5",
-                                  hasAnswered && isAdminOrDev
+                                  hasAnswered && isDiaBloqueado
                                     ? isCorrect
                                       ? "bg-emerald-600 text-white"
                                       : isSelected
@@ -1620,9 +1892,9 @@ export default function TreinamentoPage() {
                                     : "bg-slate-100 text-slate-700"
                                 )}
                               >
-                                {hasAnswered && isAdminOrDev && isCorrect ? (
+                                {hasAnswered && isDiaBloqueado && isCorrect ? (
                                   <Check className="w-3 h-3" />
-                                ) : hasAnswered && isAdminOrDev && isSelected ? (
+                                ) : hasAnswered && isDiaBloqueado && isSelected ? (
                                   <X className="w-3 h-3" />
                                 ) : (
                                   String.fromCharCode(65 + optIdx)
@@ -1634,8 +1906,8 @@ export default function TreinamentoPage() {
                         })}
                       </div>
 
-                      {/* Feedback Explicativo (Visível exclusivamente para Administrador ou Desenvolvedor) */}
-                      {isAdminOrDev && decisoesTomadas[currentDiaData.dia] !== undefined && (
+                      {/* Feedback Explicativo (Visível exclusivamente quando o dia já estiver concluído/bloqueado) */}
+                      {isDiaBloqueado && decisoesTomadas[currentDiaData.dia] !== undefined && (
                         <div className="bg-slate-900 text-white p-4 rounded-xl text-xs space-y-1 mt-3">
                           <p className="font-bold text-[#00D492] uppercase tracking-wider text-[10px]">
                             GABARITO E JUSTIFICATIVA
@@ -1656,9 +1928,9 @@ export default function TreinamentoPage() {
                   <BookmarkCheck className="w-4.5 h-4.5 text-emerald-600" />
                   <span>O QUE LEVAR DESTA ETAPA</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-sm font-semibold text-slate-900">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-sm font-semibold text-emerald-950">
                   {currentDiaData.oQueLevar.map((item, idx) => (
-                    <div key={idx} className="flex items-start gap-2.5 bg-white p-3.5 rounded-xl border border-slate-300 shadow-xs">
+                    <div key={idx} className="flex items-start gap-2.5 bg-emerald-50/90 p-3.5 rounded-xl border border-emerald-300/80 shadow-xs">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                       <span>{item}</span>
                     </div>
@@ -1679,15 +1951,42 @@ export default function TreinamentoPage() {
                 ) : (
                   <div />
                 )}
-                <button
-                  type="button"
-                  disabled={selectedDia >= 22}
-                  onClick={handleAvancarProximoDia}
-                  className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <span>Próximo Dia</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-[#00D492]" />
-                </button>
+                {(() => {
+                  const isDiaConcluido = diasConcluidos.includes(currentDiaData.dia)
+                  const temResposta = Boolean(respostasAbertas[currentDiaData.dia]?.trim())
+                  const temDecisao = decisoesTomadas[currentDiaData.dia] !== undefined && decisoesTomadas[currentDiaData.dia] !== null
+                  const requisitosAtendidos = isDiaConcluido || (temResposta && temDecisao)
+                  const proximoDiaAlvo = selectedDia + 1
+                  const statusProximo = calcularLiberacaoDia(proximoDiaAlvo)
+                  const podeAvancar = requisitosAtendidos && selectedDia < 22 && (!isDiaConcluido || statusProximo.liberado)
+
+                  return (
+                    <div className="flex items-center gap-3">
+                      {isDiaConcluido && !statusProximo.liberado && selectedDia < 22 && (
+                        <span className="text-[11px] text-amber-700 font-bold bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>DIA {proximoDiaAlvo}: {statusProximo.mensagemBloqueio}</span>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        disabled={!podeAvancar}
+                        onClick={handleAvancarProximoDia}
+                        title={
+                          !requisitosAtendidos
+                            ? "Preencha a explicação em 'ESCREVA COM SUAS PALAVRAS' e selecione uma opção em 'TOME UMA DECISÃO' para avançar."
+                            : isDiaConcluido && !statusProximo.liberado
+                            ? statusProximo.mensagemBloqueio
+                            : undefined
+                        }
+                        className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        <span>Próximo Dia</span>
+                        <ArrowRight className="w-3.5 h-3.5 text-[#00D492]" />
+                      </button>
+                    </div>
+                  )
+                })()}
               </div>
             </div>
       </div>

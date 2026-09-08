@@ -48,7 +48,7 @@ const allMenuItems = [
         name: "TREINAMENTO", 
         href: "/treinamento", 
         icon: GraduationCap, 
-        roles: ["Desenvolvedor"] 
+        roles: ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Corretor", "Monitoramento", "Estágio", "Recursos Humanos", "RH"] 
       },
       { 
         name: "DASHBOARD", 
