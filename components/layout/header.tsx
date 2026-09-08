@@ -22,12 +22,26 @@ export function Header({ title }: HeaderProps) {
   const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const { toggleSidebar, isCollapsed, isHovered } = useSidebar()
+  const { toggleSidebar, isCollapsed, isHovered, isTrainingBlocked } = useSidebar()
   const effectiveCollapsed = isCollapsed && !isHovered
-  const { perfil, user, isAdmin, isRecursosHumanos, isCorretor } = useAuth()
+  const { perfil, user, isAdmin, isRecursosHumanos, isCorretor, isDeveloper } = useAuth()
 
   const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
   const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ' && !isAdmin
+
+  // Isenção da regra de bloqueio da barra fixa do topo durante a aula
+  const userRole = (perfil?.role || "").trim()
+  const isPJCheck = regimeUpper.includes("PJ")
+  const isIsentoBloqueioGeral = Boolean(
+    isDeveloper ||
+    userRole === "Desenvolvedor" ||
+    userRole === "Administrador" ||
+    isAdmin ||
+    userRole === "Supervisor" ||
+    userRole === "Operacional" ||
+    isPJCheck
+  )
+  const isHeaderBlocked = Boolean(isTrainingBlocked && !isIsentoBloqueioGeral)
 
   // Apoio na Venda States
   interface ApoioRequest {
@@ -364,9 +378,9 @@ export function Header({ title }: HeaderProps) {
       <div className="flex items-center gap-4">
         <button 
           onClick={toggleSidebar}
-          disabled={isCampanhaAtendimento}
+          disabled={isCampanhaAtendimento || isHeaderBlocked}
           className={`lg:hidden p-2 text-slate-400 hover:text-primary transition-colors ${
-            isCampanhaAtendimento ? "pointer-events-none opacity-40" : ""
+            isCampanhaAtendimento || isHeaderBlocked ? "pointer-events-none opacity-40" : ""
           }`}
         >
           <Menu className="w-6 h-6" />
@@ -375,7 +389,7 @@ export function Header({ title }: HeaderProps) {
           {title}
         </h2>
       </div>
-      <div className="flex items-center gap-2 sm:gap-4">
+      <div className={`flex items-center gap-2 sm:gap-4 ${isHeaderBlocked ? "pointer-events-none opacity-40 select-none" : ""}`}>
         {isAdminUser && (
           <button
             id="header-historico-apoio-btn"

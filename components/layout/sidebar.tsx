@@ -249,14 +249,29 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const searchParams = useSearchParams()
   const originParam = searchParams.get("origem")
   const isComeceAquiActive = pathname === "/capacitacao-pj" && originParam === "comece-aqui"
-  const { isCollapsed, toggleCollapse, isHovered: contextHovered, setIsHovered: contextSetHovered } = useSidebar()
-  const { perfil, user, isAdmin, isRecursosHumanos, isCorretor } = useAuth()
+  const { isCollapsed, toggleCollapse, isHovered: contextHovered, setIsHovered: contextSetHovered, isTrainingBlocked } = useSidebar()
+  const { perfil, user, isAdmin, isRecursosHumanos, isCorretor, isDeveloper } = useAuth()
   const isHovered = contextHovered ?? false
   const setIsHovered = contextSetHovered ?? (() => {})
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
 
   const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
   const effectiveCollapsed = isCollapsed && !isHovered
+
+  // Isenção do bloqueio durante aula em andamento
+  const userRole = (perfil?.role || "").trim()
+  const regimeUpperCheck = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || "").toUpperCase().trim()
+  const isPJCheck = regimeUpperCheck.includes("PJ")
+  const isIsentoBloqueioGeral = Boolean(
+    isDeveloper ||
+    userRole === "Desenvolvedor" ||
+    userRole === "Administrador" ||
+    isAdmin ||
+    userRole === "Supervisor" ||
+    userRole === "Operacional" ||
+    isPJCheck
+  )
+  const isBlockedByTraining = Boolean(isTrainingBlocked && !isIsentoBloqueioGeral)
 
   const isCollapsibleStyle = perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || isAdmin
 
@@ -369,7 +384,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           "p-6 flex items-center",
           effectiveCollapsed ? "justify-center" : "justify-between"
         )}>
-          <Link href="/" className="flex items-center justify-start">
+          <Link 
+            href="/" 
+            className={cn("flex items-center justify-start", isBlockedByTraining && "pointer-events-none opacity-40")}
+          >
             <div className={cn(
               "relative transition-all duration-300",
               effectiveCollapsed ? "w-10 h-10" : "w-[160px] h-10"
@@ -445,17 +463,26 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   {section.items.map((item) => {
                     const isComeceAqui = item.name === "COMECE AQUI" || item.href === "/start-comercial-dev"
                     const isActive = pathname === item.href
+                    const isItemBlocked = isBlockedByTraining && item.href !== "/treinamento"
 
                     return (
                       <Link
                         key={item.name}
                         href={item.href}
-                        onClick={onClose}
+                        onClick={(e) => {
+                          if (isItemBlocked) {
+                            e.preventDefault()
+                            return
+                          }
+                          onClose()
+                        }}
                         title={effectiveCollapsed ? item.name : ""}
                         className={cn(
                           "flex items-center gap-3 rounded-lg text-[11px] font-semibold transition-all",
                           effectiveCollapsed ? "justify-center p-3" : "px-4 py-3",
-                          isComeceAqui
+                          isItemBlocked
+                            ? "pointer-events-none opacity-30 cursor-not-allowed select-none"
+                            : isComeceAqui
                             ? "bg-[#19223D] text-white hover:bg-[#222e54] shadow-sm mb-2 font-bold"
                             : isActive 
                             ? "bg-primary text-white shadow-lg shadow-slate-200" 

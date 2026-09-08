@@ -20,6 +20,7 @@ export default function DashboardLayout({
   const [isCollapsed, setIsCollapsed] = useState(true)
   const [isHovered, setIsHovered] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isTrainingBlocked, setIsTrainingBlocked] = useState(false)
 
   useEffect(() => {
     const checkSession = async () => {
@@ -89,7 +90,9 @@ export default function DashboardLayout({
         isCollapsed,
         toggleCollapse: () => setIsCollapsed(!isCollapsed),
         isHovered,
-        setIsHovered
+        setIsHovered,
+        isTrainingBlocked,
+        setIsTrainingBlocked
       }}>
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
         <main className="flex-1 flex flex-col min-w-0">

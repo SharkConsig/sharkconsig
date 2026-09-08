@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Header } from "@/components/layout/header"
 import { useAuth } from "@/context/auth-context"
+import { useSidebar } from "@/context/sidebar-context"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import {
@@ -998,9 +999,13 @@ const DIAS_TREINAMENTO: DailyContent[] = [
 ]
 
 export default function TreinamentoPage() {
-  const { user, perfil, isDeveloper } = useAuth()
-  const isDevUser = Boolean(isDeveloper || perfil?.role === "Desenvolvedor")
-  const isAdminOrDev = Boolean(isDeveloper || perfil?.role === "Desenvolvedor" || perfil?.role === "Administrador")
+  const { user, perfil, isDeveloper, isAdmin } = useAuth()
+  const { setIsTrainingBlocked } = useSidebar()
+  const userRole = (perfil?.role || "").trim()
+  const isDevUser = Boolean(isDeveloper || userRole === "Desenvolvedor")
+  const isAdminUser = Boolean(isAdmin || userRole === "Administrador")
+  const isSupervisorUser = userRole === "Supervisor"
+  const isOperacionalUser = userRole === "Operacional"
 
   // Perfis autorizados a acessar a área de Treinamento
   const temAcessoTreinamento = Boolean(
@@ -1008,10 +1013,31 @@ export default function TreinamentoPage() {
     ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Monitoramento", "Corretor", "Estágio", "Recursos Humanos"].includes(perfil?.role as string)
   )
 
-  // Determinar se o usuário está isento da regra de 1 aula por dia útil (apenas PJ e Desenvolvedor)
+  // Isenção da 'Regra de Liberação Diária (Trava de 1 Aula por Dia Útil às 14h)'
+  // Isentos: Administrador, Supervisor, Operacional, Desenvolvedor e regime PJ
   const regimeUsuario = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || "").toUpperCase().trim()
   const isPJ = regimeUsuario.includes("PJ")
-  const isIsentoLimiteDiario = Boolean(isDevUser || isPJ)
+  const isIsentoLimiteDiario = Boolean(
+    isDevUser || 
+    isAdminUser || 
+    isSupervisorUser || 
+    isOperacionalUser || 
+    isPJ
+  )
+
+  // Isenção do 'Cronômetro Flutuante de 30 Minutos'
+  // Isentos: Administrador, Supervisor, Operacional, Desenvolvedor e regime PJ
+  const isIsentoCronometro = Boolean(
+    isDevUser || 
+    isAdminUser || 
+    isSupervisorUser || 
+    isOperacionalUser || 
+    isPJ
+  )
+
+  // Isenção do 'Bloqueio Geral de outras áreas durante a aula'
+  // Isentos: Administrador, Corretor do regime PJ, Supervisor, Operacional e Desenvolvedor
+  const isIsentoBloqueioGeral = isIsentoLimiteDiario
 
   const [selectedDia, setSelectedDia] = useState<number>(1)
   const [respostasAbertas, setRespostasAbertas] = useState<Record<number, string>>({})
@@ -1103,12 +1129,25 @@ export default function TreinamentoPage() {
 
   // Cronômetro da aula (30 minutos = 1800 segundos contínuos para cada aula em estudo)
   // REGRA ESTRITA: O cronômetro só inicia e conta quando o dia estiver liberado E quando o usuário estiver dentro da aula (iniciouCurso = true)
-  // Nunca conta se o dia estiver bloqueado (cor laranja).
+  // Nunca conta se o dia estiver bloqueado (cor laranja). Isenção para Administrador, Supervisor, Operacional, Desenvolvedor e Corretor PJ.
   const [tempoRestante, setTempoRestante] = useState<number>(30 * 60)
+
+  // Bloqueio do sistema: enquanto o usuário estiver executando a aula (iniciouCurso = true),
+  // todo o restante do sistema (sidebar, barra do topo de sair, etc.) fica bloqueado para não-isentos.
+  useEffect(() => {
+    if (setIsTrainingBlocked) {
+      setIsTrainingBlocked(Boolean(iniciouCurso && !isIsentoBloqueioGeral))
+    }
+    return () => {
+      if (setIsTrainingBlocked) {
+        setIsTrainingBlocked(false)
+      }
+    }
+  }, [iniciouCurso, isIsentoBloqueioGeral, setIsTrainingBlocked])
 
   // Atualiza/sincroniza o tempo restante do dia selecionado
   useEffect(() => {
-    if (typeof window === "undefined" || isPJ) return
+    if (typeof window === "undefined" || isIsentoCronometro) return
 
     // Se o usuário ainda não entrou na aula, ou se o dia selecionado está bloqueado, não inicia contagem
     if (!iniciouCurso) return
@@ -1132,11 +1171,11 @@ export default function TreinamentoPage() {
     const segundosPassados = Math.floor((Date.now() - parseInt(startTime, 10)) / 1000)
     const restante = Math.max(0, duracaoTotal - segundosPassados)
     setTempoRestante(restante)
-  }, [user?.id, isPJ, iniciouCurso, selectedDia, diasConcluidos, datasConclusao])
+  }, [user?.id, isIsentoCronometro, iniciouCurso, selectedDia, diasConcluidos, datasConclusao])
 
   // Contagem regressiva ativa (continua apenas enquanto estiver dentro de aula liberada)
   useEffect(() => {
-    if (typeof window === "undefined" || isPJ || !iniciouCurso || tempoRestante <= 0) return
+    if (typeof window === "undefined" || isIsentoCronometro || !iniciouCurso || tempoRestante <= 0) return
 
     const statusDia = calcularLiberacaoDia(selectedDia)
     if (!statusDia.liberado) return
@@ -1159,7 +1198,7 @@ export default function TreinamentoPage() {
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [user?.id, isPJ, iniciouCurso, selectedDia, tempoRestante, diasConcluidos, datasConclusao])
+  }, [user?.id, isIsentoCronometro, iniciouCurso, selectedDia, tempoRestante, diasConcluidos, datasConclusao])
 
   // Load state directly and exclusively from API / Supabase
   useEffect(() => {
@@ -1538,13 +1577,16 @@ export default function TreinamentoPage() {
                   Clique na etiqueta do dia concluído para revisitar o conteúdo quando desejar.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIniciouCurso(false)}
-                className="text-xs text-slate-500 hover:text-slate-900 font-bold flex items-center gap-1.5 transition-colors cursor-pointer bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg shrink-0"
-              >
-                <span>← Início</span>
-              </button>
+              {/* Botão de Início apenas liberado para perfis isentos durante a realização da aula */}
+              {isIsentoBloqueioGeral && (
+                <button
+                  type="button"
+                  onClick={() => setIniciouCurso(false)}
+                  className="text-xs text-slate-500 hover:text-slate-900 font-bold flex items-center gap-1.5 transition-colors cursor-pointer bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg shrink-0"
+                >
+                  <span>← Início</span>
+                </button>
+              )}
             </div>
 
             {/* Barra com dias concluídos e o dia ativo atual em curso */}
@@ -1589,7 +1631,7 @@ export default function TreinamentoPage() {
                     title={`DIA ${diaAtivoEmCurso}: ${statusLiberacaoDiaAtivo.mensagemBloqueio}`}
                   >
                     <Clock className="w-3 h-3 text-amber-600" />
-                    <span>DIA {diaAtivoEmCurso} (ÀS 14H)</span>
+                    <span>DIA {diaAtivoEmCurso}</span>
                   </div>
                 )
               )}
@@ -1599,8 +1641,8 @@ export default function TreinamentoPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 relative">
-        {/* Cronômetro Flutuante ao lado direito do conteúdo da aula (não exibido para Corretor PJ) */}
-        {!isPJ && (() => {
+        {/* Cronômetro Flutuante ao lado direito do conteúdo da aula (não exibido para Administrador, Supervisor, Operacional, Desenvolvedor e Corretor PJ) */}
+        {!isIsentoCronometro && (() => {
           const statusDiaAtual = calcularLiberacaoDia(currentDiaData.dia)
           const isBloqueada = !statusDiaAtual.liberado
           const tempoExibido = isBloqueada ? 0 : tempoRestante
