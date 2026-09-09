@@ -1184,9 +1184,9 @@ export default function TreinamentoPage() {
   const statusLiberacaoDiaAtivo = calcularLiberacaoDia(diaAtivoEmCurso)
 
   // Cronômetro da aula (30 minutos = 1800 segundos contínuos para cada aula em estudo)
-  // REGRA ESTRITA: O cronômetro só inicia e conta quando o dia estiver liberado E quando o usuário estiver dentro da aula (iniciouCurso = true)
-  // Nunca conta se o dia estiver bloqueado (cor laranja). Isenção para Administrador, Supervisor, Operacional, Desenvolvedor e Corretor PJ.
-  const [tempoRestante, setTempoRestante] = useState<number>(30 * 60)
+  // REGRA ESTRITA: O cronômetro só inicia e conta quando o dia estiver liberado e não concluído (aula ativa) E quando o usuário estiver dentro da aula (iniciouCurso = true).
+  // Se a aula estiver bloqueada ou se for um dia já concluído (histórico), o cronômetro fica zerado (00:00). Isenção para perfis gestores e Corretor PJ.
+  const [tempoRestante, setTempoRestante] = useState<number>(0)
 
   // Bloqueio do sistema: o bloqueio SOMENTE deve ocorrer enquanto o usuário estiver em um dia (aula) ainda não concluído.
   // Se o dia (aula) estiver finalizado (histórico), ou o outro dia estiver bloqueado e o usuário não estiver em aula ativa,
@@ -1213,11 +1213,14 @@ export default function TreinamentoPage() {
   useEffect(() => {
     if (typeof window === "undefined" || isIsentoCronometro) return
 
-    // Se o usuário ainda não entrou na aula, ou se o dia selecionado está bloqueado, não inicia contagem
+    // Se o usuário ainda não entrou na aula, não inicia contagem
     if (!iniciouCurso) return
 
     const statusDia = calcularLiberacaoDia(selectedDia)
-    if (!statusDia.liberado) {
+    const isConcluido = diasConcluidos.includes(selectedDia)
+
+    // Se o dia selecionado estiver bloqueado ou for um dia já concluído (histórico), mantém o cronômetro zerado
+    if (!statusDia.liberado || isConcluido) {
       setTempoRestante(0)
       return
     }
@@ -1227,7 +1230,7 @@ export default function TreinamentoPage() {
 
     let startTime = localStorage.getItem(storageKey)
     if (!startTime) {
-      // Inicia a contagem apenas agora que o usuário acessou a aula liberada
+      // Inicia a contagem apenas a partir do momento em que o usuário acessou a aula ativa desbloqueada
       startTime = Date.now().toString()
       localStorage.setItem(storageKey, startTime)
     }
@@ -1237,12 +1240,16 @@ export default function TreinamentoPage() {
     setTempoRestante(restante)
   }, [user?.id, isIsentoCronometro, iniciouCurso, selectedDia, diasConcluidos, datasConclusao])
 
-  // Contagem regressiva ativa (continua apenas enquanto estiver dentro de aula liberada)
+  // Contagem regressiva ativa (continua apenas enquanto estiver dentro de aula desbloqueada e não concluída)
   useEffect(() => {
     if (typeof window === "undefined" || isIsentoCronometro || !iniciouCurso || tempoRestante <= 0) return
 
     const statusDia = calcularLiberacaoDia(selectedDia)
-    if (!statusDia.liberado) return
+    const isConcluido = diasConcluidos.includes(selectedDia)
+    if (!statusDia.liberado || isConcluido) {
+      setTempoRestante(0)
+      return
+    }
 
     const storageKey = `shark_treinamento_timer_dia_${selectedDia}_${user?.id || "anon"}`
     const duracaoTotal = 30 * 60
@@ -1342,9 +1349,8 @@ export default function TreinamentoPage() {
     carregarDadosTreinamento()
   }, [user?.id, perfil?.id])
 
-  // Carrega dados completos para o Painel de Controle (Gestores)
+  // Carrega dados completos para o Painel de Controle (Gestores e Participantes)
   const carregarDadosPainel = async () => {
-    if (!isGestorTreinamento) return
     setPainelCarregando(true)
     try {
       const res = await fetch("/api/treinamento?action=painel")
@@ -1379,9 +1385,10 @@ export default function TreinamentoPage() {
 
       const progressoLista: any[] = []
 
+      // Processa exclusivamente os registros existentes na tabela 'treinamento' do banco de dados (SUPABASE)
       Object.values(progressoPorUser).forEach(aluno => {
         const concluidos = aluno.rows.filter((r: any) => r.concluido)
-        // Regra: somente mostrar usuários que já começaram e concluíram pelo menos um dia
+        // Somente exibe registros com aulas concluídas registradas na tabela 'treinamento' do Supabase
         if (concluidos.length < 1) return
 
         let totalAcertos = 0
@@ -1430,10 +1437,8 @@ export default function TreinamentoPage() {
   }
 
   useEffect(() => {
-    if (isGestorTreinamento) {
-      carregarDadosPainel()
-    }
-  }, [isGestorTreinamento])
+    carregarDadosPainel()
+  }, [user?.id, perfil?.id])
 
   // Liberar a próxima aula do aluno imediatamente
   const handleLiberarProximaAula = async (aluno: any, proximoDia: number) => {
@@ -1539,8 +1544,14 @@ export default function TreinamentoPage() {
   }
 
   // Filtro de alunos para exibição no progresso (Regras de visibilidade estritas)
+  const currentUserId = user?.id || perfil?.id
+
   const progressoFiltrado = painelProgresso.filter(aluno => {
-    // Requisito 2: já garantido (totalDiasConcluidos >= 1)
+    // Para participantes (Corretor CLT/PJ, Estagiário, Processo Seletivo, Monitoramento, etc.):
+    // Cada um vê estritamente o seu próprio progresso individual.
+    if (!isGestorTreinamento) {
+      return aluno.user_id === currentUserId
+    }
 
     const regime = (aluno.regime_contratacao || "").toUpperCase().trim()
     const roleNorm = (aluno.funcao || "").trim()
@@ -1752,62 +1763,74 @@ export default function TreinamentoPage() {
     const progressoPercentual = Math.round((totalConcluidos / 22) * 100)
     const diaInfoAtivo = DIAS_TREINAMENTO.find(d => d.dia === diaAtivoEmCurso)
 
-    // Painel de Controle exclusivo para: Administrador, Supervisor, Operacional, Recursos Humanos e Desenvolvedor
-    if (isGestorTreinamento) {
-      return (
-        <div className="min-h-screen bg-slate-50/50 flex flex-col pb-16">
-          <Header title="TREINAMENTO" />
+    // Painel de Controle unificado (Gestores e Participantes):
+    // Gestores visualizam a equipe de acordo com as regras de gestão.
+    // Participantes (Corretores CLT/PJ, Estagiários, Processo Seletivo, Monitoramento) visualizam apenas o seu próprio progresso individual.
+    return (
+      <div className="min-h-screen bg-slate-50/50 flex flex-col pb-16">
+        <Header title="TREINAMENTO" />
 
-          <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-            {/* Header do Painel de Controle */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-              <div className="space-y-2">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                  Painel de Gestão
-                </div>
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                  Painel de Controle de Treinamento
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-relaxed">
-                  Gerencie a programação e liberação de aulas para os usuários e acompanhe em tempo real o progresso e o desempenho de gabarito dos alunos.
-                </p>
+        <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+          {/* Header do Painel de Controle */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                {isGestorTreinamento ? "Painel de Gestão" : "Painel do Aluno"}
               </div>
-
-              <div className="flex items-center gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedDia(diaAtivoEmCurso || 1)
-                    setIniciouCurso(true)
-                  }}
-                  className="inline-flex items-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-3 px-5 rounded-xl shadow-xs hover:shadow transition-all cursor-pointer"
-                >
-                  <BookOpen className="w-4 h-4 text-[#00D492]" />
-                  <span>Acessar Conteúdo das Aulas</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                {isGestorTreinamento ? "Painel de Controle de Treinamento" : "Meu Painel de Treinamento"}
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-relaxed">
+                {isGestorTreinamento
+                  ? "Gerencie a programação e liberação de aulas para os usuários e acompanhe em tempo real o progresso e o desempenho de gabarito dos alunos."
+                  : "Acompanhe seu progresso de aprendizado, histórico de gabarito e status de liberação das suas aulas."}
+              </p>
             </div>
 
-            {/* ACOMPANHAMENTO DE PROGRESSO E GABARITO */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
-                    <Award className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                      Acompanhamento de Progresso e Gabarito
-                    </h2>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Visualização detalhada dos alunos que já iniciaram o treinamento (com pelo menos 1 dia concluído).
-                    </p>
-                  </div>
-                </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDia(diaAtivoEmCurso || 1)
+                  setIniciouCurso(true)
+                }}
+                className="inline-flex items-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-3 px-5 rounded-xl shadow-xs hover:shadow transition-all cursor-pointer"
+              >
+                <BookOpen className="w-4 h-4 text-[#00D492]" />
+                <span>
+                  {totalConcluidos === 0
+                    ? "Iniciar Treinamento"
+                    : isGestorTreinamento
+                    ? "Acessar Conteúdo das Aulas"
+                    : "Continuar o Treinamento"}
+                </span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
 
-                {/* Filtro de Busca */}
+          {/* ACOMPANHAMENTO DE PROGRESSO E GABARITO */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                    {isGestorTreinamento ? "Acompanhamento de Progresso e Gabarito" : "Meu Progresso e Gabarito"}
+                  </h2>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {isGestorTreinamento
+                      ? "Visualização detalhada dos alunos que já iniciaram o treinamento (com pelo menos 1 dia concluído)."
+                      : "Histórico detalhado das suas aulas concluídas, taxa de acerto e respostas reflexivas."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Filtro de Busca (Apenas para Gestores com múltiplos alunos) */}
+              {isGestorTreinamento && (
                 <div className="w-full sm:w-72">
                   <div className="relative">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1820,21 +1843,26 @@ export default function TreinamentoPage() {
                     />
                   </div>
                 </div>
-              </div>
+              )}
+            </div>
 
               {painelCarregando ? (
                 <div className="py-12 text-center space-y-3">
                   <div className="w-8 h-8 border-3 border-slate-300 border-t-[#0F172B] rounded-full animate-spin mx-auto" />
-                  <p className="text-xs text-slate-500 font-semibold">Carregando dados dos alunos...</p>
+                  <p className="text-xs text-slate-500 font-semibold">Carregando dados...</p>
                 </div>
               ) : progressoFiltrado.length === 0 ? (
                 <div className="py-12 text-center space-y-2 bg-slate-50 border border-slate-200 rounded-2xl p-6">
                   <GraduationCap className="w-8 h-8 text-slate-400 mx-auto" />
                   <p className="text-sm font-bold text-slate-700">
-                    Nenhum aluno com progresso registrado
+                    {isGestorTreinamento
+                      ? "Nenhum aluno com progresso registrado"
+                      : "Nenhum progresso registrado ainda"}
                   </p>
                   <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    Os alunos aparecerão nesta lista assim que concluírem pelo menos uma aula do treinamento.
+                    {isGestorTreinamento
+                      ? "Os alunos aparecerão nesta lista assim que concluírem pelo menos uma aula do treinamento."
+                      : "Clique em 'Iniciar Treinamento' para acessar sua primeira aula e registrar seu progresso."}
                   </p>
                 </div>
               ) : (
@@ -1855,55 +1883,59 @@ export default function TreinamentoPage() {
                     return (
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="text-xs font-bold text-slate-500">
-                          Mostrando {progressoFiltrado.length} {progressoFiltrado.length === 1 ? "aluno" : "alunos"}
+                          {isGestorTreinamento
+                            ? `Mostrando ${progressoFiltrado.length} ${progressoFiltrado.length === 1 ? "aluno" : "alunos"}`
+                            : "Seu Registro Individual"}
                         </div>
 
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {pendentesDesbloqueio.length > 0 && (
-                            <button
-                              type="button"
-                              disabled={acaoMassaCarregando !== null}
-                              onClick={() =>
-                                handleLiberarProximaAulaTodos(
-                                  pendentesDesbloqueio.map(p => ({
-                                    dia: p.proximoDia,
-                                    usuario_id: p.aluno.user_id,
-                                    usuario_nome: p.aluno.nome
-                                  }))
-                                )
-                              }
-                              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow"
-                            >
-                              <Unlock className="w-3.5 h-3.5" />
-                              <span>
-                                {acaoMassaCarregando === "liberar"
-                                  ? "Desbloqueando..."
-                                  : `Desbloquear Próxima Aula para Todos (${pendentesDesbloqueio.length})`}
-                              </span>
-                            </button>
-                          )}
+                        {isGestorTreinamento && (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {pendentesDesbloqueio.length > 0 && (
+                              <button
+                                type="button"
+                                disabled={acaoMassaCarregando !== null}
+                                onClick={() =>
+                                  handleLiberarProximaAulaTodos(
+                                    pendentesDesbloqueio.map(p => ({
+                                      dia: p.proximoDia,
+                                      usuario_id: p.aluno.user_id,
+                                      usuario_nome: p.aluno.nome
+                                    }))
+                                  )
+                                }
+                                className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow"
+                              >
+                                <Unlock className="w-3.5 h-3.5" />
+                                <span>
+                                  {acaoMassaCarregando === "liberar"
+                                    ? "Desbloqueando..."
+                                    : `Desbloquear Próxima Aula para Todos (${pendentesDesbloqueio.length})`}
+                                </span>
+                              </button>
+                            )}
 
-                          {liberadosParaRevogar.length > 0 && (
-                            <button
-                              type="button"
-                              disabled={acaoMassaCarregando !== null}
-                              onClick={() =>
-                                handleBloquearProximaAulaTodos(
-                                  liberadosParaRevogar.map(p => p.lib.id)
-                                )
-                              }
-                              className="inline-flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold text-xs px-3.5 py-2 rounded-xl border border-rose-200 transition-all cursor-pointer shadow-2xs"
-                              title="Revogar liberação da próxima aula de todos os alunos"
-                            >
-                              <Lock className="w-3.5 h-3.5 text-rose-600" />
-                              <span>
-                                {acaoMassaCarregando === "bloquear"
-                                  ? "Bloqueando..."
-                                  : `Bloquear para Revogar (${liberadosParaRevogar.length})`}
-                              </span>
-                            </button>
-                          )}
-                        </div>
+                            {liberadosParaRevogar.length > 0 && (
+                              <button
+                                type="button"
+                                disabled={acaoMassaCarregando !== null}
+                                onClick={() =>
+                                  handleBloquearProximaAulaTodos(
+                                    liberadosParaRevogar.map(p => p.lib.id)
+                                  )
+                                }
+                                className="inline-flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold text-xs px-3.5 py-2 rounded-xl border border-rose-200 transition-all cursor-pointer shadow-2xs"
+                                title="Revogar liberação da próxima aula de todos os alunos"
+                              >
+                                <Lock className="w-3.5 h-3.5 text-rose-600" />
+                                <span>
+                                  {acaoMassaCarregando === "bloquear"
+                                    ? "Bloqueando..."
+                                    : `Bloquear para Revogar (${liberadosParaRevogar.length})`}
+                                </span>
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })()}
@@ -1924,60 +1956,85 @@ export default function TreinamentoPage() {
                       return (
                         <div key={aluno.user_id} className="bg-white hover:bg-slate-50/50 transition-colors">
                           <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                            {/* Aluno & Perfil */}
-                            <div className="min-w-[240px] space-y-1">
-                              <div className="text-sm font-black text-slate-900">
-                                {aluno.nome}
-                              </div>
-                              <div className="text-xs text-slate-500 font-medium">
-                                {aluno.email}
-                              </div>
-                              <div className="flex items-center gap-1.5 pt-1">
-                                <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-                                  {aluno.funcao}
-                                </span>
-                                {aluno.regime_contratacao && (
-                                  <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-800 border border-blue-200">
-                                    {aluno.regime_contratacao}
+                            {isGestorTreinamento ? (
+                              <>
+                                {/* Aluno & Perfil */}
+                                <div className="min-w-[240px] space-y-1">
+                                  <div className="text-sm font-black text-slate-900">
+                                    {aluno.nome}
+                                  </div>
+                                  <div className="text-xs text-slate-500 font-medium">
+                                    {aluno.email}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 pt-1">
+                                    <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                                      {aluno.funcao}
+                                    </span>
+                                    {aluno.regime_contratacao && (
+                                      <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-800 border border-blue-200">
+                                        {aluno.regime_contratacao}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Progresso Concluído (Apenas para Gestores) */}
+                                <div className="min-w-[200px] space-y-1.5">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-bold text-slate-700">Aulas Concluídas</span>
+                                    <span className="font-black text-slate-900">{aluno.totalDiasConcluidos} de 22 ({aluno.percentual}%)</span>
+                                  </div>
+                                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                                      style={{ width: `${aluno.percentual}%` }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Gabarito / Tomada de Decisão (Gestores) */}
+                                <div className="min-w-[240px] space-y-1">
+                                  <div className="text-xs font-bold text-slate-700 text-center">
+                                    Acertos no Gabarito
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={cn(
+                                        "inline-flex items-center justify-center w-[240px] py-1 rounded-lg text-xs font-black uppercase tracking-wider border",
+                                        aluno.taxaAcerto >= 80
+                                          ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                          : aluno.taxaAcerto >= 50
+                                          ? "bg-amber-50 text-amber-800 border-amber-300"
+                                          : "bg-rose-50 text-rose-800 border-rose-300"
+                                      )}
+                                    >
+                                      {aluno.totalAcertos} de {aluno.totalQuestoes} ({aluno.taxaAcerto}%)
+                                    </span>
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              /* Acertos no Gabarito (Participantes) - No lugar do Nome/Email/Etiquetas, alinhado à esquerda com o dobro da largura */
+                              <div className="space-y-1">
+                                <div className="text-xs font-bold text-slate-700 text-left">
+                                  Acertos no Gabarito
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center justify-center w-[480px] max-w-full py-1 rounded-lg text-xs font-black uppercase tracking-wider border",
+                                      aluno.taxaAcerto >= 80
+                                        ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                        : aluno.taxaAcerto >= 50
+                                        ? "bg-amber-50 text-amber-800 border-amber-300"
+                                        : "bg-rose-50 text-rose-800 border-rose-300"
+                                    )}
+                                  >
+                                    {aluno.totalAcertos} de {aluno.totalQuestoes} ({aluno.taxaAcerto}%)
                                   </span>
-                                )}
+                                </div>
                               </div>
-                            </div>
-
-                            {/* Progresso Concluído */}
-                            <div className="min-w-[200px] space-y-1.5">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-bold text-slate-700">Aulas Concluídas</span>
-                                <span className="font-black text-slate-900">{aluno.totalDiasConcluidos} de 22 ({aluno.percentual}%)</span>
-                              </div>
-                              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                                  style={{ width: `${aluno.percentual}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            {/* Gabarito / Tomada de Decisão */}
-                            <div className="min-w-[180px] space-y-1">
-                              <div className="text-xs font-bold text-slate-700">
-                                Acertos no Gabarito
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={cn(
-                                    "px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border",
-                                    aluno.taxaAcerto >= 80
-                                      ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-                                      : aluno.taxaAcerto >= 50
-                                      ? "bg-amber-50 text-amber-800 border-amber-300"
-                                      : "bg-rose-50 text-rose-800 border-rose-300"
-                                  )}
-                                >
-                                  {aluno.totalAcertos} de {aluno.totalQuestoes} ({aluno.taxaAcerto}%)
-                                </span>
-                              </div>
-                            </div>
+                            )}
 
                             {/* Última Atividade & Ação */}
                             <div className="flex items-center justify-between lg:justify-end gap-3 min-w-[200px]">
@@ -1991,13 +2048,13 @@ export default function TreinamentoPage() {
                                 onClick={() =>
                                   setUsuarioExpandidoId(isExpandido ? null : aluno.user_id)
                                 }
-                                className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-2 rounded-xl transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow ml-10"
                               >
                                 <span>{isExpandido ? "Ocultar" : "Ver Gabarito"}</span>
                                 {isExpandido ? (
-                                  <ChevronUp className="w-3.5 h-3.5" />
+                                  <ChevronUp className="w-3.5 h-3.5 text-white" />
                                 ) : (
-                                  <ChevronDown className="w-3.5 h-3.5" />
+                                  <ChevronDown className="w-3.5 h-3.5 text-white" />
                                 )}
                               </button>
                             </div>
@@ -2089,7 +2146,7 @@ export default function TreinamentoPage() {
                                           Treinamento Concluído!
                                         </div>
                                         <div className="text-[11px] text-emerald-700 font-medium">
-                                          Este aluno já concluiu todas as 22 aulas do programa.
+                                          {isGestorTreinamento ? "Este aluno já concluiu todas as 22 aulas do programa." : "Parabéns! Você concluiu com sucesso todas as 22 aulas do treinamento comercial."}
                                         </div>
                                       </div>
                                     </div>
@@ -2101,6 +2158,7 @@ export default function TreinamentoPage() {
                                   (l: any) => l.dia === proximoDia && (l.usuario_id === aluno.user_id || l.usuario_id === "ALL")
                                 )
                                 const estaCarregando = liberandoAlunoKey === `${aluno.user_id}_${proximoDia}`
+                                const statusProximoDia = calcularLiberacaoDia(proximoDia)
 
                                 return (
                                   <div className="p-4 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
@@ -2114,38 +2172,63 @@ export default function TreinamentoPage() {
                                         </span>
                                       </div>
                                       <p className="text-[11px] text-slate-500 font-medium">
-                                        {libExistente
-                                          ? "Esta aula foi liberada manualmente para o aluno e já está disponível para realização."
-                                          : "A aula está bloqueada para realização. Clique no botão ao lado para liberar imediatamente."}
+                                        {isGestorTreinamento
+                                          ? (libExistente
+                                              ? "Esta aula foi liberada manualmente para o aluno e já está disponível para realização."
+                                              : "A aula está bloqueada para realização. Clique no botão ao lado para liberar imediatamente.")
+                                          : (statusProximoDia.liberado
+                                              ? "Esta aula está liberada e pronta para você realizar agora."
+                                              : (statusProximoDia.mensagemBloqueio || "Disponível no próximo dia útil."))}
                                       </p>
                                     </div>
 
                                     <div className="flex items-center gap-2 shrink-0">
-                                      {libExistente ? (
-                                        <div className="flex items-center gap-2">
-                                          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-2 rounded-xl">
-                                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                                            Aula {proximoDia} Liberada
-                                          </span>
+                                      {isGestorTreinamento ? (
+                                        libExistente ? (
+                                          <div className="flex items-center gap-2">
+                                            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-2 rounded-xl">
+                                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                              Aula {proximoDia} Liberada
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoverLiberacao(libExistente.id)}
+                                              className="text-xs font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-3 py-2 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-200"
+                                              title="Bloquear novamente esta aula"
+                                            >
+                                              Bloquear
+                                            </button>
+                                          </div>
+                                        ) : (
                                           <button
                                             type="button"
-                                            onClick={() => handleRemoverLiberacao(libExistente.id)}
-                                            className="text-xs font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-3 py-2 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-200"
-                                            title="Bloquear novamente esta aula"
+                                            disabled={estaCarregando}
+                                            onClick={() => handleLiberarProximaAula(aluno, proximoDia)}
+                                            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow"
                                           >
-                                            Bloquear
+                                            <Unlock className="w-4 h-4" />
+                                            <span>{estaCarregando ? "Liberando..." : `Liberar Aula do DIA ${proximoDia}`}</span>
                                           </button>
-                                        </div>
+                                        )
                                       ) : (
-                                        <button
-                                          type="button"
-                                          disabled={estaCarregando}
-                                          onClick={() => handleLiberarProximaAula(aluno, proximoDia)}
-                                          className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow"
-                                        >
-                                          <Unlock className="w-4 h-4" />
-                                          <span>{estaCarregando ? "Liberando..." : `Liberar Aula do DIA ${proximoDia}`}</span>
-                                        </button>
+                                        statusProximoDia.liberado ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setSelectedDia(proximoDia)
+                                              setIniciouCurso(true)
+                                            }}
+                                            className="inline-flex items-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow"
+                                          >
+                                            <BookOpen className="w-3.5 h-3.5 text-[#00D492]" />
+                                            <span>Iniciar DIA {proximoDia}</span>
+                                          </button>
+                                        ) : (
+                                          <div className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl">
+                                            <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                            <span>Disponível no próximo dia útil.</span>
+                                          </div>
+                                        )
                                       )}
                                     </div>
                                   </div>
@@ -2164,134 +2247,6 @@ export default function TreinamentoPage() {
         </div>
       )
     }
-
-    return (
-      <div className="min-h-screen bg-slate-50/50 flex flex-col">
-        <Header title="TREINAMENTO" />
-
-        <div className="flex-1 flex items-center justify-center max-w-3xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {carregandoDados ? (
-            <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center shadow-xs space-y-3">
-              <div className="w-8 h-8 border-3 border-slate-300 border-t-[#0F172B] rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-slate-500 font-semibold">Carregando seu progresso...</p>
-            </div>
-          ) : totalConcluidos === 0 ? (
-            /* PÁGINA DE BOAS-VINDAS (Nenhum dia concluído) */
-            <div className="text-center space-y-6 pt-4 w-full">
-              <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 mx-auto shadow-xs">
-                <GraduationCap className="w-8 h-8" />
-              </div>
-
-              <div className="space-y-3 max-w-xl mx-auto">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-blue-50 text-blue-800 border border-blue-200">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                  Programa de Capacitação
-                </span>
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                  Bem-vindo ao Treinamento Comercial
-                </h1>
-                <p className="text-sm sm:text-[15px] text-slate-600 leading-relaxed">
-                  Uma jornada prática e intensiva de etapas estruturadas para capacitar você em regras operacionais, fundamentos bancários, cálculos e estratégias de alta performance em crédito consignado.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left max-w-2xl mx-auto">
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                  <div className="text-xs font-black text-slate-900 uppercase">Etapas Diárias</div>
-                  <div className="text-[12px] text-slate-500 font-medium">Conteúdo direto ao ponto com foco prático no mercado.</div>
-                </div>
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                  <div className="text-xs font-black text-slate-900 uppercase">Tomada de Decisão</div>
-                  <div className="text-[12px] text-slate-500 font-medium">Simulação de cenários reais para testar seu raciocínio.</div>
-                </div>
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                  <div className="text-xs font-black text-slate-900 uppercase">Fixação Ativa</div>
-                  <div className="text-[12px] text-slate-500 font-medium">Resumos com suas palavras para máxima retenção.</div>
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedDia(1)
-                    setIniciouCurso(true)
-                  }}
-                  className="inline-flex items-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs sm:text-xs py-2.5 px-6 rounded-xl shadow-sm hover:shadow transition-all cursor-pointer"
-                >
-                  <span>COMEÇAR</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-[#00D492]" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* PÁGINA DE CONTINUIDADE (1 ou mais dias concluídos) */
-            <div className="text-center space-y-6 pt-4">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 mx-auto shadow-xs">
-                <Award className="w-8 h-8" />
-              </div>
-
-              <div className="space-y-3 max-w-xl mx-auto">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  Progresso Ativo
-                </span>
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                  Bem-vindo de volta!
-                </h1>
-                <p className="text-sm sm:text-[15px] text-slate-600 leading-relaxed">
-                  Você já concluiu <strong>{totalConcluidos} {totalConcluidos === 1 ? "dia" : "dias"}</strong>. Retome de onde parou e bons estudos!
-                </p>
-
-                {/* Aviso quando o próximo dia ainda não foi liberado (apenas para não-isentos) */}
-                {!statusLiberacaoDiaAtivo.liberado && (
-                  <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-xs font-semibold text-amber-900 max-w-md mx-auto space-y-1">
-                    <div className="flex items-center justify-center gap-1.5 font-black text-amber-950 uppercase tracking-wider text-[11px]">
-                      <Clock className="w-3.5 h-3.5 text-amber-700" />
-                      <span>AULA DO DIA {diaAtivoEmCurso} AGUARDANDO LIBERAÇÃO</span>
-                    </div>
-                    <p className="text-amber-800">
-                      {statusLiberacaoDiaAtivo.mensagemBloqueio}
-                    </p>
-                    <p className="text-[11px] text-amber-700">
-                      Você pode revisitar os dias concluídos a qualquer momento.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button
-                  type="button"
-                  disabled={!statusLiberacaoDiaAtivo.liberado}
-                  onClick={() => {
-                    setSelectedDia(diaAtivoEmCurso)
-                    setIniciouCurso(true)
-                  }}
-                  className="inline-flex items-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs sm:text-xs py-2.5 px-6 rounded-xl shadow-sm hover:shadow transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <span>{statusLiberacaoDiaAtivo.liberado ? "CONTINUAR (DIA " + diaAtivoEmCurso + ")" : "DIA " + diaAtivoEmCurso + " BLOQUEADO"}</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-[#00D492]" />
-                </button>
-                {diasConcluidos.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedDia(Math.max(...diasConcluidos))
-                      setIniciouCurso(true)
-                    }}
-                    className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold text-xs py-2.5 px-5 rounded-xl transition-all cursor-pointer"
-                  >
-                    <span>Revisar Aulas Anteriores</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-slate-50/50 pb-16">
@@ -2320,7 +2275,7 @@ export default function TreinamentoPage() {
                   onClick={() => setIniciouCurso(false)}
                   className="text-xs text-slate-500 hover:text-slate-900 font-bold flex items-center gap-1.5 transition-colors cursor-pointer bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg shrink-0"
                 >
-                  <span>{isGestorTreinamento ? "← Painel de Controle" : "← Início"}</span>
+                  <span>← Painel de Controle</span>
                 </button>
               )}
             </div>
@@ -2381,15 +2336,17 @@ export default function TreinamentoPage() {
         {!isIsentoCronometro && (() => {
           const statusDiaAtual = calcularLiberacaoDia(currentDiaData.dia)
           const isBloqueada = !statusDiaAtual.liberado
-          const tempoExibido = isBloqueada ? 0 : tempoRestante
+          const isConcluido = diasConcluidos.includes(currentDiaData.dia)
+          const isAtivaDesbloqueada = statusDiaAtual.liberado && !isConcluido
+          const tempoExibido = isAtivaDesbloqueada ? tempoRestante : 0
 
           return (
-            <div className="fixed right-4 sm:right-6 lg:right-8 top-28 sm:top-32 z-40">
+            <div className="fixed right-4 sm:right-6 lg:right-8 top-[212px] sm:top-[228px] z-40">
               <div className="bg-[#0F172B]/95 backdrop-blur-md text-white border border-slate-700/80 shadow-2xl rounded-2xl p-3 sm:p-3.5 flex items-center gap-3 transition-all hover:scale-[1.02]">
                 <div className={cn(
                   "w-9 h-9 rounded-xl flex items-center justify-center font-black shrink-0 transition-colors",
-                  isBloqueada
-                    ? "bg-amber-500/20 text-amber-400"
+                  !isAtivaDesbloqueada
+                    ? "bg-slate-800 text-slate-400"
                     : tempoExibido <= 300
                       ? "bg-rose-500/20 text-rose-400 animate-pulse"
                       : "bg-emerald-500/20 text-[#00D492]"
@@ -2401,17 +2358,16 @@ export default function TreinamentoPage() {
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                       TEMPO DA AULA
                     </span>
-                    <span className={cn(
-                      "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded",
-                      isBloqueada ? "bg-amber-900/60 text-amber-300" : "bg-slate-800 text-slate-400"
-                    )}>
+                    <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
                       DIA {currentDiaData.dia}
                     </span>
                   </div>
                   <div className="flex items-baseline gap-1.5">
                     <span className={cn(
                       "font-mono font-black text-lg sm:text-xl tracking-tight",
-                      isBloqueada ? "text-amber-300" : tempoExibido <= 300 ? "text-rose-400" : "text-white"
+                      !isAtivaDesbloqueada
+                        ? "text-slate-400"
+                        : tempoExibido <= 300 ? "text-rose-400" : "text-white"
                     )}>
                       {String(Math.floor(tempoExibido / 60)).padStart(2, "0")}:{String(tempoExibido % 60).padStart(2, "0")}
                     </span>
@@ -2425,9 +2381,31 @@ export default function TreinamentoPage() {
           )
         })()}
 
-        <div className="max-w-4xl mx-auto space-y-6">
-            {/* Day Header Bar */}
-            <div className="pt-4 pb-2">
+        {(() => {
+          const statusDiaAtual = calcularLiberacaoDia(currentDiaData.dia)
+          if (!statusDiaAtual.liberado) {
+            return (
+              <div className="max-w-4xl mx-auto py-12">
+                <div className="bg-[#FFFDF5] border border-amber-400 rounded-3xl p-6 sm:p-8 text-center space-y-1.5 max-w-lg mx-auto shadow-2xs">
+                  <div className="flex items-center justify-center gap-2 font-black text-amber-950 uppercase tracking-wider text-xs sm:text-sm">
+                    <Clock className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>AULA DO DIA {currentDiaData.dia} AGUARDANDO LIBERAÇÃO</span>
+                  </div>
+                  <p className="text-amber-900 font-semibold text-xs sm:text-sm">
+                    {statusDiaAtual.mensagemBloqueio || "Disponível no próximo dia útil."}
+                  </p>
+                  <p className="text-amber-800 text-[11px] sm:text-xs font-medium">
+                    Você pode revisitar os dias concluídos a qualquer momento.
+                  </p>
+                </div>
+              </div>
+            )
+          }
+
+          return (
+            <div className="max-w-4xl mx-auto space-y-6">
+              {/* Day Header Bar */}
+              <div className="pt-4 pb-2">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#0F172B] text-white">
@@ -2446,28 +2424,6 @@ export default function TreinamentoPage() {
                   </h2>
                 </div>
               </div>
-
-              {/* Banner de Bloqueio se o dia selecionado ainda não foi liberado */}
-              {(() => {
-                const statusDiaAtual = calcularLiberacaoDia(currentDiaData.dia)
-                if (!statusDiaAtual.liberado) {
-                  return (
-                    <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-black text-amber-900 uppercase tracking-wider">
-                        <Clock className="w-4 h-4 text-amber-700" />
-                        <span>AULA AGUARDANDO LIBERAÇÃO</span>
-                      </div>
-                      <p className="text-xs sm:text-sm font-semibold text-amber-800 leading-relaxed">
-                        Esta etapa do treinamento será liberada no próximo dia útil.
-                      </p>
-                      <p className="text-[11px] text-amber-700 font-medium">
-                        {statusDiaAtual.mensagemBloqueio}
-                      </p>
-                    </div>
-                  )
-                }
-                return null
-              })()}
 
               {/* 1. VOCÊ ESTÁ AQUI (Card Neutro) */}
               <div className="bg-slate-100/80 border border-slate-300 rounded-2xl p-5 space-y-1.5">
@@ -2767,6 +2723,8 @@ export default function TreinamentoPage() {
                 })()}
               </div>
             </div>
+          )
+        })()}
       </div>
     </div>
   )
