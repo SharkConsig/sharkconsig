@@ -18,6 +18,7 @@ import {
   ArrowRight,
   Sparkles,
   Lock,
+  Unlock,
   RotateCcw,
   Save,
   MessageSquare,
@@ -28,7 +29,12 @@ import {
   Lightbulb,
   Check,
   X,
-  Clock
+  Clock,
+  Calendar,
+  Users,
+  ChevronDown,
+  ChevronUp,
+  Trash2
 } from "lucide-react"
 
 // Types
@@ -1006,14 +1012,29 @@ export default function TreinamentoPage() {
   const isAdminUser = Boolean(isAdmin || userRole === "Administrador")
   const isSupervisorUser = userRole === "Supervisor"
   const isOperacionalUser = userRole === "Operacional"
+  const isRHUser = userRole === "Recursos Humanos" || userRole === "RH"
+
+  // Perfis autorizados a acessar o Painel de Controle no Treinamento
+  const isGestorTreinamento = Boolean(
+    isDevUser ||
+    isAdminUser ||
+    isSupervisorUser ||
+    isOperacionalUser ||
+    isRHUser
+  )
+
+  // Regra de visibilidade do progresso do 'Corretor do regime PJ':
+  // Somente Administrador e Desenvolvedor podem ver Corretor PJ.
+  // Supervisor, Operacional e Recursos Humanos não podem ver Corretor PJ.
+  const podeVerCorretorPJ = Boolean(isDevUser || isAdminUser)
 
   // Perfis autorizados a acessar a área de Treinamento
   const temAcessoTreinamento = Boolean(
     isDeveloper ||
-    ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Monitoramento", "Corretor", "Estágio", "Recursos Humanos"].includes(perfil?.role as string)
+    ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Monitoramento", "Corretor", "Estágio", "Processo Seletivo", "PROCESSO SELETIVO", "Recursos Humanos", "RH"].includes(perfil?.role as string)
   )
 
-  // Isenção da 'Regra de Liberação Diária (Trava de 1 Aula por Dia Útil às 14h)'
+  // Isenção da 'Regra de Liberação Diária (Trava de 1 Aula por Dia Útil)'
   // Isentos: Administrador, Supervisor, Operacional, Desenvolvedor e regime PJ
   const regimeUsuario = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || "").toUpperCase().trim()
   const isPJ = regimeUsuario.includes("PJ")
@@ -1048,13 +1069,34 @@ export default function TreinamentoPage() {
   const [iniciouCurso, setIniciouCurso] = useState<boolean>(false)
   const [carregandoDados, setCarregandoDados] = useState<boolean>(true)
 
+  // Liberações programadas via Painel de Controle
+  const [liberacoesProgramadas, setLiberacoesProgramadas] = useState<any[]>([])
+
+  // Estado do Painel de Controle de Treinamento
+  const [painelCarregando, setPainelCarregando] = useState<boolean>(false)
+  const [painelUsuarios, setPainelUsuarios] = useState<any[]>([])
+  const [painelProgresso, setPainelProgresso] = useState<any[]>([])
+  const [painelLiberacoes, setPainelLiberacoes] = useState<any[]>([])
+  const [progDia, setProgDia] = useState<number>(2)
+  const [progUsuarioId, setProgUsuarioId] = useState<string>("ALL")
+  const [progData, setProgData] = useState<string>(() => {
+    const agoraSp = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }))
+    return agoraSp.toISOString().split("T")[0]
+  })
+  const [progHora, setProgHora] = useState<string>("14:00")
+  const [salvandoLiberacao, setSalvandoLiberacao] = useState<boolean>(false)
+  const [feedbackMsg, setFeedbackMsg] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null)
+  const [usuarioExpandidoId, setUsuarioExpandidoId] = useState<string | null>(null)
+  const [filtroPesquisaAluno, setFiltroPesquisaAluno] = useState<string>("")
+  const [liberandoAlunoKey, setLiberandoAlunoKey] = useState<string | null>(null)
+  const [acaoMassaCarregando, setAcaoMassaCarregando] = useState<"liberar" | "bloquear" | null>(null)
+
   // Interactive Mini Calculator on Day 5
   const [calcMargem, setCalcMargem] = useState<number>(1000)
   const [calcCoef, setCalcCoef] = useState<number>(0.04333)
   const [calcPrazo, setCalcPrazo] = useState<number>(96)
 
-  // Cálculo da liberação da aula às 14h do próximo dia útil (Horário de São Paulo)
-  // Aplica-se para todos exceto Desenvolvedor e Corretor PJ
+  // Cálculo da liberação da aula no próximo dia útil ou via agendamento do Painel de Controle
   const calcularLiberacaoDia = (diaAlvo: number): { liberado: boolean; dataHoraLiberacao?: Date; mensagemBloqueio?: string } => {
     // Dias já concluídos ou dia 1 sempre liberados
     if (diasConcluidos.includes(diaAlvo) || diaAlvo <= 1) {
@@ -1064,6 +1106,27 @@ export default function TreinamentoPage() {
     // Se o usuário é isento (PJ ou Desenvolvedor), libera imediatamente o dia em sequência
     if (isIsentoLimiteDiario) {
       return { liberado: true }
+    }
+
+    // Verifica se há liberação programada pelo Painel de Controle para este dia
+    const userIdAtual = user?.id || perfil?.id
+    const libProgramada = liberacoesProgramadas.find(
+      l => l.dia === diaAlvo && (l.usuario_id === userIdAtual || l.usuario_id === "ALL")
+    )
+
+    if (libProgramada && libProgramada.data_hora_liberacao) {
+      const dataHoraLib = new Date(libProgramada.data_hora_liberacao)
+      const agora = new Date()
+      if (agora >= dataHoraLib) {
+        return { liberado: true, dataHoraLiberacao: dataHoraLib }
+      }
+      const dataStr = dataHoraLib.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+      const horaStr = dataHoraLib.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      return {
+        liberado: false,
+        dataHoraLiberacao: dataHoraLib,
+        mensagemBloqueio: `Disponível em ${dataStr} às ${horaStr}.`
+      }
     }
 
     // Para o dia N, depende da conclusão do dia anterior (N - 1)
@@ -1095,7 +1158,7 @@ export default function TreinamentoPage() {
       }
 
       targetSpDate.setDate(targetSpDate.getDate() + daysToAdd)
-      targetSpDate.setHours(14, 0, 0, 0)
+      targetSpDate.setHours(0, 0, 0, 0)
 
       const agoraSp = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }))
 
@@ -1231,6 +1294,9 @@ export default function TreinamentoPage() {
 
         const json = await res.json()
         const data = json.data
+        if (json.liberacoes && Array.isArray(json.liberacoes)) {
+          setLiberacoesProgramadas(json.liberacoes)
+        }
 
         if (data && Array.isArray(data) && data.length > 0) {
           const remoteRespostas: Record<number, string> = {}
@@ -1275,6 +1341,262 @@ export default function TreinamentoPage() {
 
     carregarDadosTreinamento()
   }, [user?.id, perfil?.id])
+
+  // Carrega dados completos para o Painel de Controle (Gestores)
+  const carregarDadosPainel = async () => {
+    if (!isGestorTreinamento) return
+    setPainelCarregando(true)
+    try {
+      const res = await fetch("/api/treinamento?action=painel")
+      if (!res.ok) return
+      const json = await res.json()
+      const rawRows: any[] = json.rows || []
+      const users: any[] = json.usuarios || []
+      const libs: any[] = json.liberacoes || []
+
+      setPainelUsuarios(users)
+      setPainelLiberacoes(libs)
+      setLiberacoesProgramadas(libs)
+
+      // Agrupar linhas por usuário
+      const progressoPorUser: Record<string, any> = {}
+
+      rawRows.forEach(row => {
+        if (!row.user_id) return
+        if (!progressoPorUser[row.user_id]) {
+          const authUser = users.find(u => u.id === row.user_id)
+          progressoPorUser[row.user_id] = {
+            user_id: row.user_id,
+            nome: authUser?.nome || row.usuario_nome || "Aluno",
+            email: authUser?.email || row.usuario_email || "",
+            funcao: authUser?.funcao || "Corretor",
+            regime_contratacao: authUser?.regime_contratacao || row.regime_contratacao || "CLT",
+            rows: []
+          }
+        }
+        progressoPorUser[row.user_id].rows.push(row)
+      })
+
+      const progressoLista: any[] = []
+
+      Object.values(progressoPorUser).forEach(aluno => {
+        const concluidos = aluno.rows.filter((r: any) => r.concluido)
+        // Regra: somente mostrar usuários que já começaram e concluíram pelo menos um dia
+        if (concluidos.length < 1) return
+
+        let totalAcertos = 0
+        let totalQuestoes = 0
+        let ultimaConclusaoIso = ""
+
+        concluidos.forEach((r: any) => {
+          if (r.decisao_opcao_idx !== null && r.decisao_opcao_idx !== undefined) {
+            totalQuestoes++
+            if (r.decisao_acertou) totalAcertos++
+          }
+          const dt = r.data_hora_conclusao || r.updated_at || r.created_at
+          if (dt && (!ultimaConclusaoIso || dt > ultimaConclusaoIso)) {
+            ultimaConclusaoIso = dt
+          }
+        })
+
+        const percentual = Math.round((concluidos.length / 22) * 100)
+        const taxaAcerto = totalQuestoes > 0 ? Math.round((totalAcertos / totalQuestoes) * 100) : 0
+
+        progressoLista.push({
+          user_id: aluno.user_id,
+          nome: aluno.nome,
+          email: aluno.email,
+          funcao: aluno.funcao,
+          regime_contratacao: aluno.regime_contratacao,
+          totalDiasConcluidos: concluidos.length,
+          percentual,
+          totalAcertos,
+          totalQuestoes,
+          taxaAcerto,
+          ultimaConclusaoIso,
+          historico: concluidos.sort((a: any, b: any) => a.dia - b.dia)
+        })
+      })
+
+      // Ordena por maior progresso
+      progressoLista.sort((a, b) => b.totalDiasConcluidos - a.totalDiasConcluidos || a.nome.localeCompare(b.nome))
+
+      setPainelProgresso(progressoLista)
+    } catch (err) {
+      console.error("Erro ao carregar dados do painel:", err)
+    } finally {
+      setPainelCarregando(false)
+    }
+  }
+
+  useEffect(() => {
+    if (isGestorTreinamento) {
+      carregarDadosPainel()
+    }
+  }, [isGestorTreinamento])
+
+  // Liberar a próxima aula do aluno imediatamente
+  const handleLiberarProximaAula = async (aluno: any, proximoDia: number) => {
+    const key = `${aluno.user_id}_${proximoDia}`
+    setLiberandoAlunoKey(key)
+
+    try {
+      const res = await fetch("/api/treinamento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "programar_liberacao",
+          dia: proximoDia,
+          usuario_id: aluno.user_id,
+          usuario_nome: aluno.nome,
+          data_hora_liberacao: new Date().toISOString(),
+          liberado_por: perfil?.nome || user?.email || "Gestor"
+        })
+      })
+
+      const json = await res.json()
+      if (res.ok && json.liberacoes) {
+        setPainelLiberacoes(json.liberacoes)
+        setLiberacoesProgramadas(json.liberacoes)
+      }
+    } catch (err) {
+      console.error("Erro ao liberar próxima aula:", err)
+    } finally {
+      setLiberandoAlunoKey(null)
+    }
+  }
+
+  // Cancelar liberação programada / re-bloquear aula
+  const handleRemoverLiberacao = async (id: string) => {
+    try {
+      const res = await fetch("/api/treinamento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remover_liberacao", id })
+      })
+      const json = await res.json()
+      if (res.ok && json.liberacoes) {
+        setPainelLiberacoes(json.liberacoes)
+        setLiberacoesProgramadas(json.liberacoes)
+      }
+    } catch (err) {
+      console.error("Erro ao cancelar liberação:", err)
+    }
+  }
+
+  // Desbloquear próxima aula para todos os alunos visíveis
+  const handleLiberarProximaAulaTodos = async (itens: Array<{ dia: number; usuario_id: string; usuario_nome: string }>) => {
+    if (itens.length === 0) return
+    setAcaoMassaCarregando("liberar")
+    try {
+      const res = await fetch("/api/treinamento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "liberar_em_massa",
+          itens: itens.map(item => ({
+            ...item,
+            data_hora_liberacao: new Date().toISOString()
+          })),
+          liberado_por: perfil?.nome || user?.email || "Gestor"
+        })
+      })
+      const json = await res.json()
+      if (res.ok && json.liberacoes) {
+        setPainelLiberacoes(json.liberacoes)
+        setLiberacoesProgramadas(json.liberacoes)
+      }
+    } catch (err) {
+      console.error("Erro ao desbloquear próximas aulas em massa:", err)
+    } finally {
+      setAcaoMassaCarregando(null)
+    }
+  }
+
+  // Bloquear / revogar liberação da próxima aula de todos
+  const handleBloquearProximaAulaTodos = async (ids: string[]) => {
+    if (ids.length === 0) return
+    setAcaoMassaCarregando("bloquear")
+    try {
+      const res = await fetch("/api/treinamento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "remover_liberacoes_em_massa",
+          ids
+        })
+      })
+      const json = await res.json()
+      if (res.ok && json.liberacoes) {
+        setPainelLiberacoes(json.liberacoes)
+        setLiberacoesProgramadas(json.liberacoes)
+      }
+    } catch (err) {
+      console.error("Erro ao revogar liberações em massa:", err)
+    } finally {
+      setAcaoMassaCarregando(null)
+    }
+  }
+
+  // Filtro de alunos para exibição no progresso (Regras de visibilidade estritas)
+  const progressoFiltrado = painelProgresso.filter(aluno => {
+    // Requisito 2: já garantido (totalDiasConcluidos >= 1)
+
+    const regime = (aluno.regime_contratacao || "").toUpperCase().trim()
+    const roleNorm = (aluno.funcao || "").trim()
+    const isCorretor = roleNorm === "Corretor"
+    const isPJ = regime.includes("PJ")
+
+    // Requisito 3: Administrador e Desenvolvedor podem ver Corretor PJ.
+    if (podeVerCorretorPJ) {
+      // Dev e Admin visualizam todos
+    } else {
+      // Supervisor, Operacional e Recursos Humanos NÃO podem ver Corretor PJ
+      if (isCorretor && isPJ) {
+        return false
+      }
+      // Somente podem ver: 'Corretor do regime CLT', 'Estágio', 'Monitoramento', 'Processo Seletivo', 'Supervisor', 'Operacional' e 'Recursos Humanos'
+      const funcoesPermitidas = [
+        "Corretor",
+        "Estágio",
+        "Estagio",
+        "Monitoramento",
+        "Processo Seletivo",
+        "PROCESSO SELETIVO",
+        "Supervisor",
+        "Operacional",
+        "Recursos Humanos",
+        "RH"
+      ]
+      const permitida = funcoesPermitidas.some(f => f.toLowerCase() === roleNorm.toLowerCase())
+      if (!permitida) return false
+    }
+
+    // Filtro por texto de pesquisa
+    if (filtroPesquisaAluno.trim()) {
+      const termo = filtroPesquisaAluno.toLowerCase()
+      const matchNome = (aluno.nome || "").toLowerCase().includes(termo)
+      const matchEmail = (aluno.email || "").toLowerCase().includes(termo)
+      const matchFuncao = (aluno.funcao || "").toLowerCase().includes(termo)
+      return matchNome || matchEmail || matchFuncao
+    }
+
+    return true
+  })
+
+  // Lista de usuários para o select de agendamento de liberação
+  const usuariosDisponiveisParaLiberacao = painelUsuarios
+    .filter(u => {
+      if (!podeVerCorretorPJ) {
+        const regime = (u.regime_contratacao || "").toUpperCase().trim()
+        const role = (u.funcao || "").trim()
+        if (role === "Corretor" && regime.includes("PJ")) {
+          return false
+        }
+      }
+      return true
+    })
+    .sort((a, b) => (a.nome || "").localeCompare(b.nome || ""))
 
   // Scroll to the top of the lesson whenever the user changes the day
   useEffect(() => {
@@ -1397,8 +1719,8 @@ export default function TreinamentoPage() {
       setDatasConclusao(prev => ({ ...prev, [diaAtual]: agoraIso }))
       await sincronizarSupabase(diaAtual, { concluido: true, data_hora_conclusao: agoraIso })
 
-      // Se o usuário não for isento (ou seja, é CLT, Estágio, RH, Operacional, Supervisor, Admin, etc.)
-      // o próximo dia só será liberado às 14h do próximo dia útil. Volta para a tela inicial informando o status.
+      // Se o usuário não for isento (ou seja, é CLT, Estágio, Processo Seletivo, etc.)
+      // o próximo dia só será liberado no próximo dia útil. Volta para a tela inicial informando o status.
       if (!isIsentoLimiteDiario) {
         setIniciouCurso(false)
         return
@@ -1429,6 +1751,419 @@ export default function TreinamentoPage() {
     const totalConcluidos = diasConcluidos.length
     const progressoPercentual = Math.round((totalConcluidos / 22) * 100)
     const diaInfoAtivo = DIAS_TREINAMENTO.find(d => d.dia === diaAtivoEmCurso)
+
+    // Painel de Controle exclusivo para: Administrador, Supervisor, Operacional, Recursos Humanos e Desenvolvedor
+    if (isGestorTreinamento) {
+      return (
+        <div className="min-h-screen bg-slate-50/50 flex flex-col pb-16">
+          <Header title="TREINAMENTO" />
+
+          <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+            {/* Header do Painel de Controle */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                  Painel de Gestão
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                  Painel de Controle de Treinamento
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-relaxed">
+                  Gerencie a programação e liberação de aulas para os usuários e acompanhe em tempo real o progresso e o desempenho de gabarito dos alunos.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDia(diaAtivoEmCurso || 1)
+                    setIniciouCurso(true)
+                  }}
+                  className="inline-flex items-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-3 px-5 rounded-xl shadow-xs hover:shadow transition-all cursor-pointer"
+                >
+                  <BookOpen className="w-4 h-4 text-[#00D492]" />
+                  <span>Acessar Conteúdo das Aulas</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* ACOMPANHAMENTO DE PROGRESSO E GABARITO */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                      Acompanhamento de Progresso e Gabarito
+                    </h2>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Visualização detalhada dos alunos que já iniciaram o treinamento (com pelo menos 1 dia concluído).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Filtro de Busca */}
+                <div className="w-full sm:w-72">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nome, e-mail ou perfil..."
+                      value={filtroPesquisaAluno}
+                      onChange={e => setFiltroPesquisaAluno(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {painelCarregando ? (
+                <div className="py-12 text-center space-y-3">
+                  <div className="w-8 h-8 border-3 border-slate-300 border-t-[#0F172B] rounded-full animate-spin mx-auto" />
+                  <p className="text-xs text-slate-500 font-semibold">Carregando dados dos alunos...</p>
+                </div>
+              ) : progressoFiltrado.length === 0 ? (
+                <div className="py-12 text-center space-y-2 bg-slate-50 border border-slate-200 rounded-2xl p-6">
+                  <GraduationCap className="w-8 h-8 text-slate-400 mx-auto" />
+                  <p className="text-sm font-bold text-slate-700">
+                    Nenhum aluno com progresso registrado
+                  </p>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    Os alunos aparecerão nesta lista assim que concluírem pelo menos uma aula do treinamento.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {(() => {
+                    const alunosElegiveis = progressoFiltrado.map(aluno => {
+                      const maxDiaConcluido = Math.max(...aluno.historico.map((h: any) => Number(h.dia)), 0)
+                      const proximoDia = maxDiaConcluido + 1
+                      const lib = proximoDia <= 22 ? painelLiberacoes.find(
+                        (l: any) => l.dia === proximoDia && (l.usuario_id === aluno.user_id || l.usuario_id === "ALL")
+                      ) : null
+                      return { aluno, proximoDia, lib }
+                    }).filter(item => item.proximoDia <= 22)
+
+                    const pendentesDesbloqueio = alunosElegiveis.filter(item => !item.lib)
+                    const liberadosParaRevogar = alunosElegiveis.filter(item => !!item.lib)
+
+                    return (
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="text-xs font-bold text-slate-500">
+                          Mostrando {progressoFiltrado.length} {progressoFiltrado.length === 1 ? "aluno" : "alunos"}
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {pendentesDesbloqueio.length > 0 && (
+                            <button
+                              type="button"
+                              disabled={acaoMassaCarregando !== null}
+                              onClick={() =>
+                                handleLiberarProximaAulaTodos(
+                                  pendentesDesbloqueio.map(p => ({
+                                    dia: p.proximoDia,
+                                    usuario_id: p.aluno.user_id,
+                                    usuario_nome: p.aluno.nome
+                                  }))
+                                )
+                              }
+                              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow"
+                            >
+                              <Unlock className="w-3.5 h-3.5" />
+                              <span>
+                                {acaoMassaCarregando === "liberar"
+                                  ? "Desbloqueando..."
+                                  : `Desbloquear Próxima Aula para Todos (${pendentesDesbloqueio.length})`}
+                              </span>
+                            </button>
+                          )}
+
+                          {liberadosParaRevogar.length > 0 && (
+                            <button
+                              type="button"
+                              disabled={acaoMassaCarregando !== null}
+                              onClick={() =>
+                                handleBloquearProximaAulaTodos(
+                                  liberadosParaRevogar.map(p => p.lib.id)
+                                )
+                              }
+                              className="inline-flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold text-xs px-3.5 py-2 rounded-xl border border-rose-200 transition-all cursor-pointer shadow-2xs"
+                              title="Revogar liberação da próxima aula de todos os alunos"
+                            >
+                              <Lock className="w-3.5 h-3.5 text-rose-600" />
+                              <span>
+                                {acaoMassaCarregando === "bloquear"
+                                  ? "Bloqueando..."
+                                  : `Bloquear para Revogar (${liberadosParaRevogar.length})`}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+                    {progressoFiltrado.map(aluno => {
+                      const isExpandido = usuarioExpandidoId === aluno.user_id
+                      const dataUltima = aluno.ultimaConclusaoIso
+                        ? new Date(aluno.ultimaConclusaoIso).toLocaleDateString("pt-BR", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          })
+                        : "-"
+
+                      return (
+                        <div key={aluno.user_id} className="bg-white hover:bg-slate-50/50 transition-colors">
+                          <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            {/* Aluno & Perfil */}
+                            <div className="min-w-[240px] space-y-1">
+                              <div className="text-sm font-black text-slate-900">
+                                {aluno.nome}
+                              </div>
+                              <div className="text-xs text-slate-500 font-medium">
+                                {aluno.email}
+                              </div>
+                              <div className="flex items-center gap-1.5 pt-1">
+                                <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                                  {aluno.funcao}
+                                </span>
+                                {aluno.regime_contratacao && (
+                                  <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-800 border border-blue-200">
+                                    {aluno.regime_contratacao}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Progresso Concluído */}
+                            <div className="min-w-[200px] space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-bold text-slate-700">Aulas Concluídas</span>
+                                <span className="font-black text-slate-900">{aluno.totalDiasConcluidos} de 22 ({aluno.percentual}%)</span>
+                              </div>
+                              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                                  style={{ width: `${aluno.percentual}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Gabarito / Tomada de Decisão */}
+                            <div className="min-w-[180px] space-y-1">
+                              <div className="text-xs font-bold text-slate-700">
+                                Acertos no Gabarito
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={cn(
+                                    "px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border",
+                                    aluno.taxaAcerto >= 80
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                      : aluno.taxaAcerto >= 50
+                                      ? "bg-amber-50 text-amber-800 border-amber-300"
+                                      : "bg-rose-50 text-rose-800 border-rose-300"
+                                  )}
+                                >
+                                  {aluno.totalAcertos} de {aluno.totalQuestoes} ({aluno.taxaAcerto}%)
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Última Atividade & Ação */}
+                            <div className="flex items-center justify-between lg:justify-end gap-3 min-w-[200px]">
+                              <div className="text-right hidden sm:block space-y-0.5">
+                                <div className="text-[11px] font-bold text-slate-400 uppercase">Última Aula</div>
+                                <div className="text-xs font-bold text-slate-700">{dataUltima}</div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setUsuarioExpandidoId(isExpandido ? null : aluno.user_id)
+                                }
+                                className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-2 rounded-xl transition-colors cursor-pointer"
+                              >
+                                <span>{isExpandido ? "Ocultar" : "Ver Gabarito"}</span>
+                                {isExpandido ? (
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                ) : (
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Detalhes expandidos com o histórico do gabarito e respostas reflexivas */}
+                          {isExpandido && (
+                            <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 space-y-4">
+                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                <span>Histórico de Respostas e Gabarito do Aluno</span>
+                              </h4>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {aluno.historico.map((item: any) => {
+                                  const diaInfo = DIAS_TREINAMENTO.find(d => d.dia === item.dia)
+                                  const dataConclusao = item.data_hora_conclusao
+                                    ? new Date(item.data_hora_conclusao).toLocaleDateString("pt-BR", {
+                                        day: "2-digit",
+                                        month: "2-digit",
+                                        year: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit"
+                                      })
+                                    : "-"
+
+                                  return (
+                                    <div
+                                      key={item.dia}
+                                      className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs"
+                                    >
+                                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                                        <div className="font-black text-xs text-slate-900">
+                                          DIA {item.dia}: {diaInfo?.titulo || "Aula"}
+                                        </div>
+                                        <span
+                                          className={cn(
+                                            "text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border",
+                                            item.decisao_acertou
+                                              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                              : "bg-rose-50 text-rose-800 border-rose-200"
+                                          )}
+                                        >
+                                          {item.decisao_acertou ? "✓ Gabarito Correto" : "✕ Gabarito Incorreto"}
+                                        </span>
+                                      </div>
+
+                                      {/* Resposta de Tomada de Decisão */}
+                                      <div className="space-y-1">
+                                        <div className="text-[11px] font-bold text-slate-500 uppercase">
+                                          Opção Escolhida na Tomada de Decisão:
+                                        </div>
+                                        <div className="text-xs font-semibold text-slate-800 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                          {item.decisao_opcao_texto || "Opção registrada"}
+                                        </div>
+                                      </div>
+
+                                      {/* Resposta Reflexiva Aberta */}
+                                      {item.resposta_aberta && (
+                                        <div className="space-y-1">
+                                          <div className="text-[11px] font-bold text-slate-500 uppercase">
+                                            Resposta Reflexiva do Aluno:
+                                          </div>
+                                          <div className="text-xs text-slate-700 italic bg-blue-50/50 p-2.5 rounded-xl border border-blue-100 leading-relaxed">
+                                            "{item.resposta_aberta}"
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      <div className="text-[10px] text-slate-400 font-medium pt-1">
+                                        Concluído em: {dataConclusao}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+
+                              {/* Card / Botão para liberar a próxima aula */}
+                              {(() => {
+                                const maxDiaConcluido = Math.max(...aluno.historico.map((h: any) => Number(h.dia)), 0)
+                                const proximoDia = maxDiaConcluido + 1
+
+                                if (proximoDia > 22) {
+                                  return (
+                                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3">
+                                      <Award className="w-5 h-5 text-emerald-600 shrink-0" />
+                                      <div>
+                                        <div className="text-xs font-black text-emerald-900">
+                                          Treinamento Concluído!
+                                        </div>
+                                        <div className="text-[11px] text-emerald-700 font-medium">
+                                          Este aluno já concluiu todas as 22 aulas do programa.
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                }
+
+                                const proximoDiaInfo = DIAS_TREINAMENTO.find(d => d.dia === proximoDia)
+                                const libExistente = painelLiberacoes.find(
+                                  (l: any) => l.dia === proximoDia && (l.usuario_id === aluno.user_id || l.usuario_id === "ALL")
+                                )
+                                const estaCarregando = liberandoAlunoKey === `${aluno.user_id}_${proximoDia}`
+
+                                return (
+                                  <div className="p-4 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
+                                          Próxima Aula
+                                        </span>
+                                        <span className="text-xs font-black text-slate-900">
+                                          DIA {proximoDia}: {proximoDiaInfo?.titulo || "Aula Seguinte"}
+                                        </span>
+                                      </div>
+                                      <p className="text-[11px] text-slate-500 font-medium">
+                                        {libExistente
+                                          ? "Esta aula foi liberada manualmente para o aluno e já está disponível para realização."
+                                          : "A aula está bloqueada para realização. Clique no botão ao lado para liberar imediatamente."}
+                                      </p>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {libExistente ? (
+                                        <div className="flex items-center gap-2">
+                                          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-2 rounded-xl">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                            Aula {proximoDia} Liberada
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemoverLiberacao(libExistente.id)}
+                                            className="text-xs font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-3 py-2 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-200"
+                                            title="Bloquear novamente esta aula"
+                                          >
+                                            Bloquear
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          disabled={estaCarregando}
+                                          onClick={() => handleLiberarProximaAula(aluno, proximoDia)}
+                                          className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow"
+                                        >
+                                          <Unlock className="w-4 h-4" />
+                                          <span>{estaCarregando ? "Liberando..." : `Liberar Aula do DIA ${proximoDia}`}</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )
+    }
 
     return (
       <div className="min-h-screen bg-slate-50/50 flex flex-col">
@@ -1585,7 +2320,7 @@ export default function TreinamentoPage() {
                   onClick={() => setIniciouCurso(false)}
                   className="text-xs text-slate-500 hover:text-slate-900 font-bold flex items-center gap-1.5 transition-colors cursor-pointer bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg shrink-0"
                 >
-                  <span>← Início</span>
+                  <span>{isGestorTreinamento ? "← Painel de Controle" : "← Início"}</span>
                 </button>
               )}
             </div>
@@ -1723,7 +2458,7 @@ export default function TreinamentoPage() {
                         <span>AULA AGUARDANDO LIBERAÇÃO</span>
                       </div>
                       <p className="text-xs sm:text-sm font-semibold text-amber-800 leading-relaxed">
-                        Esta etapa do treinamento será liberada às 14:00 (horário de Brasília) do próximo dia útil.
+                        Esta etapa do treinamento será liberada no próximo dia útil.
                       </p>
                       <p className="text-[11px] text-amber-700 font-medium">
                         {statusDiaAtual.mensagemBloqueio}

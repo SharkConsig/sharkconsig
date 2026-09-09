@@ -184,6 +184,8 @@ export default function DistribuicaoCampanhaPage() {
   const [allUsers, setAllUsers] = useState<BrokerUser[]>([])
   const [selectedCampaignForTeam, setSelectedCampaignForTeam] = useState<Campaign | null>(null)
 
+  const canToggleActive = Boolean(isAdmin || isDeveloper || isOperational || perfil?.role === 'Operacional');
+
   const canStart = !isAdmin && !isDeveloper && !isOperational && (
     perfil?.role === 'Corretor' || 
     perfil?.role === 'Estágio' || 
@@ -1000,26 +1002,26 @@ export default function DistribuicaoCampanhaPage() {
                             <td className="px-8 py-5 text-center">
                               {campaign.filtros?.ativa === false ? (
                                 <button 
-                                  disabled={!isAdmin && !isDeveloper}
-                                  onClick={() => (isAdmin || isDeveloper) && handleToggleActive(campaign)}
+                                  disabled={!canToggleActive}
+                                  onClick={() => canToggleActive && handleToggleActive(campaign)}
                                   className={cn(
                                     "inline-flex items-center gap-1.5 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-100 uppercase tracking-widest text-[9px] font-black text-rose-600 outline-none select-none transition-all duration-150",
-                                    (isAdmin || isDeveloper) ? "cursor-pointer hover:bg-rose-100 active:scale-95" : "cursor-default"
+                                    canToggleActive ? "cursor-pointer hover:bg-rose-100 active:scale-95" : "cursor-default"
                                   )}
-                                  title={(isAdmin || isDeveloper) ? "Clique para Ativar" : undefined}
+                                  title={canToggleActive ? "Clique para Ativar" : undefined}
                                 >
                                   <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
                                   <span>Inativa</span>
                                 </button>
                               ) : (
                                 <button 
-                                  disabled={!isAdmin && !isDeveloper}
-                                  onClick={() => (isAdmin || isDeveloper) && handleToggleActive(campaign)}
+                                  disabled={!canToggleActive}
+                                  onClick={() => canToggleActive && handleToggleActive(campaign)}
                                   className={cn(
                                     "inline-flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 uppercase tracking-widest text-[9px] font-black text-emerald-600 outline-none select-none transition-all duration-150",
-                                    (isAdmin || isDeveloper) ? "cursor-pointer hover:bg-emerald-100 active:scale-95" : "cursor-default"
+                                    canToggleActive ? "cursor-pointer hover:bg-emerald-100 active:scale-95" : "cursor-default"
                                   )}
-                                  title={(isAdmin || isDeveloper) ? "Clique para Desativar" : undefined}
+                                  title={canToggleActive ? "Clique para Desativar" : undefined}
                                 >
                                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                   <span>Ativa</span>
