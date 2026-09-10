@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Header } from "@/components/layout/header"
 import { useAuth } from "@/context/auth-context"
 import { useSidebar } from "@/context/sidebar-context"
@@ -1035,7 +1035,7 @@ export default function TreinamentoPage() {
   )
 
   // Isenção da 'Regra de Liberação Diária (Trava de 1 Aula por Dia Útil)'
-  // Isentos: Administrador, Supervisor, Operacional, Desenvolvedor e regime PJ
+  // Isentos: Administrador, Supervisor, Operacional, Recursos Humanos, Desenvolvedor e regime PJ
   const regimeUsuario = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || "").toUpperCase().trim()
   const isPJ = regimeUsuario.includes("PJ")
   const isIsentoLimiteDiario = Boolean(
@@ -1043,22 +1043,34 @@ export default function TreinamentoPage() {
     isAdminUser || 
     isSupervisorUser || 
     isOperacionalUser || 
+    isRHUser ||
     isPJ
   )
 
   // Isenção do 'Cronômetro Flutuante de 30 Minutos'
-  // Isentos: Administrador, Supervisor, Operacional, Desenvolvedor e regime PJ
+  // Isentos: Administrador, Supervisor, Operacional, Recursos Humanos, Desenvolvedor e regime PJ
   const isIsentoCronometro = Boolean(
     isDevUser || 
     isAdminUser || 
     isSupervisorUser || 
     isOperacionalUser || 
+    isRHUser ||
     isPJ
   )
 
   // Isenção do 'Bloqueio Geral de outras áreas durante a aula'
-  // Isentos: Administrador, Corretor do regime PJ, Supervisor, Operacional e Desenvolvedor
+  // Isentos: Administrador, Corretor do regime PJ, Supervisor, Operacional, Recursos Humanos e Desenvolvedor
   const isIsentoBloqueioGeral = isIsentoLimiteDiario
+
+  // Isenção de obrigatoriedade de respostas e navegação livre por todas as aulas:
+  // Administrador, Supervisor, Operacional, Recursos Humanos e Desenvolvedor
+  const isIsentoNavegacao = Boolean(
+    isDevUser ||
+    isAdminUser ||
+    isSupervisorUser ||
+    isOperacionalUser ||
+    isRHUser
+  )
 
   const [selectedDia, setSelectedDia] = useState<number>(1)
   const [respostasAbertas, setRespostasAbertas] = useState<Record<number, string>>({})
@@ -1088,6 +1100,7 @@ export default function TreinamentoPage() {
   const [feedbackMsg, setFeedbackMsg] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null)
   const [usuarioExpandidoId, setUsuarioExpandidoId] = useState<string | null>(null)
   const [filtroPesquisaAluno, setFiltroPesquisaAluno] = useState<string>("")
+  const [abaFuncaoSelecionada, setAbaFuncaoSelecionada] = useState<string>("TODAS")
   const [liberandoAlunoKey, setLiberandoAlunoKey] = useState<string | null>(null)
   const [acaoMassaCarregando, setAcaoMassaCarregando] = useState<"liberar" | "bloquear" | null>(null)
 
@@ -1103,21 +1116,25 @@ export default function TreinamentoPage() {
       return { liberado: true }
     }
 
-    // Se o usuário é isento (PJ ou Desenvolvedor), libera imediatamente o dia em sequência
-    if (isIsentoLimiteDiario) {
+    // Se o usuário é isento (PJ, Gestores ou RH), libera imediatamente qualquer dia
+    if (isIsentoLimiteDiario || isIsentoNavegacao) {
       return { liberado: true }
     }
 
     // Verifica se há liberação programada pelo Painel de Controle para este dia
-    const userIdAtual = user?.id || perfil?.id
+    const userIdAtual = (user?.id || perfil?.id || "").trim().toLowerCase()
     const libProgramada = liberacoesProgramadas.find(
-      l => l.dia === diaAlvo && (l.usuario_id === userIdAtual || l.usuario_id === "ALL")
+      l => l.dia === diaAlvo && (
+        l.usuario_id === "ALL" ||
+        (l.usuario_id && l.usuario_id.trim().toLowerCase() === userIdAtual)
+      )
     )
 
     if (libProgramada && libProgramada.data_hora_liberacao) {
       const dataHoraLib = new Date(libProgramada.data_hora_liberacao)
       const agora = new Date()
-      if (agora >= dataHoraLib) {
+      // Se a liberação foi feita para o momento atual ou já passou, libera imediatamente
+      if (agora.getTime() >= dataHoraLib.getTime() - 60000) {
         return { liberado: true, dataHoraLiberacao: dataHoraLib }
       }
       const dataStr = dataHoraLib.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
@@ -1438,6 +1455,19 @@ export default function TreinamentoPage() {
 
   useEffect(() => {
     carregarDadosPainel()
+
+    const handleFocus = () => {
+      carregarDadosPainel()
+    }
+    window.addEventListener("focus", handleFocus)
+    const interval = setInterval(() => {
+      carregarDadosPainel()
+    }, 20000)
+
+    return () => {
+      window.removeEventListener("focus", handleFocus)
+      clearInterval(interval)
+    }
   }, [user?.id, perfil?.id])
 
   // Liberar a próxima aula do aluno imediatamente
@@ -1546,7 +1576,7 @@ export default function TreinamentoPage() {
   // Filtro de alunos para exibição no progresso (Regras de visibilidade estritas)
   const currentUserId = user?.id || perfil?.id
 
-  const progressoFiltrado = painelProgresso.filter(aluno => {
+  const alunosVisiveisBase = painelProgresso.filter(aluno => {
     // Para participantes (Corretor CLT/PJ, Estagiário, Processo Seletivo, Monitoramento, etc.):
     // Cada um vê estritamente o seu próprio progresso individual.
     if (!isGestorTreinamento) {
@@ -1594,6 +1624,32 @@ export default function TreinamentoPage() {
 
     return true
   })
+
+  // Lista de funções disponíveis para as abas dos gestores (normalizadas em MAIÚSCULO)
+  const funcoesAbas = useMemo(() => {
+    if (!isGestorTreinamento) return []
+    const mapa = new Map<string, number>()
+    alunosVisiveisBase.forEach(aluno => {
+      let f = (aluno.funcao || "OUTROS").trim().toUpperCase()
+      if (f === "ESTAGIO") f = "ESTÁGIO"
+      if (f === "RH") f = "RECURSOS HUMANOS"
+      mapa.set(f, (mapa.get(f) || 0) + 1)
+    })
+    return Array.from(mapa.entries()).map(([nome, count]) => ({ nome, count }))
+  }, [alunosVisiveisBase, isGestorTreinamento])
+
+  // Lista final exibida de acordo com a aba de função selecionada
+  const progressoFiltrado = useMemo(() => {
+    if (!isGestorTreinamento || abaFuncaoSelecionada === "TODAS") {
+      return alunosVisiveisBase
+    }
+    return alunosVisiveisBase.filter(aluno => {
+      let f = (aluno.funcao || "OUTROS").trim().toUpperCase()
+      if (f === "ESTAGIO") f = "ESTÁGIO"
+      if (f === "RH") f = "RECURSOS HUMANOS"
+      return f === abaFuncaoSelecionada
+    })
+  }, [alunosVisiveisBase, abaFuncaoSelecionada, isGestorTreinamento])
 
   // Lista de usuários para o select de agendamento de liberação
   const usuariosDisponiveisParaLiberacao = painelUsuarios
@@ -1721,14 +1777,16 @@ export default function TreinamentoPage() {
 
     // O bloqueio do dia ocorre exclusivamente ao clicar em 'Próximo Dia'
     if (!diasConcluidos.includes(diaAtual)) {
-      if (!respostaAtual || decisaoAtual === undefined || decisaoAtual === null) {
+      if (!isIsentoNavegacao && (!respostaAtual || decisaoAtual === undefined || decisaoAtual === null)) {
         return
       }
-      const agoraIso = new Date().toISOString()
-      const newConcluidos = [...diasConcluidos, diaAtual]
-      setDiasConcluidos(newConcluidos)
-      setDatasConclusao(prev => ({ ...prev, [diaAtual]: agoraIso }))
-      await sincronizarSupabase(diaAtual, { concluido: true, data_hora_conclusao: agoraIso })
+      if (respostaAtual && decisaoAtual !== undefined && decisaoAtual !== null) {
+        const agoraIso = new Date().toISOString()
+        const newConcluidos = [...diasConcluidos, diaAtual]
+        setDiasConcluidos(newConcluidos)
+        setDatasConclusao(prev => ({ ...prev, [diaAtual]: agoraIso }))
+        await sincronizarSupabase(diaAtual, { concluido: true, data_hora_conclusao: agoraIso })
+      }
 
       // Se o usuário não for isento (ou seja, é CLT, Estágio, Processo Seletivo, etc.)
       // o próximo dia só será liberado no próximo dia útil. Volta para a tela inicial informando o status.
@@ -1846,6 +1904,60 @@ export default function TreinamentoPage() {
               )}
             </div>
 
+              {/* Abas de Navegação por Função do Aluno (Gestores) */}
+              {isGestorTreinamento && funcoesAbas.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 border-b border-slate-100 scrollbar-thin scrollbar-thumb-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setAbaFuncaoSelecionada("TODAS")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5",
+                      abaFuncaoSelecionada === "TODAS"
+                        ? "bg-[#0F172B] text-white shadow-xs"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    <span>TODAS AS FUNÇÕES</span>
+                    <span
+                      className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded-md font-bold",
+                        abaFuncaoSelecionada === "TODAS"
+                          ? "bg-white/20 text-white"
+                          : "bg-white text-slate-700 border border-slate-200"
+                      )}
+                    >
+                      {alunosVisiveisBase.length}
+                    </span>
+                  </button>
+
+                  {funcoesAbas.map(f => (
+                    <button
+                      key={f.nome}
+                      type="button"
+                      onClick={() => setAbaFuncaoSelecionada(f.nome)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5",
+                        abaFuncaoSelecionada === f.nome
+                          ? "bg-[#0F172B] text-white shadow-xs"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900"
+                      )}
+                    >
+                      <span>{f.nome}</span>
+                      <span
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded-md font-bold",
+                          abaFuncaoSelecionada === f.nome
+                            ? "bg-white/20 text-white"
+                            : "bg-white text-slate-700 border border-slate-200"
+                        )}
+                      >
+                        {f.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {painelCarregando ? (
                 <div className="py-12 text-center space-y-3">
                   <div className="w-8 h-8 border-3 border-slate-300 border-t-[#0F172B] rounded-full animate-spin mx-auto" />
@@ -1856,7 +1968,9 @@ export default function TreinamentoPage() {
                   <GraduationCap className="w-8 h-8 text-slate-400 mx-auto" />
                   <p className="text-sm font-bold text-slate-700">
                     {isGestorTreinamento
-                      ? "Nenhum aluno com progresso registrado"
+                      ? (abaFuncaoSelecionada !== "TODAS"
+                          ? `Nenhum aluno com a função "${abaFuncaoSelecionada}" com progresso registrado`
+                          : "Nenhum aluno com progresso registrado")
                       : "Nenhum progresso registrado ainda"}
                   </p>
                   <p className="text-xs text-slate-500 max-w-md mx-auto">
@@ -2068,23 +2182,33 @@ export default function TreinamentoPage() {
                                 <span>Histórico de Respostas e Gabarito do Aluno</span>
                               </h4>
 
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="flex items-stretch gap-4 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
                                 {aluno.historico.map((item: any) => {
                                   const diaInfo = DIAS_TREINAMENTO.find(d => d.dia === item.dia)
-                                  const dataConclusao = item.data_hora_conclusao
-                                    ? new Date(item.data_hora_conclusao).toLocaleDateString("pt-BR", {
-                                        day: "2-digit",
-                                        month: "2-digit",
-                                        year: "numeric",
-                                        hour: "2-digit",
-                                        minute: "2-digit"
-                                      })
-                                    : "-"
+                                  const inicioRaw = item.data_hora_entrada || item.created_at
+                                  const conclusaoRaw = item.data_hora_conclusao || item.updated_at
+
+                                  const dataInicioObj = inicioRaw ? new Date(inicioRaw) : null
+                                  const dataConclusaoObj = conclusaoRaw ? new Date(conclusaoRaw) : null
+
+                                  const dataStr = (dataConclusaoObj || dataInicioObj)?.toLocaleDateString("pt-BR", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    year: "numeric"
+                                  }) || "-"
+
+                                  const horaInicioStr = dataInicioObj
+                                    ? dataInicioObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+                                    : "--:--"
+
+                                  const horaConclusaoStr = dataConclusaoObj
+                                    ? dataConclusaoObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+                                    : "--:--"
 
                                   return (
                                     <div
                                       key={item.dia}
-                                      className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs"
+                                      className="w-[320px] sm:w-[380px] shrink-0 bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs flex flex-col justify-between"
                                     >
                                       <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
                                         <div className="font-black text-xs text-slate-900">
@@ -2124,8 +2248,12 @@ export default function TreinamentoPage() {
                                         </div>
                                       )}
 
-                                      <div className="text-[10px] text-slate-400 font-medium pt-1">
-                                        Concluído em: {dataConclusao}
+                                      <div className="text-[11px] text-slate-500 font-medium pt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 border-t border-slate-100">
+                                        <span><strong className="font-semibold text-slate-700">Data:</strong> {dataStr}</span>
+                                        <span className="text-slate-300">•</span>
+                                        <span><strong className="font-semibold text-slate-700">Início:</strong> {horaInicioStr}</span>
+                                        <span className="text-slate-300">•</span>
+                                        <span><strong className="font-semibold text-slate-700">Conclusão:</strong> {horaConclusaoStr}</span>
                                       </div>
                                     </div>
                                   )
@@ -2282,49 +2410,77 @@ export default function TreinamentoPage() {
 
             {/* Barra com dias concluídos e o dia ativo atual em curso */}
             <div className="flex items-center gap-2 overflow-x-auto p-[5px] scrollbar-thin">
-              {diasConcluidos
-                .slice()
-                .sort((a, b) => a - b)
-                .map(diaNum => {
+              {isIsentoNavegacao ? (
+                Array.from({ length: 22 }, (_, i) => i + 1).map(diaNum => {
                   const isCurrent = diaNum === selectedDia
+                  const isConcluido = diasConcluidos.includes(diaNum)
                   return (
                     <button
                       key={diaNum}
                       type="button"
                       onClick={() => setSelectedDia(diaNum)}
                       className={cn(
-                        "px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100",
-                        isCurrent && "ring-2 ring-emerald-500/50"
+                        "px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5",
+                        isCurrent
+                          ? "bg-[#0F172B] text-white shadow-xs ring-2 ring-slate-900/30"
+                          : isConcluido
+                          ? "bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100"
+                          : "bg-white text-slate-700 border border-slate-300 hover:bg-slate-100"
                       )}
-                      title={`Revisitar o DIA ${diaNum}`}
+                      title={`Acessar DIA ${diaNum}`}
                     >
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      {isConcluido && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
                       <span>DIA {diaNum}</span>
                     </button>
                   )
-                })}
+                })
+              ) : (
+                <>
+                  {diasConcluidos
+                    .slice()
+                    .sort((a, b) => a - b)
+                    .map(diaNum => {
+                      const isCurrent = diaNum === selectedDia
+                      return (
+                        <button
+                          key={diaNum}
+                          type="button"
+                          onClick={() => setSelectedDia(diaNum)}
+                          className={cn(
+                            "px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100",
+                            isCurrent && "ring-2 ring-emerald-500/50"
+                          )}
+                          title={`Revisitar o DIA ${diaNum}`}
+                        >
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>DIA {diaNum}</span>
+                        </button>
+                      )
+                    })}
 
-              {/* Dia Ativo (Em curso) */}
-              {!diasConcluidos.includes(diaAtivoEmCurso) && (
-                statusLiberacaoDiaAtivo.liberado ? (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDia(diaAtivoEmCurso)}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5 bg-[#0F172B] hover:bg-slate-800 text-white shadow-xs"
-                    title={`Ir para o DIA ${diaAtivoEmCurso}`}
-                  >
-                    <CheckCircle2 className="w-3 h-3 text-[#00D492]" />
-                    <span>DIA {diaAtivoEmCurso}</span>
-                  </button>
-                ) : (
-                  <div
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-300 opacity-80 cursor-not-allowed"
-                    title={`DIA ${diaAtivoEmCurso}: ${statusLiberacaoDiaAtivo.mensagemBloqueio}`}
-                  >
-                    <Clock className="w-3 h-3 text-amber-600" />
-                    <span>DIA {diaAtivoEmCurso}</span>
-                  </div>
-                )
+                  {/* Dia Ativo (Em curso) */}
+                  {!diasConcluidos.includes(diaAtivoEmCurso) && (
+                    statusLiberacaoDiaAtivo.liberado ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDia(diaAtivoEmCurso)}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5 bg-[#0F172B] hover:bg-slate-800 text-white shadow-xs"
+                        title={`Ir para o DIA ${diaAtivoEmCurso}`}
+                      >
+                        <CheckCircle2 className="w-3 h-3 text-[#00D492]" />
+                        <span>DIA {diaAtivoEmCurso}</span>
+                      </button>
+                    ) : (
+                      <div
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-300 opacity-80 cursor-not-allowed"
+                        title={`DIA ${diaAtivoEmCurso}: ${statusLiberacaoDiaAtivo.mensagemBloqueio}`}
+                      >
+                        <Clock className="w-3 h-3 text-amber-600" />
+                        <span>DIA {diaAtivoEmCurso}</span>
+                      </div>
+                    )
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -2689,14 +2845,16 @@ export default function TreinamentoPage() {
                   const isDiaConcluido = diasConcluidos.includes(currentDiaData.dia)
                   const temResposta = Boolean(respostasAbertas[currentDiaData.dia]?.trim())
                   const temDecisao = decisoesTomadas[currentDiaData.dia] !== undefined && decisoesTomadas[currentDiaData.dia] !== null
-                  const requisitosAtendidos = isDiaConcluido || (temResposta && temDecisao)
+                  const requisitosAtendidos = isIsentoNavegacao || isDiaConcluido || (temResposta && temDecisao)
                   const proximoDiaAlvo = selectedDia + 1
                   const statusProximo = calcularLiberacaoDia(proximoDiaAlvo)
-                  const podeAvancar = requisitosAtendidos && selectedDia < 22 && (!isDiaConcluido || statusProximo.liberado)
+                  const podeAvancar = isIsentoNavegacao
+                    ? selectedDia < 22
+                    : (requisitosAtendidos && selectedDia < 22 && (!isDiaConcluido || statusProximo.liberado))
 
                   return (
                     <div className="flex items-center gap-3">
-                      {isDiaConcluido && !statusProximo.liberado && selectedDia < 22 && (
+                      {!isIsentoNavegacao && isDiaConcluido && !statusProximo.liberado && selectedDia < 22 && (
                         <span className="text-[11px] text-amber-700 font-bold bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                           <span>DIA {proximoDiaAlvo}: {statusProximo.mensagemBloqueio}</span>
@@ -2707,7 +2865,9 @@ export default function TreinamentoPage() {
                         disabled={!podeAvancar}
                         onClick={handleAvancarProximoDia}
                         title={
-                          !requisitosAtendidos
+                          isIsentoNavegacao
+                            ? "Avançar para o próximo dia"
+                            : !requisitosAtendidos
                             ? "Preencha a explicação em 'ESCREVA COM SUAS PALAVRAS' e selecione uma opção em 'TOME UMA DECISÃO' para avançar."
                             : isDiaConcluido && !statusProximo.liberado
                             ? statusProximo.mensagemBloqueio

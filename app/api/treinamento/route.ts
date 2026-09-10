@@ -30,14 +30,22 @@ async function saveLiberacoesProgramadas(supabaseAdmin: any, lista: any[]) {
     .maybeSingle()
 
   if (existing) {
-    await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from("dashboard_banners")
-      .update({ image_url: jsonStr, link: "TREINAMENTO", active: true })
+      .update({ image_url: jsonStr, is_active: false, updated_at: new Date().toISOString() })
       .eq("id", existing.id)
+    if (error) {
+      console.error("[API Treinamento] Erro ao atualizar liberações programadas:", error)
+      throw error
+    }
   } else {
-    await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from("dashboard_banners")
-      .insert({ title: CONFIG_KEY, image_url: jsonStr, link: "TREINAMENTO", active: true })
+      .insert({ title: CONFIG_KEY, image_url: jsonStr, is_active: false })
+    if (error) {
+      console.error("[API Treinamento] Erro ao inserir liberações programadas:", error)
+      throw error
+    }
   }
 }
 
@@ -86,7 +94,7 @@ export async function GET(request: Request) {
     const [{ data, error }, liberacoes] = await Promise.all([
       supabaseAdmin
         .from("treinamento")
-        .select("dia, resposta_aberta, decisao_opcao_idx, decisao_opcao_texto, decisao_acertou, concluido, data_hora_conclusao, updated_at, created_at")
+        .select("dia, resposta_aberta, decisao_opcao_idx, decisao_opcao_texto, decisao_acertou, data_hora_entrada, concluido, data_hora_conclusao, updated_at, created_at")
         .eq("user_id", userId),
       getLiberacoesProgramadas(supabaseAdmin)
     ])
@@ -96,8 +104,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    const normalizedUserId = (userId || "").trim().toLowerCase()
     const userLiberacoes = (liberacoes || []).filter(
-      (l: any) => l.usuario_id === "ALL" || l.usuario_id === userId
+      (l: any) => l.usuario_id === "ALL" || (l.usuario_id && l.usuario_id.trim().toLowerCase() === normalizedUserId)
     )
 
     return NextResponse.json({ data, liberacoes: userLiberacoes })
@@ -239,6 +248,10 @@ export async function POST(request: Request) {
     if (concluido) {
       payload.concluido = true
       payload.data_hora_conclusao = new Date().toISOString()
+    }
+
+    if (body.data_hora_entrada) {
+      payload.data_hora_entrada = body.data_hora_entrada
     }
 
     const { data, error } = await supabaseAdmin
