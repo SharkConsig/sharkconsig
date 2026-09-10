@@ -47,6 +47,10 @@ interface DailyContent {
     titulo: string
     paragrafos: string[]
   }[]
+  vejaNaFerramenta?: {
+    titulo: string
+    imagens: (string | { url: string; legenda?: string })[]
+  }
   vejaAcontecendo?: {
     tipo?: "dialogo" | "calculadora" | "comparativo" | "caso"
     texto?: string
@@ -191,6 +195,12 @@ const DIAS_TREINAMENTO: DailyContent[] = [
         ]
       },
       {
+        titulo: "Margem Disponível e Margem Utilizada",
+        paragrafos: [
+          "Quando parte da capacidade já está ocupada por descontos da mesma modalidade, ela pode aparecer como utilizada. Quando ainda existe espaço dentro daquela regra, existe margem disponível. Você não precisa aprender todos os detalhes de todos os convênios hoje; precisa aprender a olhar a informação sem confundir capacidade de parcela com dinheiro."
+        ]
+      },
+      {
         titulo: "'Não Tenho Margem' Não Encerra Automaticamente a Análise",
         paragrafos: [
           "Quando um cliente fala 'não tenho margem', ele está trazendo a percepção dele sobre uma consulta ou sobre a folha. O profissional não deve discutir. Deve entender qual margem foi consultada, quais contratos existem e se há outra estrutura que mereça verificação. Às vezes realmente não haverá oportunidade. O ponto é não concluir antes de olhar."
@@ -242,8 +252,14 @@ const DIAS_TREINAMENTO: DailyContent[] = [
       {
         titulo: "Entender Internamente x Comunicar Externamente",
         paragrafos: [
-          "O profissional precisa conhecer a estrutura para não vender algo que não entende. Mas conhecer não significa abrir a conversa despejando toda a taxonomia do produto. O contato comercial pode começar por 'margem complementar', porque o objetivo inicial é gerar entendimento da oportunidade e do benefício.",
-          "A metodologia é comunicação em camadas, não ocultação. Se o cliente perguntar a natureza da operação, a explicação deve ser feita de forma simples e correta."
+          "O profissional precisa conhecer a estrutura para não vender algo que não entende. Mas conhecer não significa abrir a conversa despejando toda a taxonomia do produto. O contato comercial pode começar por ‘margem complementar’, porque o objetivo inicial é gerar entendimento da oportunidade e do benefício.",
+          "Isso não autoriza informação enganosa. Se o cliente perguntar a natureza da operação, ou quando essa informação for necessária para a decisão e formalização, a explicação deve ser feita de forma simples e correta. A metodologia é comunicação em camadas, não ocultação."
+        ]
+      },
+      {
+        titulo: "Uma Margem Não Substitui Automaticamente a Outra",
+        paragrafos: [
+          "Estar sem margem facultativa não significa automaticamente existir margem complementar; e existir margem complementar não significa que toda operação estará disponível. Cada cenário precisa de consulta. O raciocínio correto é: ‘o que a tela mostra e o que essa operação permite?’"
         ]
       }
     ],
@@ -290,15 +306,30 @@ const DIAS_TREINAMENTO: DailyContent[] = [
         paragrafos: [
           "Quando você preenche os campos, o sistema calcula e apresenta o valor liberado e outras referências da operação. Neste primeiro módulo, o foco não é dominar taxa implícita nem engenharia de comparação. Seu foco é entender a relação básica: mesma margem + coeficiente diferente = valor liberado diferente."
         ]
+      },
+      {
+        titulo: "O Que Observar na Tela",
+        paragrafos: [
+          "Antes de pensar em ‘qual é melhor’, confirme se você colocou a margem correta, o coeficiente da operação correta e o prazo correto. Um erro de entrada gera um resultado coerente com o que você digitou, mas errado para o cliente. A ferramenta calcula; o profissional é responsável por escolher os dados certos."
+        ]
       }
     ],
+    vejaNaFerramenta: {
+      titulo: "Veja na Ferramente",
+      imagens: [
+        {
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images%20TREINAMENTO/aula5_print1.png",
+          legenda: "Referência 1 — cálculo com coeficiente de margem complementar."
+        },
+        {
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images%20TREINAMENTO/aula5_print2.png",
+          legenda: "Referência 2 — mesma margem, coeficiente de contrato novo."
+        }
+      ]
+    },
     vejaAcontecendo: {
-      tipo: "calculadora",
-      texto: "Nos prints de referência: Margem R$ 1.000 com coeficiente de margem complementar 0,04333 gera valor liberado de R$ 23.078,70. Em outro cenário, com coeficiente de contrato novo 0,02322, a mesma margem gera R$ 43.066,32. A diferença veio da tabela/coeficiente usada.",
-      calcMargem: 1000,
-      calcCoef: 0.04333,
-      calcPrazo: 96,
-      calcValor: 23078.70
+      tipo: "caso",
+      texto: "Nos prints de referência: Margem R$ 1.000 com coeficiente de margem complementar 0,04333 gera valor liberado de R$ 23.078,70. Em outro cenário, com coeficiente de contrato novo 0,02322, a mesma margem gera R$ 43.066,32. A diferença veio da tabela/coeficiente usada."
     },
     perguntaAberta: "Se você tivesse de explicar para um colega por que R$ 1.000 de margem gerou dois valores liberados diferentes, como explicaria?",
     decisao: {
@@ -332,10 +363,22 @@ const DIAS_TREINAMENTO: DailyContent[] = [
         ]
       },
       {
+        titulo: "Do Dado Para o Cenário",
+        paragrafos: [
+          "Imagine que a consulta mostre R$ 1.000 de margem facultativa. Isso ainda não é uma proposta. Primeiro você seleciona a tabela/coeficiente correspondente ao contrato novo e o prazo adequado da tabela. Só então o sistema transforma aquela margem em valor liberado."
+        ]
+      },
+      {
         titulo: "O Cliente Não Compra 'Margem'",
         paragrafos: [
           "O profissional pode pensar tecnicamente em margem, coeficiente e prazo. O cliente geralmente pensa em algo mais concreto: quanto recebe, quanto compromete, por quanto tempo e se isso atende ao que precisa.",
           "Por isso, o cálculo vem depois de uma pergunta importante: o que faria sentido para esse cliente? Se ele não precisa de valor, não faz sentido criar parcela só porque existe margem."
+        ]
+      },
+      {
+        titulo: "Primeira Noção de Escolha",
+        paragrafos: [
+          "Neste momento, não queremos ensinar o aluno a analisar todas as taxas do comparativo. Queremos ensinar uma disciplina: calcular a operação correta, confirmar o resultado e relacionar esse resultado à prioridade do cliente."
         ]
       }
     ],
@@ -378,8 +421,19 @@ const DIAS_TREINAMENTO: DailyContent[] = [
       {
         titulo: "O que o Profissional Precisa Enxergar",
         paragrafos: [
-          "Quando um cliente diz 'já tenho empréstimos', isso não é apenas uma objeção. É também uma informação sobre a folha. O profissional treinado pensa: quais contratos? Há algum que possa ser analisado? Existe condição de refinanciamento disponível?",
-          "Contrato existente não significa refinanciamento garantido. Não focaremos em realizar refinanciamento porque é juros sobre juros, mas é importante entender."
+          "Quando um cliente diz ‘já tenho empréstimos’, isso não é apenas uma objeção. É também uma informação sobre a folha. O profissional treinado pensa: quais contratos? Há algum que possa ser analisado? Existe condição de refinanciamento disponível?"
+        ]
+      },
+      {
+        titulo: "O que Você Não Pode Concluir",
+        paragrafos: [
+          "Contrato existente não significa refinanciamento garantido. E refinanciamento não significa automaticamente valor novo interessante. É preciso consultar as condições reais. Não focaremos em realizar refinanciamento porque é juros sobre juros, mas é importante entender."
+        ]
+      },
+      {
+        titulo: "Como Falar Comercialmente",
+        paragrafos: [
+          "Você não precisa iniciar dizendo ‘vou refinanciar seu contrato’. Pode dizer que vai verificar se algum contrato atual permite uma condição diferente ou nova disponibilidade. Depois, com a análise validada, explica a estrutura necessária."
         ]
       }
     ],
@@ -415,14 +469,25 @@ const DIAS_TREINAMENTO: DailyContent[] = [
       {
         titulo: "O que é Portabilidade",
         paragrafos: [
-          "Portabilidade é a transferência de uma dívida de uma instituição para outra, dentro das regras aplicáveis. Ela existe porque um contrato atual pode ser comparado com uma condição disponível em outra instituição.",
-          "Falar 'tem portabilidade' não responde à pergunta principal do cliente: 'o que muda para mim?'. Antes de defender uma portabilidade, precisamos saber qual é a situação atual e qual ganho real existe na alternativa."
+          "Portabilidade é a transferência de uma dívida de uma instituição para outra, dentro das regras aplicáveis. Ela existe porque um contrato atual pode ser comparado com uma condição disponível em outra instituição."
+        ]
+      },
+      {
+        titulo: "O Ponto Comercial Não é o Nome do Produto",
+        paragrafos: [
+          "Falar ‘tem portabilidade’ não responde à pergunta principal do cliente: ‘o que muda para mim?’. Antes de defender uma portabilidade, precisamos saber qual é a situação atual e qual ganho real existe na alternativa."
+        ]
+      },
+      {
+        titulo: "Portabilidade x Refinanciamento",
+        paragrafos: [
+          "Refinanciamento reorganiza um contrato existente dentro de uma nova estrutura de refinanciamento. Portabilidade envolve a mudança da dívida entre instituições. Em alguns fluxos comerciais podem existir estratégias relacionadas, mas você não precisa dominar combinações avançadas neste módulo."
         ]
       },
       {
         titulo: "Comparação Respeitosa",
         paragrafos: [
-          "Se o cliente diz 'faço tudo no meu banco', não ataque o banco. Peça a referência que ele recebeu e compare elementos equivalentes. O valor da Acerto está em ajudar a enxergar a diferença real, não em dizer que o concorrente é ruim."
+          "Se o cliente diz ‘faço tudo no meu banco’, não ataque o banco. Peça a referência que ele recebeu e compare elementos equivalentes. O valor da Acerto está em ajudar a enxergar a diferença real, não em dizer que o concorrente é ruim."
         ]
       }
     ],
@@ -456,19 +521,43 @@ const DIAS_TREINAMENTO: DailyContent[] = [
     oQueVaiEntender: "Ao terminar, você deve calcular um cenário simples de margem complementar, reconhecer a diferença para contrato novo e usar a nomenclatura comercial correta.",
     conteudoPrincipal: [
       {
-        titulo: "A Lógica Interna e o Cálculo Básico",
+        titulo: "A Lógica Interna",
         paragrafos: [
-          "Margem complementar é a margem vinculada à modalidade de cartão. Internamente, você precisa saber disso. Comercialmente, começamos pela ideia de capacidade complementar porque ela descreve o papel daquela margem no cenário sem abrir a conversa com uma palavra que pode gerar resistência antes de existir entendimento.",
-          "Na referência apresentada, R$ 1.000 de margem com coeficiente 0,04333 gera valor liberado de R$ 23.078,70. O sistema também mostra prazo e outras referências."
+          "Margem complementar é a margem vinculada à modalidade de cartão. Internamente, você precisa saber disso. Comercialmente, começamos pela ideia de capacidade complementar porque ela descreve o papel daquela margem no cenário sem abrir a conversa com uma palavra que pode gerar resistência antes de existir entendimento."
+        ]
+      },
+      {
+        titulo: "Cálculo Básico",
+        paragrafos: [
+          "Na referência apresentada, R$ 1.000 de margem com coeficiente 0,04333 gera valor liberado de R$ 23.078,70. O sistema também mostra prazo e outras referências. Neste módulo, seu objetivo é conferir se está usando o coeficiente correto e interpretar o valor básico."
         ]
       },
       {
         titulo: "Comparar sem Aprofundar",
         paragrafos: [
-          "A ferramenta possui botão 'Comparar'. Na margem complementar, existem três prazos definidos para comparação. Você precisa reconhecer que há alternativas de duração, mas não precisa dominar agora toda a leitura de taxa, economia ou plano de amortização."
+          "A ferramenta possui botão ‘Comparar’. Na margem complementar, existem três prazos definidos para comparação. Você precisa reconhecer que há alternativas de duração, mas não precisa dominar agora toda a leitura de taxa, economia ou plano de amortização. Essa profundidade ficará para módulo posterior."
+        ]
+      },
+      {
+        titulo: "Como Posicionar",
+        paragrafos: [
+          "Se o cliente está sem margem facultativa e existe margem complementar, a conversa pode começar pela existência de uma capacidade complementar que merece análise. Depois, à medida que a conversa avança e quando for necessário para decisão/formalização, a estrutura vinculada à modalidade deve ser explicada com clareza."
         ]
       }
     ],
+    vejaNaFerramenta: {
+      titulo: "Veja na Ferramenta",
+      imagens: [
+        {
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images%20TREINAMENTO/aula9_print1.png",
+          legenda: "Referência — cálculo de margem complementar."
+        },
+        {
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images%20TREINAMENTO/aula9_print2.png",
+          legenda: "Referência — comparação de três prazos definidos para margem complementar."
+        }
+      ]
+    },
     vejaAcontecendo: {
       tipo: "dialogo",
       texto: "Você calculou margem complementar e obteve R$ 23.078,70. Isso não significa que deve mandar imediatamente esse valor. Primeiro confirme o contexto: o cliente precisa de valor? Qual faixa de parcela faz sentido? Ele já recebeu outra proposta? O cálculo é ferramenta para a conversa, não substituto da sondagem."
@@ -501,16 +590,28 @@ const DIAS_TREINAMENTO: DailyContent[] = [
       {
         titulo: "A Pergunta Muda",
         paragrafos: [
-          "O iniciante pergunta: 'Qual produto eu ofereço?'. O profissional começa a perguntar: 'O que existe aqui e o que o cliente precisa?'. Essa mudança parece pequena, mas muda a qualidade da venda."
+          "O iniciante pergunta: ‘Qual produto eu ofereço?’. O profissional começa a perguntar: ‘O que existe aqui e o que o cliente precisa?’. Essa mudança parece pequena, mas muda a qualidade da venda."
         ]
       },
       {
         titulo: "Quatro Fontes de Oportunidade",
         paragrafos: [
-          "• MARGEM FACULTATIVA DISPONÍVEL: pode abrir caminho para crédito novo.",
-          "• CONTRATO EXISTENTE: pode merecer análise de refinanciamento.",
-          "• DÍVIDA/CONDIÇÃO EM OUTRA INSTITUIÇÃO: pode abrir comparação e eventual portabilidade.",
-          "• MARGEM COMPLEMENTAR: pode existir como capacidade adicional quando disponível."
+          "MARGEM FACULTATIVA DISPONÍVEL — pode abrir caminho para crédito novo.",
+          "CONTRATO EXISTENTE — pode merecer análise de refinanciamento.",
+          "DÍVIDA/CONDIÇÃO EM OUTRA INSTITUIÇÃO — pode abrir comparação e eventual portabilidade.",
+          "MARGEM COMPLEMENTAR — pode existir como capacidade adicional quando disponível."
+        ]
+      },
+      {
+        titulo: "Quitação como Oportunidade",
+        paragrafos: [
+          "Às vezes o cenário não é simplesmente colocar dinheiro novo, mas substituir uma condição mais pesada por outra estrutura quando existe ganho real. Neste primeiro módulo, você não vai aprender engenharia completa de quitação. Vai aprender a reconhecer o sinal e encaminhar a análise."
+        ]
+      },
+      {
+        titulo: "Hipótese x Confirmação",
+        paragrafos: [
+          "‘Pode existir’ é diferente de ‘existe’. Você pode reconhecer pistas e ainda assim precisar consultar. O objetivo da capacitação não é criar excesso de confiança; é criar autonomia com limite."
         ]
       }
     ],
@@ -1077,6 +1178,7 @@ export default function TreinamentoPage() {
   const [decisoesTomadas, setDecisoesTomadas] = useState<Record<number, number>>({})
   const [diasConcluidos, setDiasConcluidos] = useState<number[]>([])
   const [datasConclusao, setDatasConclusao] = useState<Record<number, string>>({})
+  const [datasEntrada, setDatasEntrada] = useState<Record<number, string>>({})
   const [savedStatus, setSavedStatus] = useState<string | null>(null)
   const [iniciouCurso, setIniciouCurso] = useState<boolean>(false)
   const [carregandoDados, setCarregandoDados] = useState<boolean>(true)
@@ -1101,6 +1203,7 @@ export default function TreinamentoPage() {
   const [usuarioExpandidoId, setUsuarioExpandidoId] = useState<string | null>(null)
   const [filtroPesquisaAluno, setFiltroPesquisaAluno] = useState<string>("")
   const [abaFuncaoSelecionada, setAbaFuncaoSelecionada] = useState<string>("TODAS")
+  const [avisoBloqueioColar, setAvisoBloqueioColar] = useState<string | null>(null)
   const [liberandoAlunoKey, setLiberandoAlunoKey] = useState<string | null>(null)
   const [acaoMassaCarregando, setAcaoMassaCarregando] = useState<"liberar" | "bloquear" | null>(null)
 
@@ -1327,6 +1430,7 @@ export default function TreinamentoPage() {
           const remoteDecisoes: Record<number, number> = {}
           const remoteConcluidos: number[] = []
           const remoteDatasConclusao: Record<number, string> = {}
+          const remoteDatasEntrada: Record<number, string> = {}
 
           data.forEach((item: any) => {
             if (item.resposta_aberta) remoteRespostas[item.dia] = item.resposta_aberta
@@ -1339,18 +1443,23 @@ export default function TreinamentoPage() {
             if (item.data_hora_conclusao || item.updated_at || item.created_at) {
               remoteDatasConclusao[item.dia] = item.data_hora_conclusao || item.updated_at || item.created_at
             }
+            if (item.data_hora_entrada) {
+              remoteDatasEntrada[item.dia] = item.data_hora_entrada
+            }
           })
 
           setRespostasAbertas(remoteRespostas)
           setDecisoesTomadas(remoteDecisoes)
           setDiasConcluidos(remoteConcluidos)
           setDatasConclusao(remoteDatasConclusao)
+          setDatasEntrada(remoteDatasEntrada)
         } else {
           // Se não houver registros no banco (ou se tiverem sido apagados), reseta tudo
           setRespostasAbertas({})
           setDecisoesTomadas({})
           setDiasConcluidos([])
           setDatasConclusao({})
+          setDatasEntrada({})
         }
       } catch (err) {
         console.error("Erro ao carregar dados do treinamento:", err)
@@ -1358,6 +1467,7 @@ export default function TreinamentoPage() {
         setDecisoesTomadas({})
         setDiasConcluidos([])
         setDatasConclusao({})
+        setDatasEntrada({})
       } finally {
         setCarregandoDados(false)
       }
@@ -1683,6 +1793,8 @@ export default function TreinamentoPage() {
       decisao_opcao_texto?: string
       decisao_acertou?: boolean
       concluido?: boolean
+      data_hora_entrada?: string
+      data_hora_conclusao?: string
     }
   ) => {
     try {
@@ -1726,6 +1838,12 @@ export default function TreinamentoPage() {
       if (dados.concluido) {
         payload.concluido = true
       }
+      if (dados.data_hora_entrada) {
+        payload.data_hora_entrada = dados.data_hora_entrada
+      }
+      if (dados.data_hora_conclusao) {
+        payload.data_hora_conclusao = dados.data_hora_conclusao
+      }
 
       const res = await fetch("/api/treinamento", {
         method: "POST",
@@ -1741,6 +1859,20 @@ export default function TreinamentoPage() {
       console.error("Falha ao salvar no Supabase:", err)
     }
   }
+
+  // Registra o horário de 'Início' no momento em que o colaborador/aluno entra no DIA/aula
+  useEffect(() => {
+    if (!iniciouCurso || !selectedDia || carregandoDados) return
+    const targetUserId = user?.id || perfil?.id
+    if (!targetUserId) return
+
+    // Se este dia já tem data_hora_entrada registrada, preserva e não sobrescreve
+    if (datasEntrada[selectedDia]) return
+
+    const agoraIso = new Date().toISOString()
+    setDatasEntrada(prev => ({ ...prev, [selectedDia]: agoraIso }))
+    sincronizarSupabase(selectedDia, { data_hora_entrada: agoraIso })
+  }, [iniciouCurso, selectedDia, carregandoDados, datasEntrada, user?.id, perfil?.id])
 
   const handleSalvarResposta = async (dia: number, texto: string) => {
     const updated = { ...respostasAbertas, [dia]: texto }
@@ -1775,18 +1907,21 @@ export default function TreinamentoPage() {
     const respostaAtual = (respostasAbertas[diaAtual] || "").trim()
     const decisaoAtual = decisoesTomadas[diaAtual]
 
-    // O bloqueio do dia ocorre exclusivamente ao clicar em 'Próximo Dia'
+    // O encerramento/conclusão do dia ocorre exclusivamente ao clicar em 'Próximo Dia'
     if (!diasConcluidos.includes(diaAtual)) {
       if (!isIsentoNavegacao && (!respostaAtual || decisaoAtual === undefined || decisaoAtual === null)) {
         return
       }
-      if (respostaAtual && decisaoAtual !== undefined && decisaoAtual !== null) {
-        const agoraIso = new Date().toISOString()
-        const newConcluidos = [...diasConcluidos, diaAtual]
-        setDiasConcluidos(newConcluidos)
-        setDatasConclusao(prev => ({ ...prev, [diaAtual]: agoraIso }))
-        await sincronizarSupabase(diaAtual, { concluido: true, data_hora_conclusao: agoraIso })
-      }
+      const agoraIso = new Date().toISOString()
+      const newConcluidos = [...diasConcluidos, diaAtual]
+      setDiasConcluidos(newConcluidos)
+      setDatasConclusao(prev => ({ ...prev, [diaAtual]: agoraIso }))
+      await sincronizarSupabase(diaAtual, {
+        concluido: true,
+        data_hora_conclusao: agoraIso,
+        resposta_aberta: respostaAtual || undefined,
+        decisao_opcao_idx: decisaoAtual !== undefined && decisaoAtual !== null ? decisaoAtual : undefined
+      })
 
       // Se o usuário não for isento (ou seja, é CLT, Estágio, Processo Seletivo, etc.)
       // o próximo dia só será liberado no próximo dia útil. Volta para a tela inicial informando o status.
@@ -2186,7 +2321,7 @@ export default function TreinamentoPage() {
                                 {aluno.historico.map((item: any) => {
                                   const diaInfo = DIAS_TREINAMENTO.find(d => d.dia === item.dia)
                                   const inicioRaw = item.data_hora_entrada || item.created_at
-                                  const conclusaoRaw = item.data_hora_conclusao || item.updated_at
+                                  const conclusaoRaw = item.concluido ? (item.data_hora_conclusao || item.updated_at) : null
 
                                   const dataInicioObj = inicioRaw ? new Date(inicioRaw) : null
                                   const dataConclusaoObj = conclusaoRaw ? new Date(conclusaoRaw) : null
@@ -2559,7 +2694,17 @@ export default function TreinamentoPage() {
           }
 
           return (
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div
+              onCopy={(e) => {
+                e.preventDefault()
+                return false
+              }}
+              onCut={(e) => {
+                e.preventDefault()
+                return false
+              }}
+              className="max-w-4xl mx-auto space-y-6 select-none"
+            >
               {/* Day Header Bar */}
               <div className="pt-4 pb-2">
                 <div>
@@ -2621,6 +2766,35 @@ export default function TreinamentoPage() {
                 </div>
               </div>
 
+              {/* VEJA NA FERRAMENTA */}
+              {currentDiaData.vejaNaFerramenta && (
+                <div className="space-y-4 py-2">
+                  <h3 className="text-base font-black text-slate-900">
+                    {currentDiaData.vejaNaFerramenta.titulo}
+                  </h3>
+                  <div className="space-y-6">
+                    {currentDiaData.vejaNaFerramenta.imagens.map((item, imgIdx) => {
+                      const url = typeof item === "string" ? item : item.url
+                      const legenda = typeof item === "string" ? undefined : item.legenda
+                      return (
+                        <div key={imgIdx} className="space-y-2">
+                          <img
+                            src={url}
+                            alt={legenda || `${currentDiaData.vejaNaFerramenta?.titulo || "Imagem"} ${imgIdx + 1}`}
+                            className="w-full h-auto rounded-xl border border-slate-200 shadow-sm"
+                          />
+                          {legenda && (
+                            <p className="text-xs sm:text-sm text-slate-600 font-medium">
+                              {legenda}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* 4. VEJA ISSO ACONTECENDO / VEJA NA FERRAMENTA */}
               {currentDiaData.vejaAcontecendo && (
                 <div className="bg-[#0F172B] text-white rounded-2xl p-6 border border-slate-800 shadow-sm space-y-4">
@@ -2633,56 +2807,6 @@ export default function TreinamentoPage() {
                     <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                       {currentDiaData.vejaAcontecendo.texto}
                     </p>
-                  )}
-
-                  {/* Interactive Mini Simulator on Calculation Days */}
-                  {currentDiaData.vejaAcontecendo.tipo === "calculadora" && (
-                    <div className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3">
-                      <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                        Simulador Rápido de Margem
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                        <div>
-                          <label className="text-slate-400 block mb-1">Margem (R$)</label>
-                          <input
-                            type="number"
-                            value={calcMargem}
-                            onChange={(e) => setCalcMargem(Number(e.target.value) || 0)}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white font-bold"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-slate-400 block mb-1">Coeficiente</label>
-                          <input
-                            type="number"
-                            step="0.00001"
-                            value={calcCoef}
-                            onChange={(e) => setCalcCoef(Number(e.target.value) || 0)}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white font-bold"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-slate-400 block mb-1">Prazo</label>
-                          <input
-                            type="number"
-                            value={calcPrazo}
-                            onChange={(e) => setCalcPrazo(Number(e.target.value) || 0)}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white font-bold"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="pt-2 flex items-center justify-between border-t border-slate-800">
-                        <span className="text-xs text-slate-400">Valor Liberado Calculado:</span>
-                        <span className="text-lg font-black text-[#00D492]">
-                          R${" "}
-                          {(calcCoef > 0 ? (calcMargem / calcCoef) * (1 - 0.05) : 0).toLocaleString(
-                            "pt-BR",
-                            { minimumFractionDigits: 2, maximumFractionDigits: 2 }
-                          )}
-                        </span>
-                      </div>
-                    </div>
                   )}
                 </div>
               )}
@@ -2709,12 +2833,38 @@ export default function TreinamentoPage() {
                         onChange={(e) =>
                           setRespostasAbertas({ ...respostasAbertas, [currentDiaData.dia]: e.target.value })
                         }
+                        onPaste={(e) => {
+                          e.preventDefault()
+                          setAvisoBloqueioColar("Não é permitido colar texto. Por favor, digite a resposta com suas próprias palavras.")
+                          setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                          return false
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          setAvisoBloqueioColar("Não é permitido arrastar ou colar texto. Digite sua resposta com suas próprias palavras.")
+                          setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                          return false
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V")) {
+                            e.preventDefault()
+                            setAvisoBloqueioColar("Não é permitido colar texto (Ctrl+V desativado). Por favor, digite com suas próprias palavras.")
+                            setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                          }
+                        }}
                         placeholder="Digite sua explicação com suas próprias palavras..."
                         className={cn(
                           "w-full bg-white border border-amber-300 rounded-xl p-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm",
                           isDiaBloqueado && "bg-amber-50/60 text-slate-700 cursor-not-allowed opacity-90 resize-none"
                         )}
                       />
+
+                      {avisoBloqueioColar && (
+                        <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-xs text-rose-800 font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                          <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" />
+                          <span>{avisoBloqueioColar}</span>
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between pt-1">
                         <span className="text-xs text-emerald-700 font-bold">

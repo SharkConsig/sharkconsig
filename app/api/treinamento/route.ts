@@ -225,6 +225,15 @@ export async function POST(request: Request) {
       )
     }
 
+    // Verifica se o registro já existe no banco para preservar o horário de início original
+    const { data: existingRecord } = await supabaseAdmin
+      .from("treinamento")
+      .select("id, data_hora_entrada, data_hora_conclusao, concluido")
+      .eq("user_id", user_id)
+      .eq("modulo", modulo)
+      .eq("dia", dia)
+      .maybeSingle()
+
     const payload: any = {
       user_id,
       usuario_nome: usuario_nome || "",
@@ -233,6 +242,11 @@ export async function POST(request: Request) {
       modulo,
       dia,
       updated_at: new Date().toISOString()
+    }
+
+    // Horário de Início: registra quando o colaborador entra na aula e preserva o original
+    if (!existingRecord || !existingRecord.data_hora_entrada) {
+      payload.data_hora_entrada = body.data_hora_entrada || new Date().toISOString()
     }
 
     if (resposta_aberta !== undefined) {
@@ -245,13 +259,12 @@ export async function POST(request: Request) {
       payload.decisao_acertou = Boolean(decisao_acertou)
     }
 
+    // Horário de Conclusão: registrado quando finaliza a aula (ao clicar em Próximo Dia)
     if (concluido) {
       payload.concluido = true
-      payload.data_hora_conclusao = new Date().toISOString()
-    }
-
-    if (body.data_hora_entrada) {
-      payload.data_hora_entrada = body.data_hora_entrada
+      payload.data_hora_conclusao = body.data_hora_conclusao || new Date().toISOString()
+    } else if (body.data_hora_conclusao) {
+      payload.data_hora_conclusao = body.data_hora_conclusao
     }
 
     const { data, error } = await supabaseAdmin

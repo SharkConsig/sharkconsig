@@ -66,6 +66,7 @@ export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [filtroFuncao, setFiltroFuncao] = useState("todas")
+  const [filtroRegime, setFiltroRegime] = useState("todos")
   const [filtroStatus, setFiltroStatus] = useState("todos")
   const [buscaNome, setBuscaNome] = useState("")
 
@@ -216,17 +217,22 @@ export default function UsuariosPage() {
 
   const filteredUsers = usuarios.filter(user => {
     const matchFuncao = filtroFuncao === "todas" || user.funcao.toLowerCase() === filtroFuncao.toLowerCase()
+    const userRegimeNorm = (user.regime_contratacao || "").toUpperCase().trim()
+    const matchRegime = filtroRegime === "todos" || 
+      (filtroRegime === "CLT" && userRegimeNorm.includes("CLT")) ||
+      (filtroRegime === "ESTÁGIO" && (userRegimeNorm.includes("ESTÁGIO") || userRegimeNorm.includes("ESTAGIO"))) ||
+      (filtroRegime === "PJ" && userRegimeNorm.includes("PJ"))
     const matchStatus = filtroStatus === "todos" || user.status.toLowerCase() === filtroStatus.toLowerCase()
     const matchNome = !buscaNome.trim() || 
       user.nome.toLowerCase().includes(buscaNome.toLowerCase()) || 
       user.email.toLowerCase().includes(buscaNome.toLowerCase())
-    return matchFuncao && matchStatus && matchNome
+    return matchFuncao && matchRegime && matchStatus && matchNome
   })
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filtroFuncao, filtroStatus, buscaNome]);
+  }, [filtroFuncao, filtroRegime, filtroStatus, buscaNome]);
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
@@ -348,6 +354,21 @@ export default function UsuariosPage() {
                       <SelectItem value="Estágio">Estágio</SelectItem>
                       <SelectItem value="Processo Seletivo">Processo Seletivo</SelectItem>
                       <SelectItem value="Desenvolvedor">Desenvolvedor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1 block">Regime de Contratação</label>
+                  <Select value={filtroRegime} onValueChange={setFiltroRegime}>
+                    <SelectTrigger className="w-[170px] h-[38px] bg-slate-50/50 border-slate-100 rounded-lg font-bold text-[11px] text-slate-700">
+                      <SelectValue placeholder="Todos os regimes" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-100">
+                      <SelectItem value="todos">Todos os regimes</SelectItem>
+                      <SelectItem value="CLT">CLT</SelectItem>
+                      <SelectItem value="ESTÁGIO">ESTÁGIO</SelectItem>
+                      <SelectItem value="PJ">PJ</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

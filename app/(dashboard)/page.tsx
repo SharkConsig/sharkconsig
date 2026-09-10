@@ -716,7 +716,7 @@ export default function DashboardPage() {
           .eq('is_active', true)
           .order('created_at', { ascending: false })
       )
-      setBanners(bannerData || [])
+      setBanners((bannerData || []).filter(b => typeof b.image_url === 'string' && (b.image_url.startsWith('http://') || b.image_url.startsWith('https://') || b.image_url.startsWith('/'))))
 
       // Fetch dynamic goal configs from DB for the current month and year
       try {

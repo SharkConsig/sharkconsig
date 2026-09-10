@@ -564,7 +564,11 @@ export default function FinancialSettingsPage() {
     setIsSubmitting(true)
     try {
       // Find if we already have the banner row for system access hours
-      const hoursBanner = banners.find(b => b.title === 'SYSTEM_ACCESS_HOURS')
+      const { data: hoursBanner } = await supabase
+        .from('dashboard_banners')
+        .select('id')
+        .eq('title', 'SYSTEM_ACCESS_HOURS')
+        .maybeSingle()
       
       const payload = {
         title: 'SYSTEM_ACCESS_HOURS',
@@ -573,22 +577,17 @@ export default function FinancialSettingsPage() {
       }
       
       let error = null
-      if (hoursBanner) {
+      if (hoursBanner?.id) {
         const { error: updateError } = await supabase
           .from('dashboard_banners')
           .update(payload)
           .eq('id', hoursBanner.id)
         error = updateError
       } else {
-        const { data: insertedData, error: insertError } = await supabase
+        const { error: insertError } = await supabase
           .from('dashboard_banners')
           .insert(payload)
-          .select()
         error = insertError
-        if (!insertError && insertedData) {
-          // Update local banners state so next save knows the ID
-          setBanners(prev => [...prev, insertedData[0]])
-        }
       }
       
       if (error) throw error
@@ -632,7 +631,14 @@ export default function FinancialSettingsPage() {
       setBancos(bancoData || [])
       setTiposOperacao(operData || [])
       setProdutosConfig(prodData || [])
-      setBanners(bannersData || [])
+      const visualBanners = (bannersData || []).filter((b: DashboardBanner) =>
+        !b.title?.startsWith('SYSTEM_') &&
+        !b.title?.startsWith('TREINAMENTO_') &&
+        !b.title?.startsWith('CHAMADOS_') &&
+        typeof b.image_url === 'string' &&
+        (b.image_url.startsWith('http://') || b.image_url.startsWith('https://') || b.image_url.startsWith('/'))
+      )
+      setBanners(visualBanners)
       setFaixasMetas(faixasMetasData || [])
 
       const perfisData: UsuarioAPI[] = usuariosResponse.ok ? await usuariosResponse.json() : []

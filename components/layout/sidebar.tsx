@@ -233,7 +233,7 @@ const allMenuItems = [
         name: "CONFIGURAÇÕES", 
         href: "/configuracoes", 
         icon: Settings, 
-        roles: ["Administrador", "Desenvolvedor"] 
+        roles: ["Administrador", "Desenvolvedor", "Recursos Humanos"] 
       }
     ]
   }
@@ -352,6 +352,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           if (item.roles.includes(effectiveRole)) {
             return true
           }
+        }
+
+        if ((isRecursosHumanos || perfil?.role === 'Recursos Humanos') && item.roles.includes('Recursos Humanos')) {
+          return true
         }
         
         return false

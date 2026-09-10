@@ -190,7 +190,7 @@ const getStandardDefaultHours = (regimeRaw: string | undefined) => {
 }
 
 export default function SettingsPage() {
-  const { perfil, isAdmin } = useAuth()
+  const { perfil, isAdmin, isRecursosHumanos } = useAuth()
   const [statuses, setStatuses] = useState<TicketStatus[]>([])
   const [convenios, setConvenios] = useState<GenericConfig[]>([])
   const [bancos, setBancos] = useState<GenericConfig[]>([])
@@ -546,7 +546,11 @@ export default function SettingsPage() {
     setIsSubmitting(true)
     try {
       // Find if we already have the banner row for system access hours
-      const hoursBanner = banners.find(b => b.title === 'SYSTEM_ACCESS_HOURS')
+      const { data: hoursBanner } = await supabase
+        .from('dashboard_banners')
+        .select('id')
+        .eq('title', 'SYSTEM_ACCESS_HOURS')
+        .maybeSingle()
       
       const payload = {
         title: 'SYSTEM_ACCESS_HOURS',
@@ -555,22 +559,17 @@ export default function SettingsPage() {
       }
       
       let error = null
-      if (hoursBanner) {
+      if (hoursBanner?.id) {
         const { error: updateError } = await supabase
           .from('dashboard_banners')
           .update(payload)
           .eq('id', hoursBanner.id)
         error = updateError
       } else {
-        const { data: insertedData, error: insertError } = await supabase
+        const { error: insertError } = await supabase
           .from('dashboard_banners')
           .insert(payload)
-          .select()
         error = insertError
-        if (!insertError && insertedData) {
-          // Update local banners state so next save knows the ID
-          setBanners(prev => [...prev, insertedData[0]])
-        }
       }
       
       if (error) throw error
@@ -614,7 +613,14 @@ export default function SettingsPage() {
       setBancos(bancoData || [])
       setTiposOperacao(operData || [])
       setProdutosConfig(prodData || [])
-      setBanners(bannersData || [])
+      const visualBanners = (bannersData || []).filter((b: DashboardBanner) =>
+        !b.title?.startsWith('SYSTEM_') &&
+        !b.title?.startsWith('TREINAMENTO_') &&
+        !b.title?.startsWith('CHAMADOS_') &&
+        typeof b.image_url === 'string' &&
+        (b.image_url.startsWith('http://') || b.image_url.startsWith('https://') || b.image_url.startsWith('/'))
+      )
+      setBanners(visualBanners)
       setFaixasMetas(faixasMetasData || [])
 
       const perfisData: UsuarioAPI[] = usuariosResponse.ok ? await usuariosResponse.json() : []
@@ -1226,8 +1232,16 @@ export default function SettingsPage() {
     setIsDeleteDialogOpen(true)
   }
 
-  // Verificação de permissão (Admin ou Dev)
-  const canAccess = isAdmin || (perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor')
+  // Verificação de permissão (Admin, Dev ou Recursos Humanos)
+  const isRH = Boolean(isRecursosHumanos || perfil?.role === 'Recursos Humanos' || perfil?.role?.toLowerCase() === 'recursos humanos')
+  const canAccess = isAdmin || (perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor') || isRH
+  const isApenasRH = isRH && !isAdmin && perfil?.role !== 'Administrador' && perfil?.role !== 'Desenvolvedor'
+
+  useEffect(() => {
+    if (isApenasRH) {
+      setIsBannersExpanded(true)
+    }
+  }, [isApenasRH])
 
   const translateColor = (color: string) => {
     if (!color || color.startsWith('#')) return color.toUpperCase();
@@ -1266,8 +1280,10 @@ export default function SettingsPage() {
       <Header title="CONFIGURAÇÕES DO SISTEMA" />
       
       <main className="flex-1 p-4 lg:p-8 space-y-8">
-        {/* CONTROLE DE HORÁRIOS DE ACESSO */}
-        <section className="space-y-6">
+        {!isApenasRH && (
+          <>
+            {/* CONTROLE DE HORÁRIOS DE ACESSO */}
+            <section className="space-y-6">
           <div 
             className="flex items-center justify-between cursor-pointer group select-none"
             onClick={() => setIsHorariosExpanded(!isHorariosExpanded)}
@@ -1971,6 +1987,8 @@ export default function SettingsPage() {
             )}
           </AnimatePresence>
         </section>
+          </>
+        )}
 
         {/* GERENCIAR BANNERS DO DASHBOARD */}
         <section className="space-y-6 pb-20">
@@ -2013,8 +2031,10 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {banners.length > 0 ? (
-                      banners.map((banner) => (
+                    {banners.filter(b => typeof b.image_url === 'string' && (b.image_url.startsWith('http://') || b.image_url.startsWith('https://') || b.image_url.startsWith('/'))).length > 0 ? (
+                      banners
+                        .filter(b => typeof b.image_url === 'string' && (b.image_url.startsWith('http://') || b.image_url.startsWith('https://') || b.image_url.startsWith('/')))
+                        .map((banner) => (
                         <Card key={banner.id} className="relative group overflow-hidden border-slate-100 rounded-2xl shadow-sm hover:shadow-xl transition-all h-[200px]">
                            <div className="absolute inset-0 w-full h-full">
                              <Image 
