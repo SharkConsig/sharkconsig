@@ -41,6 +41,7 @@ import {
 interface DailyContent {
   dia: number
   titulo: string
+  subtitulo?: string
   voceEstaAqui: string
   oQueVaiEntender: string
   conteudoPrincipal: {
@@ -68,7 +69,367 @@ interface DailyContent {
     explicacao: string
   }
   oQueLevar: string[]
+  isAvaliacao?: boolean
+  regra?: string
 }
+
+export interface QuestaoAvaliacao {
+  numero: number
+  titulo: string
+  tipo: "aberta" | "escolha"
+  pergunta: string
+  opcoes?: string[]
+  respostaCorreta?: number
+  gabarito: string
+  criterioEsperado: string
+}
+
+export const QUESTOES_AVALIACAO_1: QuestaoAvaliacao[] = [
+  {
+    numero: 1,
+    titulo: "1. Conceito",
+    tipo: "aberta",
+    pergunta: "Em uma frase, o que significa margem consignável?",
+    gabarito: "Gabarito / critério: ABERTA",
+    criterioEsperado: "Esperado: capacidade de comprometimento/parcela dentro da regra da modalidade; não confundir com dinheiro liberado."
+  },
+  {
+    numero: 2,
+    titulo: "2. Margem x valor",
+    tipo: "escolha",
+    pergunta: "R$ 1.000 de margem significam necessariamente R$ 1.000 liberados?",
+    opcoes: [
+      "A) Sim",
+      "B) Não, o valor depende da tabela/coeficiente e prazo",
+      "C) Só na margem complementar",
+      "D) Só no crédito novo"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "Margem é referência de parcela/capacidade, não de valor líquido."
+  },
+  {
+    numero: 3,
+    titulo: "3. Nomenclatura",
+    tipo: "escolha",
+    pergunta: "Qual associação está correta?",
+    opcoes: [
+      "A) Facultativa, principal e nova são três margens",
+      "B) Complementar e cartão são duas margens",
+      "C) Facultativa = nova/principal; complementar = margem vinculada ao cartão",
+      "D) Todas são iguais"
+    ],
+    respostaCorreta: 2,
+    gabarito: "Gabarito / critério: C",
+    criterioEsperado: "É a nomenclatura definida para a operação."
+  },
+  {
+    numero: 4,
+    titulo: "4. Calculadora",
+    tipo: "escolha",
+    pergunta: "Quais são os três campos básicos usados no primeiro cálculo?",
+    opcoes: [
+      "A) Margem/parcela, coeficiente e prazo",
+      "B) CPF, salário e banco",
+      "C) Taxa, idade e valor líquido",
+      "D) Órgão, sexo e prazo"
+    ],
+    respostaCorreta: 0,
+    gabarito: "Gabarito / critério: A",
+    criterioEsperado: "Esses são os campos apresentados na ferramenta."
+  },
+  {
+    numero: 5,
+    titulo: "5. Interpretação",
+    tipo: "escolha",
+    pergunta: "A mesma margem gerou dois valores liberados diferentes. Qual a explicação mais provável?",
+    opcoes: [
+      "A) O sistema errou",
+      "B) Foram usados coeficientes/tabelas diferentes",
+      "C) A margem mudou sozinha",
+      "D) Isso só acontece em portabilidade"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "A tabela/coeficiente altera o valor gerado pela mesma parcela."
+  },
+  {
+    numero: 6,
+    titulo: "6. Crédito novo",
+    tipo: "escolha",
+    pergunta: "Crédito novo parte principalmente de:",
+    opcoes: [
+      "A) Contrato existente",
+      "B) Margem facultativa disponível",
+      "C) Portabilidade automática",
+      "D) Quitação obrigatória"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "É a lógica trabalhada para nova contratação."
+  },
+  {
+    numero: 7,
+    titulo: "7. Refinanciamento",
+    tipo: "escolha",
+    pergunta: "Cliente tem três contratos. O que você pode afirmar?",
+    opcoes: [
+      "A) Os três refinanciam",
+      "B) Nenhum refinancia",
+      "C) Existem contratos que podem merecer análise, mas a condição precisa ser consultada",
+      "D) Ele só pode usar margem complementar"
+    ],
+    respostaCorreta: 2,
+    gabarito: "Gabarito / critério: C",
+    criterioEsperado: "Contrato é informação, não garantia."
+  },
+  {
+    numero: 8,
+    titulo: "8. Portabilidade",
+    tipo: "escolha",
+    pergunta: "Antes de dizer que uma portabilidade é melhor, você deve:",
+    opcoes: [
+      "A) Atacar o banco atual",
+      "B) Comparar as referências da condição atual e da alternativa",
+      "C) Prometer dinheiro novo",
+      "D) Ignorar o prazo"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "Portabilidade precisa de comparação real."
+  },
+  {
+    numero: 9,
+    titulo: "9. Margem complementar",
+    tipo: "escolha",
+    pergunta: "Qual posicionamento está correto?",
+    opcoes: [
+      "A) Esconder a modalidade definitivamente",
+      "B) Começar com explicação técnica",
+      "C) Usar margem complementar como linguagem comercial inicial e esclarecer a estrutura quando necessário/perguntado",
+      "D) Dizer que complementar não tem relação com cartão"
+    ],
+    respostaCorreta: 2,
+    gabarito: "Gabarito / critério: C",
+    criterioEsperado: "A comunicação é progressiva, mas deve permanecer verdadeira."
+  },
+  {
+    numero: 10,
+    titulo: "10. Caso",
+    tipo: "escolha",
+    pergunta: "Cliente diz: 'Não tenho margem e já tenho empréstimos'. Qual a melhor leitura?",
+    opcoes: [
+      "A) Encerrar imediatamente",
+      "B) Prometer refin",
+      "C) Entender qual margem ele consultou e verificar os contratos antes de concluir",
+      "D) Enviar comparativo de plano"
+    ],
+    respostaCorreta: 2,
+    gabarito: "Gabarito / critério: C",
+    criterioEsperado: "A resposta do cliente ainda precisa de interpretação."
+  },
+  {
+    numero: 11,
+    titulo: "11. Caso aberto",
+    tipo: "aberta",
+    pergunta: "Cliente possui margem facultativa e margem complementar. Escreva quais informações você buscaria antes de decidir o que apresentar.",
+    gabarito: "Gabarito / critério: ABERTA",
+    criterioEsperado: "Observar se o aluno fala de necessidade, parcela/objetivo, propostas existentes, cenário real e consulta, e não apenas de 'maior valor'."
+  },
+  {
+    numero: 12,
+    titulo: "12. Cálculo reflexivo",
+    tipo: "aberta",
+    pergunta: "Explique por que selecionar o coeficiente errado pode gerar um resultado matematicamente correto, mas comercialmente errado.",
+    gabarito: "Gabarito / critério: ABERTA",
+    criterioEsperado: "Esperado: ferramenta calcula o dado informado; coeficiente precisa corresponder à operação/tabela correta."
+  }
+]
+
+export const QUESTOES_AVALIACAO_2: QuestaoAvaliacao[] = [
+  {
+    numero: 1,
+    titulo: "1. Abertura",
+    tipo: "escolha",
+    pergunta: "Qual é o objetivo principal de uma primeira mensagem?",
+    opcoes: [
+      "A) Explicar um contexto novo para o cliente",
+      "B) Gerar interação com contexto e motivo suficiente para continuar",
+      "C) Enviar uma mensagem que evite a resposta \"sem interesse\" e gere interesse em fechamento",
+      "D) Mostrar que não sou um golpista de crédito"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "A primeira mensagem abre conversa; não substitui toda a venda."
+  },
+  {
+    numero: 2,
+    titulo: "2. Segurança",
+    tipo: "escolha",
+    pergunta: "Cliente pergunta 'é golpe?'. Sua prioridade é:",
+    opcoes: [
+      "A) Falar com autoridade: 'confia em mim'",
+      "B) Apresentar informações verificáveis antes de continuar vendendo",
+      "C) Ignorar, e seguir com naturalidade",
+      "D) Mostrar print de clients que fecharam com a empresa"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "Segurança é o bloqueio atual."
+  },
+  {
+    numero: 3,
+    titulo: "3. Perfil",
+    tipo: "escolha",
+    pergunta: "Cliente pede banco, taxa, prazo e contrato. O comportamento predominante é:",
+    opcoes: [
+      "A) Analítico",
+      "B) Relacional",
+      "C) Sem interesse",
+      "D) Apressado"
+    ],
+    respostaCorreta: 0,
+    gabarito: "Gabarito / critério: A",
+    criterioEsperado: "Ele está buscando detalhe e estrutura."
+  },
+  {
+    numero: 4,
+    titulo: "4. Sondagem",
+    tipo: "escolha",
+    pergunta: "Cliente responde 'pode ver'. Qual é a melhor próxima ação?",
+    opcoes: [
+      "A) Mandar proposta imediatamente",
+      "B) Fazer uma pergunta que descubra referência antes de calcular",
+      "C) Fazer uma ligação para apresentar proposta",
+      "D) Questionar se ele está negociando com alguém"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "Ainda falta direção."
+  },
+  {
+    numero: 5,
+    titulo: "5. Parcela",
+    tipo: "escolha",
+    pergunta: "Cliente diz 'a parcela ficou alta'. O que fazer?",
+    opcoes: [
+      "A) Explicar a vantagem da nossa taxa",
+      "B) Perguntar qual faixa cabe",
+      "C) Dizer que é a melhor do mercado",
+      "D) Mandar plano"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "Transforma objeção em critério."
+  },
+  {
+    numero: 6,
+    titulo: "6. Valor",
+    tipo: "escolha",
+    pergunta: "Cliente diz 'o valor ficou baixo'. O que fazer?",
+    opcoes: [
+      "A) Argumentar para cliente aceitar",
+      "B) Perguntar qual valor faria sentido e verificar se o cenário sustenta",
+      "C) Conduzir com naturalidade para outro assunto",
+      "D) Mostrar que valor não é baixo"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "Objetivo precisa virar dado."
+  },
+  {
+    numero: 7,
+    titulo: "7. Concorrente",
+    tipo: "escolha",
+    pergunta: "Cliente tem proposta do banco. O que fazer?",
+    opcoes: [
+      "A) Mostrar deficiências do banco que fez a proposta",
+      "B) Comparar pelas mesmas referências",
+      "C) Dizer que a Acerto é melhor",
+      "D) Encerrar amistosamente"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "A comparação precisa ser demonstrável."
+  },
+  {
+    numero: 8,
+    titulo: "8. Silêncio",
+    tipo: "escolha",
+    pergunta: "Cliente visualizou e não respondeu. O que você sabe?",
+    opcoes: [
+      "A) Que não tem interesse",
+      "B) Que está negociando com outro",
+      "C) Que não deu atenção à mensagem",
+      "D) Que já fez"
+    ],
+    respostaCorreta: 2,
+    gabarito: "Gabarito / critério: C",
+    criterioEsperado: "Silêncio não é diagnóstico."
+  },
+  {
+    numero: 9,
+    titulo: "9. Sinal de fechamento",
+    tipo: "escolha",
+    pergunta: "Qual frase pede avanço, não nova argumentação?",
+    opcoes: [
+      "A) 'Vou pensar'",
+      "B) 'Do que precisa?'",
+      "C) 'Quanto tempo cai na conta?'",
+      "D) 'Qual taxa?'"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "O cliente está em formalização."
+  },
+  {
+    numero: 10,
+    titulo: "10. Limite técnico",
+    tipo: "escolha",
+    pergunta: "Surge dúvida específica sobre uma regra que você não domina. O que fazer?",
+    opcoes: [
+      "A) Improviso com naturalidade",
+      "B) Consulto chamado operacional",
+      "C) Prometo vou ajustando depois",
+      "D) Digo que não sei e vou verificar"
+    ],
+    respostaCorreta: 1,
+    gabarito: "Gabarito / critério: B",
+    criterioEsperado: "Dúvida técnica não deve virar improviso."
+  },
+  {
+    numero: 11,
+    titulo: "11. Caso integrado",
+    tipo: "aberta",
+    pergunta: "Cliente diz: 'Não tenho margem, já tenho contratos e meu banco ofereceu outra coisa'. Em até seis linhas, descreva sua sequência inicial de raciocínio.",
+    gabarito: "Gabarito / critério: ABERTA",
+    criterioEsperado: "Observar: qual margem, contratos, referência concorrente, necessidade, consulta antes de promessa, escolha do que calcular."
+  },
+  {
+    numero: 12,
+    titulo: "12. Escrita comercial",
+    tipo: "aberta",
+    pergunta: "Escreva uma resposta curta para 'vou pensar', com o objetivo de descobrir o que o cliente quer analisar melhor sem pressionar.",
+    gabarito: "Gabarito / critério: ABERTA",
+    criterioEsperado: "Observar capacidade de diagnosticar sem confronto."
+  },
+  {
+    numero: 13,
+    titulo: "13. Follow-up",
+    tipo: "aberta",
+    pergunta: "Escreva um follow-up para um cliente que pediu retorno hoje após comparar a parcela.",
+    gabarito: "Gabarito / critério: ABERTA",
+    criterioEsperado: "Observar uso de contexto e respeito ao combinado."
+  },
+  {
+    numero: 14,
+    titulo: "14. Autoavaliação",
+    tipo: "aberta",
+    pergunta: "Qual parte deste módulo você ainda sente que precisaria revisar antes de atender sozinho? Explique por quê.",
+    gabarito: "Gabarito / critério: ABERTA",
+    criterioEsperado: "Resposta ajuda Supervisor/RH a comparar autopercepção com desempenho real."
+  }
+]
 
 // Complete 22 Days Dataset from briefing
 const DIAS_TREINAMENTO: DailyContent[] = [
@@ -640,32 +1001,22 @@ const DIAS_TREINAMENTO: DailyContent[] = [
   },
   {
     dia: 11,
-    titulo: "AVALIAÇÃO 1 — Fundamentos e leitura inicial",
+    titulo: "DIA 11 — AVALIAÇÃO 1",
+    subtitulo: "Fundamentos, margens, cálculo básico e leitura inicial de oportunidades",
     voceEstaAqui: "Chegamos ao primeiro ponto de checagem. Durante a avaliação, responda com atenção e consolide os conceitos essenciais aprendidos até o momento.",
     oQueVaiEntender: "Validar domínio de margens, vocabulário operacional, fundamentos da calculadora e raciocínio de oportunidade.",
-    conteudoPrincipal: [
-      {
-        titulo: "Instruções da Avaliação 1",
-        paragrafos: [
-          "Esta avaliação possui 12 questões práticas cobrindo conceitos de consignado, margem facultativa x complementar, uso correto de coeficientes e interpretação de casos reais.",
-          "Suas respostas abertas e pontuações serão gravadas no seu histórico de capacitação para acompanhamento do Supervisor e RH."
-        ]
-      }
-    ],
-    perguntaAberta: "Caso aberto: Cliente possui margem facultativa e margem complementar. Escreva quais informações você buscaria antes de decidir o que apresentar.",
+    isAvaliacao: true,
+    regra: "Durante a avaliação, o aluno não deve acessar os conteúdos do módulo nem o Guia Rápido. As respostas abertas devem ser salvas integralmente para consulta do aluno, Supervisor Comercial e RH.",
+    conteudoPrincipal: [],
+    perguntaAberta: "",
     decisao: {
-      pergunta: "R$ 1.000 de margem significam necessariamente R$ 1.000 liberados?",
-      opcoes: [
-        "A) Sim, sempre.",
-        "B) Não, o valor depende da tabela/coeficiente e prazo.",
-        "C) Só na margem complementar.",
-        "D) Só no crédito novo."
-      ],
-      respostaCorreta: 1,
-      explicacao: "Margem é referência de parcela/capacidade, não de valor líquido disponível."
+      pergunta: "",
+      opcoes: [],
+      respostaCorreta: 0,
+      explicacao: ""
     },
     oQueLevar: [
-      "Margem é capacidade de comprometimento.",
+      "Margem é capacidade de comprometimento, não valor líquido.",
       "Tabela e coeficiente convertem margem em valor.",
       "Comunicação inicial deve ser clara, respeitosa e sem falsas promessas."
     ]
@@ -683,9 +1034,20 @@ const DIAS_TREINAMENTO: DailyContent[] = [
         ]
       },
       {
+        titulo: "O Que Move Uma Decisão",
+        paragrafos: [
+          "Uma pessoa tende a prestar mais atenção quando percebe relevância para o próprio cenário. Isso pode ser dinheiro, redução de impacto, comparação, segurança, duração, reorganização ou outra necessidade. A função da comunicação é descobrir qual dessas dimensões importa — não assumir que todos querem a mesma coisa."
+        ]
+      },
+      {
         titulo: "Confiança Antes de Profundidade",
         paragrafos: [
-          "Em contatos frios, confiança pode ser pré-requisito para qualquer conversa técnica. Se o cliente pergunta 'quem é você?', não faz sentido responder com cinco números. Primeiro resolva a insegurança.",
+          "Em contatos frios, confiança pode ser pré-requisito para qualquer conversa técnica. Se o cliente pergunta 'quem é você?', não faz sentido responder com cinco números. Primeiro resolva a insegurança."
+        ]
+      },
+      {
+        titulo: "Momento Também Importa",
+        paragrafos: [
           "Um 'agora não' pode ser literalmente sobre momento. A pergunta comercial é: existe algo para retomar depois e qual contexto precisa ser registrado? Isso começa a transformar follow-up em processo, não insistência."
         ]
       }
@@ -720,13 +1082,25 @@ const DIAS_TREINAMENTO: DailyContent[] = [
     oQueVaiEntender: "Ao terminar, você deve identificar sinais observáveis na conversa e adaptar ritmo, quantidade de informação e próximo passo sem rotular permanentemente o cliente.",
     conteudoPrincipal: [
       {
+        titulo: "Leia Comportamento, Não Personalidade",
+        paragrafos: [
+          "Não precisamos diagnosticar pessoas. Precisamos observar como elas estão se comunicando agora. Um cliente pode ser objetivo em uma conversa e analítico em outra."
+        ]
+      },
+      {
         titulo: "Cinco Comportamentos Úteis",
         paragrafos: [
-          "• OBJETIVO: mensagens curtas, pergunta 'quanto?', quer síntese.",
-          "• ANALÍTICO: pergunta banco, prazo, taxa, contrato, detalhes.",
-          "• DESCONFIADO: questiona origem do contato, segurança, formalização.",
-          "• RELACIONAL: responde melhor à proximidade, conversa antes de decidir.",
-          "• APRESSADO: quer saber documento, prazo de liberação e próximo passo."
+          "OBJETIVO — mensagens curtas, pergunta 'quanto?', quer síntese.",
+          "ANALÍTICO — pergunta banco, prazo, taxa, contrato, detalhes.",
+          "DESCONFIADO — questiona origem do contato, segurança, formalização.",
+          "RELACIONAL — responde melhor à proximidade, conversa antes de decidir.",
+          "APRESSADO — quer saber documento, prazo de liberação e próximo passo."
+        ]
+      },
+      {
+        titulo: "O Mesmo Conteúdo, Ritmos Diferentes",
+        paragrafos: [
+          "Para o objetivo, entregue o essencial e faça uma pergunta. Para o analítico, organize informação e evite pular etapas. Para o desconfiado, prova e clareza vêm antes da oferta. Para o apressado, elimine fricção e deixe o próximo passo claro."
         ]
       },
       {
@@ -766,18 +1140,35 @@ const DIAS_TREINAMENTO: DailyContent[] = [
     oQueVaiEntender: "Ao terminar, você deve construir uma abordagem curta com contexto, vantagem legítima e pergunta simples.",
     conteudoPrincipal: [
       {
-        titulo: "Três Peças da Abertura",
+        titulo: "O Objetivo da Primeira Mensagem",
         paragrafos: [
-          "• CONTEXTO: por que estou falando com você agora?",
-          "• VANTAGEM / MOTIVO: o que merece atenção sem transformar campanha em spam?",
-          "• PERGUNTA: uma pergunta fácil de responder que ajude a escolher o próximo passo."
+          "A primeira mensagem não precisa vender toda a operação. Precisa gerar interação suficiente para você descobrir se existe algo para analisar."
         ]
       },
       {
-        titulo: "O que Enfraquece e Postura Segura",
+        titulo: "Três Peças da Abertura",
         paragrafos: [
-          "'Tem interesse em empréstimo?' joga todo o esforço para o cliente e não traz contexto. Textos muito longos parecem disparo. Excesso de tecnicismo cria esforço antes de existir interesse.",
-          "Evite 'acho', 'talvez', 'deve dar' quando você deveria consultar. Também evite urgência inventada."
+          "CONTEXTO — por que estou falando com você agora?",
+          "VANTAGEM / MOTIVO — o que merece atenção sem transformar campanha em spam?",
+          "PERGUNTA — uma pergunta fácil de responder que ajude a escolher o próximo passo."
+        ]
+      },
+      {
+        titulo: "O Que Enfraquece",
+        paragrafos: [
+          "'Tem interesse em empréstimo?' joga todo o esforço para o cliente e não traz contexto. Textos muito longos parecem disparo. Excesso de tecnicismo cria esforço antes de existir interesse. Promessa de número antes da consulta cria risco."
+        ]
+      },
+      {
+        titulo: "Postura Segura",
+        paragrafos: [
+          "Evite 'acho', 'talvez', 'deve dar' quando você deveria consultar. Também evite urgência inventada. Se existe validade real de campanha, ela pode ser comunicada. Se não existe, não fabrique pressão."
+        ]
+      },
+      {
+        titulo: "Comunicação em Camadas",
+        paragrafos: [
+          "Você conhece internamente margem complementar, refinanciamento e demais estruturas. Na primeira conversa, entregue apenas o que ajuda o cliente a entender por que vale responder. A profundidade cresce conforme a necessidade."
         ]
       }
     ],
@@ -813,8 +1204,28 @@ const DIAS_TREINAMENTO: DailyContent[] = [
       {
         titulo: "Sondagem Não é Questionário",
         paragrafos: [
-          "Fazer seis perguntas de uma vez aumenta esforço e reduz naturalidade. Faça uma pergunta, use a resposta e só então faça a próxima.",
+          "Fazer seis perguntas de uma vez aumenta esforço e reduz naturalidade. Faça uma pergunta, use a resposta e só então faça a próxima."
+        ]
+      },
+      {
+        titulo: "O Que Você Está Tentando Descobrir",
+        paragrafos: [
           "O cliente prioriza valor na mão? Parcela menor? Prazo menor? Segurança? Comparação com outra proposta? Resolver uma condição atual? Isso muda o cálculo e a apresentação."
+        ]
+      },
+      {
+        titulo: "Perguntas Que Criam Direção",
+        paragrafos: [
+          "'Você recebeu proposta recentemente?' ajuda a saber se existe referência concorrente.",
+          "'Hoje faria mais sentido priorizar valor ou uma estrutura que termine antes?' ajuda a escolher direção.",
+          "'Qual faixa de parcela cabe com tranquilidade?' transforma 'parcela alta' em dado de recálculo.",
+          "'Qual valor faria a operação valer a pena?' transforma 'valor baixo' em referência."
+        ]
+      },
+      {
+        titulo: "Quando Parar de Sondar",
+        paragrafos: [
+          "Se o cliente já mostrou claramente o objetivo e existe informação suficiente para calcular, continue o processo. Sondagem demais também pode cansar."
         ]
       }
     ],
@@ -848,13 +1259,39 @@ const DIAS_TREINAMENTO: DailyContent[] = [
     oQueVaiEntender: "Ao terminar, você deve escolher uma direção de cálculo, montar um cenário principal e apresentar a vantagem central sem despejar todas as tabelas.",
     conteudoPrincipal: [
       {
-        titulo: "Do Objetivo para o Cálculo",
+        titulo: "Do Objetivo Para o Cálculo",
         paragrafos: [
-          "Se o cliente prioriza valor, você testa uma configuração coerente com esse objetivo. Se prioriza parcela, respeita a faixa informada. Se quer prazo menor, precisa enxergar como a duração muda o cenário.",
+          "Se o cliente prioriza valor, você testa uma configuração coerente com esse objetivo. Se prioriza parcela, respeita a faixa informada. Se quer prazo menor, precisa enxergar como a duração muda o cenário. A calculadora deixa de ser um gerador de números e passa a responder uma pergunta comercial."
+        ]
+      },
+      {
+        titulo: "Poucos Cenários",
+        paragrafos: [
           "O cliente não precisa receber tudo o que você testou. O profissional pode explorar várias possibilidades internamente e selecionar uma ou poucas referências que façam sentido."
+        ]
+      },
+      {
+        titulo: "Comparar sem Aprofundar Taxa",
+        paragrafos: [
+          "Na margem facultativa, o botão 'Comparar' permite selecionar prazos variados. Neste módulo, o aluno deve perceber que prazo diferente altera parcela média, duração e resultado geral. Não é necessário aprofundar a matemática da taxa mês ou o plano de amortização."
+        ]
+      },
+      {
+        titulo: "Uma Vantagem Principal",
+        paragrafos: [
+          "Antes de enviar o comparativo, defina qual ponto o cliente deve observar: maior valor, parcela mais adequada, duração mais curta ou outra diferença confirmada. Se você não sabe o que quer que ele veja, provavelmente ainda não entendeu a prioridade."
         ]
       }
     ],
+    vejaNaFerramenta: {
+      titulo: "Veja na Ferramenta",
+      imagens: [
+        {
+          url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/images%20TREINAMENTO/aula16_print1.png",
+          legenda: "Referência — comparação de prazos em operação de margem facultativa. Neste módulo, observar diferenças básicas; análise de taxa e plano fica para depois."
+        }
+      ]
+    },
     vejaAcontecendo: {
       tipo: "dialogo",
       texto: "Cliente disse que quer terminar mais cedo e aceita reduzir o valor liberado. Você calcula cenários com prazos menores e escolhe uma referência que mostre essa troca de forma simples. Não manda oito tabelas."
@@ -884,11 +1321,33 @@ const DIAS_TREINAMENTO: DailyContent[] = [
     oQueVaiEntender: "Ao terminar, você deve diferenciar objeção de critério de recálculo e saber quando ajustar em vez de argumentar.",
     conteudoPrincipal: [
       {
-        titulo: "Parcela Alta, Valor Baixo e Prazo Longo",
+        titulo: "Parcela Alta",
         paragrafos: [
-          "• Se o cliente diz que a parcela ficou alta: pergunte qual faixa cabe com tranquilidade e recalcule.",
-          "• Se o valor liberado não atende: descubra qual valor faria sentido.",
-          "• Se o cliente quer terminar antes: teste o impacto de prazos menores e explique a troca de forma objetiva."
+          "Se o cliente diz que a parcela ficou alta, não comece defendendo a condição. Pergunte qual faixa cabe com tranquilidade. Se houver possibilidade, recalcule."
+        ]
+      },
+      {
+        titulo: "Valor Baixo",
+        paragrafos: [
+          "Se o valor liberado não atende, descubra qual valor faria sentido. Isso evita perder tempo tentando convencer alguém de que uma quantia insuficiente deveria ser suficiente."
+        ]
+      },
+      {
+        titulo: "Prazo Longo",
+        paragrafos: [
+          "Se o cliente quer terminar antes, teste o impacto de prazos menores conforme as tabelas disponíveis. Explique a troca de forma objetiva."
+        ]
+      },
+      {
+        titulo: "Pergunta Sobre Taxa",
+        paragrafos: [
+          "Quando a taxa estiver validada no cenário, responda. Mas depois reconecte com valor, parcela e prazo. Uma taxa isolada não substitui a condição completa."
+        ]
+      },
+      {
+        titulo: "Proposta Concorrente",
+        paragrafos: [
+          "Peça as referências principais e compare pela mesma base. Evite 'a nossa é melhor' sem demonstrar a diferença."
         ]
       }
     ],
@@ -923,9 +1382,31 @@ const DIAS_TREINAMENTO: DailyContent[] = [
       {
         titulo: "Objeção Não é Batalha",
         paragrafos: [
-          "O objetivo não é 'vencer' o cliente. É entender o que está impedindo avanço e verificar se existe algo real para resolver.",
-          "• 'VOU PENSAR': Pensar sobre o quê? Parcela? Prazo? Segurança? Faça uma pergunta que torne o genérico em concreto.",
-          "• 'NÃO CONFIO': Resolva a insegurança com processo e informação verificável. Se não souber, consulte antes de responder."
+          "O objetivo não é 'vencer' o cliente. É entender o que está impedindo avanço e verificar se existe algo real para resolver."
+        ]
+      },
+      {
+        titulo: "\"Vou Pensar\"",
+        paragrafos: [
+          "Pensar sobre o quê? Necessidade do valor? Parcela? Prazo? Segurança? A resposta comercial é uma pergunta que transforma o genérico em concreto."
+        ]
+      },
+      {
+        titulo: "\"Não Tenho Interesse\"",
+        paragrafos: [
+          "Pode ser falta de necessidade, falta de confiança, produto inadequado ou simplesmente momento. Respeite a resposta e, se existir uma alternativa coerente, faça uma pergunta curta antes de encerrar. Não transforme isso em perseguição."
+        ]
+      },
+      {
+        titulo: "\"Faço Tudo no Meu Banco\"",
+        paragrafos: [
+          "Não ataque o banco. Uma segunda referência pode ter valor por comparação. Se o cliente não quer comparar, preserve a relação."
+        ]
+      },
+      {
+        titulo: "\"Não Confio\"",
+        paragrafos: [
+          "Resolva a insegurança com processo e informação verificável. Se você não sabe responder uma dúvida técnica, consulte. Inventar uma resposta para manter a venda é pior do que parar dois minutos e confirmar."
         ]
       }
     ],
@@ -958,14 +1439,33 @@ const DIAS_TREINAMENTO: DailyContent[] = [
     oQueVaiEntender: "Ao terminar, você deve estruturar uma ligação curta com abertura, contexto, pergunta, escuta, síntese e próximo passo.",
     conteudoPrincipal: [
       {
-        titulo: "Estrutura Simples da Ligação",
+        titulo: "Quando a Ligação Ajuda",
         paragrafos: [
-          "1. ABERTURA: Tom e postura verbal abrem o caminho.",
-          "2. CONTEXTO: Contextualize em uma frase por que estão conversando.",
-          "3. PERGUNTA: Descubra o ponto central.",
-          "4. ESCUTA: Não responda enquanto o cliente ainda está explicando.",
-          "5. SÍNTESE: Repita o que entendeu.",
-          "6. RECOMENDAÇÃO e CONFIRMAÇÃO: Próximo passo definido."
+          "Quando a conversa por texto está confusa, quando há muitas perguntas encadeadas, quando o cliente demonstra interesse mas não consegue organizar a decisão, ou quando uma explicação curta em voz pode reduzir ruído."
+        ]
+      },
+      {
+        titulo: "Antes de Ligar",
+        paragrafos: [
+          "Saiba por que você está ligando. Não ligue apenas para 'ver se o cliente atende'. Tenha um objetivo: entender prioridade, explicar uma diferença, confirmar uma dúvida, conduzir formalização."
+        ]
+      },
+      {
+        titulo: "Estrutura Simples",
+        paragrafos: [
+          "1. ABERTURA — Seu tom e postura verbal abrem o caminho para a atenção.",
+          "2. CONTEXTO — contextualize em uma frase por que estão conversando.",
+          "3. PERGUNTA — descubra o ponto central.",
+          "4. ESCUTA — não responda enquanto o cliente ainda está explicando.",
+          "5. SÍNTESE — repita o que entendeu.",
+          "6. RECOMENDAÇÃO — apresente o próximo passo.",
+          "7. CONFIRMAÇÃO — combine o que acontecerá depois."
+        ]
+      },
+      {
+        titulo: "O Erro do Monólogo",
+        paragrafos: [
+          "Uma ligação não é o momento de despejar todo o conhecimento adquirido. Se você fala por cinco minutos sem descobrir nada novo, provavelmente está dando uma palestra, não conduzindo uma venda."
         ]
       }
     ],
@@ -999,10 +1499,33 @@ const DIAS_TREINAMENTO: DailyContent[] = [
     oQueVaiEntender: "Ao terminar, você deve fazer follow-up com contexto e reconhecer sinais de compra para parar de argumentar.",
     conteudoPrincipal: [
       {
-        titulo: "Follow-up Não é 'Oi, viu?'",
+        titulo: "Follow-up Não É 'Oi, Viu?'",
         paragrafos: [
-          "Uma retomada boa lembra onde a conversa parou e traz uma razão para voltar. Pode ser uma informação pendente, um recálculo ou uma mudança confirmada.",
-          "Perguntas como 'o que precisa enviar?', 'como assina?', 'quando cai?' indicam que a pessoa saiu da avaliação e entrou no processo. Nesse momento, pare de vender e avance para a formalização."
+          "Uma retomada boa lembra onde a conversa parou e traz uma razão para voltar. Pode ser uma informação pendente, um recálculo, uma comparação solicitada, uma mudança confirmada ou simplesmente o retorno combinado."
+        ]
+      },
+      {
+        titulo: "Registre o Motivo",
+        paragrafos: [
+          "Se o cliente disse que precisava analisar a parcela, registre isso. Se pediu retorno em determinada data, registre. Sem histórico, o follow-up vira repetição."
+        ]
+      },
+      {
+        titulo: "Quando Parar",
+        paragrafos: [
+          "Se não existe ganho real, se o cliente pediu para não ser contatado ou se já houve tentativas adequadas sem contexto novo, encerrar pode ser a melhor decisão. Preservar relação também é gestão comercial."
+        ]
+      },
+      {
+        titulo: "Sinais de Fechamento",
+        paragrafos: [
+          "Perguntas como 'o que precisa enviar?', 'como assina?', 'quando cai?', 'pode seguir?' indicam que a pessoa saiu da avaliação e entrou no processo. Nesse momento, mais argumentos podem abrir novas dúvidas. Avance."
+        ]
+      },
+      {
+        titulo: "Próximo Passo Claro",
+        paragrafos: [
+          "Toda conversa deveria terminar com algo definido: calcular, enviar proposta, confirmar documento, ligar depois, aguardar retorno combinado ou encerrar."
         ]
       }
     ],
@@ -1036,15 +1559,58 @@ const DIAS_TREINAMENTO: DailyContent[] = [
     oQueVaiEntender: "Ao terminar, você deve percorrer uma oportunidade do primeiro contato ao próximo passo, escolhendo quando perguntar, calcular, recalcular, comparar, ligar ou consultar.",
     conteudoPrincipal: [
       {
-        titulo: "Caso Juliana: As 7 Etapas",
+        titulo: "Caso — Juliana",
         paragrafos: [
-          "• Etapa 1 (O que você ainda não sabe): Sem dados, não mande simulação.",
-          "• Etapa 2 (Sondagem): Descubra a prioridade de parcela.",
-          "• Etapa 3 (Consulta): Verifique margens e contratos existentes.",
-          "• Etapa 4 (Cálculo): Simule com a tabela certa respeitando o limite.",
-          "• Etapa 5 (Reação): Transforme o feedback em critério de ajuste.",
-          "• Etapa 6 (Limite Técnico): Se houver regra que não domina, consulte a retaguarda.",
-          "• Etapa 7 (Próximo Passo): Conduza para a formalização com clareza."
+          "Juliana é servidora. Na base, você possui nome, vínculo e origem da campanha. Você envia uma mensagem curta com contexto e pergunta se ela recebeu alguma proposta recente.",
+          "Juliana responde: 'Meu banco já falou comigo. E acho que nem tenho margem.'"
+        ]
+      },
+      {
+        titulo: "Etapa 1 — O Que Você Ainda Não Sabe",
+        paragrafos: [
+          "Você não sabe qual margem ela consultou. Não sabe a proposta do banco. Não sabe o objetivo dela. Não sabe se possui contratos que mereçam análise. Portanto, ainda não existe motivo para mandar uma simulação."
+        ]
+      },
+      {
+        titulo: "Etapa 2 — Sondagem",
+        paragrafos: [
+          "Você pergunta qual condição o banco apresentou. Juliana responde que lembra de um valor aproximado, mas a parcela ficou pesada. Agora surge uma prioridade: parcela."
+        ]
+      },
+      {
+        titulo: "Etapa 3 — Consulta",
+        paragrafos: [
+          "A consulta mostra margem facultativa limitada, dois contratos existentes e margem complementar disponível. Isso não significa que você deve oferecer tudo. Significa que existem linhas para analisar."
+        ]
+      },
+      {
+        titulo: "Etapa 4 — Cálculo",
+        paragrafos: [
+          "Você decide testar uma condição que respeite a faixa de parcela mencionada. Usa a calculadora com a tabela correta. Em seguida, seleciona uma alternativa simples para apresentar."
+        ]
+      },
+      {
+        titulo: "Etapa 5 — Reação",
+        paragrafos: [
+          "Juliana responde: 'Esse valor ainda é baixo'. Em vez de defender a proposta, você pergunta qual valor faria sentido. A resposta cria novo critério."
+        ]
+      },
+      {
+        titulo: "Etapa 6 — Limite Técnico",
+        paragrafos: [
+          "Durante a análise de um dos contratos, surge uma regra específica que você não domina. Aqui entra autonomia com limite: você não inventa. Consulta a retaguarda/chamado e retorna com informação validada."
+        ]
+      },
+      {
+        titulo: "Etapa 7 — Próximo Passo",
+        paragrafos: [
+          "Depois da nova simulação, Juliana pergunta: 'Se eu quiser seguir, o que preciso fazer?'. Esse é o momento de parar de vender e conduzir o próximo passo."
+        ]
+      },
+      {
+        titulo: "Ponte Para os Próximos Módulos",
+        paragrafos: [
+          "Você viu no sistema botões de comparação e plano. Neste primeiro módulo, aprendeu apenas a reconhecer e usar o comparativo em nível básico. Engenharia de amortização, leitura aprofundada de taxas, regras por instituição e detalhamento de plano pertencem ao aprofundamento posterior."
         ]
       }
     ],
@@ -1073,29 +1639,19 @@ const DIAS_TREINAMENTO: DailyContent[] = [
   },
   {
     dia: 22,
-    titulo: "AVALIAÇÃO 2 — Autonomia inicial e raciocínio integrado",
-    voceEstaAqui: "Você concluiu os 21 dias de formação do Módulo 1. Agora é o momento de consolidar todo o raciocínio comercial e técnico adquirido.",
+    titulo: "DIA 22 — AVALIAÇÃO 2",
+    subtitulo: "Autonomia inicial, comportamento comercial e raciocínio integrado",
+    voceEstaAqui: "Você concluiu os 21 dias de formação do Módulo 1. Chegamos à avaliação final para consolidar sua autonomia comercial e raciocínio integrado.",
     oQueVaiEntender: "Validar autonomia comercial, leitura de comportamento, segurança no WhatsApp, manejo de objeções e condução de casos.",
-    conteudoPrincipal: [
-      {
-        titulo: "Instruções da Avaliação Final",
-        paragrafos: [
-          "A Avaliação 2 integra questões objetivas de decisão rápida e cenários abertos para avaliação da sua argumentação e diagnóstico comercial.",
-          "Ao concluir, seu relatório de desempenho estará disponível no Painel de Acompanhamento para visualização pelo Supervisor Comercial e RH."
-        ]
-      }
-    ],
-    perguntaAberta: "Cliente diz: 'Não tenho margem, já tenho contratos e meu banco ofereceu outra coisa'. Em até seis linhas, descreva sua sequência inicial de raciocínio.",
+    isAvaliacao: true,
+    regra: "Sem acesso aos conteúdos. Misturar questões objetivas, decisões de cenário e respostas abertas. Registrar tempo, alterações de resposta e texto final para apoiar a leitura de Supervisor Comercial e RH.",
+    conteudoPrincipal: [],
+    perguntaAberta: "",
     decisao: {
-      pergunta: "Cliente pergunta 'é golpe?'. Sua prioridade é:",
-      opcoes: [
-        "A) Falar com autoridade: 'confia em mim'.",
-        "B) Apresentar informações verificáveis antes de continuar vendendo.",
-        "C) Ignorar e seguir com naturalidade.",
-        "D) Mostrar prints de outros clientes."
-      ],
-      respostaCorreta: 1,
-      explicacao: "Segurança é o bloqueio atual e precisa ser resolvida antes de qualquer oferta comercial."
+      pergunta: "",
+      opcoes: [],
+      respostaCorreta: 0,
+      explicacao: ""
     },
     oQueLevar: [
       "Comunicação consultiva em camadas.",
@@ -1183,6 +1739,18 @@ export default function TreinamentoPage() {
   const [iniciouCurso, setIniciouCurso] = useState<boolean>(false)
   const [carregandoDados, setCarregandoDados] = useState<boolean>(true)
 
+  // Estados específicos para a Avaliação 1 (Dia 11)
+  const [respostasAbertasAv1, setRespostasAbertasAv1] = useState<Record<number, string>>({})
+  const [respostasEscolhaAv1, setRespostasEscolhaAv1] = useState<Record<number, number>>({})
+  const [av1SalvaStatus, setAv1SalvaStatus] = useState<string | null>(null)
+  const [av1ValidacaoErro, setAv1ValidacaoErro] = useState<string | null>(null)
+
+  // Estados específicos para a Avaliação 2 (Dia 22)
+  const [respostasAbertasAv2, setRespostasAbertasAv2] = useState<Record<number, string>>({})
+  const [respostasEscolhaAv2, setRespostasEscolhaAv2] = useState<Record<number, number>>({})
+  const [av2SalvaStatus, setAv2SalvaStatus] = useState<string | null>(null)
+  const [av2ValidacaoErro, setAv2ValidacaoErro] = useState<string | null>(null)
+
   // Liberações programadas via Painel de Controle
   const [liberacoesProgramadas, setLiberacoesProgramadas] = useState<any[]>([])
 
@@ -1206,6 +1774,8 @@ export default function TreinamentoPage() {
   const [avisoBloqueioColar, setAvisoBloqueioColar] = useState<string | null>(null)
   const [liberandoAlunoKey, setLiberandoAlunoKey] = useState<string | null>(null)
   const [acaoMassaCarregando, setAcaoMassaCarregando] = useState<"liberar" | "bloquear" | null>(null)
+  const [modalGabaritoAv1Aberto, setModalGabaritoAv1Aberto] = useState<boolean>(false)
+  const [modalGabaritoAv2Aberto, setModalGabaritoAv2Aberto] = useState<boolean>(false)
 
   // Interactive Mini Calculator on Day 5
   const [calcMargem, setCalcMargem] = useState<number>(1000)
@@ -1448,6 +2018,39 @@ export default function TreinamentoPage() {
             }
           })
 
+          // Carrega avaliação se existir na resposta
+          if (json.avaliacoes && Array.isArray(json.avaliacoes)) {
+            const av1 = json.avaliacoes.find((a: any) => a.dia === 11)
+            if (av1) {
+              if (av1.respostas_abertas) setRespostasAbertasAv1(av1.respostas_abertas)
+              if (av1.respostas_escolha) setRespostasEscolhaAv1(av1.respostas_escolha)
+              if (av1.concluido) {
+                if (!remoteConcluidos.includes(11)) remoteConcluidos.push(11)
+                if (av1.data_hora_conclusao) {
+                  remoteDatasConclusao[11] = av1.data_hora_conclusao
+                }
+              }
+              if (av1.data_hora_entrada) {
+                remoteDatasEntrada[11] = av1.data_hora_entrada
+              }
+            }
+
+            const av2 = json.avaliacoes.find((a: any) => a.dia === 22)
+            if (av2) {
+              if (av2.respostas_abertas) setRespostasAbertasAv2(av2.respostas_abertas)
+              if (av2.respostas_escolha) setRespostasEscolhaAv2(av2.respostas_escolha)
+              if (av2.concluido) {
+                if (!remoteConcluidos.includes(22)) remoteConcluidos.push(22)
+                if (av2.data_hora_conclusao) {
+                  remoteDatasConclusao[22] = av2.data_hora_conclusao
+                }
+              }
+              if (av2.data_hora_entrada) {
+                remoteDatasEntrada[22] = av2.data_hora_entrada
+              }
+            }
+          }
+
           setRespostasAbertas(remoteRespostas)
           setDecisoesTomadas(remoteDecisoes)
           setDiasConcluidos(remoteConcluidos)
@@ -1460,6 +2063,10 @@ export default function TreinamentoPage() {
           setDiasConcluidos([])
           setDatasConclusao({})
           setDatasEntrada({})
+          setRespostasAbertasAv1({})
+          setRespostasEscolhaAv1({})
+          setRespostasAbertasAv2({})
+          setRespostasEscolhaAv2({})
         }
       } catch (err) {
         console.error("Erro ao carregar dados do treinamento:", err)
@@ -1468,6 +2075,10 @@ export default function TreinamentoPage() {
         setDiasConcluidos([])
         setDatasConclusao({})
         setDatasEntrada({})
+        setRespostasAbertasAv1({})
+        setRespostasEscolhaAv1({})
+        setRespostasAbertasAv2({})
+        setRespostasEscolhaAv2({})
       } finally {
         setCarregandoDados(false)
       }
@@ -1496,14 +2107,21 @@ export default function TreinamentoPage() {
 
       rawRows.forEach(row => {
         if (!row.user_id) return
+        const authUser = users.find(u => u.id === row.user_id)
+
+        // Se o usuário foi desativado no sistema (status === "INATIVO"), não deve ser mostrado no painel
+        if (authUser?.status === "INATIVO") {
+          return
+        }
+
         if (!progressoPorUser[row.user_id]) {
-          const authUser = users.find(u => u.id === row.user_id)
           progressoPorUser[row.user_id] = {
             user_id: row.user_id,
             nome: authUser?.nome || row.usuario_nome || "Aluno",
             email: authUser?.email || row.usuario_email || "",
             funcao: authUser?.funcao || "Corretor",
             regime_contratacao: authUser?.regime_contratacao || row.regime_contratacao || "CLT",
+            status: authUser?.status || "ATIVO",
             rows: []
           }
         }
@@ -1542,6 +2160,7 @@ export default function TreinamentoPage() {
           email: aluno.email,
           funcao: aluno.funcao,
           regime_contratacao: aluno.regime_contratacao,
+          status: aluno.status,
           totalDiasConcluidos: concluidos.length,
           percentual,
           totalAcertos,
@@ -1565,19 +2184,6 @@ export default function TreinamentoPage() {
 
   useEffect(() => {
     carregarDadosPainel()
-
-    const handleFocus = () => {
-      carregarDadosPainel()
-    }
-    window.addEventListener("focus", handleFocus)
-    const interval = setInterval(() => {
-      carregarDadosPainel()
-    }, 20000)
-
-    return () => {
-      window.removeEventListener("focus", handleFocus)
-      clearInterval(interval)
-    }
   }, [user?.id, perfil?.id])
 
   // Liberar a próxima aula do aluno imediatamente
@@ -1687,6 +2293,11 @@ export default function TreinamentoPage() {
   const currentUserId = user?.id || perfil?.id
 
   const alunosVisiveisBase = painelProgresso.filter(aluno => {
+    // Usuários desativados no sistema não devem ser mostrados no acompanhamento de progresso
+    if (aluno.status === "INATIVO") {
+      return false
+    }
+
     // Para participantes (Corretor CLT/PJ, Estagiário, Processo Seletivo, Monitoramento, etc.):
     // Cada um vê estritamente o seu próprio progresso individual.
     if (!isGestorTreinamento) {
@@ -1764,6 +2375,10 @@ export default function TreinamentoPage() {
   // Lista de usuários para o select de agendamento de liberação
   const usuariosDisponiveisParaLiberacao = painelUsuarios
     .filter(u => {
+      // Usuários desativados no sistema não devem constar no select de liberação
+      if (u.status === "INATIVO") {
+        return false
+      }
       if (!podeVerCorretorPJ) {
         const regime = (u.regime_contratacao || "").toUpperCase().trim()
         const role = (u.funcao || "").trim()
@@ -1902,8 +2517,146 @@ export default function TreinamentoPage() {
     })
   }
 
+  const salvarAvaliacaoNoSupabase = async (
+    diaAvaliacao: 11 | 22,
+    abertas: Record<number, string>,
+    escolhas: Record<number, number>,
+    concluido: boolean = false
+  ) => {
+    try {
+      let targetUserId = user?.id || perfil?.id
+      if (!targetUserId) return
+
+      const questoes = diaAvaliacao === 11 ? QUESTOES_AVALIACAO_1 : QUESTOES_AVALIACAO_2
+      const questoesEscolha = questoes.filter(q => q.tipo === "escolha")
+
+      let acertosCount = 0
+      questoesEscolha.forEach(q => {
+        if (escolhas[q.numero] === q.respostaCorreta) {
+          acertosCount++
+        }
+      })
+
+      const payload: any = {
+        action: "salvar_avaliacao",
+        user_id: targetUserId,
+        usuario_nome: perfil?.nome || user?.user_metadata?.nome_completo || "",
+        usuario_email: user?.email || perfil?.email || "",
+        regime_contratacao: perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || "",
+        modulo: 1,
+        dia: diaAvaliacao,
+        respostas_abertas: abertas,
+        respostas_escolha: escolhas,
+        acertos: acertosCount,
+        total_questoes_escolha: questoesEscolha.length,
+        concluido: Boolean(concluido),
+        data_hora_entrada: datasEntrada[diaAvaliacao] || new Date().toISOString()
+      }
+
+      if (concluido) {
+        payload.data_hora_conclusao = new Date().toISOString()
+      }
+
+      await fetch("/api/treinamento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+    } catch (err) {
+      console.error(`Erro ao sincronizar avaliação ${diaAvaliacao}:`, err)
+    }
+  }
+
+  const handleSalvarRespostaAv1 = async (num: number, texto: string) => {
+    const updated = { ...respostasAbertasAv1, [num]: texto }
+    setRespostasAbertasAv1(updated)
+    setAv1SalvaStatus("Resposta salva!")
+    setTimeout(() => setAv1SalvaStatus(null), 2500)
+
+    await salvarAvaliacaoNoSupabase(11, updated, respostasEscolhaAv1, false)
+  }
+
+  const handleSelecionarOpcaoAv1 = async (num: number, optIdx: number) => {
+    const updated = { ...respostasEscolhaAv1, [num]: optIdx }
+    setRespostasEscolhaAv1(updated)
+
+    await salvarAvaliacaoNoSupabase(11, respostasAbertasAv1, updated, false)
+  }
+
+  const handleSalvarRespostaAv2 = async (num: number, texto: string) => {
+    const updated = { ...respostasAbertasAv2, [num]: texto }
+    setRespostasAbertasAv2(updated)
+    setAv2SalvaStatus("Resposta salva!")
+    setTimeout(() => setAv2SalvaStatus(null), 2500)
+
+    await salvarAvaliacaoNoSupabase(22, updated, respostasEscolhaAv2, false)
+  }
+
+  const handleSelecionarOpcaoAv2 = async (num: number, optIdx: number) => {
+    const updated = { ...respostasEscolhaAv2, [num]: optIdx }
+    setRespostasEscolhaAv2(updated)
+
+    await salvarAvaliacaoNoSupabase(22, respostasAbertasAv2, updated, false)
+  }
+
   const handleAvancarProximoDia = async () => {
     const diaAtual = currentDiaData.dia
+
+    // Tratamento especial para o Dia 11 (Avaliação 1)
+    if (diaAtual === 11) {
+      if (!diasConcluidos.includes(11)) {
+        if (!isIsentoNavegacao) {
+          const abertasFaltando = [1, 11, 12].some(n => !(respostasAbertasAv1[n] || "").trim())
+          const escolhasFaltando = [2, 3, 4, 5, 6, 7, 8, 9, 10].some(n => respostasEscolhaAv1[n] === undefined || respostasEscolhaAv1[n] === null)
+          if (abertasFaltando || escolhasFaltando) {
+            setAv1ValidacaoErro("Por favor, responda todas as questões da Avaliação 1 antes de finalizar.")
+            setTimeout(() => setAv1ValidacaoErro(null), 5000)
+            return
+          }
+        }
+        const agoraIso = new Date().toISOString()
+        const newConcluidos = [...diasConcluidos, 11]
+        setDiasConcluidos(newConcluidos)
+        setDatasConclusao(prev => ({ ...prev, [11]: agoraIso }))
+        await salvarAvaliacaoNoSupabase(11, respostasAbertasAv1, respostasEscolhaAv1, true)
+        await sincronizarSupabase(11, { concluido: true, data_hora_conclusao: agoraIso })
+
+        if (!isIsentoLimiteDiario) {
+          setIniciouCurso(false)
+          return
+        }
+      }
+      setSelectedDia(12)
+      return
+    }
+
+    // Tratamento especial para o Dia 22 (Avaliação 2)
+    if (diaAtual === 22) {
+      if (!diasConcluidos.includes(22)) {
+        if (!isIsentoNavegacao) {
+          const abertasFaltando = [11, 12, 13, 14].some(n => !(respostasAbertasAv2[n] || "").trim())
+          const escolhasFaltando = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].some(n => respostasEscolhaAv2[n] === undefined || respostasEscolhaAv2[n] === null)
+          if (abertasFaltando || escolhasFaltando) {
+            setAv2ValidacaoErro("Por favor, responda todas as questões da Avaliação 2 antes de finalizar.")
+            setTimeout(() => setAv2ValidacaoErro(null), 5000)
+            return
+          }
+        }
+        const agoraIso = new Date().toISOString()
+        const newConcluidos = [...diasConcluidos, 22]
+        setDiasConcluidos(newConcluidos)
+        setDatasConclusao(prev => ({ ...prev, [22]: agoraIso }))
+        await salvarAvaliacaoNoSupabase(22, respostasAbertasAv2, respostasEscolhaAv2, true)
+        await sincronizarSupabase(22, { concluido: true, data_hora_conclusao: agoraIso })
+
+        if (!isIsentoLimiteDiario) {
+          setIniciouCurso(false)
+          return
+        }
+      }
+      return
+    }
+
     const respostaAtual = (respostasAbertas[diaAtual] || "").trim()
     const decisaoAtual = decisoesTomadas[diaAtual]
 
@@ -2022,18 +2775,40 @@ export default function TreinamentoPage() {
                 </div>
               </div>
 
-              {/* Filtro de Busca (Apenas para Gestores com múltiplos alunos) */}
+              {/* Filtro de Busca e Gabarito Oficial (Apenas para Gestores com múltiplos alunos) */}
               {isGestorTreinamento && (
-                <div className="w-full sm:w-72">
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Buscar por nome, e-mail ou perfil..."
-                      value={filtroPesquisaAluno}
-                      onChange={e => setFiltroPesquisaAluno(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                    />
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setModalGabaritoAv1Aberto(true)}
+                      className="inline-flex items-center justify-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-xs transition-all cursor-pointer shrink-0"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-[#00D492]" />
+                      <span>Gabarito Oficial — Dia 11</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setModalGabaritoAv2Aberto(true)}
+                      className="inline-flex items-center justify-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-xs transition-all cursor-pointer shrink-0"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-[#00D492]" />
+                      <span>Gabarito Oficial — Dia 22</span>
+                    </button>
+                  </div>
+
+                  <div className="w-full sm:w-72">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Buscar por nome, e-mail ou perfil..."
+                        value={filtroPesquisaAluno}
+                        onChange={e => setFiltroPesquisaAluno(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -2619,6 +3394,284 @@ export default function TreinamentoPage() {
               )}
             </div>
           </div>
+
+          {/* MODAL DO GABARITO OFICIAL DA AVALIAÇÃO 1 (EXCLUSIVO PARA GESTORES) */}
+          {isGestorTreinamento && modalGabaritoAv1Aberto && (
+            <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+                {/* Header do Modal */}
+                <div className="p-6 border-b border-slate-200 flex items-start justify-between gap-4 bg-slate-50">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#0F172B] text-white">
+                        DIA 11
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300">
+                        GABARITO OFICIAL
+                      </span>
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight mt-2">
+                      AVALIAÇÃO 1 — Gabarito e Critérios de Correção
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Fundamentos, margens, cálculo básico e leitura inicial de oportunidades • Acesso exclusivo para Gestores (Administrador, RH, Supervisor, Operacional e Desenvolvedor)
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setModalGabaritoAv1Aberto(false)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Conteúdo do Modal */}
+                <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                  {/* Quadro de Orientação do Supervisor e RH */}
+                  <div className="bg-amber-50 border-l-4 border-amber-500 rounded-r-2xl p-4 space-y-1 shadow-xs">
+                    <div className="text-xs font-black text-amber-900 uppercase tracking-wider">
+                      LEITURA DO SUPERVISOR E RH
+                    </div>
+                    <p className="text-xs text-amber-950 font-medium leading-relaxed">
+                      Mais importante que a nota isolada: observar se o aluno confunde margem com dinheiro, cria promessa sem validação, escolhe sempre a maior liberação, ainda mistura nomenclaturas ou consegue explicar o raciocínio com linguagem própria.
+                    </p>
+                  </div>
+
+                  {/* Lista com as 12 Questões */}
+                  <div className="space-y-5">
+                    {QUESTOES_AVALIACAO_1.map((q) => {
+                      if (q.tipo === "aberta") {
+                        return (
+                          <div key={q.numero} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+                            <div className="flex items-center gap-2 text-xs font-black text-[#0F172B] uppercase tracking-wider">
+                              <MessageSquare className="w-4 h-4 text-blue-600" />
+                              <span>{q.titulo} (Questão Aberta)</span>
+                            </div>
+                            <p className="text-xs sm:text-sm font-bold text-slate-900">
+                              {q.pergunta}
+                            </p>
+                            <div className="bg-emerald-50 border border-emerald-300 p-3.5 rounded-xl text-xs space-y-1">
+                              <p className="font-bold text-emerald-800 uppercase tracking-wider text-[10px]">
+                                {q.gabarito}
+                              </p>
+                              <p className="text-emerald-950 font-medium leading-relaxed">
+                                {q.criterioEsperado}
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      // Múltipla escolha
+                      return (
+                        <div key={q.numero} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-2xs">
+                          <div className="flex items-center gap-2 text-xs font-black text-[#0F172B] uppercase tracking-wider">
+                            <HelpCircle className="w-4 h-4 text-blue-600" />
+                            <span>{q.titulo} (Múltipla Escolha)</span>
+                          </div>
+                          <p className="text-xs sm:text-sm font-bold text-slate-900">
+                            {q.pergunta}
+                          </p>
+                          <div className="space-y-1.5 pt-1">
+                            {q.opcoes?.map((opcao, optIdx) => {
+                              const isCorrect = optIdx === q.respostaCorreta
+                              return (
+                                <div
+                                  key={optIdx}
+                                  className={cn(
+                                    "p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2.5 border",
+                                    isCorrect
+                                      ? "bg-emerald-50 border-emerald-300 text-emerald-950 font-bold"
+                                      : "bg-slate-50 border-slate-200 text-slate-600"
+                                  )}
+                                >
+                                  <span
+                                    className={cn(
+                                      "w-5 h-5 rounded-full flex items-center justify-center font-black text-[10px] shrink-0",
+                                      isCorrect
+                                        ? "bg-emerald-600 text-white"
+                                        : "bg-slate-200 text-slate-600"
+                                    )}
+                                  >
+                                    {isCorrect ? <Check className="w-3 h-3" /> : String.fromCharCode(65 + optIdx)}
+                                  </span>
+                                  <span>{opcao.replace(/^[A-Za-z]\)\s*/, "")}</span>
+                                  {isCorrect && (
+                                    <span className="ml-auto text-[10px] font-black uppercase text-emerald-700">
+                                      Alternativa Correta
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div className="bg-slate-900 text-white p-3.5 rounded-xl text-xs space-y-1 mt-2">
+                            <p className="font-bold text-[#00D492] uppercase tracking-wider text-[10px]">
+                              {q.gabarito}
+                            </p>
+                            <p className="text-slate-200 leading-relaxed">
+                              {q.criterioEsperado}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Footer do Modal */}
+                <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setModalGabaritoAv1Aberto(false)}
+                    className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-5 rounded-xl transition-all cursor-pointer"
+                  >
+                    Fechar Gabarito
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL DO GABARITO OFICIAL DA AVALIAÇÃO 2 (EXCLUSIVO PARA GESTORES) */}
+          {isGestorTreinamento && modalGabaritoAv2Aberto && (
+            <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+                {/* Header do Modal */}
+                <div className="p-6 border-b border-slate-200 flex items-start justify-between gap-4 bg-slate-50">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#0F172B] text-white">
+                        DIA 22
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300">
+                        GABARITO OFICIAL
+                      </span>
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight mt-2">
+                      AVALIAÇÃO 2 — Gabarito e Critérios de Correção
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Autonomia inicial, comportamento comercial e raciocínio integrado • Acesso exclusivo para Gestores (Administrador, RH, Supervisor, Operacional e Desenvolvedor)
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setModalGabaritoAv2Aberto(false)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Conteúdo do Modal */}
+                <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                  {/* Quadro de Orientação do Supervisor e RH */}
+                  <div className="bg-amber-50 border-l-4 border-amber-500 rounded-r-2xl p-4 space-y-1 shadow-xs">
+                    <div className="text-xs font-black text-amber-900 uppercase tracking-wider">
+                      LEITURA DO SUPERVISOR E RH
+                    </div>
+                    <p className="text-xs text-amber-950 font-medium leading-relaxed">
+                      Comparar nota objetiva com qualidade das respostas abertas. Pontos de atenção: excesso de confiança, promessa antes de consulta, dificuldade em explicar conceitos com palavras próprias, baixa adaptação ao cliente, tendência a argumentar em vez de diagnosticar e incapacidade de reconhecer limite técnico.
+                    </p>
+                  </div>
+
+                  {/* Lista com as 14 Questões */}
+                  <div className="space-y-5">
+                    {QUESTOES_AVALIACAO_2.map((q) => {
+                      if (q.tipo === "aberta") {
+                        return (
+                          <div key={q.numero} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+                            <div className="flex items-center gap-2 text-xs font-black text-[#0F172B] uppercase tracking-wider">
+                              <MessageSquare className="w-4 h-4 text-blue-600" />
+                              <span>{q.titulo} (Questão Aberta)</span>
+                            </div>
+                            <p className="text-xs sm:text-sm font-bold text-slate-900">
+                              {q.pergunta}
+                            </p>
+                            <div className="bg-emerald-50 border border-emerald-300 p-3.5 rounded-xl text-xs space-y-1">
+                              <p className="font-bold text-emerald-800 uppercase tracking-wider text-[10px]">
+                                {q.gabarito}
+                              </p>
+                              <p className="text-emerald-950 font-medium leading-relaxed">
+                                {q.criterioEsperado}
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      // Múltipla escolha
+                      return (
+                        <div key={q.numero} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-2xs">
+                          <div className="flex items-center gap-2 text-xs font-black text-[#0F172B] uppercase tracking-wider">
+                            <HelpCircle className="w-4 h-4 text-blue-600" />
+                            <span>{q.titulo} (Múltipla Escolha)</span>
+                          </div>
+                          <p className="text-xs sm:text-sm font-bold text-slate-900">
+                            {q.pergunta}
+                          </p>
+                          <div className="space-y-1.5 pt-1">
+                            {q.opcoes?.map((opcao, optIdx) => {
+                              const isCorrect = optIdx === q.respostaCorreta
+                              return (
+                                <div
+                                  key={optIdx}
+                                  className={cn(
+                                    "p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2.5 border",
+                                    isCorrect
+                                      ? "bg-emerald-50 border-emerald-300 text-emerald-950 font-bold"
+                                      : "bg-slate-50 border-slate-200 text-slate-600"
+                                  )}
+                                >
+                                  <span
+                                    className={cn(
+                                      "w-5 h-5 rounded-full flex items-center justify-center font-black text-[10px] shrink-0",
+                                      isCorrect
+                                        ? "bg-emerald-600 text-white"
+                                        : "bg-slate-200 text-slate-600"
+                                    )}
+                                  >
+                                    {isCorrect ? <Check className="w-3 h-3" /> : String.fromCharCode(65 + optIdx)}
+                                  </span>
+                                  <span>{opcao.replace(/^[A-Za-z]\)\s*/, "")}</span>
+                                  {isCorrect && (
+                                    <span className="ml-auto text-[10px] font-black uppercase text-emerald-700">
+                                      Alternativa Correta
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div className="bg-slate-900 text-white p-3.5 rounded-xl text-xs space-y-1 mt-2">
+                            <p className="font-bold text-[#00D492] uppercase tracking-wider text-[10px]">
+                              {q.gabarito}
+                            </p>
+                            <p className="text-slate-200 leading-relaxed">
+                              {q.criterioEsperado}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Footer do Modal */}
+                <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setModalGabaritoAv2Aberto(false)}
+                    className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-5 rounded-xl transition-all cursor-pointer"
+                  >
+                    Fechar Gabarito
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2705,20 +3758,207 @@ export default function TreinamentoPage() {
               }}
               className="max-w-4xl mx-auto space-y-6 select-none"
             >
-              {/* Day Header Bar */}
+              {currentDiaData.dia === 11 || currentDiaData.dia === 22 ? (() => {
+                const isAv1 = currentDiaData.dia === 11
+                const diaNum = isAv1 ? 11 : 22
+                const diaAnterior = isAv1 ? 10 : 21
+                const questoes = isAv1 ? QUESTOES_AVALIACAO_1 : QUESTOES_AVALIACAO_2
+                const respostasAbertas = isAv1 ? respostasAbertasAv1 : respostasAbertasAv2
+                const setRespostasAbertas = isAv1 ? setRespostasAbertasAv1 : setRespostasAbertasAv2
+                const respostasEscolha = isAv1 ? respostasEscolhaAv1 : respostasEscolhaAv2
+                const salvaStatus = isAv1 ? av1SalvaStatus : av2SalvaStatus
+                const validacaoErro = isAv1 ? av1ValidacaoErro : av2ValidacaoErro
+                const onSalvarAberta = isAv1 ? handleSalvarRespostaAv1 : handleSalvarRespostaAv2
+                const onSelecionarOpcao = isAv1 ? handleSelecionarOpcaoAv1 : handleSelecionarOpcaoAv2
+                const isDiaBloqueado = diasConcluidos.includes(diaNum)
+
+                return (
+                  <>
+                    {/* Day Header Bar Avaliação */}
+                    <div className="pt-4 pb-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#0F172B] text-white">
+                            DIA {diaNum}
+                          </span>
+                        </div>
+                        <h2 className="text-[30px] sm:text-[33px] font-black text-slate-900 tracking-tight mt-4 leading-snug">
+                          DIA {diaNum} — {isAv1 ? "AVALIAÇÃO 1" : "AVALIAÇÃO 2"}
+                        </h2>
+                        <p className="text-sm sm:text-base font-semibold text-slate-600 mt-1">
+                          {isAv1
+                            ? "Fundamentos, margens, cálculo básico e leitura inicial de oportunidades"
+                            : "Autonomia inicial, comportamento comercial e raciocínio integrado"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Questões */}
+                    <div className="space-y-6 py-2">
+                      {questoes.map((q) => {
+                        if (q.tipo === "aberta") {
+                          return (
+                            <div key={q.numero} className="bg-amber-100/90 border border-amber-300 rounded-2xl p-6 space-y-3">
+                              <div className="flex items-center gap-2 text-sm font-black text-amber-950 uppercase tracking-wider">
+                                <MessageSquare className="w-4.5 h-4.5 text-amber-800" />
+                                <span>{q.titulo}</span>
+                              </div>
+
+                              <p className="text-xs sm:text-sm font-semibold text-slate-900">
+                                {q.pergunta}
+                              </p>
+
+                              <textarea
+                                rows={3}
+                                disabled={isDiaBloqueado}
+                                value={respostasAbertas[q.numero] || ""}
+                                onChange={(e) =>
+                                  setRespostasAbertas({ ...respostasAbertas, [q.numero]: e.target.value })
+                                }
+                                onPaste={(e) => {
+                                  e.preventDefault()
+                                  setAvisoBloqueioColar("Não é permitido colar texto. Por favor, digite a resposta com suas próprias palavras.")
+                                  setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                                  return false
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault()
+                                  setAvisoBloqueioColar("Não é permitido arrastar ou colar texto. Digite sua resposta com suas próprias palavras.")
+                                  setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                                  return false
+                                }}
+                                onKeyDown={(e) => {
+                                  if ((e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V")) {
+                                    e.preventDefault()
+                                    setAvisoBloqueioColar("Não é permitido colar texto (Ctrl+V desativado). Por favor, digite com suas próprias palavras.")
+                                    setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                                  }
+                                }}
+                                placeholder="Digite sua resposta com suas próprias palavras..."
+                                className={cn(
+                                  "w-full bg-white border border-amber-300 rounded-xl p-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm",
+                                  isDiaBloqueado && "bg-amber-50/60 text-slate-700 cursor-not-allowed opacity-90 resize-none"
+                                )}
+                              />
+
+                              <div className="flex items-center justify-between pt-1">
+                                <span className="text-xs text-emerald-700 font-bold">
+                                  {salvaStatus && <span>✓ {salvaStatus}</span>}
+                                </span>
+                                {!isDiaBloqueado && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onSalvarAberta(q.numero, respostasAbertas[q.numero] || "")}
+                                    className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-4 rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Save className="w-3.5 h-3.5" />
+                                    <span>Salvar Resposta</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        }
+
+                        // tipo === 'escolha'
+                        const selectedOpt = respostasEscolha[q.numero]
+                        const hasAnswered = selectedOpt !== undefined && selectedOpt !== null
+
+                        return (
+                          <div key={q.numero} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                            <div className="flex items-center gap-2 text-sm font-black text-[#0F172B] uppercase tracking-wider border-b border-slate-100 pb-3">
+                              <HelpCircle className="w-4.5 h-4.5 text-blue-600" />
+                              <span>{q.titulo}</span>
+                            </div>
+
+                            <p className="text-sm sm:text-[15px] font-bold text-slate-900">
+                              {q.pergunta}
+                            </p>
+
+                            <div className="space-y-2">
+                              {q.opcoes?.map((opcao, optIdx) => {
+                                const isSelected = selectedOpt === optIdx
+
+                                return (
+                                  <button
+                                    key={optIdx}
+                                    type="button"
+                                    disabled={isDiaBloqueado}
+                                    onClick={() => !isDiaBloqueado && onSelecionarOpcao(q.numero, optIdx)}
+                                    className={cn(
+                                      "w-full text-left p-3.5 rounded-xl text-xs sm:text-sm font-semibold transition-all border-2 flex items-start gap-3",
+                                      isDiaBloqueado ? "cursor-default" : "cursor-pointer",
+                                      hasAnswered
+                                        ? isSelected
+                                          ? "bg-[#87A9FF] border-[#658de6] text-slate-900 font-bold shadow-xs"
+                                          : "bg-slate-50 border-slate-200 text-slate-500 opacity-70"
+                                        : isDiaBloqueado
+                                        ? "bg-slate-50 border-slate-200 text-slate-400 opacity-50"
+                                        : "bg-white border-slate-300 text-slate-800 hover:bg-blue-50 hover:border-blue-300"
+                                    )}
+                                  >
+                                    <span
+                                      className={cn(
+                                        "w-5 h-5 rounded-full flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5",
+                                        isSelected
+                                          ? "bg-[#0F172B] text-white"
+                                          : "bg-slate-100 text-slate-700"
+                                      )}
+                                    >
+                                      {String.fromCharCode(65 + optIdx)}
+                                    </span>
+                                    <span>{opcao.replace(/^[A-Za-z]\)\s*/, "")}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Alerta de validação */}
+                    {validacaoErro && (
+                      <div className="bg-rose-50 border border-rose-300 rounded-xl p-4 text-xs sm:text-sm text-rose-800 font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>{validacaoErro}</span>
+                      </div>
+                    )}
+
+                    {/* Rodapé de Navegação da Avaliação */}
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDia(diaAnterior)}
+                        className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer"
+                      >
+                        ← DIA {diaAnterior}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleAvancarProximoDia}
+                        className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs sm:text-sm py-2.5 px-5 rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+                      >
+                        <span>
+                          {isAv1
+                            ? (isDiaBloqueado ? "Avançar para o DIA 12 →" : "Finalizar Avaliação e Avançar →")
+                            : (isDiaBloqueado ? "Avaliação 2 Concluída ✓" : "Finalizar Avaliação Final →")}
+                        </span>
+                      </button>
+                    </div>
+                  </>
+                )
+              })() : (
+                <>
+                  {/* Day Header Bar */}
               <div className="pt-4 pb-2">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#0F172B] text-white">
                       DIA {currentDiaData.dia}
                     </span>
-                    {currentDiaData.dia === 11 || currentDiaData.dia === 22 ? (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
-                        AVALIAÇÃO OFICIAL
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-500 font-medium">Sessão de estudo guiado • aproximadamente 30 minutos</span>
-                    )}
+                    <span className="text-xs text-slate-500 font-medium">Sessão de estudo guiado • aproximadamente 30 minutos</span>
                   </div>
                   <h2 className="text-[30px] sm:text-[33px] font-black text-slate-900 tracking-tight mt-4 leading-snug">
                     {currentDiaData.titulo}
@@ -3032,6 +4272,8 @@ export default function TreinamentoPage() {
                   )
                 })()}
               </div>
+                </>
+              )}
             </div>
           )
         })()}

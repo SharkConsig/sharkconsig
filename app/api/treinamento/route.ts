@@ -58,10 +58,27 @@ export async function GET(request: Request) {
     const supabaseAdmin = createAdminClient()
 
     if (action === "painel") {
-      const [{ data: rows, error: rowsError }, liberacoes, usersResult] = await Promise.all([
+      let authUsersList: any[] = []
+      let page = 1
+      const perPage = 1000
+      while (true) {
+        const { data: listData, error: listError } = await supabaseAdmin.auth.admin.listUsers({
+          page,
+          perPage
+        })
+        if (listError) {
+          console.error("[API Treinamento Painel GET] Erro ao listar usuários:", listError)
+          break
+        }
+        const pageUsers = listData?.users || []
+        authUsersList = authUsersList.concat(pageUsers)
+        if (pageUsers.length < perPage) break
+        page++
+      }
+
+      const [{ data: rows, error: rowsError }, liberacoes] = await Promise.all([
         supabaseAdmin.from("treinamento").select("*"),
-        getLiberacoesProgramadas(supabaseAdmin),
-        supabaseAdmin.auth.admin.listUsers({ perPage: 1000 })
+        getLiberacoesProgramadas(supabaseAdmin)
       ])
 
       if (rowsError) {
@@ -69,14 +86,15 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: rowsError.message }, { status: 500 })
       }
 
-      const allUsers = (usersResult?.data?.users || []).map(u => {
+      const allUsers = authUsersList.map(u => {
         const meta = u.user_metadata || {}
         return {
           id: u.id,
           email: u.email,
           nome: meta.nome_completo || meta.full_name || u.email || "Sem Nome",
           funcao: meta.funcao || "Corretor",
-          regime_contratacao: meta.regime_contratacao || ""
+          regime_contratacao: meta.regime_contratacao || "",
+          status: (meta.status || "ATIVO").toUpperCase()
         }
       })
 
@@ -109,7 +127,19 @@ export async function GET(request: Request) {
       (l: any) => l.usuario_id === "ALL" || (l.usuario_id && l.usuario_id.trim().toLowerCase() === normalizedUserId)
     )
 
-    return NextResponse.json({ data, liberacoes: userLiberacoes })
+    // Busca avaliações (se a tabela existir)
+    let avaliacoesData: any[] = []
+    try {
+      const { data: avData } = await supabaseAdmin
+        .from("treinamento_avaliacoes")
+        .select("*")
+        .eq("user_id", userId)
+      if (avData) avaliacoesData = avData
+    } catch {
+      // Tabela ainda pode não ter sido criada pelo usuário
+    }
+
+    return NextResponse.json({ data, liberacoes: userLiberacoes, avaliacoes: avaliacoesData })
   } catch (err: any) {
     console.error("[API Treinamento GET] Exceção:", err?.message || err)
     return NextResponse.json({ error: err?.message || "Erro interno" }, { status: 500 })
@@ -122,6 +152,69 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { action } = body
     const supabaseAdmin = createAdminClient()
+
+    if (action === "salvar_avaliacao") {
+      const {
+        user_id,
+        usuario_nome,
+        usuario_email,
+        regime_contratacao,
+        modulo = 1,
+        dia = 11,
+        respostas_abertas = {},
+        respostas_escolha = {},
+        acertos = 0,
+        total_questoes_escolha = 9,
+        concluido = false,
+        data_hora_entrada,
+        data_hora_conclusao
+      } = body
+
+      if (!user_id || !dia) {
+        return NextResponse.json(
+          { error: "user_id e dia são obrigatórios" },
+          { status: 400 }
+        )
+      }
+
+      const payload: any = {
+        user_id,
+        usuario_nome: usuario_nome || "",
+        usuario_email: usuario_email || "",
+        regime_contratacao: regime_contratacao || "",
+        modulo,
+        dia,
+        respostas_abertas,
+        respostas_escolha,
+        acertos,
+        total_questoes_escolha,
+        nota_percentual: total_questoes_escolha > 0 ? Math.round((acertos / total_questoes_escolha) * 100) : 0,
+        concluido: Boolean(concluido),
+        updated_at: new Date().toISOString()
+      }
+
+      if (data_hora_entrada) payload.data_hora_entrada = data_hora_entrada
+      if (concluido) {
+        payload.data_hora_conclusao = data_hora_conclusao || new Date().toISOString()
+      }
+
+      let dataRetorno = null
+      try {
+        const { data, error } = await supabaseAdmin
+          .from("treinamento_avaliacoes")
+          .upsert(payload, { onConflict: "user_id,modulo,dia" })
+          .select()
+        if (error) {
+          console.error("[API Treinamento Avaliação POST] Erro:", error.message || error)
+        } else {
+          dataRetorno = data
+        }
+      } catch (e: any) {
+        console.error("[API Treinamento Avaliação POST] Erro:", e?.message)
+      }
+
+      return NextResponse.json({ success: true, data: dataRetorno })
+    }
 
     if (action === "programar_liberacao") {
       const { dia, usuario_id, usuario_nome, data_hora_liberacao, liberado_por } = body
