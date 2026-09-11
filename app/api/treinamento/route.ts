@@ -76,8 +76,9 @@ export async function GET(request: Request) {
         page++
       }
 
-      const [{ data: rows, error: rowsError }, liberacoes] = await Promise.all([
+      const [{ data: rows, error: rowsError }, { data: avaliacoesRows }, liberacoes] = await Promise.all([
         supabaseAdmin.from("treinamento").select("*"),
+        supabaseAdmin.from("treinamento_avaliacoes").select("*"),
         getLiberacoesProgramadas(supabaseAdmin)
       ])
 
@@ -100,6 +101,7 @@ export async function GET(request: Request) {
 
       return NextResponse.json({
         rows: rows || [],
+        avaliacoes: avaliacoesRows || [],
         usuarios: allUsers,
         liberacoes: liberacoes || []
       })
@@ -182,13 +184,12 @@ export async function POST(request: Request) {
         usuario_nome: usuario_nome || "",
         usuario_email: usuario_email || "",
         regime_contratacao: regime_contratacao || "",
-        modulo,
-        dia,
+        modulo: modulo || (Number(dia) >= 12 ? 2 : 1),
+        dia: Number(dia),
         respostas_abertas,
         respostas_escolha,
         acertos,
         total_questoes_escolha,
-        nota_percentual: total_questoes_escolha > 0 ? Math.round((acertos / total_questoes_escolha) * 100) : 0,
         concluido: Boolean(concluido),
         updated_at: new Date().toISOString()
       }
@@ -202,15 +203,17 @@ export async function POST(request: Request) {
       try {
         const { data, error } = await supabaseAdmin
           .from("treinamento_avaliacoes")
-          .upsert(payload, { onConflict: "user_id,modulo,dia" })
+          .upsert(payload, { onConflict: "user_id,dia" })
           .select()
         if (error) {
           console.error("[API Treinamento Avaliação POST] Erro:", error.message || error)
+          return NextResponse.json({ error: error.message }, { status: 500 })
         } else {
           dataRetorno = data
         }
       } catch (e: any) {
         console.error("[API Treinamento Avaliação POST] Erro:", e?.message)
+        return NextResponse.json({ error: e?.message }, { status: 500 })
       }
 
       return NextResponse.json({ success: true, data: dataRetorno })
@@ -318,10 +321,15 @@ export async function POST(request: Request) {
       )
     }
 
-    // Verifica se o registro já existe no banco para preservar o horário de início original
+    // Dias de avaliação (Dia 11 e Dia 22) não são registrados na tabela 'treinamento', somente em 'treinamento_avaliacoes'
+    if (Number(dia) === 11 || Number(dia) === 22) {
+      return NextResponse.json({ success: true, message: "Avaliações são registradas exclusivamente em treinamento_avaliacoes" })
+    }
+
+    // Verifica se o registro já existe no banco para preservar o horário de início original e dados de decisão
     const { data: existingRecord } = await supabaseAdmin
       .from("treinamento")
-      .select("id, data_hora_entrada, data_hora_conclusao, concluido")
+      .select("id, data_hora_entrada, data_hora_conclusao, concluido, decisao_opcao_idx, decisao_opcao_texto, decisao_acertou")
       .eq("user_id", user_id)
       .eq("modulo", modulo)
       .eq("dia", dia)
@@ -348,8 +356,24 @@ export async function POST(request: Request) {
 
     if (decisao_opcao_idx !== undefined && decisao_opcao_idx !== null) {
       payload.decisao_opcao_idx = decisao_opcao_idx
-      payload.decisao_opcao_texto = decisao_opcao_texto || ""
-      payload.decisao_acertou = Boolean(decisao_acertou)
+      if (decisao_opcao_texto !== undefined && decisao_opcao_texto !== null && decisao_opcao_texto !== "") {
+        payload.decisao_opcao_texto = decisao_opcao_texto
+      } else if (existingRecord?.decisao_opcao_texto) {
+        payload.decisao_opcao_texto = existingRecord.decisao_opcao_texto
+      } else if (decisao_opcao_texto !== undefined) {
+        payload.decisao_opcao_texto = decisao_opcao_texto
+      }
+
+      if (decisao_acertou !== undefined && decisao_acertou !== null) {
+        payload.decisao_acertou = Boolean(decisao_acertou)
+      } else if (existingRecord?.decisao_acertou !== undefined && existingRecord?.decisao_acertou !== null) {
+        payload.decisao_acertou = Boolean(existingRecord.decisao_acertou)
+      }
+    } else if (decisao_opcao_texto !== undefined) {
+      payload.decisao_opcao_texto = decisao_opcao_texto
+      if (decisao_acertou !== undefined) {
+        payload.decisao_acertou = Boolean(decisao_acertou)
+      }
     }
 
     // Horário de Conclusão: registrado quando finaliza a aula (ao clicar em Próximo Dia)

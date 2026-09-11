@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Header } from "@/components/layout/header"
 import { useAuth } from "@/context/auth-context"
 import { useSidebar } from "@/context/sidebar-context"
@@ -1774,8 +1774,6 @@ export default function TreinamentoPage() {
   const [avisoBloqueioColar, setAvisoBloqueioColar] = useState<string | null>(null)
   const [liberandoAlunoKey, setLiberandoAlunoKey] = useState<string | null>(null)
   const [acaoMassaCarregando, setAcaoMassaCarregando] = useState<"liberar" | "bloquear" | null>(null)
-  const [modalGabaritoAv1Aberto, setModalGabaritoAv1Aberto] = useState<boolean>(false)
-  const [modalGabaritoAv2Aberto, setModalGabaritoAv2Aberto] = useState<boolean>(false)
 
   // Interactive Mini Calculator on Day 5
   const [calcMargem, setCalcMargem] = useState<number>(1000)
@@ -1962,114 +1960,106 @@ export default function TreinamentoPage() {
   }, [user?.id, isIsentoCronometro, iniciouCurso, selectedDia, tempoRestante, diasConcluidos, datasConclusao])
 
   // Load state directly and exclusively from API / Supabase
-  useEffect(() => {
-    async function carregarDadosTreinamento() {
-      try {
-        // Limpa resquícios antigos do localStorage para não persistir offline
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("shark_treinamento_respostas")
-          localStorage.removeItem("shark_treinamento_decisoes")
-          localStorage.removeItem("shark_treinamento_concluidos")
-        }
+  const carregarDadosTreinamento = useCallback(async () => {
+    try {
+      // Limpa resquícios antigos do localStorage para não persistir offline
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("shark_treinamento_respostas")
+        localStorage.removeItem("shark_treinamento_decisoes")
+        localStorage.removeItem("shark_treinamento_concluidos")
+      }
 
-        const targetUserId = user?.id || perfil?.id
-        if (!targetUserId) {
-          // Se não houver usuário autenticado, reseta para o estado inicial limpo
-          setRespostasAbertas({})
-          setDecisoesTomadas({})
-          setDiasConcluidos([])
-          return
-        }
+      const targetUserId = user?.id || perfil?.id
+      if (!targetUserId) {
+        // Se não houver usuário autenticado, reseta para o estado inicial limpo
+        setRespostasAbertas({})
+        setDecisoesTomadas({})
+        setDiasConcluidos([])
+        return
+      }
 
-        const res = await fetch(`/api/treinamento?userId=${targetUserId}`)
-        if (!res.ok) {
-          setRespostasAbertas({})
-          setDecisoesTomadas({})
-          setDiasConcluidos([])
-          return
-        }
+      const res = await fetch(`/api/treinamento?userId=${targetUserId}`)
+      if (!res.ok) {
+        setRespostasAbertas({})
+        setDecisoesTomadas({})
+        setDiasConcluidos([])
+        return
+      }
 
-        const json = await res.json()
-        const data = json.data
-        if (json.liberacoes && Array.isArray(json.liberacoes)) {
-          setLiberacoesProgramadas(json.liberacoes)
-        }
+      const json = await res.json()
+      const data = json.data
+      if (json.liberacoes && Array.isArray(json.liberacoes)) {
+        setLiberacoesProgramadas(json.liberacoes)
+      }
 
-        if (data && Array.isArray(data) && data.length > 0) {
-          const remoteRespostas: Record<number, string> = {}
-          const remoteDecisoes: Record<number, number> = {}
-          const remoteConcluidos: number[] = []
-          const remoteDatasConclusao: Record<number, string> = {}
-          const remoteDatasEntrada: Record<number, string> = {}
+      const rawTreinamentoData = (data && Array.isArray(data)) ? data : []
+      const rawAvaliacoesData = (json.avaliacoes && Array.isArray(json.avaliacoes)) ? json.avaliacoes : []
 
-          data.forEach((item: any) => {
-            if (item.resposta_aberta) remoteRespostas[item.dia] = item.resposta_aberta
-            if (item.decisao_opcao_idx !== null && item.decisao_opcao_idx !== undefined) {
-              remoteDecisoes[item.dia] = item.decisao_opcao_idx
-            }
-            if (item.concluido && !remoteConcluidos.includes(item.dia)) {
-              remoteConcluidos.push(item.dia)
-            }
-            if (item.data_hora_conclusao || item.updated_at || item.created_at) {
-              remoteDatasConclusao[item.dia] = item.data_hora_conclusao || item.updated_at || item.created_at
-            }
-            if (item.data_hora_entrada) {
-              remoteDatasEntrada[item.dia] = item.data_hora_entrada
-            }
-          })
+      if (rawTreinamentoData.length > 0 || rawAvaliacoesData.length > 0) {
+        const remoteRespostas: Record<number, string> = {}
+        const remoteDecisoes: Record<number, number> = {}
+        const remoteConcluidos: number[] = []
+        const remoteDatasConclusao: Record<number, string> = {}
+        const remoteDatasEntrada: Record<number, string> = {}
 
-          // Carrega avaliação se existir na resposta
-          if (json.avaliacoes && Array.isArray(json.avaliacoes)) {
-            const av1 = json.avaliacoes.find((a: any) => a.dia === 11)
-            if (av1) {
-              if (av1.respostas_abertas) setRespostasAbertasAv1(av1.respostas_abertas)
-              if (av1.respostas_escolha) setRespostasEscolhaAv1(av1.respostas_escolha)
-              if (av1.concluido) {
-                if (!remoteConcluidos.includes(11)) remoteConcluidos.push(11)
-                if (av1.data_hora_conclusao) {
-                  remoteDatasConclusao[11] = av1.data_hora_conclusao
-                }
+        // Carrega dias convencionais da tabela 'treinamento' (ignorando dias 11 e 22 se houver)
+        rawTreinamentoData.forEach((item: any) => {
+          if (item.dia === 11 || item.dia === 22) return
+          if (item.resposta_aberta) remoteRespostas[item.dia] = item.resposta_aberta
+          if (item.decisao_opcao_idx !== null && item.decisao_opcao_idx !== undefined) {
+            remoteDecisoes[item.dia] = item.decisao_opcao_idx
+          }
+          if (item.concluido && !remoteConcluidos.includes(item.dia)) {
+            remoteConcluidos.push(item.dia)
+          }
+          if (item.data_hora_conclusao || item.updated_at || item.created_at) {
+            remoteDatasConclusao[item.dia] = item.data_hora_conclusao || item.updated_at || item.created_at
+          }
+          if (item.data_hora_entrada) {
+            remoteDatasEntrada[item.dia] = item.data_hora_entrada
+          }
+        })
+
+        // Carrega avaliações exclusivamente da tabela 'treinamento_avaliacoes'
+        if (rawAvaliacoesData.length > 0) {
+          const av1 = rawAvaliacoesData.find((a: any) => a.dia === 11)
+          if (av1) {
+            if (av1.respostas_abertas) setRespostasAbertasAv1(av1.respostas_abertas)
+            if (av1.respostas_escolha) setRespostasEscolhaAv1(av1.respostas_escolha)
+            if (av1.concluido) {
+              if (!remoteConcluidos.includes(11)) remoteConcluidos.push(11)
+              if (av1.data_hora_conclusao) {
+                remoteDatasConclusao[11] = av1.data_hora_conclusao
               }
-              if (av1.data_hora_entrada) {
-                remoteDatasEntrada[11] = av1.data_hora_entrada
-              }
             }
-
-            const av2 = json.avaliacoes.find((a: any) => a.dia === 22)
-            if (av2) {
-              if (av2.respostas_abertas) setRespostasAbertasAv2(av2.respostas_abertas)
-              if (av2.respostas_escolha) setRespostasEscolhaAv2(av2.respostas_escolha)
-              if (av2.concluido) {
-                if (!remoteConcluidos.includes(22)) remoteConcluidos.push(22)
-                if (av2.data_hora_conclusao) {
-                  remoteDatasConclusao[22] = av2.data_hora_conclusao
-                }
-              }
-              if (av2.data_hora_entrada) {
-                remoteDatasEntrada[22] = av2.data_hora_entrada
-              }
+            if (av1.data_hora_entrada) {
+              remoteDatasEntrada[11] = av1.data_hora_entrada
             }
           }
 
-          setRespostasAbertas(remoteRespostas)
-          setDecisoesTomadas(remoteDecisoes)
-          setDiasConcluidos(remoteConcluidos)
-          setDatasConclusao(remoteDatasConclusao)
-          setDatasEntrada(remoteDatasEntrada)
-        } else {
-          // Se não houver registros no banco (ou se tiverem sido apagados), reseta tudo
-          setRespostasAbertas({})
-          setDecisoesTomadas({})
-          setDiasConcluidos([])
-          setDatasConclusao({})
-          setDatasEntrada({})
-          setRespostasAbertasAv1({})
-          setRespostasEscolhaAv1({})
-          setRespostasAbertasAv2({})
-          setRespostasEscolhaAv2({})
+          const av2 = rawAvaliacoesData.find((a: any) => a.dia === 22)
+          if (av2) {
+            if (av2.respostas_abertas) setRespostasAbertasAv2(av2.respostas_abertas)
+            if (av2.respostas_escolha) setRespostasEscolhaAv2(av2.respostas_escolha)
+            if (av2.concluido) {
+              if (!remoteConcluidos.includes(22)) remoteConcluidos.push(22)
+              if (av2.data_hora_conclusao) {
+                remoteDatasConclusao[22] = av2.data_hora_conclusao
+              }
+            }
+            if (av2.data_hora_entrada) {
+              remoteDatasEntrada[22] = av2.data_hora_entrada
+            }
+          }
         }
-      } catch (err) {
-        console.error("Erro ao carregar dados do treinamento:", err)
+
+        setRespostasAbertas(remoteRespostas)
+        setDecisoesTomadas(remoteDecisoes)
+        setDiasConcluidos(remoteConcluidos)
+        setDatasConclusao(remoteDatasConclusao)
+        setDatasEntrada(remoteDatasEntrada)
+      } else {
+        // Se não houver registros no banco (ou se tiverem sido apagados), reseta tudo
         setRespostasAbertas({})
         setDecisoesTomadas({})
         setDiasConcluidos([])
@@ -2079,22 +2069,32 @@ export default function TreinamentoPage() {
         setRespostasEscolhaAv1({})
         setRespostasAbertasAv2({})
         setRespostasEscolhaAv2({})
-      } finally {
-        setCarregandoDados(false)
       }
+    } catch (err) {
+      console.error("Erro ao carregar dados do treinamento:", err)
+      setRespostasAbertas({})
+      setDecisoesTomadas({})
+      setDiasConcluidos([])
+      setDatasConclusao({})
+      setDatasEntrada({})
+      setRespostasAbertasAv1({})
+      setRespostasEscolhaAv1({})
+      setRespostasAbertasAv2({})
+      setRespostasEscolhaAv2({})
+    } finally {
+      setCarregandoDados(false)
     }
-
-    carregarDadosTreinamento()
   }, [user?.id, perfil?.id])
 
   // Carrega dados completos para o Painel de Controle (Gestores e Participantes)
-  const carregarDadosPainel = async () => {
+  const carregarDadosPainel = useCallback(async () => {
     setPainelCarregando(true)
     try {
       const res = await fetch("/api/treinamento?action=painel")
       if (!res.ok) return
       const json = await res.json()
       const rawRows: any[] = json.rows || []
+      const rawAvaliacoes: any[] = json.avaliacoes || []
       const users: any[] = json.usuarios || []
       const libs: any[] = json.liberacoes || []
 
@@ -2107,6 +2107,8 @@ export default function TreinamentoPage() {
 
       rawRows.forEach(row => {
         if (!row.user_id) return
+        // Cards de avaliação (11 e 22) pertencem exclusivamente à tabela 'treinamento_avaliacoes'
+        if (row.dia === 11 || row.dia === 22) return
         const authUser = users.find(u => u.id === row.user_id)
 
         // Se o usuário foi desativado no sistema (status === "INATIVO"), não deve ser mostrado no painel
@@ -2128,6 +2130,35 @@ export default function TreinamentoPage() {
         progressoPorUser[row.user_id].rows.push(row)
       })
 
+      // Garante que avaliações concluídas também sejam incluídas nas linhas do aluno
+      rawAvaliacoes.forEach(av => {
+        if (!av.user_id) return
+        const authUser = users.find(u => u.id === av.user_id)
+        if (authUser?.status === "INATIVO") return
+        if (!progressoPorUser[av.user_id]) {
+          progressoPorUser[av.user_id] = {
+            user_id: av.user_id,
+            nome: authUser?.nome || av.usuario_nome || "Aluno",
+            email: authUser?.email || av.usuario_email || "",
+            funcao: authUser?.funcao || "Corretor",
+            regime_contratacao: authUser?.regime_contratacao || av.regime_contratacao || "CLT",
+            status: authUser?.status || "ATIVO",
+            rows: []
+          }
+        }
+        const existe = progressoPorUser[av.user_id].rows.some((r: any) => r.dia === av.dia)
+        if (!existe) {
+          progressoPorUser[av.user_id].rows.push({
+            dia: av.dia,
+            concluido: av.concluido,
+            data_hora_entrada: av.data_hora_entrada,
+            data_hora_conclusao: av.data_hora_conclusao,
+            created_at: av.created_at,
+            updated_at: av.updated_at
+          })
+        }
+      })
+
       const progressoLista: any[] = []
 
       // Processa exclusivamente os registros existentes na tabela 'treinamento' do banco de dados (SUPABASE)
@@ -2141,9 +2172,19 @@ export default function TreinamentoPage() {
         let ultimaConclusaoIso = ""
 
         concluidos.forEach((r: any) => {
-          if (r.decisao_opcao_idx !== null && r.decisao_opcao_idx !== undefined) {
+          if (r.dia === 11 || r.dia === 22) {
+            const av = rawAvaliacoes.find((a: any) => a.user_id === aluno.user_id && a.dia === r.dia)
+            if (av) {
+              totalQuestoes += av.total_questoes_escolha || (r.dia === 11 ? 9 : 10)
+              totalAcertos += av.acertos || 0
+            }
+          } else if (r.decisao_opcao_idx !== null && r.decisao_opcao_idx !== undefined) {
             totalQuestoes++
-            if (r.decisao_acertou) totalAcertos++
+            const diaInfo = DIAS_TREINAMENTO.find(d => d.dia === r.dia)
+            const acertou = r.decisao_acertou !== undefined && r.decisao_acertou !== null
+              ? (r.decisao_acertou || (diaInfo?.decisao ? r.decisao_opcao_idx === diaInfo.decisao.respostaCorreta : false))
+              : (diaInfo?.decisao ? r.decisao_opcao_idx === diaInfo.decisao.respostaCorreta : false)
+            if (acertou) totalAcertos++
           }
           const dt = r.data_hora_conclusao || r.updated_at || r.created_at
           if (dt && (!ultimaConclusaoIso || dt > ultimaConclusaoIso)) {
@@ -2167,7 +2208,37 @@ export default function TreinamentoPage() {
           totalQuestoes,
           taxaAcerto,
           ultimaConclusaoIso,
-          historico: concluidos.sort((a: any, b: any) => a.dia - b.dia)
+          historico: concluidos.sort((a: any, b: any) => a.dia - b.dia).map((item: any) => {
+            const isAvaliacao = item.dia === 11 || item.dia === 22
+            const diaInfo = DIAS_TREINAMENTO.find(d => d.dia === item.dia)
+            if (isAvaliacao) {
+              const av = rawAvaliacoes.find((a: any) => a.user_id === aluno.user_id && a.dia === item.dia)
+              const totalQuestoesEsc = av?.total_questoes_escolha || (item.dia === 11 ? 9 : 10)
+              const acertosEsc = av?.acertos || 0
+              return {
+                ...item,
+                is_avaliacao: true,
+                avaliacao_respostas_abertas: av?.respostas_abertas || {},
+                avaliacao_respostas_escolha: av?.respostas_escolha || {},
+                avaliacao_acertos: acertosEsc,
+                avaliacao_total_questoes: totalQuestoesEsc,
+                data_hora_entrada: av?.data_hora_entrada || item.data_hora_entrada,
+                data_hora_conclusao: av?.data_hora_conclusao || item.data_hora_conclusao
+              }
+            }
+            const temOpcao = item.decisao_opcao_idx !== null && item.decisao_opcao_idx !== undefined
+            const acertou = temOpcao && diaInfo?.decisao
+              ? item.decisao_opcao_idx === diaInfo.decisao.respostaCorreta
+              : Boolean(item.decisao_acertou)
+            const textoOpcao = (item.decisao_opcao_texto && item.decisao_opcao_texto.trim())
+              ? item.decisao_opcao_texto
+              : (temOpcao && diaInfo?.decisao?.opcoes?.[item.decisao_opcao_idx]?.replace(/^[A-Za-z]\)\s*/, "")) || ""
+            return {
+              ...item,
+              decisao_acertou: acertou,
+              decisao_opcao_texto: textoOpcao
+            }
+          })
         })
       })
 
@@ -2180,11 +2251,19 @@ export default function TreinamentoPage() {
     } finally {
       setPainelCarregando(false)
     }
-  }
+  }, [])
+
+  // Função central para recarregar imediatamente os dados ao navegar entre áreas/botões
+  const recarregarDados = useCallback(async () => {
+    await Promise.allSettled([
+      carregarDadosTreinamento(),
+      carregarDadosPainel()
+    ])
+  }, [carregarDadosTreinamento, carregarDadosPainel])
 
   useEffect(() => {
-    carregarDadosPainel()
-  }, [user?.id, perfil?.id])
+    recarregarDados()
+  }, [recarregarDados])
 
   // Liberar a próxima aula do aluno imediatamente
   const handleLiberarProximaAula = async (aluno: any, proximoDia: number) => {
@@ -2433,6 +2512,11 @@ export default function TreinamentoPage() {
         return
       }
 
+      // Avaliações (Dia 11 e Dia 22) são registradas exclusivamente na tabela 'treinamento_avaliacoes', nunca em 'treinamento'
+      if (dia === 11 || dia === 22) {
+        return
+      }
+
       const payload: any = {
         user_id: targetUserId,
         usuario_nome: currentNome,
@@ -2447,8 +2531,20 @@ export default function TreinamentoPage() {
       }
       if (dados.decisao_opcao_idx !== undefined) {
         payload.decisao_opcao_idx = dados.decisao_opcao_idx
-        payload.decisao_opcao_texto = dados.decisao_opcao_texto || ""
-        payload.decisao_acertou = dados.decisao_acertou ?? false
+        const diaInfo = DIAS_TREINAMENTO.find(d => d.dia === dia)
+        const optTexto = dados.decisao_opcao_texto !== undefined
+          ? dados.decisao_opcao_texto
+          : (diaInfo?.decisao?.opcoes?.[dados.decisao_opcao_idx]?.replace(/^[A-Za-z]\)\s*/, "") || "")
+        const acertou = dados.decisao_acertou !== undefined
+          ? dados.decisao_acertou
+          : (diaInfo?.decisao ? dados.decisao_opcao_idx === diaInfo.decisao.respostaCorreta : false)
+        payload.decisao_opcao_texto = optTexto
+        payload.decisao_acertou = acertou
+      } else if (dados.decisao_opcao_texto !== undefined) {
+        payload.decisao_opcao_texto = dados.decisao_opcao_texto
+        if (dados.decisao_acertou !== undefined) {
+          payload.decisao_acertou = dados.decisao_acertou
+        }
       }
       if (dados.concluido) {
         payload.concluido = true
@@ -2543,7 +2639,7 @@ export default function TreinamentoPage() {
         usuario_nome: perfil?.nome || user?.user_metadata?.nome_completo || "",
         usuario_email: user?.email || perfil?.email || "",
         regime_contratacao: perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || "",
-        modulo: 1,
+        modulo: diaAvaliacao >= 12 ? 2 : 1,
         dia: diaAvaliacao,
         respostas_abertas: abertas,
         respostas_escolha: escolhas,
@@ -2619,14 +2715,15 @@ export default function TreinamentoPage() {
         setDiasConcluidos(newConcluidos)
         setDatasConclusao(prev => ({ ...prev, [11]: agoraIso }))
         await salvarAvaliacaoNoSupabase(11, respostasAbertasAv1, respostasEscolhaAv1, true)
-        await sincronizarSupabase(11, { concluido: true, data_hora_conclusao: agoraIso })
 
         if (!isIsentoLimiteDiario) {
           setIniciouCurso(false)
+          recarregarDados()
           return
         }
       }
       setSelectedDia(12)
+      recarregarDados()
       return
     }
 
@@ -2647,13 +2744,14 @@ export default function TreinamentoPage() {
         setDiasConcluidos(newConcluidos)
         setDatasConclusao(prev => ({ ...prev, [22]: agoraIso }))
         await salvarAvaliacaoNoSupabase(22, respostasAbertasAv2, respostasEscolhaAv2, true)
-        await sincronizarSupabase(22, { concluido: true, data_hora_conclusao: agoraIso })
 
         if (!isIsentoLimiteDiario) {
           setIniciouCurso(false)
+          recarregarDados()
           return
         }
       }
+      recarregarDados()
       return
     }
 
@@ -2669,21 +2767,33 @@ export default function TreinamentoPage() {
       const newConcluidos = [...diasConcluidos, diaAtual]
       setDiasConcluidos(newConcluidos)
       setDatasConclusao(prev => ({ ...prev, [diaAtual]: agoraIso }))
+      const diaInfo = DIAS_TREINAMENTO.find(d => d.dia === diaAtual)
+      const textoOpcao = decisaoAtual !== undefined && decisaoAtual !== null && diaInfo?.decisao?.opcoes?.[decisaoAtual]
+        ? diaInfo.decisao.opcoes[decisaoAtual].replace(/^[A-Za-z]\)\s*/, "")
+        : undefined
+      const acertou = decisaoAtual !== undefined && decisaoAtual !== null && diaInfo?.decisao
+        ? decisaoAtual === diaInfo.decisao.respostaCorreta
+        : undefined
+
       await sincronizarSupabase(diaAtual, {
         concluido: true,
         data_hora_conclusao: agoraIso,
         resposta_aberta: respostaAtual || undefined,
-        decisao_opcao_idx: decisaoAtual !== undefined && decisaoAtual !== null ? decisaoAtual : undefined
+        decisao_opcao_idx: decisaoAtual !== undefined && decisaoAtual !== null ? decisaoAtual : undefined,
+        decisao_opcao_texto: textoOpcao,
+        decisao_acertou: acertou
       })
 
       // Se o usuário não for isento (ou seja, é CLT, Estágio, Processo Seletivo, etc.)
       // o próximo dia só será liberado no próximo dia útil. Volta para a tela inicial informando o status.
       if (!isIsentoLimiteDiario) {
         setIniciouCurso(false)
+        recarregarDados()
         return
       }
     }
     setSelectedDia(prev => Math.min(22, prev + 1))
+    recarregarDados()
   }
 
   const currentDiaData = DIAS_TREINAMENTO.find(d => d.dia === selectedDia) || DIAS_TREINAMENTO[0]
@@ -2740,6 +2850,7 @@ export default function TreinamentoPage() {
                 onClick={() => {
                   setSelectedDia(diaAtivoEmCurso || 1)
                   setIniciouCurso(true)
+                  recarregarDados()
                 }}
                 className="inline-flex items-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-3 px-5 rounded-xl shadow-xs hover:shadow transition-all cursor-pointer"
               >
@@ -2775,40 +2886,18 @@ export default function TreinamentoPage() {
                 </div>
               </div>
 
-              {/* Filtro de Busca e Gabarito Oficial (Apenas para Gestores com múltiplos alunos) */}
+              {/* Filtro de Busca (Apenas para Gestores com múltiplos alunos) */}
               {isGestorTreinamento && (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setModalGabaritoAv1Aberto(true)}
-                      className="inline-flex items-center justify-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-xs transition-all cursor-pointer shrink-0"
-                    >
-                      <BookOpen className="w-3.5 h-3.5 text-[#00D492]" />
-                      <span>Gabarito Oficial — Dia 11</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setModalGabaritoAv2Aberto(true)}
-                      className="inline-flex items-center justify-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-xs transition-all cursor-pointer shrink-0"
-                    >
-                      <BookOpen className="w-3.5 h-3.5 text-[#00D492]" />
-                      <span>Gabarito Oficial — Dia 22</span>
-                    </button>
-                  </div>
-
-                  <div className="w-full sm:w-72">
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        placeholder="Buscar por nome, e-mail ou perfil..."
-                        value={filtroPesquisaAluno}
-                        onChange={e => setFiltroPesquisaAluno(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      />
-                    </div>
+                <div className="w-full sm:w-72">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nome, e-mail ou perfil..."
+                      value={filtroPesquisaAluno}
+                      onChange={e => setFiltroPesquisaAluno(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
                   </div>
                 </div>
               )}
@@ -2819,7 +2908,10 @@ export default function TreinamentoPage() {
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 border-b border-slate-100 scrollbar-thin scrollbar-thumb-slate-200">
                   <button
                     type="button"
-                    onClick={() => setAbaFuncaoSelecionada("TODAS")}
+                    onClick={() => {
+                      setAbaFuncaoSelecionada("TODAS")
+                      recarregarDados()
+                    }}
                     className={cn(
                       "px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5",
                       abaFuncaoSelecionada === "TODAS"
@@ -2844,7 +2936,10 @@ export default function TreinamentoPage() {
                     <button
                       key={f.nome}
                       type="button"
-                      onClick={() => setAbaFuncaoSelecionada(f.nome)}
+                      onClick={() => {
+                        setAbaFuncaoSelecionada(f.nome)
+                        recarregarDados()
+                      }}
                       className={cn(
                         "px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5",
                         abaFuncaoSelecionada === f.nome
@@ -3089,10 +3184,10 @@ export default function TreinamentoPage() {
                             <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 space-y-4">
                               <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                                <span>Histórico de Respostas e Gabarito do Aluno</span>
+                                <span>Histórico de Respostas e Gabarito</span>
                               </h4>
 
-                              <div className="flex items-stretch gap-4 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+                              <div className="flex items-start gap-4 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
                                 {aluno.historico.map((item: any) => {
                                   const diaInfo = DIAS_TREINAMENTO.find(d => d.dia === item.dia)
                                   const inicioRaw = item.data_hora_entrada || item.created_at
@@ -3115,10 +3210,120 @@ export default function TreinamentoPage() {
                                     ? dataConclusaoObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
                                     : "--:--"
 
+                                  if (item.is_avaliacao) {
+                                    const questoesAv = item.dia === 11 ? QUESTOES_AVALIACAO_1 : QUESTOES_AVALIACAO_2
+                                    const abertas = questoesAv.filter(q => q.tipo === "aberta")
+                                    const escolhas = questoesAv.filter(q => q.tipo === "escolha")
+                                    const acertos = item.avaliacao_acertos ?? 0
+                                    const totalQ = item.avaliacao_total_questoes || escolhas.length
+                                    const percentualAcerto = totalQ > 0 ? Math.round((acertos / totalQ) * 100) : 0
+
+                                    return (
+                                      <div
+                                        key={item.dia}
+                                        className="w-[360px] sm:w-[440px] shrink-0 bg-white border border-slate-200 rounded-2xl p-4 space-y-3.5 shadow-2xs flex flex-col justify-between"
+                                      >
+                                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                                          <div className="font-black text-xs text-slate-900">
+                                            DIA {item.dia}: {diaInfo?.titulo || (item.dia === 11 ? "Avaliação 1" : "Avaliação 2")}
+                                          </div>
+                                          <span
+                                            className={cn(
+                                              "text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border shrink-0",
+                                              percentualAcerto >= 70
+                                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                                : "bg-amber-50 text-amber-800 border-amber-200"
+                                            )}
+                                          >
+                                            {acertos}/{totalQ} Acertos ({percentualAcerto}%)
+                                          </span>
+                                        </div>
+
+                                        {/* Questões de Tomada de Decisão / Múltipla Escolha */}
+                                        <div className="space-y-1.5">
+                                          <div className="text-[11px] font-bold text-slate-500 uppercase flex items-center justify-between">
+                                            <span>Múltipla Escolha / Tomada de Decisão:</span>
+                                            <span className="text-[10px] font-bold text-slate-600">
+                                              {acertos} de {totalQ} acertadas
+                                            </span>
+                                          </div>
+                                          <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1 scrollbar-thin">
+                                            {escolhas.map(q => {
+                                              const respIdx = item.avaliacao_respostas_escolha?.[q.numero]
+                                              const temResposta = respIdx !== undefined && respIdx !== null
+                                              const acertou = temResposta && respIdx === q.respostaCorreta
+                                              const textoEscolhido = temResposta ? q.opcoes?.[respIdx] : "Não respondida"
+
+                                              return (
+                                                <div key={q.numero} className="p-2.5 rounded-xl border text-xs bg-slate-50 border-slate-200 space-y-1">
+                                                  <div className="flex items-center justify-between gap-1.5 font-bold text-[11px]">
+                                                    <span className="text-slate-700 truncate">{q.titulo}</span>
+                                                    <span
+                                                      className={cn(
+                                                        "px-1.5 py-0.5 rounded text-[9px] font-black shrink-0",
+                                                        acertou ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                                                      )}
+                                                    >
+                                                      {acertou ? "✓ Gabarito Correto" : "✕ Incorreto"}
+                                                    </span>
+                                                  </div>
+                                                  <div className="text-[11px] text-slate-800 font-medium leading-tight">
+                                                    <span className="text-slate-500 font-semibold">Opção escolhida:</span> {textoEscolhido}
+                                                  </div>
+                                                  {!acertou && q.respostaCorreta !== undefined && q.opcoes?.[q.respostaCorreta] && (
+                                                    <div className="text-[10px] text-emerald-800 bg-emerald-50/80 p-1.5 rounded-lg border border-emerald-200">
+                                                      <span className="font-bold">Gabarito correto:</span> {q.opcoes[q.respostaCorreta]}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        </div>
+
+                                        {/* Questões Abertas / Dissertativas */}
+                                        {abertas.length > 0 && (
+                                          <div className="space-y-1.5">
+                                            <div className="text-[11px] font-bold text-slate-500 uppercase flex items-center justify-between">
+                                              <span>Respostas Abertas do Aluno:</span>
+                                              <span className="text-[10px] text-slate-400 font-semibold">
+                                                {abertas.length} questões
+                                              </span>
+                                            </div>
+                                            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                                              {abertas.map(q => {
+                                                const resp = (item.avaliacao_respostas_abertas?.[q.numero] || "").trim()
+
+                                                return (
+                                                  <div key={q.numero} className="p-2.5 rounded-xl border border-blue-100 bg-blue-50/40 space-y-1">
+                                                    <div className="text-[11px] font-bold text-slate-700">
+                                                      {q.titulo} <span className="font-normal text-slate-500">({q.pergunta})</span>
+                                                    </div>
+                                                    <div className="text-xs text-slate-800 italic bg-white p-2 rounded-lg border border-blue-100 leading-relaxed">
+                                                      "{resp || "Sem resposta registrada"}"
+                                                    </div>
+                                                  </div>
+                                                )
+                                              })}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        <div className="text-[11px] text-slate-500 font-medium pt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 border-t border-slate-100">
+                                          <span><strong className="font-semibold text-slate-700">Data:</strong> {dataStr}</span>
+                                          <span className="text-slate-300">•</span>
+                                          <span><strong className="font-semibold text-slate-700">Início:</strong> {horaInicioStr}</span>
+                                          <span className="text-slate-300">•</span>
+                                          <span><strong className="font-semibold text-slate-700">Conclusão:</strong> {horaConclusaoStr}</span>
+                                        </div>
+                                      </div>
+                                    )
+                                  }
+
                                   return (
                                     <div
                                       key={item.dia}
-                                      className="w-[320px] sm:w-[380px] shrink-0 bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs flex flex-col justify-between"
+                                      className="w-[320px] sm:w-[380px] shrink-0 bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs flex flex-col justify-between self-start"
                                     >
                                       <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
                                         <div className="font-black text-xs text-slate-900">
@@ -3255,6 +3460,7 @@ export default function TreinamentoPage() {
                                             onClick={() => {
                                               setSelectedDia(proximoDia)
                                               setIniciouCurso(true)
+                                              recarregarDados()
                                             }}
                                             className="inline-flex items-center gap-2 bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow"
                                           >
@@ -3310,7 +3516,10 @@ export default function TreinamentoPage() {
               {(!isAulaAtivaNaoConcluida || isIsentoBloqueioGeral) && (
                 <button
                   type="button"
-                  onClick={() => setIniciouCurso(false)}
+                  onClick={() => {
+                    setIniciouCurso(false)
+                    recarregarDados()
+                  }}
                   className="text-xs text-slate-500 hover:text-slate-900 font-bold flex items-center gap-1.5 transition-colors cursor-pointer bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg shrink-0"
                 >
                   <span>← Painel de Controle</span>
@@ -3328,7 +3537,10 @@ export default function TreinamentoPage() {
                     <button
                       key={diaNum}
                       type="button"
-                      onClick={() => setSelectedDia(diaNum)}
+                      onClick={() => {
+                        setSelectedDia(diaNum)
+                        recarregarDados()
+                      }}
                       className={cn(
                         "px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5",
                         isCurrent
@@ -3351,327 +3563,105 @@ export default function TreinamentoPage() {
                     .sort((a, b) => a - b)
                     .map(diaNum => {
                       const isCurrent = diaNum === selectedDia
+                      const isBloqueadoPorAvaliacao = (selectedDia === 11 || selectedDia === 22) && !isCurrent
                       return (
                         <button
                           key={diaNum}
                           type="button"
-                          onClick={() => setSelectedDia(diaNum)}
+                          disabled={isBloqueadoPorAvaliacao}
+                          onClick={() => {
+                            if (isBloqueadoPorAvaliacao) return
+                            setSelectedDia(diaNum)
+                            recarregarDados()
+                          }}
                           className={cn(
-                            "px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100",
+                            "px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 flex items-center gap-1.5",
+                            isBloqueadoPorAvaliacao
+                              ? "opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200"
+                              : "cursor-pointer bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100",
                             isCurrent && "ring-2 ring-emerald-500/50"
                           )}
-                          title={`Revisitar o DIA ${diaNum}`}
+                          title={
+                            isBloqueadoPorAvaliacao
+                              ? "Navegação bloqueada durante o dia da avaliação"
+                              : `Revisitar o DIA ${diaNum}`
+                          }
                         >
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          {isBloqueadoPorAvaliacao ? (
+                            <Lock className="w-3 h-3 text-slate-400" />
+                          ) : (
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          )}
                           <span>DIA {diaNum}</span>
                         </button>
                       )
                     })}
 
                   {/* Dia Ativo (Em curso) */}
-                  {!diasConcluidos.includes(diaAtivoEmCurso) && (
-                    statusLiberacaoDiaAtivo.liberado ? (
+                  {!diasConcluidos.includes(diaAtivoEmCurso) && (() => {
+                    const isBloqueadoPorAvaliacao = (selectedDia === 11 || selectedDia === 22) && diaAtivoEmCurso !== selectedDia
+                    return statusLiberacaoDiaAtivo.liberado ? (
                       <button
                         type="button"
-                        onClick={() => setSelectedDia(diaAtivoEmCurso)}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1.5 bg-[#0F172B] hover:bg-slate-800 text-white shadow-xs"
-                        title={`Ir para o DIA ${diaAtivoEmCurso}`}
+                        disabled={isBloqueadoPorAvaliacao}
+                        onClick={() => {
+                          if (isBloqueadoPorAvaliacao) return
+                          setSelectedDia(diaAtivoEmCurso)
+                          recarregarDados()
+                        }}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all shrink-0 flex items-center gap-1.5",
+                          isBloqueadoPorAvaliacao
+                            ? "opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200"
+                            : "cursor-pointer bg-[#0F172B] hover:bg-slate-800 text-white shadow-xs"
+                        )}
+                        title={
+                          isBloqueadoPorAvaliacao
+                            ? "Navegação bloqueada durante o dia da avaliação"
+                            : `Ir para o DIA ${diaAtivoEmCurso}`
+                        }
                       >
-                        <CheckCircle2 className="w-3 h-3 text-[#00D492]" />
+                        {isBloqueadoPorAvaliacao ? (
+                          <Lock className="w-3 h-3 text-slate-400" />
+                        ) : (
+                          <CheckCircle2 className="w-3 h-3 text-[#00D492]" />
+                        )}
                         <span>DIA {diaAtivoEmCurso}</span>
                       </button>
                     ) : (
-                      <div
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-300 opacity-80 cursor-not-allowed"
-                        title={`DIA ${diaAtivoEmCurso}: ${statusLiberacaoDiaAtivo.mensagemBloqueio}`}
+                      <button
+                        type="button"
+                        disabled={isBloqueadoPorAvaliacao}
+                        onClick={() => {
+                          if (isBloqueadoPorAvaliacao) return
+                          setSelectedDia(diaAtivoEmCurso)
+                          recarregarDados()
+                        }}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1.5 transition-all",
+                          isBloqueadoPorAvaliacao
+                            ? "opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200"
+                            : "bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 cursor-pointer"
+                        )}
+                        title={
+                          isBloqueadoPorAvaliacao
+                            ? "Navegação bloqueada durante o dia da avaliação"
+                            : `DIA ${diaAtivoEmCurso}: ${statusLiberacaoDiaAtivo.mensagemBloqueio} (Clique para verificar liberação)`
+                        }
                       >
-                        <Clock className="w-3 h-3 text-amber-600" />
+                        {isBloqueadoPorAvaliacao ? (
+                          <Lock className="w-3 h-3 text-slate-400" />
+                        ) : (
+                          <Clock className="w-3 h-3 text-amber-600" />
+                        )}
                         <span>DIA {diaAtivoEmCurso}</span>
-                      </div>
+                      </button>
                     )
-                  )}
+                  })()}
                 </>
               )}
             </div>
           </div>
-
-          {/* MODAL DO GABARITO OFICIAL DA AVALIAÇÃO 1 (EXCLUSIVO PARA GESTORES) */}
-          {isGestorTreinamento && modalGabaritoAv1Aberto && (
-            <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
-                {/* Header do Modal */}
-                <div className="p-6 border-b border-slate-200 flex items-start justify-between gap-4 bg-slate-50">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#0F172B] text-white">
-                        DIA 11
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300">
-                        GABARITO OFICIAL
-                      </span>
-                    </div>
-                    <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight mt-2">
-                      AVALIAÇÃO 1 — Gabarito e Critérios de Correção
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Fundamentos, margens, cálculo básico e leitura inicial de oportunidades • Acesso exclusivo para Gestores (Administrador, RH, Supervisor, Operacional e Desenvolvedor)
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setModalGabaritoAv1Aberto(false)}
-                    className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Conteúdo do Modal */}
-                <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                  {/* Quadro de Orientação do Supervisor e RH */}
-                  <div className="bg-amber-50 border-l-4 border-amber-500 rounded-r-2xl p-4 space-y-1 shadow-xs">
-                    <div className="text-xs font-black text-amber-900 uppercase tracking-wider">
-                      LEITURA DO SUPERVISOR E RH
-                    </div>
-                    <p className="text-xs text-amber-950 font-medium leading-relaxed">
-                      Mais importante que a nota isolada: observar se o aluno confunde margem com dinheiro, cria promessa sem validação, escolhe sempre a maior liberação, ainda mistura nomenclaturas ou consegue explicar o raciocínio com linguagem própria.
-                    </p>
-                  </div>
-
-                  {/* Lista com as 12 Questões */}
-                  <div className="space-y-5">
-                    {QUESTOES_AVALIACAO_1.map((q) => {
-                      if (q.tipo === "aberta") {
-                        return (
-                          <div key={q.numero} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
-                            <div className="flex items-center gap-2 text-xs font-black text-[#0F172B] uppercase tracking-wider">
-                              <MessageSquare className="w-4 h-4 text-blue-600" />
-                              <span>{q.titulo} (Questão Aberta)</span>
-                            </div>
-                            <p className="text-xs sm:text-sm font-bold text-slate-900">
-                              {q.pergunta}
-                            </p>
-                            <div className="bg-emerald-50 border border-emerald-300 p-3.5 rounded-xl text-xs space-y-1">
-                              <p className="font-bold text-emerald-800 uppercase tracking-wider text-[10px]">
-                                {q.gabarito}
-                              </p>
-                              <p className="text-emerald-950 font-medium leading-relaxed">
-                                {q.criterioEsperado}
-                              </p>
-                            </div>
-                          </div>
-                        )
-                      }
-
-                      // Múltipla escolha
-                      return (
-                        <div key={q.numero} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-2xs">
-                          <div className="flex items-center gap-2 text-xs font-black text-[#0F172B] uppercase tracking-wider">
-                            <HelpCircle className="w-4 h-4 text-blue-600" />
-                            <span>{q.titulo} (Múltipla Escolha)</span>
-                          </div>
-                          <p className="text-xs sm:text-sm font-bold text-slate-900">
-                            {q.pergunta}
-                          </p>
-                          <div className="space-y-1.5 pt-1">
-                            {q.opcoes?.map((opcao, optIdx) => {
-                              const isCorrect = optIdx === q.respostaCorreta
-                              return (
-                                <div
-                                  key={optIdx}
-                                  className={cn(
-                                    "p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2.5 border",
-                                    isCorrect
-                                      ? "bg-emerald-50 border-emerald-300 text-emerald-950 font-bold"
-                                      : "bg-slate-50 border-slate-200 text-slate-600"
-                                  )}
-                                >
-                                  <span
-                                    className={cn(
-                                      "w-5 h-5 rounded-full flex items-center justify-center font-black text-[10px] shrink-0",
-                                      isCorrect
-                                        ? "bg-emerald-600 text-white"
-                                        : "bg-slate-200 text-slate-600"
-                                    )}
-                                  >
-                                    {isCorrect ? <Check className="w-3 h-3" /> : String.fromCharCode(65 + optIdx)}
-                                  </span>
-                                  <span>{opcao.replace(/^[A-Za-z]\)\s*/, "")}</span>
-                                  {isCorrect && (
-                                    <span className="ml-auto text-[10px] font-black uppercase text-emerald-700">
-                                      Alternativa Correta
-                                    </span>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                          <div className="bg-slate-900 text-white p-3.5 rounded-xl text-xs space-y-1 mt-2">
-                            <p className="font-bold text-[#00D492] uppercase tracking-wider text-[10px]">
-                              {q.gabarito}
-                            </p>
-                            <p className="text-slate-200 leading-relaxed">
-                              {q.criterioEsperado}
-                            </p>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Footer do Modal */}
-                <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setModalGabaritoAv1Aberto(false)}
-                    className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-5 rounded-xl transition-all cursor-pointer"
-                  >
-                    Fechar Gabarito
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* MODAL DO GABARITO OFICIAL DA AVALIAÇÃO 2 (EXCLUSIVO PARA GESTORES) */}
-          {isGestorTreinamento && modalGabaritoAv2Aberto && (
-            <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
-                {/* Header do Modal */}
-                <div className="p-6 border-b border-slate-200 flex items-start justify-between gap-4 bg-slate-50">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#0F172B] text-white">
-                        DIA 22
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300">
-                        GABARITO OFICIAL
-                      </span>
-                    </div>
-                    <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight mt-2">
-                      AVALIAÇÃO 2 — Gabarito e Critérios de Correção
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Autonomia inicial, comportamento comercial e raciocínio integrado • Acesso exclusivo para Gestores (Administrador, RH, Supervisor, Operacional e Desenvolvedor)
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setModalGabaritoAv2Aberto(false)}
-                    className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Conteúdo do Modal */}
-                <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                  {/* Quadro de Orientação do Supervisor e RH */}
-                  <div className="bg-amber-50 border-l-4 border-amber-500 rounded-r-2xl p-4 space-y-1 shadow-xs">
-                    <div className="text-xs font-black text-amber-900 uppercase tracking-wider">
-                      LEITURA DO SUPERVISOR E RH
-                    </div>
-                    <p className="text-xs text-amber-950 font-medium leading-relaxed">
-                      Comparar nota objetiva com qualidade das respostas abertas. Pontos de atenção: excesso de confiança, promessa antes de consulta, dificuldade em explicar conceitos com palavras próprias, baixa adaptação ao cliente, tendência a argumentar em vez de diagnosticar e incapacidade de reconhecer limite técnico.
-                    </p>
-                  </div>
-
-                  {/* Lista com as 14 Questões */}
-                  <div className="space-y-5">
-                    {QUESTOES_AVALIACAO_2.map((q) => {
-                      if (q.tipo === "aberta") {
-                        return (
-                          <div key={q.numero} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
-                            <div className="flex items-center gap-2 text-xs font-black text-[#0F172B] uppercase tracking-wider">
-                              <MessageSquare className="w-4 h-4 text-blue-600" />
-                              <span>{q.titulo} (Questão Aberta)</span>
-                            </div>
-                            <p className="text-xs sm:text-sm font-bold text-slate-900">
-                              {q.pergunta}
-                            </p>
-                            <div className="bg-emerald-50 border border-emerald-300 p-3.5 rounded-xl text-xs space-y-1">
-                              <p className="font-bold text-emerald-800 uppercase tracking-wider text-[10px]">
-                                {q.gabarito}
-                              </p>
-                              <p className="text-emerald-950 font-medium leading-relaxed">
-                                {q.criterioEsperado}
-                              </p>
-                            </div>
-                          </div>
-                        )
-                      }
-
-                      // Múltipla escolha
-                      return (
-                        <div key={q.numero} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-2xs">
-                          <div className="flex items-center gap-2 text-xs font-black text-[#0F172B] uppercase tracking-wider">
-                            <HelpCircle className="w-4 h-4 text-blue-600" />
-                            <span>{q.titulo} (Múltipla Escolha)</span>
-                          </div>
-                          <p className="text-xs sm:text-sm font-bold text-slate-900">
-                            {q.pergunta}
-                          </p>
-                          <div className="space-y-1.5 pt-1">
-                            {q.opcoes?.map((opcao, optIdx) => {
-                              const isCorrect = optIdx === q.respostaCorreta
-                              return (
-                                <div
-                                  key={optIdx}
-                                  className={cn(
-                                    "p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2.5 border",
-                                    isCorrect
-                                      ? "bg-emerald-50 border-emerald-300 text-emerald-950 font-bold"
-                                      : "bg-slate-50 border-slate-200 text-slate-600"
-                                  )}
-                                >
-                                  <span
-                                    className={cn(
-                                      "w-5 h-5 rounded-full flex items-center justify-center font-black text-[10px] shrink-0",
-                                      isCorrect
-                                        ? "bg-emerald-600 text-white"
-                                        : "bg-slate-200 text-slate-600"
-                                    )}
-                                  >
-                                    {isCorrect ? <Check className="w-3 h-3" /> : String.fromCharCode(65 + optIdx)}
-                                  </span>
-                                  <span>{opcao.replace(/^[A-Za-z]\)\s*/, "")}</span>
-                                  {isCorrect && (
-                                    <span className="ml-auto text-[10px] font-black uppercase text-emerald-700">
-                                      Alternativa Correta
-                                    </span>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                          <div className="bg-slate-900 text-white p-3.5 rounded-xl text-xs space-y-1 mt-2">
-                            <p className="font-bold text-[#00D492] uppercase tracking-wider text-[10px]">
-                              {q.gabarito}
-                            </p>
-                            <p className="text-slate-200 leading-relaxed">
-                              {q.criterioEsperado}
-                            </p>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Footer do Modal */}
-                <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setModalGabaritoAv2Aberto(false)}
-                    className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-5 rounded-xl transition-all cursor-pointer"
-                  >
-                    Fechar Gabarito
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -3730,7 +3720,7 @@ export default function TreinamentoPage() {
           if (!statusDiaAtual.liberado) {
             return (
               <div className="max-w-4xl mx-auto py-12">
-                <div className="bg-[#FFFDF5] border border-amber-400 rounded-3xl p-6 sm:p-8 text-center space-y-1.5 max-w-lg mx-auto shadow-2xs">
+                <div className="bg-[#FFFDF5] border border-amber-400 rounded-3xl p-6 sm:p-8 text-center space-y-2 max-w-lg mx-auto shadow-2xs">
                   <div className="flex items-center justify-center gap-2 font-black text-amber-950 uppercase tracking-wider text-xs sm:text-sm">
                     <Clock className="w-4 h-4 text-amber-700 shrink-0" />
                     <span>AULA DO DIA {currentDiaData.dia} AGUARDANDO LIBERAÇÃO</span>
@@ -3741,6 +3731,16 @@ export default function TreinamentoPage() {
                   <p className="text-amber-800 text-[11px] sm:text-xs font-medium">
                     Você pode revisitar os dias concluídos a qualquer momento.
                   </p>
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => recarregarDados()}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-all cursor-pointer shadow-2xs"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Verificar Liberação Agora</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )
@@ -3927,13 +3927,20 @@ export default function TreinamentoPage() {
 
                     {/* Rodapé de Navegação da Avaliação */}
                     <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDia(diaAnterior)}
-                        className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer"
-                      >
-                        ← DIA {diaAnterior}
-                      </button>
+                      {isIsentoNavegacao ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDia(diaAnterior)
+                            recarregarDados()
+                          }}
+                          className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer"
+                        >
+                          ← DIA {diaAnterior}
+                        </button>
+                      ) : (
+                        <div />
+                      )}
 
                       <button
                         type="button"
@@ -4223,7 +4230,10 @@ export default function TreinamentoPage() {
                 {selectedDia > 1 ? (
                   <button
                     type="button"
-                    onClick={() => setSelectedDia(prev => Math.max(1, prev - 1))}
+                    onClick={() => {
+                      setSelectedDia(prev => Math.max(1, prev - 1))
+                      recarregarDados()
+                    }}
                     className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer"
                   >
                     ← Dia Anterior
