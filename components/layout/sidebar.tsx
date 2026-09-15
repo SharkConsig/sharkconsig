@@ -338,15 +338,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
-        // Restrição de visibilidade para o PERFIL PROFISSIONAL
-        if (item.href === "/perfil-profissional") {
-          const rawRole = perfil?.role || ""
-          const isAllowedRole = ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Recursos Humanos"].includes(rawRole)
-          return Boolean(isAdmin || isDeveloper || isRecursosHumanos || isAllowedRole)
-        }
-
         // Se for o link COMECE AQUI, visível para todos os usuários do sistema
         if (item.name === "COMECE AQUI" || item.href === "/start-comercial-dev") {
+          return true
+        }
+
+        // PERFIL PROFISSIONAL visível para todos os colaboradores do sistema
+        if (item.href === "/perfil-profissional") {
           return true
         }
 

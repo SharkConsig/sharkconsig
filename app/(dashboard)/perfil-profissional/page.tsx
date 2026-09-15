@@ -98,14 +98,27 @@ export default function PerfilProfissionalPage() {
   const [checkpointAnswers, setCheckpointAnswers] = useState<Record<string, "A" | "B" | "C" | "D" | "E">>({})
   const [salvandoCheckpoint, setSalvandoCheckpoint] = useState(false)
   const [filtroDimensaoGestao, setFiltroDimensaoGestao] = useState<DimensaoCodigo | "TODAS">("TODAS")
+  const ultimoRefreshTabRef = useRef<number>(0)
 
   useEffect(() => {
     if (!user?.id) return
     carregarDados()
   }, [user?.id, canViewLider])
 
-  const carregarDados = async () => {
-    setLoading(true)
+  // Atualização instantânea dos dados ao trocar de aba sem recarregar a tela inteira (com throttle de 2s para evitar spam no banco)
+  useEffect(() => {
+    if (!user?.id || loading) return
+    const agora = Date.now()
+    if (agora - ultimoRefreshTabRef.current > 2000) {
+      ultimoRefreshTabRef.current = agora
+      carregarDados(true)
+    }
+  }, [abaAtiva])
+
+  const carregarDados = async (silencioso: boolean = false) => {
+    if (!silencioso) {
+      setLoading(true)
+    }
     try {
       // 1. Carregar perfil do usuário logado diretamente da tabela perfil_profissional
       const res = await fetch(`/api/perfil-profissional?userId=${user?.id}&_t=${Date.now()}`, {
@@ -134,17 +147,19 @@ export default function PerfilProfissionalPage() {
         const dataList = await resList.json()
         if (dataList.success && Array.isArray(dataList.perfis)) {
           setTodosPerfis(dataList.perfis)
-          // Seleciona o primeiro liderado por padrão
+          // Seleciona o primeiro liderado por padrão caso ainda não tenha sido escolhido
           const outros = dataList.perfis.filter((p: any) => p.id !== user?.id && p.perfilProfissional?.calculado)
-          if (outros.length > 0 && !lideradoSelecionadoId) {
-            setLideradoSelecionadoId(outros[0].id)
+          if (outros.length > 0) {
+            setLideradoSelecionadoId(prev => (prev ? prev : outros[0].id))
           }
         }
       }
     } catch (e) {
       console.error("Erro ao carregar dados do Perfil Profissional:", e)
     } finally {
-      setLoading(false)
+      if (!silencioso) {
+        setLoading(false)
+      }
     }
   }
 
@@ -569,7 +584,57 @@ export default function PerfilProfissionalPage() {
         <div className="space-y-6">
           {/* Seletor de Liderados */}
           {(() => {
-            const lideradosRespondidos = todosPerfis
+            // Regras de visibilidade de liderados conforme perfil do usuário logado:
+            // 2.1. 'Supervisor': Corretor CLT, Monitoramento, Estágio, Processo Seletivo (não a ele mesmo)
+            // 2.2. 'Operacional': Corretor CLT, Monitoramento, Estágio, Processo Seletivo, Supervisor (não a ele mesmo)
+            // 2.3. 'Recursos Humanos': Corretor CLT, Monitoramento, Estágio, Processo Seletivo, Supervisor, Operacional, Corretor PJ (não a ele mesmo)
+            // 2.4. 'Administrador' e 'Desenvolvedor': todos, inclusive eles mesmos
+            const isAdmOuDev = isGrupo3
+            const isRecHum = isRecursosHumanos || roleNorm === "recursos humanos" || roleNorm === "rh"
+            const isOp = isOperational || roleNorm === "operacional"
+            const isSup = isSupervisor || roleNorm === "supervisor"
+
+            const lideradosFiltradosPorPapel = todosPerfis.filter((p: any) => {
+              if (isAdmOuDev) return true
+
+              // Usuários não-administradores/desenvolvedores não podem ver a si mesmos
+              if (p.id === user?.id) return false
+
+              const pRole = (p.role || "").toLowerCase().trim()
+              const pRegime = (p.regime_contratacao || "").toUpperCase().trim()
+
+              const isColabCorretorCLT = (pRole === "corretor" || pRole.includes("corretor")) && pRegime === "CLT"
+              const isColabCorretorPJ = (pRole === "corretor" || pRole.includes("corretor")) && (pRegime === "PJ" || (!pRegime && pRole.includes("pj")))
+              const isColabMonitoramento = pRole === "monitoramento" || pRole.includes("monitor")
+              const isColabEstagio = pRole === "estágio" || pRole === "estagio" || pRole.includes("estag")
+              const isColabProcessoSeletivo = pRole === "processo seletivo" || pRole.includes("seletivo")
+              const isColabSupervisor = pRole === "supervisor"
+              const isColabOperacional = pRole === "operacional"
+
+              if (isSup) {
+                return isColabCorretorCLT || isColabMonitoramento || isColabEstagio || isColabProcessoSeletivo
+              }
+
+              if (isOp) {
+                return isColabCorretorCLT || isColabMonitoramento || isColabEstagio || isColabProcessoSeletivo || isColabSupervisor
+              }
+
+              if (isRecHum) {
+                return (
+                  isColabCorretorCLT ||
+                  isColabMonitoramento ||
+                  isColabEstagio ||
+                  isColabProcessoSeletivo ||
+                  isColabSupervisor ||
+                  isColabOperacional ||
+                  isColabCorretorPJ
+                )
+              }
+
+              return false
+            })
+
+            const lideradosRespondidos = lideradosFiltradosPorPapel
               .filter((p: any) => Boolean(p.perfilProfissional?.calculado))
               .sort((a: any, b: any) => (a.nome || "").localeCompare(b.nome || "", "pt-BR", { sensitivity: "base" }))
 
@@ -688,12 +753,12 @@ export default function PerfilProfissionalPage() {
                   </div>
                 </div>
 
-                {/* Matriz Líder x Liderado (Seção 14) */}
+                {/* Matriz Líder x Liderado */}
                 {dinamicaLiderColab && (
                   <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-4 shadow-xs">
                     <div className="space-y-1 border-b border-slate-100 pb-3">
                       <span className="text-xs font-black uppercase tracking-wider text-emerald-700 block">
-                        Dinâmica Relacional (Seção 14)
+                        Dinâmica Relacional
                       </span>
                       <h4 className="text-lg font-black text-slate-900">
                         Líder ({liderArq}) × Liderado ({colabArq})

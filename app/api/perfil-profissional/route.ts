@@ -57,9 +57,10 @@ export async function GET(request: Request) {
           const perfilFromTable = perfilMap.get(u.id) || null
           return {
             id: u.id,
-            nome: meta.nome || u.email?.split("@")[0] || "Colaborador",
+            nome: meta.nome_completo || meta.nome || u.email?.split("@")[0] || "Colaborador",
             email: u.email,
-            role: meta.role || "Colaborador",
+            role: meta.funcao || meta.role || "Colaborador",
+            regime_contratacao: meta.regime_contratacao || "",
             status: ((meta.status || "ATIVO") as string).toUpperCase().trim(),
             supervisor_id: meta.supervisor_id || null,
             supervisor_nome: meta.supervisor_nome || null,
