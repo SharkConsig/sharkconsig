@@ -27,7 +27,8 @@ import {
   AlertTriangle,
   GraduationCap,
   Calculator,
-  Table
+  Table,
+  UserCheck
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
@@ -37,6 +38,12 @@ const allMenuItems = [
   {
     title: "",
     items: [
+      { 
+        name: "PERFIL PROFISSIONAL", 
+        href: "/perfil-profissional", 
+        icon: UserCheck, 
+        roles: ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Corretor", "Monitoramento", "Estágio", "Processo Seletivo", "PROCESSO SELETIVO", "Recursos Humanos", "RH"] 
+      },
       { 
         name: "COMECE AQUI", 
         href: "/start-comercial-dev", 
@@ -331,6 +338,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
+        // Restrição de visibilidade para o PERFIL PROFISSIONAL
+        if (item.href === "/perfil-profissional") {
+          const rawRole = perfil?.role || ""
+          const isAllowedRole = ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Recursos Humanos"].includes(rawRole)
+          return Boolean(isAdmin || isDeveloper || isRecursosHumanos || isAllowedRole)
+        }
+
         // Se for o link COMECE AQUI, visível para todos os usuários do sistema
         if (item.name === "COMECE AQUI" || item.href === "/start-comercial-dev") {
           return true
