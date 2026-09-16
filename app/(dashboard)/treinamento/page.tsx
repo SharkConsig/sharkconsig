@@ -1729,6 +1729,9 @@ export default function TreinamentoPage() {
     isRHUser
   )
 
+  // Permissão de copiar/colar: liberado somente para Recursos Humanos, Administrador e Desenvolvedor
+  const podeCopiarColar = Boolean(isDevUser || isAdminUser || isRHUser)
+
   const [selectedDia, setSelectedDia] = useState<number>(1)
   const [respostasAbertas, setRespostasAbertas] = useState<Record<number, string>>({})
   const [decisoesTomadas, setDecisoesTomadas] = useState<Record<number, number>>({})
@@ -2577,13 +2580,13 @@ export default function TreinamentoPage() {
     const targetUserId = user?.id || perfil?.id
     if (!targetUserId) return
 
-    // Se este dia já tem data_hora_entrada registrada, preserva e não sobrescreve
-    if (datasEntrada[selectedDia]) return
+    // Se este dia já está concluído ou já tem data_hora_entrada registrada, preserva e não sobrescreve
+    if (diasConcluidos.includes(selectedDia) || datasEntrada[selectedDia]) return
 
     const agoraIso = new Date().toISOString()
     setDatasEntrada(prev => ({ ...prev, [selectedDia]: agoraIso }))
     sincronizarSupabase(selectedDia, { data_hora_entrada: agoraIso })
-  }, [iniciouCurso, selectedDia, carregandoDados, datasEntrada, user?.id, perfil?.id])
+  }, [iniciouCurso, selectedDia, carregandoDados, datasEntrada, diasConcluidos, user?.id, perfil?.id])
 
   const handleSalvarResposta = async (dia: number, texto: string) => {
     const updated = { ...respostasAbertas, [dia]: texto }
@@ -3190,8 +3193,15 @@ export default function TreinamentoPage() {
                               <div className="flex items-start gap-4 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
                                 {aluno.historico.map((item: any) => {
                                   const diaInfo = DIAS_TREINAMENTO.find(d => d.dia === item.dia)
-                                  const inicioRaw = item.data_hora_entrada || item.created_at
                                   const conclusaoRaw = item.concluido ? (item.data_hora_conclusao || item.updated_at) : null
+                                  let inicioRaw = item.data_hora_entrada || item.created_at
+
+                                  // Garante consistência cronológica caso a entrada tenha sido registrada após a conclusão
+                                  if (inicioRaw && conclusaoRaw && new Date(inicioRaw).getTime() > new Date(conclusaoRaw).getTime()) {
+                                    inicioRaw = item.created_at && new Date(item.created_at).getTime() <= new Date(conclusaoRaw).getTime()
+                                      ? item.created_at
+                                      : conclusaoRaw
+                                  }
 
                                   const dataInicioObj = inicioRaw ? new Date(inicioRaw) : null
                                   const dataConclusaoObj = conclusaoRaw ? new Date(conclusaoRaw) : null
@@ -3749,14 +3759,18 @@ export default function TreinamentoPage() {
           return (
             <div
               onCopy={(e) => {
-                e.preventDefault()
-                return false
+                if (!podeCopiarColar) {
+                  e.preventDefault()
+                  return false
+                }
               }}
               onCut={(e) => {
-                e.preventDefault()
-                return false
+                if (!podeCopiarColar) {
+                  e.preventDefault()
+                  return false
+                }
               }}
-              className="max-w-4xl mx-auto space-y-6 select-none"
+              className={cn("max-w-4xl mx-auto space-y-6", !podeCopiarColar && "select-none")}
             >
               {currentDiaData.dia === 11 || currentDiaData.dia === 22 ? (() => {
                 const isAv1 = currentDiaData.dia === 11
@@ -3816,19 +3830,23 @@ export default function TreinamentoPage() {
                                   setRespostasAbertas({ ...respostasAbertas, [q.numero]: e.target.value })
                                 }
                                 onPaste={(e) => {
-                                  e.preventDefault()
-                                  setAvisoBloqueioColar("Não é permitido colar texto. Por favor, digite a resposta com suas próprias palavras.")
-                                  setTimeout(() => setAvisoBloqueioColar(null), 4500)
-                                  return false
+                                  if (!podeCopiarColar) {
+                                    e.preventDefault()
+                                    setAvisoBloqueioColar("Não é permitido colar texto. Por favor, digite a resposta com suas próprias palavras.")
+                                    setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                                    return false
+                                  }
                                 }}
                                 onDrop={(e) => {
-                                  e.preventDefault()
-                                  setAvisoBloqueioColar("Não é permitido arrastar ou colar texto. Digite sua resposta com suas próprias palavras.")
-                                  setTimeout(() => setAvisoBloqueioColar(null), 4500)
-                                  return false
+                                  if (!podeCopiarColar) {
+                                    e.preventDefault()
+                                    setAvisoBloqueioColar("Não é permitido arrastar ou colar texto. Digite sua resposta com suas próprias palavras.")
+                                    setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                                    return false
+                                  }
                                 }}
                                 onKeyDown={(e) => {
-                                  if ((e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V")) {
+                                  if (!podeCopiarColar && (e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V")) {
                                     e.preventDefault()
                                     setAvisoBloqueioColar("Não é permitido colar texto (Ctrl+V desativado). Por favor, digite com suas próprias palavras.")
                                     setTimeout(() => setAvisoBloqueioColar(null), 4500)
@@ -4081,19 +4099,23 @@ export default function TreinamentoPage() {
                           setRespostasAbertas({ ...respostasAbertas, [currentDiaData.dia]: e.target.value })
                         }
                         onPaste={(e) => {
-                          e.preventDefault()
-                          setAvisoBloqueioColar("Não é permitido colar texto. Por favor, digite a resposta com suas próprias palavras.")
-                          setTimeout(() => setAvisoBloqueioColar(null), 4500)
-                          return false
+                          if (!podeCopiarColar) {
+                            e.preventDefault()
+                            setAvisoBloqueioColar("Não é permitido colar texto. Por favor, digite a resposta com suas próprias palavras.")
+                            setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                            return false
+                          }
                         }}
                         onDrop={(e) => {
-                          e.preventDefault()
-                          setAvisoBloqueioColar("Não é permitido arrastar ou colar texto. Digite sua resposta com suas próprias palavras.")
-                          setTimeout(() => setAvisoBloqueioColar(null), 4500)
-                          return false
+                          if (!podeCopiarColar) {
+                            e.preventDefault()
+                            setAvisoBloqueioColar("Não é permitido arrastar ou colar texto. Digite sua resposta com suas próprias palavras.")
+                            setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                            return false
+                          }
                         }}
                         onKeyDown={(e) => {
-                          if ((e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V")) {
+                          if (!podeCopiarColar && (e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V")) {
                             e.preventDefault()
                             setAvisoBloqueioColar("Não é permitido colar texto (Ctrl+V desativado). Por favor, digite com suas próprias palavras.")
                             setTimeout(() => setAvisoBloqueioColar(null), 4500)

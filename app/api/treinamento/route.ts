@@ -348,6 +348,12 @@ export async function POST(request: Request) {
     // Horário de Início: registra quando o colaborador entra na aula e preserva o original
     if (!existingRecord || !existingRecord.data_hora_entrada) {
       payload.data_hora_entrada = body.data_hora_entrada || new Date().toISOString()
+    } else if (
+      existingRecord.data_hora_conclusao &&
+      new Date(existingRecord.data_hora_entrada).getTime() > new Date(existingRecord.data_hora_conclusao).getTime()
+    ) {
+      // Correção de inconsistência: se a data de início registrada for posterior à conclusão, ajusta para o created_at ou conclusão
+      payload.data_hora_entrada = existingRecord.data_hora_conclusao
     }
 
     if (resposta_aberta !== undefined) {

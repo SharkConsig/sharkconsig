@@ -959,7 +959,7 @@ export default function PerfilProfissionalPage() {
                     </div>
 
                     <div className="space-y-3 pt-1">
-                      {(Object.keys(dimMedias) as DimensaoCodigo[]).map(d => (
+                      {dimsOrdenadasMedia.map(d => (
                         <div key={d} className="space-y-1">
                           <div className="flex justify-between text-xs font-semibold">
                             <span className="text-slate-700">{DIMENSOES_INFO[d].nome}</span>
@@ -1010,11 +1010,13 @@ export default function PerfilProfissionalPage() {
                           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
                             <span className="text-xs font-black text-slate-900 uppercase tracking-wider block">Distribuição de Arquétipos Primários:</span>
                             <div className="flex flex-wrap gap-2 pt-1">
-                              {Object.entries(arqContagem).map(([arq, qtd]) => (
-                                <span key={arq} className="text-xs bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-800 font-bold shadow-2xs">
-                                  {arq}: <strong className="text-slate-900">{qtd}</strong> ({Math.round((qtd / (avaliados.length || 1)) * 100)}%)
-                                </span>
-                              ))}
+                              {Object.entries(arqContagem)
+                                .sort(([, qtdA], [, qtdB]) => qtdB - qtdA)
+                                .map(([arq, qtd]) => (
+                                  <span key={arq} className="text-xs bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-800 font-bold shadow-2xs">
+                                    {arq}: <strong className="text-slate-900">{qtd}</strong> ({Math.round((qtd / (avaliados.length || 1)) * 100)}%)
+                                  </span>
+                                ))}
                             </div>
                           </div>
                         </>
