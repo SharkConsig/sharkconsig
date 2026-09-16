@@ -4269,7 +4269,7 @@ export default function TreinamentoPage() {
             })()}
 
               {/* 7. O QUE LEVAR DESTA ETAPA (Card Resumo) */}
-              <div className="bg-slate-100/90 border border-slate-300 rounded-2xl p-6 space-y-4 shadow-sm">
+              <div className={cn("bg-slate-100/90 border border-slate-300 rounded-2xl p-6 space-y-4 shadow-sm transition-all duration-300", aplicaDesfoqueConteudo && focandoRespostaAberta && "blur-md select-none pointer-events-none opacity-30")}>
                 <div className="flex items-center gap-2 text-sm font-black text-slate-900 uppercase tracking-wider">
                   <BookmarkCheck className="w-4.5 h-4.5 text-emerald-600" />
                   <span>O QUE LEVAR DESTA ETAPA</span>
