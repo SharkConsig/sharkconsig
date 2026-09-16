@@ -1732,8 +1732,18 @@ export default function TreinamentoPage() {
   // Permissão de copiar/colar: liberado somente para Recursos Humanos, Administrador e Desenvolvedor
   const podeCopiarColar = Boolean(isDevUser || isAdminUser || isRHUser)
 
+  // Regra de desfoque anti-cola no 'Escreva com suas palavras':
+  // Aplicada somente para: Estágio (Estagiário), Corretor do regime CLT, Processo Seletivo
+  const roleLower = userRole.toLowerCase()
+  const isEstagioUser = roleLower.includes("estágio") || roleLower.includes("estagio")
+  const isProcessoSeletivoUser = roleLower.includes("processo seletivo")
+  const isCorretorCLT = (roleLower.includes("corretor") || roleLower === "") && !isPJ
+  const aplicaDesfoqueConteudo = Boolean(isEstagioUser || isProcessoSeletivoUser || isCorretorCLT)
+
   const [selectedDia, setSelectedDia] = useState<number>(1)
   const [respostasAbertas, setRespostasAbertas] = useState<Record<number, string>>({})
+  const [respostasSalvas, setRespostasSalvas] = useState<Record<number, boolean>>({})
+  const [focandoRespostaAberta, setFocandoRespostaAberta] = useState<boolean>(false)
   const [decisoesTomadas, setDecisoesTomadas] = useState<Record<number, number>>({})
   const [diasConcluidos, setDiasConcluidos] = useState<number[]>([])
   const [datasConclusao, setDatasConclusao] = useState<Record<number, string>>({})
@@ -2056,7 +2066,16 @@ export default function TreinamentoPage() {
           }
         }
 
+        const remoteRespostasSalvas: Record<number, boolean> = {}
+        Object.keys(remoteRespostas).forEach(k => {
+          const num = Number(k)
+          if ((remoteRespostas[num] || "").trim()) {
+            remoteRespostasSalvas[num] = true
+          }
+        })
+
         setRespostasAbertas(remoteRespostas)
+        setRespostasSalvas(remoteRespostasSalvas)
         setDecisoesTomadas(remoteDecisoes)
         setDiasConcluidos(remoteConcluidos)
         setDatasConclusao(remoteDatasConclusao)
@@ -2064,6 +2083,7 @@ export default function TreinamentoPage() {
       } else {
         // Se não houver registros no banco (ou se tiverem sido apagados), reseta tudo
         setRespostasAbertas({})
+        setRespostasSalvas({})
         setDecisoesTomadas({})
         setDiasConcluidos([])
         setDatasConclusao({})
@@ -2474,6 +2494,7 @@ export default function TreinamentoPage() {
 
   // Scroll to the top of the lesson whenever the user changes the day
   useEffect(() => {
+    setFocandoRespostaAberta(false)
     window.scrollTo({ top: 0, behavior: "smooth" })
     const topEl = document.getElementById("inicio-aula")
     if (topEl) {
@@ -2591,6 +2612,8 @@ export default function TreinamentoPage() {
   const handleSalvarResposta = async (dia: number, texto: string) => {
     const updated = { ...respostasAbertas, [dia]: texto }
     setRespostasAbertas(updated)
+    setRespostasSalvas(prev => ({ ...prev, [dia]: true }))
+    setFocandoRespostaAberta(false)
     setSavedStatus("Resposta salva com sucesso!")
     setTimeout(() => setSavedStatus(null), 3000)
 
@@ -3976,8 +3999,10 @@ export default function TreinamentoPage() {
                 )
               })() : (
                 <>
-                  {/* Day Header Bar */}
-              <div className="pt-4 pb-2">
+                  {/* Container de conteúdo de estudo do dia (desfocado quando em foco no textarea para os usuários designados) */}
+                  <div className={cn("space-y-6 transition-all duration-300", aplicaDesfoqueConteudo && focandoRespostaAberta && "blur-md select-none pointer-events-none opacity-30")}>
+                    {/* Day Header Bar */}
+                    <div className="pt-4 pb-2">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#0F172B] text-white">
@@ -4075,83 +4100,94 @@ export default function TreinamentoPage() {
                   )}
                 </div>
               )}
+            </div>
 
-              {/* 5. ESCREVA COM SUAS PALAVRAS (Textarea Obrigatório) */}
-              {(() => {
-                const isDiaBloqueado = diasConcluidos.includes(currentDiaData.dia)
-                return (
-                  <>
-                    <div className="bg-amber-100/90 border border-amber-300 rounded-2xl p-6 space-y-3">
-                      <div className="flex items-center gap-2 text-sm font-black text-amber-950 uppercase tracking-wider">
-                        <MessageSquare className="w-4.5 h-4.5 text-amber-800" />
-                        <span>ESCREVA COM SUAS PALAVRAS</span>
-                      </div>
+            {/* 5. ESCREVA COM SUAS PALAVRAS (Textarea Obrigatório) */}
+            {(() => {
+              const isDiaBloqueado = diasConcluidos.includes(currentDiaData.dia)
+              const isRespostaJaSalva = Boolean(respostasSalvas[currentDiaData.dia])
+              const isTextareaBloqueado = isDiaBloqueado || isRespostaJaSalva
 
-                      <p className="text-xs sm:text-sm font-semibold text-slate-900">
-                        {currentDiaData.perguntaAberta}
-                      </p>
-
-                      <textarea
-                        rows={4}
-                        disabled={isDiaBloqueado}
-                        value={respostasAbertas[currentDiaData.dia] || ""}
-                        onChange={(e) =>
-                          setRespostasAbertas({ ...respostasAbertas, [currentDiaData.dia]: e.target.value })
-                        }
-                        onPaste={(e) => {
-                          if (!podeCopiarColar) {
-                            e.preventDefault()
-                            setAvisoBloqueioColar("Não é permitido colar texto. Por favor, digite a resposta com suas próprias palavras.")
-                            setTimeout(() => setAvisoBloqueioColar(null), 4500)
-                            return false
-                          }
-                        }}
-                        onDrop={(e) => {
-                          if (!podeCopiarColar) {
-                            e.preventDefault()
-                            setAvisoBloqueioColar("Não é permitido arrastar ou colar texto. Digite sua resposta com suas próprias palavras.")
-                            setTimeout(() => setAvisoBloqueioColar(null), 4500)
-                            return false
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (!podeCopiarColar && (e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V")) {
-                            e.preventDefault()
-                            setAvisoBloqueioColar("Não é permitido colar texto (Ctrl+V desativado). Por favor, digite com suas próprias palavras.")
-                            setTimeout(() => setAvisoBloqueioColar(null), 4500)
-                          }
-                        }}
-                        placeholder="Digite sua explicação com suas próprias palavras..."
-                        className={cn(
-                          "w-full bg-white border border-amber-300 rounded-xl p-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm",
-                          isDiaBloqueado && "bg-amber-50/60 text-slate-700 cursor-not-allowed opacity-90 resize-none"
-                        )}
-                      />
-
-                      {avisoBloqueioColar && (
-                        <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-xs text-rose-800 font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                          <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" />
-                          <span>{avisoBloqueioColar}</span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-xs text-emerald-700 font-bold">
-                          {savedStatus && <span>✓ {savedStatus}</span>}
-                        </span>
-                        {!isDiaBloqueado && (
-                          <button
-                            type="button"
-                            onClick={() => handleSalvarResposta(currentDiaData.dia, respostasAbertas[currentDiaData.dia] || "")}
-                            className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-4 rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Save className="w-3.5 h-3.5" />
-                            <span>Salvar Resposta</span>
-                          </button>
-                        )}
-                      </div>
+              return (
+                <>
+                  <div className="bg-amber-100/90 border border-amber-300 rounded-2xl p-6 space-y-3 relative z-10 shadow-sm">
+                    <div className="flex items-center gap-2 text-sm font-black text-amber-950 uppercase tracking-wider">
+                      <MessageSquare className="w-4.5 h-4.5 text-amber-800" />
+                      <span>ESCREVA COM SUAS PALAVRAS</span>
                     </div>
 
+                    <p className="text-xs sm:text-sm font-semibold text-slate-900">
+                      {currentDiaData.perguntaAberta}
+                    </p>
+
+                    <textarea
+                      rows={4}
+                      disabled={isTextareaBloqueado}
+                      value={respostasAbertas[currentDiaData.dia] || ""}
+                      onFocus={() => {
+                        if (!isTextareaBloqueado && aplicaDesfoqueConteudo) {
+                          setFocandoRespostaAberta(true)
+                        }
+                      }}
+                      onChange={(e) =>
+                        setRespostasAbertas({ ...respostasAbertas, [currentDiaData.dia]: e.target.value })
+                      }
+                      onPaste={(e) => {
+                        if (!podeCopiarColar) {
+                          e.preventDefault()
+                          setAvisoBloqueioColar("Não é permitido colar texto. Por favor, digite a resposta com suas próprias palavras.")
+                          setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                          return false
+                        }
+                      }}
+                      onDrop={(e) => {
+                        if (!podeCopiarColar) {
+                          e.preventDefault()
+                          setAvisoBloqueioColar("Não é permitido arrastar ou colar texto. Digite sua resposta com suas próprias palavras.")
+                          setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                          return false
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (!podeCopiarColar && (e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V")) {
+                          e.preventDefault()
+                          setAvisoBloqueioColar("Não é permitido colar texto (Ctrl+V desativado). Por favor, digite com suas próprias palavras.")
+                          setTimeout(() => setAvisoBloqueioColar(null), 4500)
+                        }
+                      }}
+                      placeholder="Digite sua explicação com suas próprias palavras..."
+                      className={cn(
+                        "w-full bg-white border border-amber-300 rounded-xl p-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm",
+                        isTextareaBloqueado && "bg-amber-50/60 text-slate-700 cursor-not-allowed opacity-90 resize-none"
+                      )}
+                    />
+
+                    {avisoBloqueioColar && (
+                      <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-xs text-rose-800 font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" />
+                        <span>{avisoBloqueioColar}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-xs text-emerald-700 font-bold">
+                        {savedStatus && <span>✓ {savedStatus}</span>}
+                      </span>
+                      {!isTextareaBloqueado && (
+                        <button
+                          type="button"
+                          onClick={() => handleSalvarResposta(currentDiaData.dia, respostasAbertas[currentDiaData.dia] || "")}
+                          className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-4 rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          <span>Salvar Resposta</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bloco restante do dia (também sujeito ao desfoque anti-cola durante a redação) */}
+                  <div className={cn("space-y-6 transition-all duration-300", aplicaDesfoqueConteudo && focandoRespostaAberta && "blur-md select-none pointer-events-none opacity-30")}>
                     {/* 6. TOME UMA DECISÃO (Múltipla Escolha / Cenário) */}
                     <div className="space-y-4 py-2">
                       <div className="flex items-center gap-2 text-sm font-black text-[#0F172B] uppercase tracking-wider border-b border-slate-100 pb-3">
@@ -4227,9 +4263,10 @@ export default function TreinamentoPage() {
                         </div>
                       )}
                     </div>
-                  </>
-                )
-              })()}
+                  </div>
+                </>
+              )
+            })()}
 
               {/* 7. O QUE LEVAR DESTA ETAPA (Card Resumo) */}
               <div className="bg-slate-100/90 border border-slate-300 rounded-2xl p-6 space-y-4 shadow-sm">
@@ -4304,9 +4341,9 @@ export default function TreinamentoPage() {
                   )
                 })()}
               </div>
-                </>
-              )}
-            </div>
+            </>
+          )}
+        </div>
           )
         })()}
       </div>
