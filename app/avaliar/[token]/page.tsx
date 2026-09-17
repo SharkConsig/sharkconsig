@@ -171,7 +171,7 @@ export default function AvaliacaoCandidatoPage({ params }: PageProps) {
               Avaliação Concluída!
             </h1>
             <p className="text-sm font-semibold text-slate-600 leading-relaxed">
-              Obrigado, <strong className="text-slate-900">{candidato?.nome}</strong>. Suas 36 respostas foram registradas com sucesso e encaminhadas para a equipe de Recursos Humanos da SharkConsig.
+              Obrigado, <strong className="text-slate-900">{candidato?.nome}</strong>. Suas 36 respostas foram registradas com sucesso e encaminhadas para a equipe de Recursos Humanos da Acerto Fácil.
             </p>
           </div>
 
@@ -212,9 +212,6 @@ export default function AvaliacaoCandidatoPage({ params }: PageProps) {
           </div>
 
           <div className="space-y-2">
-            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700">
-              SharkConsig Carreiras
-            </span>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight pt-1">
               {statusLink === "completed"
                 ? "Avaliação Já Concluída"
@@ -247,7 +244,6 @@ export default function AvaliacaoCandidatoPage({ params }: PageProps) {
                 <UserCheck className="w-5 h-5 text-emerald-400" />
               </span>
               <div>
-                <span className="text-[10px] font-black tracking-wider uppercase text-slate-500 block">SharkConsig</span>
                 <span className="text-sm font-black text-slate-900">Processo Seletivo</span>
               </div>
             </div>
@@ -305,7 +301,7 @@ export default function AvaliacaoCandidatoPage({ params }: PageProps) {
                 setIniciou(true)
                 window.scrollTo({ top: 0, behavior: "smooth" })
               }}
-              className="w-full py-4 px-6 rounded-2xl bg-[#0F172B] hover:bg-slate-800 text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-3 shadow-md hover:shadow-lg transition-all cursor-pointer"
+              className="w-full py-4 px-6 rounded-2xl bg-[#0F172B] hover:bg-slate-800 text-white font-extrabold text-sm uppercase tracking-wider flex items-center justify-center gap-3 shadow-md hover:shadow-lg transition-all cursor-pointer"
             >
               <span>Iniciar Avaliação Agora</span>
               <ArrowRight className="w-5 h-5 text-emerald-400" />
@@ -335,7 +331,7 @@ export default function AvaliacaoCandidatoPage({ params }: PageProps) {
                 <UserCheck className="w-5 h-5 text-emerald-400" />
               </span>
               <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">Candidato</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">Candidato(a)</span>
                 <span className="text-xs sm:text-sm font-black text-slate-900">{candidato?.nome}</span>
               </div>
             </div>
@@ -434,7 +430,7 @@ export default function AvaliacaoCandidatoPage({ params }: PageProps) {
                 disabled={!respostaSelecionada || questoesRespondidasCount < questoes.length}
                 className="flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-35 transition-all shadow-xs cursor-pointer"
               >
-                Concluir Teste
+                Concluir
                 <CheckCircle2 className="w-4 h-4" />
               </button>
             )}
@@ -443,7 +439,7 @@ export default function AvaliacaoCandidatoPage({ params }: PageProps) {
 
         {/* Rodapé Seguro */}
         <div className="text-center text-[11px] text-slate-600 font-medium py-2">
-          SharkConsig &bull; Plataforma Segura de Avaliação de Perfil &bull; Link de Uso Único
+          Acerto Fácil &bull; Plataforma Segura de Avaliação de Perfil &bull; Link de Uso Único
         </div>
       </div>
 
@@ -456,7 +452,7 @@ export default function AvaliacaoCandidatoPage({ params }: PageProps) {
             </div>
 
             <div className="text-center space-y-2">
-              <h3 className="text-lg font-black text-slate-900">Confirmar Envio da Avaliação?</h3>
+              <h3 className="text-lg font-black text-slate-900">Confirmar Envio?</h3>
               <p className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed">
                 Você respondeu a todas as <strong>{questoes.length} questões</strong>. Ao confirmar, suas respostas serão computadas e este link de acesso será invalidado.
               </p>
@@ -473,7 +469,7 @@ export default function AvaliacaoCandidatoPage({ params }: PageProps) {
               <button
                 onClick={enviarRespostas}
                 disabled={enviando}
-                className="flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                className="flex-1 py-3 px-4 rounded-xl text-xs font-extrabold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 {enviando ? "Enviando..." : "Confirmar e Enviar"}
               </button>

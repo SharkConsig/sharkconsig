@@ -65,7 +65,7 @@ export default function PerfilCandidatosPage() {
   const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "concluido" | "pendente" | "expirado">("TODOS")
   const [termoBusca, setTermoBusca] = useState("")
 
-  const [abaAtiva, setAbaAtiva] = useState<"lista" | "analise" | "gestao">("lista")
+  const [abaAtiva, setAbaAtiva] = useState<"lista" | "analise">("lista")
   const [candidatoSelecionadoId, setCandidatoSelecionadoId] = useState<string>("")
 
   // Modal de Convidar Candidato
@@ -294,17 +294,6 @@ export default function PerfilCandidatosPage() {
               >
                 Análise do Candidato
               </button>
-              <button
-                onClick={() => setAbaAtiva("gestao")}
-                className={cn(
-                  "px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer",
-                  abaAtiva === "gestao"
-                    ? "bg-[#0F172B] text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                )}
-              >
-                Inteligência de Seleção
-              </button>
             </div>
           </div>
         </div>
@@ -477,7 +466,7 @@ export default function PerfilCandidatosPage() {
                               setCandidatoSelecionadoId(c.id || c.token_acesso)
                               setAbaAtiva("analise")
                             }}
-                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0F172B] hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider transition-all shadow-xs cursor-pointer"
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0F172B] hover:bg-slate-800 text-white text-[11px] font-bold uppercase tracking-wider transition-all shadow-xs cursor-pointer"
                           >
                             <span>Ver Perfil Completo</span>
                             <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
@@ -753,45 +742,6 @@ export default function PerfilCandidatosPage() {
           </div>
         )}
 
-        {/* ABA 3: INTELIGÊNCIA DE SELEÇÃO / GESTÃO */}
-        {abaAtiva === "gestao" && (
-          <div className="space-y-6">
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-4 shadow-xs">
-              <div className="flex items-center gap-2 text-slate-900 border-b border-slate-100 pb-3">
-                <Users className="w-4.5 h-4.5 text-blue-600" />
-                <h3 className="text-base font-black text-slate-900 uppercase tracking-wider">
-                  Distribuição de Arquétipos nos Processos Seletivos
-                </h3>
-              </div>
-
-              {concluidos === 0 ? (
-                <div className="text-center py-8 text-slate-400 text-xs font-semibold">
-                  Ainda não há candidatos com teste concluído para gerar estatísticas comparativas.
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-2">
-                  {Object.entries(
-                    candidatos
-                      .filter(c => c.status === "concluido" && c.perfilCalculado?.arqPrimario)
-                      .reduce((acc: Record<string, number>, curr) => {
-                        const arq = curr.perfilCalculado!.arqPrimario
-                        acc[arq] = (acc[arq] || 0) + 1
-                        return acc
-                      }, {})
-                  ).map(([arq, qtd]) => (
-                    <div key={arq} className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center space-y-1">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">{arq}</span>
-                      <span className="text-2xl font-black text-slate-900">{qtd}</span>
-                      <span className="text-[10px] text-slate-400 font-bold block">
-                        {Math.round((qtd / concluidos) * 100)}% dos avaliados
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Modal Convidar Candidato */}
