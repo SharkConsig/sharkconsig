@@ -35,6 +35,7 @@ import {
   RotateCw,
   ExternalLink,
   ChevronRight,
+  ChevronDown,
   MapPin,
   Mail,
   Phone
@@ -63,6 +64,7 @@ export default function PerfilCandidatosPage() {
   const [loading, setLoading] = useState(true)
   const [candidatos, setCandidatos] = useState<CandidatoItem[]>([])
   const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "concluido" | "pendente" | "expirado">("TODOS")
+  const [filtroCargo, setFiltroCargo] = useState<string>("TODOS")
   const [termoBusca, setTermoBusca] = useState("")
 
   const [abaAtiva, setAbaAtiva] = useState<"lista" | "analise">("lista")
@@ -212,13 +214,16 @@ export default function PerfilCandidatosPage() {
   // Filtragem de candidatos
   const candidatosFiltrados = candidatos.filter(c => {
     const matchStatus = filtroStatus === "TODOS" || c.status === filtroStatus
+    const matchCargo =
+      filtroCargo === "TODOS" ||
+      (c.cargo_pretendido && c.cargo_pretendido.toLowerCase().trim() === filtroCargo.toLowerCase().trim())
     const buscaNorm = termoBusca.toLowerCase().trim()
     const matchBusca =
       !buscaNorm ||
       c.nome.toLowerCase().includes(buscaNorm) ||
       c.email.toLowerCase().includes(buscaNorm) ||
       (c.cargo_pretendido && c.cargo_pretendido.toLowerCase().includes(buscaNorm))
-    return matchStatus && matchBusca
+    return matchStatus && matchCargo && matchBusca
   })
 
   // Candidato atualmente inspecionado
@@ -335,7 +340,45 @@ export default function PerfilCandidatosPage() {
               </div>
 
               <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
-                {(["TODOS", "concluido", "pendente", "expirado"] as const).map(st => (
+                <button
+                  onClick={() => setFiltroStatus("TODOS")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer",
+                    filtroStatus === "TODOS"
+                      ? "bg-[#0F172B] text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  )}
+                >
+                  Todos
+                </button>
+
+                {/* Filtro por Cargo / Vaga Pretendida ao lado direito da aba TODOS */}
+                <div className="relative inline-flex items-center shrink-0">
+                  <select
+                    value={filtroCargo}
+                    onChange={e => setFiltroCargo(e.target.value)}
+                    className={cn(
+                      "px-3 py-1.5 pr-7 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer appearance-none border",
+                      filtroCargo !== "TODOS"
+                        ? "bg-[#0F172B] text-white border-[#0F172B]"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200 border-transparent"
+                    )}
+                  >
+                    <option value="TODOS" className="text-slate-900 bg-white">Cargo / Vaga Pretendida</option>
+                    <option value="Estágio" className="text-slate-900 bg-white">Estágio</option>
+                    <option value="Corretor" className="text-slate-900 bg-white">Corretor</option>
+                    <option value="Supervisor" className="text-slate-900 bg-white">Supervisor</option>
+                    <option value="Operacional" className="text-slate-900 bg-white">Operacional</option>
+                    <option value="Recursos Humanos" className="text-slate-900 bg-white">Recursos Humanos</option>
+                    <option value="Outro" className="text-slate-900 bg-white">Outro</option>
+                  </select>
+                  <ChevronDown className={cn(
+                    "w-3.5 h-3.5 absolute right-2 pointer-events-none transition-colors",
+                    filtroCargo !== "TODOS" ? "text-white" : "text-slate-500"
+                  )} />
+                </div>
+
+                {(["concluido", "pendente", "expirado"] as const).map(st => (
                   <button
                     key={st}
                     onClick={() => setFiltroStatus(st)}
@@ -346,7 +389,7 @@ export default function PerfilCandidatosPage() {
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     )}
                   >
-                    {st === "TODOS" ? "Todos" : st === "concluido" ? "Concluídos" : st === "pendente" ? "Pendentes" : "Expirados"}
+                    {st === "concluido" ? "Concluídos" : st === "pendente" ? "Pendentes" : "Expirados"}
                   </button>
                 ))}
               </div>

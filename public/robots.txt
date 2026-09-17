@@ -1,0 +1,11 @@
+User-agent: WhatsApp
+Disallow: /avaliar/
+
+User-agent: facebookexternalhit
+Disallow: /avaliar/
+
+User-agent: Facebot
+Disallow: /avaliar/
+
+User-agent: *
+Disallow: /avaliar/
