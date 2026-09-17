@@ -3,11 +3,16 @@ import type { Metadata } from "next"
 export const metadata: Metadata = {
   title: "Acerto Fácil",
   description: "Processo Seletivo",
-  robots: {
-    index: false,
-    follow: false,
-    noarchive: true,
-    nosnippet: true,
+  openGraph: {
+    title: "Acerto Fácil",
+    description: "Processo Seletivo",
+    siteName: "Acerto Fácil",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Acerto Fácil",
+    description: "Processo Seletivo",
   },
 }
 
