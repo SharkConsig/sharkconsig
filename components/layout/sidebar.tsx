@@ -167,6 +167,12 @@ const allMenuItems = [
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
       },
       { 
+        name: "PERFIL CANDIDATOS", 
+        href: "/perfil-candidatos", 
+        icon: UserCheck, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
+      { 
         name: "COLABORADORES", 
         href: "/colaboradores", 
         icon: Briefcase, 
