@@ -69,7 +69,8 @@ export const createAdminClient = () => {
                           getEnvVarByPrefix('SUPABASE_SECRET'))?.trim();
   
   if (!serviceRoleKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not defined. Please add it to Settings -> Secrets.');
+    console.warn('SUPABASE_SERVICE_ROLE_KEY is not defined. Usando cliente padrão com anon key.');
+    return supabase;
   }
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {

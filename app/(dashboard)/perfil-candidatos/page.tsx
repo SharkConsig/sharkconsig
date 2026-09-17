@@ -132,9 +132,9 @@ export default function PerfilCandidatosPage() {
         })
       })
 
-      const data = await res.json()
-      if (!res.ok || !data.success) {
-        alert(data.error || "Erro ao criar convite.")
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.success || !data?.linkToken) {
+        alert(data?.error || `Não foi possível gerar o link (código ${res.status}).`)
         return
       }
 
