@@ -657,9 +657,31 @@ export default function ProposalsPage() {
       }
       // Se for operacional, administrador ou desenvolvedor, não filtra por equipe (vê tudo)
 
-      const { data, error } = await query.order('updated_at', { ascending: true })
+      let allProposals: Proposal[] = []
+      let from = 0
+      const batchSize = 1000
+      let hasMore = true
 
-      const formattedData = data.map((p: Proposal) => {
+      while (hasMore) {
+        const { data, error } = await query
+          .order('updated_at', { ascending: false })
+          .range(from, from + batchSize - 1)
+
+        if (error) throw error
+
+        if (data && data.length > 0) {
+          allProposals = allProposals.concat(data as Proposal[])
+          if (data.length < batchSize) {
+            hasMore = false
+          } else {
+            from += batchSize
+          }
+        } else {
+          hasMore = false
+        }
+      }
+
+      const formattedData = allProposals.map((p: Proposal) => {
         // Normalizar status para garantir que apareça nas abas corretas (com espaços ao redor da barra)
         let normalizedStatus = p.status
         if (normalizedStatus === "ANDAMENTO/AGUARDANDO PAGAMENTO") {
