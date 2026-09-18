@@ -8,7 +8,8 @@ import {
   ARQUETIPOS_MAP,
   ARQUETIPO_INFO,
   DimensaoCodigo,
-  FaixaScore
+  FaixaScore,
+  isRoleOrCargoEstagio
 } from "@/lib/perfil-profissional-data"
 import { PerfilCalculado } from "@/lib/perfil-profissional"
 import { cn } from "@/lib/utils"
@@ -80,10 +81,20 @@ export default function PerfilCandidatosPage() {
   const [formValidade, setFormValidade] = useState("1") // 24 horas (recomendado)
 
   // Link recém gerado
-  const [conviteGerado, setConviteGerado] = useState<{ nome: string; link: string; telefone?: string } | null>(null)
+  const [conviteGerado, setConviteGerado] = useState<{ nome: string; link: string; telefone?: string; cargo_pretendido?: string } | null>(null)
   const [copiado, setCopiado] = useState(false)
   const [candidatoParaExcluir, setCandidatoParaExcluir] = useState<{ id: string; token: string; nome: string } | null>(null)
   const [excluindo, setExcluindo] = useState(false)
+
+  const obterTextoWhatsApp = (nome: string, link: string, cargo?: string) => {
+    const primeiroNome = (nome || "Candidato").split(" ")[0]
+    const isEstagio = isRoleOrCargoEstagio(cargo)
+    const fraseProcesso = isEstagio
+      ? "Para darmos continuidade ao seu processo seletivo para estágio, temos uma etapa de Perfil Profissional para você responder."
+      : "Para darmos continuidade ao seu processo seletivo, temos uma etapa de Perfil Profissional para você responder."
+
+    return `Olá, ${primeiroNome}! Tudo bem? 😊\n\nAqui é do time de Recursos Humanos da Acerto Fácil!\n\n${fraseProcesso}\n\nSegue seu link exclusivo:\n${link}\n\nO link é de uso único e possui validade. Quando finalizar, me avisa por aqui, por favor!\n\nBoa sorte! 🦈`
+  }
 
   useEffect(() => {
     carregarCandidatos()
@@ -143,7 +154,8 @@ export default function PerfilCandidatosPage() {
       setConviteGerado({
         nome: formNome,
         link: linkCompleto,
-        telefone: formTelefone
+        telefone: formTelefone,
+        cargo_pretendido: formCargo
       })
 
       // Limpa formulário
@@ -488,7 +500,7 @@ export default function PerfilCandidatosPage() {
                             {c.telefone && (
                               <a
                                 href={`https://api.whatsapp.com/send?phone=55${c.telefone.replace(/\D/g, "")}&text=${encodeURIComponent(
-                                  `Olá, ${c.nome.split(" ")[0]}! Tudo bem? 😊\n\nAqui é do time de Recursos Humanos da Acerto Fácil!\n\nPara darmos continuidade ao seu processo seletivo para estágio, temos uma etapa de Perfil Profissional para você responder.\n\nSegue seu link exclusivo:\n${link}\n\nO link é de uso único e possui validade. Quando finalizar, me avisa por aqui, por favor!\n\nBoa sorte! 🦈`
+                                  obterTextoWhatsApp(c.nome, link, c.cargo_pretendido)
                                 )}`}
                                 target="_blank"
                                 rel="noreferrer"
@@ -835,7 +847,7 @@ export default function PerfilCandidatosPage() {
                   {conviteGerado.telefone && (
                     <a
                       href={`https://api.whatsapp.com/send?phone=55${conviteGerado.telefone.replace(/\D/g, "")}&text=${encodeURIComponent(
-                        `Olá, ${conviteGerado.nome.split(" ")[0]}! Tudo bem? 😊\n\nAqui é do time de Recursos Humanos da Acerto Fácil!\n\nPara darmos continuidade ao seu processo seletivo para estágio, temos uma etapa de Perfil Profissional para você responder.\n\nSegue seu link exclusivo:\n${conviteGerado.link}\n\nO link é de uso único e possui validade. Quando finalizar, me avisa por aqui, por favor!\n\nBoa sorte! 🦈`
+                        obterTextoWhatsApp(conviteGerado.nome, conviteGerado.link, conviteGerado.cargo_pretendido)
                       )}`}
                       target="_blank"
                       rel="noreferrer"
