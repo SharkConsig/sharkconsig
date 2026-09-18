@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
-import { QUESTOES_TESTE } from "@/lib/perfil-profissional-data"
+import { getQuestoesTeste } from "@/lib/perfil-profissional-data"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { fallbackCandidatosStore } from "@/lib/candidatos-store"
 
@@ -90,7 +90,8 @@ export async function GET(request: Request) {
     // 5. Princípio do Menor Privilégio no Payload:
     // Retorna APENAS o número, enunciado e opções (letra e texto).
     // NUNCA envia pesos psicométricos, dimensões, IDs internos ou segredos.
-    const questoesSeguras = QUESTOES_TESTE.map(q => ({
+    const listaQuestoes = getQuestoesTeste(candidato.cargo_pretendido)
+    const questoesSeguras = listaQuestoes.map(q => ({
       numero: q.numero,
       enunciado: q.enunciado,
       opcoes: q.opcoes.map(o => ({

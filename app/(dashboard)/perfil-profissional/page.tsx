@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@/context/auth-context"
 import {
-  QUESTOES_TESTE,
+  getQuestoesTeste,
   QUESTOES_CHECKPOINT,
   DIMENSOES_INFO,
   ARQUETIPOS_MAP,
@@ -164,7 +164,9 @@ export default function PerfilProfissionalPage() {
   }
 
   // Ações do Teste
-  const questaoAtual = QUESTOES_TESTE[indiceQuestao]
+  const roleUsuario = perfil?.funcao || perfil?.role || user?.user_metadata?.funcao || user?.user_metadata?.role || ""
+  const questoesTeste = getQuestoesTeste(roleUsuario)
+  const questaoAtual = questoesTeste[indiceQuestao]
   const respostaSelecionada = respostasTeste[questaoAtual?.numero]
 
   const selecionarAlternativa = (letra: string) => {
@@ -175,7 +177,7 @@ export default function PerfilProfissionalPage() {
   }
 
   const avancarQuestao = () => {
-    if (indiceQuestao < QUESTOES_TESTE.length - 1) {
+    if (indiceQuestao < questoesTeste.length - 1) {
       setIndiceQuestao(prev => prev + 1)
     }
   }
@@ -190,7 +192,7 @@ export default function PerfilProfissionalPage() {
     if (!user?.id) return
     // Validação de todas as respostas (exceto para desenvolvedor que pode testar sem obrigatoriedade)
     if (!isDeveloper) {
-      const faltantes = QUESTOES_TESTE.filter(q => !respostasTeste[q.numero])
+      const faltantes = questoesTeste.filter(q => !respostasTeste[q.numero])
       if (faltantes.length > 0) {
         alert(`Por favor, responda a questão ${faltantes[0].numero} antes de finalizar.`)
         setIndiceQuestao(faltantes[0].numero - 1)
@@ -206,6 +208,7 @@ export default function PerfilProfissionalPage() {
         body: JSON.stringify({
           action: "salvar_teste",
           userId: user.id,
+          role: roleUsuario,
           nomeUsuario: perfil?.nome || user.email?.split("@")[0] || "Colaborador",
           respostas: respostasTeste
         })
@@ -353,18 +356,18 @@ export default function PerfilProfissionalPage() {
           {/* Barra de Progresso */}
           {(() => {
             const questoesRespondidasCount = Object.keys(respostasTeste).length
-            const porcentagemConcluido = Math.round((questoesRespondidasCount / QUESTOES_TESTE.length) * 100)
+            const porcentagemConcluido = Math.round((questoesRespondidasCount / questoesTeste.length) * 100)
 
             return (
               <div className="space-y-2">
                 <div className="flex justify-between text-xs text-slate-600 font-bold">
-                  <span>Questão {indiceQuestao + 1} de {QUESTOES_TESTE.length}</span>
+                  <span>Questão {indiceQuestao + 1} de {questoesTeste.length}</span>
                   <span>{porcentagemConcluido}% concluído</span>
                 </div>
                 <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
                   <div
                     className="h-full bg-emerald-500 transition-all duration-300 rounded-full"
-                    style={{ width: `${(questoesRespondidasCount / QUESTOES_TESTE.length) * 100}%` }}
+                    style={{ width: `${(questoesRespondidasCount / questoesTeste.length) * 100}%` }}
                   />
                 </div>
               </div>
@@ -428,7 +431,7 @@ export default function PerfilProfissionalPage() {
                 Voltar
               </button>
 
-              {indiceQuestao < QUESTOES_TESTE.length - 1 ? (
+              {indiceQuestao < questoesTeste.length - 1 ? (
                 <button
                   onClick={avancarQuestao}
                   disabled={!respostaSelecionada && !isDeveloper}

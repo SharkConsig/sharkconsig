@@ -8,8 +8,7 @@ import {
   ARQUETIPOS_MAP,
   ARQUETIPO_INFO,
   DimensaoCodigo,
-  FaixaScore,
-  QUESTOES_TESTE
+  FaixaScore
 } from "@/lib/perfil-profissional-data"
 import { PerfilCalculado } from "@/lib/perfil-profissional"
 import { cn } from "@/lib/utils"

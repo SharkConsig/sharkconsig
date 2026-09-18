@@ -722,6 +722,380 @@ export const QUESTOES_TESTE: Questao[] = [
   }
 ]
 
+// 36 Questões Objetivas Exatas para Estágio (Estagiário)
+export const QUESTOES_ESTAGIO: Questao[] = [
+  {
+    numero: 1,
+    enunciado: "Quando aparece uma atividade nova na escola ou em casa, você costuma:",
+    opcoes: [
+      { letra: "A", texto: "Começar e descobrir ajustes enquanto faz", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "B", texto: "Organizar uma sequência para seguir", pesos: { CON: 3, PRE: 1 } },
+      { letra: "C", texto: "Olhar os detalhes antes de iniciar", pesos: { PRE: 3, CON: 1 } },
+      { letra: "D", texto: "Escolher seu próprio jeito de começar", pesos: { AUT: 3, ACT: 1 } }
+    ]
+  },
+  {
+    numero: 2,
+    enunciado: "Ao conversar com alguém que você acabou de conhecer, você costuma:",
+    opcoes: [
+      { letra: "A", texto: "Puxar assunto e procurar algo em comum", pesos: { COM: 3, ACT: 1 } },
+      { letra: "B", texto: "Observar primeiro para entender o jeito da pessoa", pesos: { PRE: 2, COM: 1 } },
+      { letra: "C", texto: "Conversar com tranquilidade, sem apressar", pesos: { CON: 3, COM: 1 } },
+      { letra: "D", texto: "Ir direto ao assunto que motivou a conversa", pesos: { ACT: 2, AUT: 2 } }
+    ]
+  },
+  {
+    numero: 3,
+    enunciado: "Quando uma tentativa não dá certo, você prefere:",
+    opcoes: [
+      { letra: "A", texto: "Tentar outra possibilidade logo", pesos: { RES: 3, ACT: 1 } },
+      { letra: "B", texto: "Entender o que aconteceu antes de tentar de novo", pesos: { PRE: 2, RES: 2 } },
+      { letra: "C", texto: "Continuar seguindo o plano que já havia feito", pesos: { CON: 3, RES: 1 } },
+      { letra: "D", texto: "Inventar uma alternativa por conta própria", pesos: { AUT: 3, RES: 1 } }
+    ]
+  },
+  {
+    numero: 4,
+    enunciado: "Quando precisa repetir uma atividade várias vezes, você:",
+    opcoes: [
+      { letra: "A", texto: "Mantém um ritmo parecido até terminar", pesos: { CON: 3, RES: 1 } },
+      { letra: "B", texto: "Procura variar o jeito de fazer para ganhar agilidade", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "C", texto: "Faz pequenas conferências para não se perder", pesos: { PRE: 3, CON: 1 } },
+      { letra: "D", texto: "Gosta de alternar com algo que envolva outras pessoas", pesos: { COM: 3, ACT: 1 } }
+    ]
+  },
+  {
+    numero: 5,
+    enunciado: "Quando alguém explica rapidamente uma atividade, você prefere:",
+    opcoes: [
+      { letra: "A", texto: "Começar logo e perguntar se surgir dúvida", pesos: { AUT: 3, ACT: 1 } },
+      { letra: "B", texto: "Anotar uma sequência para não esquecer", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "C", texto: "Confirmar os detalhes mais importantes", pesos: { PRE: 3, CON: 1 } },
+      { letra: "D", texto: "Entender o objetivo e escolher como fazer", pesos: { CON: 3, PRE: 1 } }
+    ]
+  },
+  {
+    numero: 6,
+    enunciado: "Em um trabalho em grupo com opiniões diferentes, você tende a:",
+    opcoes: [
+      { letra: "A", texto: "Propor uma decisão para o grupo avançar", pesos: { COM: 3, RES: 1 } },
+      { letra: "B", texto: "Ouvir as ideias e encontrar pontos em comum", pesos: { RES: 3, ACT: 1 } },
+      { letra: "C", texto: "Organizar etapas para ninguém se perder", pesos: { PRE: 3, COM: 1 } },
+      { letra: "D", texto: "Pensar em uma solução alternativa", pesos: { ACT: 3, COM: 1 } }
+    ]
+  },
+  {
+    numero: 7,
+    enunciado: "Quando seu planejamento do dia muda de repente, você:",
+    opcoes: [
+      { letra: "A", texto: "Começa logo pelo que ficou mais urgente", pesos: { RES: 3, AUT: 1 } },
+      { letra: "B", texto: "Reorganiza os horários e segue um novo plano", pesos: { CON: 3, PRE: 1 } },
+      { letra: "C", texto: "Confere o que mudou antes de decidir", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "D", texto: "Escolhe uma nova forma de resolver o dia", pesos: { PRE: 3, CON: 1 } }
+    ]
+  },
+  {
+    numero: 8,
+    enunciado: "Quando vai aprender algo que nunca fez, você prefere:",
+    opcoes: [
+      { letra: "A", texto: "Ver uma demonstração rápida e tentar", pesos: { ACT: 1 }, learn: "PRACTICE" },
+      { letra: "B", texto: "Fazer junto com alguém na primeira vez", pesos: { PRE: 1 }, learn: "LOGIC" },
+      { letra: "C", texto: "Entender a explicação antes de praticar", pesos: { AUT: 1 }, learn: "DISCOVERY" },
+      { letra: "D", texto: "Receber o objetivo e experimentar caminhos", pesos: { COM: 1 }, learn: "GUIDED" }
+    ]
+  },
+  {
+    numero: 9,
+    enunciado: "Se percebe uma forma diferente de fazer uma atividade, você:",
+    opcoes: [
+      { letra: "A", texto: "Testa a ideia assim que possível", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "B", texto: "Conversa com alguém sobre a possibilidade", pesos: { PRE: 3, AUT: 1 } },
+      { letra: "C", texto: "Confere se a mudança não atrapalha outras etapas", pesos: { CON: 3, PRE: 1 } },
+      { letra: "D", texto: "Experimenta de forma independente", pesos: { COM: 2, PRE: 1 } }
+    ]
+  },
+  {
+    numero: 10,
+    enunciado: "Quando percebe que não avançou como esperava em um objetivo pessoal, você:",
+    opcoes: [
+      { letra: "A", texto: "Faz outra tentativa sem demorar", pesos: { ACT: 3, RES: 1 } },
+      { letra: "B", texto: "Analisa o que precisa mudar", pesos: { PRE: 3, RES: 1 } },
+      { letra: "C", texto: "Retoma uma rotina para continuar", pesos: { CON: 3, RES: 1 } },
+      { letra: "D", texto: "Busca uma estratégia nova", pesos: { COM: 3, RES: 1 } }
+    ]
+  },
+  {
+    numero: 11,
+    enunciado: "Em um grupo de estudo ou atividade coletiva, você costuma:",
+    opcoes: [
+      { letra: "A", texto: "Começar a movimentar o grupo", pesos: { COM: 3, ACT: 1 } },
+      { letra: "B", texto: "Conversar para aproximar as pessoas", pesos: { CON: 3, PRE: 1 } },
+      { letra: "C", texto: "Ajudar a manter as tarefas combinadas", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "D", texto: "Preferir uma parte que possa resolver sozinho", pesos: { PRE: 3, AUT: 1 } }
+    ]
+  },
+  {
+    numero: 12,
+    enunciado: "Quando uma instrução parece complicada demais, você:",
+    opcoes: [
+      { letra: "A", texto: "Começa pelo que já entendeu", pesos: { CON: 2, COM: 1 } },
+      { letra: "B", texto: "Pede para alguém explicar de outro jeito", pesos: { AUT: 3, ACT: 1 } },
+      { letra: "C", texto: "Reorganiza as etapas por escrito", pesos: { PRE: 3, AUT: 1 } },
+      { letra: "D", texto: "Procura um caminho diferente que cumpra o objetivo", pesos: { ACT: 3, AUT: 1 } }
+    ]
+  },
+  {
+    numero: 13,
+    enunciado: "Quando alguém aponta algo que você pode melhorar, você:",
+    opcoes: [
+      { letra: "A", texto: "Tenta aplicar a mudança na próxima oportunidade", pesos: { RES: 3, CON: 1 } },
+      { letra: "B", texto: "Pergunta para entender melhor a observação", pesos: { PRE: 3, RES: 1 } },
+      { letra: "C", texto: "Cria um jeito de lembrar da correção", pesos: { ACT: 3, RES: 1 } },
+      { letra: "D", texto: "Pensa sozinho em como ajustar sua forma de fazer", pesos: { COM: 3, RES: 1 } }
+    ]
+  },
+  {
+    numero: 14,
+    enunciado: "Quando tem várias coisas para fazer no mesmo dia, você:",
+    opcoes: [
+      { letra: "A", texto: "Começa pela que consegue resolver logo", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "B", texto: "Combina prioridades com quem estiver envolvido", pesos: { CON: 3, PRE: 1 } },
+      { letra: "C", texto: "Faz uma lista e segue uma ordem", pesos: { PRE: 3, AUT: 1 } },
+      { letra: "D", texto: "Define sozinho a sequência que faz sentido", pesos: { COM: 3, CON: 1 } }
+    ]
+  },
+  {
+    numero: 15,
+    enunciado: "Se precisa fazer algo sem receber um passo a passo completo, você:",
+    opcoes: [
+      { letra: "A", texto: "Começa pelo que está claro", pesos: { AUT: 3, ACT: 1 } },
+      { letra: "B", texto: "Conversa para esclarecer o necessário", pesos: { PRE: 2, CON: 2 } },
+      { letra: "C", texto: "Procura exemplos e confere detalhes", pesos: { ACT: 3, RES: 1 } },
+      { letra: "D", texto: "Escolhe um caminho e testa", pesos: { COM: 3, PRE: 1 } }
+    ]
+  },
+  {
+    numero: 16,
+    enunciado: "Quando precisa manter um hábito durante semanas, o que mais ajuda você?",
+    opcoes: [
+      { letra: "A", texto: "Perceber pequenos avanços", pesos: { ACT: 2, RES: 2 } },
+      { letra: "B", texto: "Compartilhar o compromisso com alguém", pesos: { COM: 3, ACT: 1 } },
+      { letra: "C", texto: "Ter dias e horários combinados", pesos: { CON: 3, RES: 1 } },
+      { letra: "D", texto: "Poder ajustar o hábito ao seu jeito", pesos: { PRE: 3, CON: 1 } }
+    ]
+  },
+  {
+    numero: 17,
+    enunciado: "Quando um exercício ou tarefa não funciona, você:",
+    opcoes: [
+      { letra: "A", texto: "Tenta de novo com rapidez", pesos: { RES: 3, ACT: 1 } },
+      { letra: "B", texto: "Pede outra perspectiva", pesos: { AUT: 2, ACT: 2 } },
+      { letra: "C", texto: "Revê os passos para achar a diferença", pesos: { PRE: 3, RES: 1 } },
+      { letra: "D", texto: "Testa uma abordagem própria", pesos: { CON: 3, RES: 1 } }
+    ]
+  },
+  {
+    numero: 18,
+    enunciado: "Ao explicar algo que aprendeu para um colega, você:",
+    opcoes: [
+      { letra: "A", texto: "Mostra logo como fazer", pesos: { COM: 3, PRE: 1 } },
+      { letra: "B", texto: "Conversa e usa exemplos próximos da pessoa", pesos: { ACT: 3, COM: 1 } },
+      { letra: "C", texto: "Explica seguindo uma ordem", pesos: { CON: 3, PRE: 1 } },
+      { letra: "D", texto: "Deixa a pessoa experimentar e orienta se necessário", pesos: { AUT: 2, PRE: 2 } }
+    ]
+  },
+  {
+    numero: 19,
+    enunciado: "Quando ninguém lembra você de uma atividade combinada, você:",
+    opcoes: [
+      { letra: "A", texto: "Começa assim que percebe que chegou a hora", pesos: { AUT: 3, CON: 1 } },
+      { letra: "B", texto: "Conversa com alguém para combinar o andamento", pesos: { PRE: 2, AUT: 2 } },
+      { letra: "C", texto: "Segue o horário que havia organizado", pesos: { CON: 3, AUT: 1 } },
+      { letra: "D", texto: "Decide o melhor momento e executa", pesos: { ACT: 3, AUT: 1 } }
+    ]
+  },
+  {
+    numero: 20,
+    enunciado: "Quando precisa escolher sem ter todas as informações, você:",
+    opcoes: [
+      { letra: "A", texto: "Decide com o que já sabe e ajusta depois", pesos: { ACT: 3, RES: 1 } },
+      { letra: "B", texto: "Pede opiniões para ampliar a visão", pesos: { AUT: 3, RES: 1 } },
+      { letra: "C", texto: "Procura confirmar os detalhes disponíveis", pesos: { PRE: 3, AUT: 1 } },
+      { letra: "D", texto: "Avalia as opções e decide por conta própria", pesos: { COM: 2, PRE: 1 } }
+    ]
+  },
+  {
+    numero: 21,
+    enunciado: "Quando consegue concluir algo antes do previsto, você:",
+    opcoes: [
+      { letra: "A", texto: "Procura logo outra coisa para avançar", pesos: { ACT: 3, RES: 1 } },
+      { letra: "B", texto: "Compartilha o resultado com alguém", pesos: { CON: 3, RES: 1 } },
+      { letra: "C", texto: "Mantém a organização das próximas etapas", pesos: { PRE: 3, CON: 1 } },
+      { letra: "D", texto: "Aproveita para experimentar uma ideia nova", pesos: { COM: 3, ACT: 1 } }
+    ]
+  },
+  {
+    numero: 22,
+    enunciado: "Quando alguém discorda de uma ideia sua, você:",
+    opcoes: [
+      { letra: "A", texto: "Propõe testar uma solução", pesos: { COM: 3, RES: 1 } },
+      { letra: "B", texto: "Procura entender o ponto de vista da pessoa", pesos: { RES: 2, AUT: 2 } },
+      { letra: "C", texto: "Compara as informações com calma", pesos: { PRE: 3, RES: 1 } },
+      { letra: "D", texto: "Reavalia sozinho e escolhe como seguir", pesos: { ACT: 3, AUT: 1 } }
+    ]
+  },
+  {
+    numero: 23,
+    enunciado: "Em uma atividade com várias etapas, você:",
+    opcoes: [
+      { letra: "A", texto: "Começa pela primeira e ganha ritmo", pesos: { PRE: 3, CON: 1 } },
+      { letra: "B", texto: "Combina quem fará cada parte", pesos: { CON: 3, PRE: 1 } },
+      { letra: "C", texto: "Confere a ordem para evitar esquecimentos", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "D", texto: "Organiza sua própria forma de executar", pesos: { AUT: 3, RES: 1 } }
+    ]
+  },
+  {
+    numero: 24,
+    enunciado: "Em um dia em que precisa falar com muitas pessoas, você:",
+    opcoes: [
+      { letra: "A", texto: "Resolve as conversas uma após a outra", pesos: { COM: 3, RES: 1 } },
+      { letra: "B", texto: "Aproveita para conhecer e trocar ideias", pesos: { CON: 3, RES: 1 } },
+      { letra: "C", texto: "Organiza os assuntos para não esquecer", pesos: { ACT: 3, COM: 1 } },
+      { letra: "D", texto: "Prefere decidir sozinho quando conversar com cada uma", pesos: { PRE: 2, COM: 2 } }
+    ]
+  },
+  {
+    numero: 25,
+    enunciado: "Quando um objetivo parece difícil, você:",
+    opcoes: [
+      { letra: "A", texto: "Começa por uma pequena ação imediatamente", pesos: { RES: 3, ACT: 1 } },
+      { letra: "B", texto: "Conversa para reunir ideias", pesos: { CON: 3, PRE: 1 } },
+      { letra: "C", texto: "Divide o objetivo em etapas regulares", pesos: { AUT: 3, RES: 1 } },
+      { letra: "D", texto: "Procura uma forma alternativa de chegar lá", pesos: { ACT: 3, RES: 1 } }
+    ]
+  },
+  {
+    numero: 26,
+    enunciado: "Quando percebe um erro em algo que fez, você:",
+    opcoes: [
+      { letra: "A", texto: "Corrige e tenta novamente", pesos: { ACT: 2, RES: 2 } },
+      { letra: "B", texto: "Pede uma opinião para entender melhor", pesos: { PRE: 3, RES: 1 } },
+      { letra: "C", texto: "Revisa o processo para evitar repetição", pesos: { CON: 3, PRE: 1 } },
+      { letra: "D", texto: "Descobre por conta própria outra maneira", pesos: { COM: 2, PRE: 1 } }
+    ]
+  },
+  {
+    numero: 27,
+    enunciado: "Quando tem liberdade para organizar uma tarde de atividades, você:",
+    opcoes: [
+      { letra: "A", texto: "Começa pelo que pode adiantar mais", pesos: { AUT: 3, ACT: 1 } },
+      { letra: "B", texto: "Combina parte do tempo com outras pessoas", pesos: { CON: 3, PRE: 1 } },
+      { letra: "C", texto: "Define uma rotina e segue", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "D", texto: "Monta seu próprio plano conforme os objetivos", pesos: { PRE: 3, AUT: 1 } }
+    ]
+  },
+  {
+    numero: 28,
+    enunciado: "Quando precisa explicar sua ideia a alguém que pensa diferente, você:",
+    opcoes: [
+      { letra: "A", texto: "Vai direto à proposta e sugere testar", pesos: { COM: 3, PRE: 1 } },
+      { letra: "B", texto: "Procura uma conexão com o que a pessoa pensa", pesos: { RES: 3, COM: 1 } },
+      { letra: "C", texto: "Organiza os argumentos com detalhes", pesos: { PRE: 3, COM: 1 } },
+      { letra: "D", texto: "Adapta a explicação do seu próprio jeito", pesos: { ACT: 3, COM: 1 } }
+    ]
+  },
+  {
+    numero: 29,
+    enunciado: "Quando mudam as regras de uma atividade, você:",
+    opcoes: [
+      { letra: "A", texto: "Começa a seguir o novo formato", pesos: { RES: 2, ACT: 2 } },
+      { letra: "B", texto: "Conversa para entender como os outros farão", pesos: { PRE: 3, AUT: 1 } },
+      { letra: "C", texto: "Lê as novas orientações com atenção", pesos: { CON: 3, PRE: 1 } },
+      { letra: "D", texto: "Descobre uma forma de se adaptar sozinho", pesos: { AUT: 3, RES: 1 } }
+    ]
+  },
+  {
+    numero: 30,
+    enunciado: "Se sobra um tempo para melhorar algo que você está aprendendo, você:",
+    opcoes: [
+      { letra: "A", texto: "Pratica mais uma vez", pesos: { ACT: 3, RES: 1 } },
+      { letra: "B", texto: "Troca ideias com alguém", pesos: { PRE: 3, RES: 1 } },
+      { letra: "C", texto: "Revisa o que ainda está confuso", pesos: { CON: 3, ACT: 1 } },
+      { letra: "D", texto: "Explora uma forma diferente de aprender", pesos: { COM: 3, ACT: 1 } }
+    ]
+  },
+  {
+    numero: 31,
+    enunciado: "Qual forma de aprender combina mais com você?",
+    opcoes: [
+      { letra: "A", texto: "Ver rapidamente e já tentar", pesos: { COM: 1 }, learn: "GUIDED" },
+      { letra: "B", texto: "Fazer junto com alguém na primeira vez", pesos: { PRE: 1 }, learn: "LOGIC" },
+      { letra: "C", texto: "Entender a lógica antes de executar", pesos: { AUT: 1 }, learn: "DISCOVERY" },
+      { letra: "D", texto: "Receber um objetivo e explorar caminhos", pesos: { CON: 1 }, learn: "PRACTICE" }
+    ]
+  },
+  {
+    numero: 32,
+    enunciado: "Quando está quase terminando uma atividade importante, você:",
+    opcoes: [
+      { letra: "A", texto: "Finaliza para liberar a próxima tarefa", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "B", texto: "Mostra para alguém e troca impressões", pesos: { PRE: 3, CON: 1 } },
+      { letra: "C", texto: "Faz uma última conferência", pesos: { CON: 3, PRE: 1 } },
+      { letra: "D", texto: "Decide sozinho se já está pronta", pesos: { AUT: 3, ACT: 1 } }
+    ]
+  },
+  {
+    numero: 33,
+    enunciado: "Quando várias coisas acontecem ao mesmo tempo, você:",
+    opcoes: [
+      { letra: "A", texto: "Escolhe uma ação e começa", pesos: { RES: 3, ACT: 1 } },
+      { letra: "B", texto: "Conversa para alinhar o que cada um fará", pesos: { ACT: 3, RES: 1 } },
+      { letra: "C", texto: "Organiza o que é mais urgente", pesos: { CON: 3, RES: 1 } },
+      { letra: "D", texto: "Define sua estratégia e segue", pesos: { PRE: 3, RES: 1 } }
+    ]
+  },
+  {
+    numero: 34,
+    enunciado: "Quando alguém ensina uma forma diferente de fazer algo, você aproveita melhor quando:",
+    opcoes: [
+      { letra: "A", texto: "Pode experimentar imediatamente", pesos: { PRE: 3, COM: 1 } },
+      { letra: "B", texto: "Pode conversar e fazer perguntas", pesos: { ACT: 3, AUT: 1 } },
+      { letra: "C", texto: "Recebe um exemplo com etapas claras", pesos: { COM: 3, RES: 1 } },
+      { letra: "D", texto: "Tem espaço para descobrir como aplicar", pesos: { CON: 3, PRE: 1 } }
+    ]
+  },
+  {
+    numero: 35,
+    enunciado: "Depois que já aprendeu uma atividade, você prefere:",
+    opcoes: [
+      { letra: "A", texto: "Receber um novo desafio", pesos: { AUT: 3, ACT: 1 } },
+      { letra: "B", texto: "Compartilhar o que aprendeu com outras pessoas", pesos: { PRE: 3, CON: 1 } },
+      { letra: "C", texto: "Continuar praticando até ficar consistente", pesos: { RES: 2, ACT: 2 } },
+      { letra: "D", texto: "Ter liberdade para escolher seu jeito de fazer", pesos: { CON: 3, PRE: 1 } }
+    ]
+  },
+  {
+    numero: 36,
+    enunciado: "Depois de uma semana em que algo foi difícil, você costuma:",
+    opcoes: [
+      { letra: "A", texto: "Recomeçar com uma nova tentativa", pesos: { RES: 3, ACT: 1 } },
+      { letra: "B", texto: "Conversar e trocar ideias sobre o que aconteceu", pesos: { PRE: 3, RES: 1 } },
+      { letra: "C", texto: "Rever o que funcionou e organizar a próxima semana", pesos: { CON: 3, RES: 1 } },
+      { letra: "D", texto: "Buscar novas possibilidades por conta própria", pesos: { COM: 3, RES: 1 } }
+    ]
+  }
+]
+
+export function isRoleOrCargoEstagio(roleOrCargo?: string | null): boolean {
+  if (!roleOrCargo) return false
+  const norm = roleOrCargo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+  return norm === "estagio" || norm === "estagiario" || norm.includes("estagio") || norm.includes("estagiario")
+}
+
+export function getQuestoesTeste(roleOrCargo?: string | null): Questao[] {
+  return isRoleOrCargoEstagio(roleOrCargo) ? QUESTOES_ESTAGIO : QUESTOES_TESTE
+}
+
 // 12 Pares de Consistência (Seção 6)
 export const PARES_CONSISTENCIA: [number, number][] = [
   [1, 32], [3, 17], [4, 23], [5, 19], [6, 28], [7, 29],

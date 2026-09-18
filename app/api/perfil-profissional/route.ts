@@ -22,19 +22,7 @@ export async function GET(request: Request) {
         console.error("[API Perfil Profissional GET all] Erro ao consultar tabela:", dbErr)
       }
 
-      const perfilMap = new Map<string, any>()
-      ;(dbRows || []).forEach(row => {
-        const calculado = calcularPerfil(row.respostas || {}, row.usuario_nome)
-        perfilMap.set(row.user_id, {
-          versao: row.versao_instrumento || "v1.0",
-          dataConclusao: row.updated_at || row.created_at,
-          respostas: row.respostas,
-          calculado,
-          checkpoint: row.checkpoint_lider || null
-        })
-      })
-
-      // 2. Buscar usuários cadastrados no Auth para montar a listagem
+      // 1. Buscar usuários cadastrados no Auth para montar a listagem
       let users: any[] = []
       let page = 1
       const perPage = 1000
@@ -46,6 +34,25 @@ export async function GET(request: Request) {
         if (pageUsers.length < perPage) break
         page++
       }
+
+      const userRoleMap = new Map<string, string>()
+      users.forEach(u => {
+        const role = u.user_metadata?.funcao || u.user_metadata?.role || ""
+        userRoleMap.set(u.id, role)
+      })
+
+      const perfilMap = new Map<string, any>()
+      ;(dbRows || []).forEach(row => {
+        const role = userRoleMap.get(row.user_id) || ""
+        const calculado = calcularPerfil(row.respostas || {}, row.usuario_nome, role)
+        perfilMap.set(row.user_id, {
+          versao: row.versao_instrumento || "v1.0",
+          dataConclusao: row.updated_at || row.created_at,
+          respostas: row.respostas,
+          calculado,
+          checkpoint: row.checkpoint_lider || null
+        })
+      })
 
       const perfis = users
         .filter(u => {
@@ -113,7 +120,8 @@ export async function GET(request: Request) {
       }
 
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
-      const calculado = calcularPerfil(dbRow.respostas || {}, dbRow.usuario_nome)
+      const userRole = userData?.user?.user_metadata?.funcao || userData?.user?.user_metadata?.role || ""
+      const calculado = calcularPerfil(dbRow.respostas || {}, dbRow.usuario_nome, userRole)
 
       const perfil = {
         versao: dbRow.versao_instrumento || "v1.0",
@@ -157,8 +165,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "Usuário não encontrado" }, { status: 404 })
       }
 
+      const role = body.role || userData.user.user_metadata?.funcao || userData.user.user_metadata?.role || ""
       const nome = nomeUsuario || userData.user.user_metadata?.nome || userData.user.email?.split("@")[0] || "Colaborador"
-      const perfilCalculado = calcularPerfil(respostas, nome)
+      const perfilCalculado = calcularPerfil(respostas, nome, role)
 
       // Persiste com exclusividade na tabela perfil_profissional
       const { error: upsertErr } = await supabaseAdmin.from("perfil_profissional").upsert(

@@ -58,7 +58,7 @@ export async function GET(request: Request) {
 
       let perfilCalculado = null
       if (c.status === "concluido" && c.respostas && Object.keys(c.respostas).length > 0) {
-        perfilCalculado = calcularPerfil(c.respostas, c.nome)
+        perfilCalculado = calcularPerfil(c.respostas, c.nome, c.cargo_pretendido)
       }
 
       return {

@@ -4,6 +4,8 @@ import {
   ArquetipoNome,
   ModoAprendizagem,
   QUESTOES_TESTE,
+  Questao,
+  getQuestoesTeste,
   ARQUETIPOS_MAP,
   ARQUETIPO_INFO,
   DICIONARIO_DIMENSOES,
@@ -64,13 +66,23 @@ export function classificarScore(score: number): FaixaScore {
   return "Muito alta"
 }
 
-export function calcularPerfil(respostas: Record<number, string>, nomeUsuario: string = "Colaborador"): PerfilCalculado {
+export function calcularPerfil(
+  respostas: Record<number, string>,
+  nomeUsuario: string = "Colaborador",
+  questoesOuCargo?: Questao[] | string
+): PerfilCalculado {
+  const questoes = Array.isArray(questoesOuCargo)
+    ? questoesOuCargo
+    : typeof questoesOuCargo === "string"
+    ? getQuestoesTeste(questoesOuCargo)
+    : QUESTOES_TESTE
+
   const rawScores: Record<DimensaoCodigo, number> = { ACT: 0, COM: 0, CON: 0, PRE: 0, RES: 0, AUT: 0 }
   const minPossible: Record<DimensaoCodigo, number> = { ACT: 0, COM: 0, CON: 0, PRE: 0, RES: 0, AUT: 0 }
   const maxPossible: Record<DimensaoCodigo, number> = { ACT: 0, COM: 0, CON: 0, PRE: 0, RES: 0, AUT: 0 }
 
   // 1. Min/Max e soma de Raw
-  QUESTOES_TESTE.forEach(q => {
+  questoes.forEach(q => {
     const dimValores: Record<DimensaoCodigo, number[]> = { ACT: [], COM: [], CON: [], PRE: [], RES: [], AUT: [] }
 
     q.opcoes.forEach(opt => {
@@ -139,8 +151,8 @@ export function calcularPerfil(respostas: Record<number, string>, nomeUsuario: s
   const resumo = `${parInfoPrimario.essencia} Sua tendência secundária acrescenta ${parInfoSecundario.forcas.toLowerCase()}, combinando ${leituraComb}.`
 
   // 4. Modo de Aprendizagem (Q08 e Q31)
-  const learn8 = QUESTOES_TESTE.find(q => q.numero === 8)?.opcoes.find(o => o.letra === respostas[8])?.learn
-  const learn31 = QUESTOES_TESTE.find(q => q.numero === 31)?.opcoes.find(o => o.letra === respostas[31])?.learn
+  const learn8 = questoes.find(q => q.numero === 8)?.opcoes.find(o => o.letra === respostas[8])?.learn
+  const learn31 = questoes.find(q => q.numero === 31)?.opcoes.find(o => o.letra === respostas[31])?.learn
 
   let modoAprendizagem: ModoAprendizagem = "PRACTICE"
   if (learn8 && learn31 && learn8 === learn31) {
@@ -167,8 +179,8 @@ export function calcularPerfil(respostas: Record<number, string>, nomeUsuario: s
   // 5. Consistência das Respostas (Seção 6)
   let consistenciaPontos = 0
   PARES_CONSISTENCIA.forEach(([qA, qB]) => {
-    const itemA = QUESTOES_TESTE.find(q => q.numero === qA)
-    const itemB = QUESTOES_TESTE.find(q => q.numero === qB)
+    const itemA = questoes.find(q => q.numero === qA)
+    const itemB = questoes.find(q => q.numero === qB)
     const optA = itemA?.opcoes.find(o => o.letra === respostas[qA])
     const optB = itemB?.opcoes.find(o => o.letra === respostas[qB])
     if (!optA || !optB) return

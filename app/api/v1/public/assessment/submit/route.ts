@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { calcularPerfil } from "@/lib/perfil-profissional"
-import { QUESTOES_TESTE } from "@/lib/perfil-profissional-data"
+import { getQuestoesTeste } from "@/lib/perfil-profissional-data"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { fallbackCandidatosStore } from "@/lib/candidatos-store"
 
@@ -43,33 +43,16 @@ export async function POST(request: Request) {
       )
     }
 
-    // 3. Validação das 36 questões
-    const questoesRespondidas = Object.keys(respostas).filter(k => {
-      const num = parseInt(k, 10)
-      const val = respostas[k]
-      return !isNaN(num) && num >= 1 && num <= QUESTOES_TESTE.length && ["A", "B", "C", "D"].includes(val)
-    })
-
-    if (questoesRespondidas.length < QUESTOES_TESTE.length) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `É obrigatório responder a todas as ${QUESTOES_TESTE.length} questões do teste. (${questoesRespondidas.length}/${QUESTOES_TESTE.length} respondidas)`
-        },
-        { status: 400 }
-      )
-    }
-
     const supabaseAdmin = createAdminClient()
 
-    // 4. Busca registro exclusivo atrelado ao token
+    // 3. Busca registro exclusivo atrelado ao token
     let candidato: any = null
     let usingFallback = false
 
     try {
       const { data, error: fetchErr } = await supabaseAdmin
         .from("perfil_candidatos")
-        .select("id, nome, email, status, utilizado, data_expiracao")
+        .select("id, nome, email, cargo_pretendido, status, utilizado, data_expiracao")
         .eq("token_acesso", token)
         .maybeSingle()
 
@@ -92,6 +75,24 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { success: false, error: "Convite de avaliação não encontrado." },
         { status: 404 }
+      )
+    }
+
+    // 4. Validação das 36 questões para o cargo do candidato
+    const listaQuestoes = getQuestoesTeste(candidato.cargo_pretendido)
+    const questoesRespondidas = Object.keys(respostas).filter(k => {
+      const num = parseInt(k, 10)
+      const val = respostas[k]
+      return !isNaN(num) && num >= 1 && num <= listaQuestoes.length && ["A", "B", "C", "D"].includes(val)
+    })
+
+    if (questoesRespondidas.length < listaQuestoes.length) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `É obrigatório responder a todas as ${listaQuestoes.length} questões do teste. (${questoesRespondidas.length}/${listaQuestoes.length} respondidas)`
+        },
+        { status: 400 }
       )
     }
 
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
     }
 
     // 6. Cálculo psicométrico completo no backend
-    const perfilCalculado = calcularPerfil(respostas, candidato.nome)
+    const perfilCalculado = calcularPerfil(respostas, candidato.nome, listaQuestoes)
 
     // 7. Atualização atômica marcando como concluído e invalidando o token
     if (!usingFallback) {
