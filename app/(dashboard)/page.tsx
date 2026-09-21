@@ -1025,15 +1025,6 @@ export default function DashboardPage() {
               })
           const teamIds = team.map((m: User) => m.id)
 
-          // Fetch proposals for the team (or all if admin/operational/monitoramento)
-          let teamProposalsQuery = supabase
-            .from("propostas")
-            .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
-
-          if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos || isUserMonitoramento)) {
-            teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${teamIds.join(",")}),estagiario_colaborador_id.in.(${teamIds.join(",")})`)
-          }
-
           // Ensure we always fetch at least the full current month for MTD calculations, and the week and month of the selected filter to avoid missing entries
           const datesToCompare = [startOfCurrentMonth, targetMonthStart, targetWeekStart]
           if (customStart) datesToCompare.push(customStart)
@@ -1042,15 +1033,40 @@ export default function DashboardPage() {
           
           const activeStatuses = Array.from(new Set([...inProcessStatuses, ...opStatuses]))
           const activeStatusFilters = activeStatuses.map(s => `status.eq."${s}"`).join(",")
-          teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte."${queryStart}",created_at.gte."${queryStart}",${activeStatusFilters}`)
-        
-        if (customEnd) {
-          // If we have an end date, we should also limit the range if possible, 
-          // but careful with OR logic as it's complex in Supabase JS client.
-          // For now, fetching everything from queryStart onwards and filtering in memory is safer for complex multi-field ranges.
-        }
 
-        const teamProposals = await fetchAll(teamProposalsQuery)
+          // Fetch proposals for the team (or all if admin/operational/monitoramento) with graceful fallback if intervention columns do not exist yet in DB
+          let teamProposals: any[] = []
+          try {
+            let teamProposalsQuery = supabase
+              .from("propostas")
+              .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome, intervencao_operacional, intervencao_operacional_id, intervencao_operacional_nome")
+
+            if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos || isUserMonitoramento)) {
+              if (teamIds.length > 0) {
+                teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${teamIds.join(",")}),estagiario_colaborador_id.in.(${teamIds.join(",")}),intervencao_operacional_id.in.(${teamIds.join(",")})`)
+              }
+            }
+
+            teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte."${queryStart}",created_at.gte."${queryStart}",${activeStatusFilters}`)
+            teamProposals = await fetchAll(teamProposalsQuery)
+          } catch (colErr: any) {
+            if (colErr?.code === '42703' || colErr?.message?.includes('intervencao_operacional') || colErr?.message?.includes('column')) {
+              let fallbackQuery = supabase
+                .from("propostas")
+                .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
+
+              if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos || isUserMonitoramento)) {
+                if (teamIds.length > 0) {
+                  fallbackQuery = fallbackQuery.or(`corretor_id.in.(${teamIds.join(",")}),estagiario_colaborador_id.in.(${teamIds.join(",")})`)
+                }
+              }
+
+              fallbackQuery = fallbackQuery.or(`updated_at.gte."${queryStart}",created_at.gte."${queryStart}",${activeStatusFilters}`)
+              teamProposals = await fetchAll(fallbackQuery)
+            } else {
+              throw colErr
+            }
+          }
 
         // Fetch approved tickets for selected period (or current month fallback) to populate intern/PJ ranking columns
         const approvedTicketsStart = customStart || targetMonthStart
@@ -1157,7 +1173,10 @@ export default function DashboardPage() {
           status: string, 
           data_pago_cliente?: string,
           estagiario_colaborador_id?: string,
-          estagiario_colaborador_nome?: string
+          estagiario_colaborador_nome?: string,
+          intervencao_operacional?: boolean,
+          intervencao_operacional_id?: string,
+          intervencao_operacional_nome?: string
         }) => {
           const numericVal = isNaN(parseCurrency(curr.valor_producao)) ? 0 : parseCurrency(curr.valor_producao)
           const rawOpVal = (curr.valor_operacao !== null && curr.valor_operacao !== undefined && curr.valor_operacao !== "") ? curr.valor_operacao : curr.valor_producao
@@ -1180,10 +1199,17 @@ export default function DashboardPage() {
                            brokerUser?.funcao === 'PROCESSO SELETIVO'
           // List of beneficiary user IDs that should receive credit for this proposal in brokerMetrics:
           // Both the primary broker (brokerId) and the intern/collaborator (if present) get full credit.
+          // In case of operational intervention, 50% of the meta goes to the broker and 50% to the operational.
           const beneficiaryIds: string[] = []
           if (brokerId) beneficiaryIds.push(brokerId)
           if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== brokerId) {
             beneficiaryIds.push(curr.estagiario_colaborador_id.trim())
+          }
+          if (curr.intervencao_operacional && curr.intervencao_operacional_id && curr.intervencao_operacional_id.trim() !== "") {
+            const opId = curr.intervencao_operacional_id.trim()
+            if (!beneficiaryIds.includes(opId)) {
+              beneficiaryIds.push(opId)
+            }
           }
           const targetBrokerIdForColabs = brokerId
           
@@ -1301,19 +1327,23 @@ export default function DashboardPage() {
           }
 
           if (isPaid && isMTDPaid) {
+            const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
             const isMatchUser = beneficiaryIds.includes(perfil?.id || '')
             if (isMatchUser) {
-              userMTDTotal += cardVal
+              const fraction = hasIntervention ? 0.5 : 1.0
+              userMTDTotal += (cardVal * fraction)
             }
           }
 
           if (isPaid && isPaidInRange) {
+            const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
             beneficiaryIds.forEach((bId) => {
               if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
               const bUser = allUsers.find((u: User) => u.id === bId)
               const bIsPJ = checkUserPJ(bUser)
-              const bVal = bIsPJ ? pjCalculatedVal : numericVal
-              const bRawVal = bIsPJ ? numericValOp : numericVal
+              const factor = hasIntervention ? 0.5 : 1.0
+              const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
+              const bRawVal = (bIsPJ ? numericValOp : numericVal) * factor
 
               if (brokerMetrics[bId]) {
                 brokerMetrics[bId].totalPaid += bVal
@@ -1336,12 +1366,14 @@ export default function DashboardPage() {
           }
 
           if (isEffectiveInProcess) {
+            const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
             beneficiaryIds.forEach((bId) => {
               if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
               const bUser = allUsers.find((u: User) => u.id === bId)
               const bIsPJ = checkUserPJ(bUser)
-              const bVal = bIsPJ ? pjCalculatedVal : numericVal
-              const bRawVal = bIsPJ ? numericValOp : numericVal
+              const factor = hasIntervention ? 0.5 : 1.0
+              const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
+              const bRawVal = (bIsPJ ? numericValOp : numericVal) * factor
 
               if (brokerMetrics[bId]) {
                 brokerMetrics[bId].totalInProcess += bVal
@@ -1369,12 +1401,14 @@ export default function DashboardPage() {
           }
 
           if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
+            const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
             beneficiaryIds.forEach((bId) => {
               if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
               const bUser = allUsers.find((u: User) => u.id === bId)
               const bIsPJ = checkUserPJ(bUser)
-              const bVal = bIsPJ ? pjCalculatedVal : numericVal
-              const bRawVal = bIsPJ ? numericValOp : numericVal
+              const factor = hasIntervention ? 0.5 : 1.0
+              const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
+              const bRawVal = (bIsPJ ? numericValOp : numericVal) * factor
 
               if (brokerMetrics[bId]) {
                 brokerMetrics[bId].totalToday += bVal
@@ -1621,21 +1655,42 @@ export default function DashboardPage() {
 
         setRankings(sortedRankings)
       } else {
-        let rankingQuery = supabase
-          .from("propostas")
-          .select("corretor_id, valor_producao, updated_at, data_pago_cliente")
-          .in("status", paidStatuses)
-          .gte("updated_at", filterStartISO)
-        
-        if (customEnd) {
-          rankingQuery = rankingQuery.lte("updated_at", customEnd.toISOString())
-        }
+        let allPaid: any[] = []
+        try {
+          let rankingQuery = supabase
+            .from("propostas")
+            .select("corretor_id, valor_producao, updated_at, data_pago_cliente, intervencao_operacional, intervencao_operacional_id")
+            .in("status", paidStatuses)
+            .gte("updated_at", filterStartISO)
+          
+          if (customEnd) {
+            rankingQuery = rankingQuery.lte("updated_at", customEnd.toISOString())
+          }
 
-        const allPaid = await fetchAll(rankingQuery)
+          allPaid = await fetchAll(rankingQuery)
+        } catch (rErr: any) {
+          if (rErr?.code === '42703' || rErr?.message?.includes('intervencao_operacional') || rErr?.message?.includes('column')) {
+            let fallbackRanking = supabase
+              .from("propostas")
+              .select("corretor_id, valor_producao, updated_at, data_pago_cliente")
+              .in("status", paidStatuses)
+              .gte("updated_at", filterStartISO)
+            
+            if (customEnd) {
+              fallbackRanking = fallbackRanking.lte("updated_at", customEnd.toISOString())
+            }
+
+            allPaid = await fetchAll(fallbackRanking)
+          } else {
+            throw rErr
+          }
+        }
         const aggregated = allPaid.reduce((acc: Record<string, number>, curr) => {
           const val = parseCurrency(curr.valor_producao)
           const id = curr.corretor_id || "unknown"
-          
+          const hasInterv = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
+          const factor = hasInterv ? 0.5 : 1.0
+
           const userInList = allUsers.find((u: User) => u.id === id)
           if (userInList?.status?.toUpperCase() === 'INATIVO') {
             return acc
@@ -1645,10 +1700,6 @@ export default function DashboardPage() {
                                userInList?.funcao === 'Estagio' ||
                                userInList?.funcao === 'Processo Seletivo' ||
                                userInList?.funcao === 'PROCESSO SELETIVO'
-
-          if (isUserIntern) {
-            return acc
-          }
 
           // For Corretor ranking (when not admin/supervisor), check range here too if needed
           // but normally the query handles it. Let's respect data_pago_cliente if it ever gets used here.
@@ -1660,7 +1711,14 @@ export default function DashboardPage() {
           if (!customStart && !customEnd && effectiveDate < startOfMonth) inRange = false
 
           if (inRange) {
-            acc[id] = (acc[id] || 0) + (isNaN(val) ? 0 : val)
+            if (!isUserIntern) {
+              acc[id] = (acc[id] || 0) + ((isNaN(val) ? 0 : val) * factor)
+            }
+            // Se houve intervenção operacional, atribui os 50% ao operacional
+            if (hasInterv && curr.intervencao_operacional_id) {
+              const opId = curr.intervencao_operacional_id
+              acc[opId] = (acc[opId] || 0) + ((isNaN(val) ? 0 : val) * 0.5)
+            }
           }
           return acc
         }, {})
@@ -2187,8 +2245,8 @@ export default function DashboardPage() {
         console.error("Error fetching interviews for dashboard:", err)
       }
 
-    } catch (error) {
-      console.error("Erro dashboard:", error)
+    } catch (error: any) {
+      console.error("Erro dashboard:", error?.message || error?.details || error)
     } finally {
       setIsLoading(false)
     }

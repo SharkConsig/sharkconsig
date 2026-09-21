@@ -23,7 +23,8 @@ import {
   RefreshCw,
   Eraser,
   FileSpreadsheet,
-  Copy
+  Copy,
+  GitFork
 } from "lucide-react"
 import {
   Popover,
@@ -35,6 +36,7 @@ import { cn } from "@/lib/utils"
 import { ProposalDetailsAccordion } from "@/components/propostas/proposal-details-accordion"
 import { StatusPropostaModal } from "@/components/propostas/status-proposta-modal"
 import { TransferirPropostaModal } from "@/components/propostas/transferir-proposta-modal"
+import { IntervencaoOperacionalModal } from "@/components/propostas/intervencao-operacional-modal"
 import { toast } from "react-hot-toast"
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
@@ -143,6 +145,13 @@ interface Proposal {
   data_consulta?: string
   data_digitacao?: string
   data_pago_cliente?: string
+  intervencao_operacional?: boolean
+  intervencao_operacional_id?: string
+  intervencao_operacional_nome?: string
+  intervencao_motivo?: string
+  intervencao_data?: string
+  intervencao_autor_id?: string
+  intervencao_autor_nome?: string
   updated_at?: string
   created_at: string
 }
@@ -230,8 +239,10 @@ export default function ProposalsPage() {
   const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null)
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false)
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
+  const [isInterventionModalOpen, setIsInterventionModalOpen] = useState(false)
   const [selectedProposalForStatus, setSelectedProposalForStatus] = useState<Proposal | null>(null)
   const [selectedProposalForTransfer, setSelectedProposalForTransfer] = useState<Proposal | null>(null)
+  const [selectedProposalForIntervention, setSelectedProposalForIntervention] = useState<Proposal | null>(null)
   const [isCloning, setIsCloning] = useState<string | null>(null)
   const [dbEstagiarios, setDbEstagiarios] = useState<{ id: string; nome: string }[]>([])
 
@@ -1616,6 +1627,26 @@ export default function ProposalsPage() {
                               >
                                 <Eye className="w-[13px] h-[13px]" />
                               </Button>
+                              {selectedStatus !== "CANCELADOS" && (isAdmin || isDeveloper || isOperational || isSupervisor) && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    setSelectedProposalForIntervention(proposal)
+                                    setIsInterventionModalOpen(true)
+                                  }}
+                                  className={cn(
+                                    "w-[28px] h-[28px] rounded-lg p-1.5 group/btn transition-all shadow-sm hover:shadow-md active:scale-95 text-white",
+                                    proposal.intervencao_operacional 
+                                      ? "bg-purple-600 hover:bg-purple-700 ring-2 ring-purple-300" 
+                                      : "bg-indigo-500 hover:bg-indigo-600"
+                                  )}
+                                  title={proposal.intervencao_operacional ? `INTERVENÇÃO ATIVA: ${proposal.intervencao_operacional_nome || 'Operacional'}` : "REGISTRAR INTERVENÇÃO OPERACIONAL (50/50)"}
+                                >
+                                  <GitFork className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
                               {selectedStatus !== "CANCELADOS" && (isAdmin || isDeveloper || isOperational) && (
                                 <Button 
                                   variant="ghost" 
@@ -1810,6 +1841,13 @@ export default function ProposalsPage() {
         onClose={() => setIsTransferModalOpen(false)}
         proposal={selectedProposalForTransfer}
         onTransferComplete={fetchProposals}
+      />
+
+      <IntervencaoOperacionalModal
+        isOpen={isInterventionModalOpen}
+        onClose={() => setIsInterventionModalOpen(false)}
+        proposal={selectedProposalForIntervention}
+        onSuccess={fetchProposals}
       />
     </div>
   )

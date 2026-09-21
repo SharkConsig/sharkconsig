@@ -3,10 +3,11 @@
 import Image from "next/image"
 import { useState, useEffect, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X, Copy } from "lucide-react"
+import { Eye, History, FileText, Save, Loader2, Search, ChevronDown, UploadCloud, X, Copy, GitFork } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { FichaPropostaModal } from "./ficha-proposta-modal"
 import { FilePreviewModal } from "./file-preview-modal"
+import { IntervencaoOperacionalModal } from "./intervencao-operacional-modal"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
@@ -101,6 +102,13 @@ interface Proposal {
   arquivo_outros_2?: string
   arquivo_outros_3?: string
   arquivo_outros_4?: string
+  intervencao_operacional?: boolean
+  intervencao_operacional_id?: string
+  intervencao_operacional_nome?: string
+  intervencao_motivo?: string
+  intervencao_data?: string
+  intervencao_autor_id?: string
+  intervencao_autor_nome?: string
 }
 
 interface Regra {
@@ -184,6 +192,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
   const [activeTab, setActiveTab] = useState<"visualizar" | "historico" | "anexos">("visualizar")
   const [isFichaModalOpen, setIsFichaModalOpen] = useState(false)
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
+  const [isInterventionModalOpen, setIsInterventionModalOpen] = useState(false)
   const [previewData, setPreviewData] = useState<{ url: string; label: string; extension: string }>({
     url: "",
     label: "",
@@ -1350,6 +1359,22 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               <UploadCloud className="w-3.5 h-3.5 mr-2" />
               Anexos
             </Button>
+
+            {(isAdmin || isDeveloper || isOperational || isSupervisor) && (
+              <Button 
+                onClick={() => setIsInterventionModalOpen(true)}
+                className={cn(
+                  "h-8 px-4 text-[10px] font-bold uppercase tracking-widest shadow-md transition-all flex items-center gap-1.5 text-white",
+                  proposal.intervencao_operacional 
+                    ? "bg-purple-600 hover:bg-purple-700 ring-2 ring-purple-300" 
+                    : "bg-indigo-600 hover:bg-indigo-700"
+                )}
+                title="Redistribuir 50% da produção meta com o Operacional"
+              >
+                <GitFork className="w-3.5 h-3.5 mr-1 text-amber-300" />
+                {proposal.intervencao_operacional ? "INTERVENÇÃO (50/50 ATIVA)" : "INTERVENÇÃO OPERACIONAL"}
+              </Button>
+            )}
 
             {(proposal.status === "CANCELADO" || proposal.status?.toUpperCase().includes("CANCELAD")) && (
               <Button 
@@ -2705,6 +2730,15 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           )}
         </div>
       )}
+
+      <IntervencaoOperacionalModal
+        isOpen={isInterventionModalOpen}
+        onClose={() => setIsInterventionModalOpen(false)}
+        proposal={proposal}
+        onSuccess={() => {
+          if (_onRefresh) _onRefresh()
+        }}
+      />
 
     </div>
   )
