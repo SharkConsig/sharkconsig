@@ -496,9 +496,22 @@ interface Interview {
   tipo?: string
 }
 
+const isUserAdminRole = (u?: User | null) => {
+  if (!u) return false
+  const r = (u.role || "").trim().toLowerCase()
+  const f = (u.funcao || "").trim().toLowerCase()
+  const email = (u.email || "").trim().toLowerCase()
+  return r === 'administrador' || r === 'admin' || r === 'desenvolvedor' || f === 'administrador' || f === 'admin' || f === 'desenvolvedor' || ['souendrionovo@gmail.com', 'acertofacilpromotoradecredito@gmail.com'].includes(email)
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { user, perfil, isCorretor, isAdmin, isOperational, isDeveloper, isRecursosHumanos } = useAuth()
+  const userRoleNormalized = (perfil?.role || "").trim().toLowerCase()
+  const isUserMonitoramento = userRoleNormalized === 'monitoramento'
+  const isUserSupervisor = userRoleNormalized === 'supervisor'
+  const isUserOperacional = userRoleNormalized === 'operacional' || userRoleNormalized === 'administrativo'
+  const isUserAdmin = isAdmin || userRoleNormalized === 'administrador' || userRoleNormalized === 'admin' || userRoleNormalized === 'desenvolvedor'
   const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO' || isAdmin || isDeveloper
   const isEstagio = perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || perfil?.role?.toLowerCase() === 'pj' || perfil?.id === '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639'
@@ -739,12 +752,28 @@ export default function DashboardPage() {
         if (!goalsError && goalsConfigs && goalsConfigs.length > 0) {
           const targetSupervisorId = isSupervisor ? perfil?.id : perfil?.supervisor_id
 
-          if (isSupervisor || isOperational || isAdmin || isDeveloper) {
-            // Se for supervisor, operacional, admin ou dev, a sua meta principal ("monthlyGoal") é a meta de time da sua própria equipe
+          if (isUserSupervisor) {
+            // Se for supervisor, a meta principal é a meta de time da sua própria equipe
+            let teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time' && g.alvo_id === perfil?.id)
+            if (!teamGoalConfig) {
+              teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time')
+            }
+            if (teamGoalConfig) {
+              calculatedMonthlyGoal = teamGoalConfig.valor_mensal
+            }
+          } else if (isUserMonitoramento) {
+            // Monitoramento busca meta própria ou meta de time
+            let monGoalConfig = goalsConfigs.find(g => g.alvo_id === perfil?.id)
+            if (!monGoalConfig) {
+              monGoalConfig = goalsConfigs.find(g => g.tipo === 'time')
+            }
+            if (monGoalConfig) {
+              calculatedMonthlyGoal = monGoalConfig.valor_mensal
+            }
+          } else if (isSupervisor || isOperational || isAdmin || isDeveloper) {
+            // Se for operacional, admin ou dev
             let teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time' && g.alvo_id === targetSupervisorId)
             if (!teamGoalConfig) {
-              // Se não encontrou uma meta de time para o seu próprio ID (caso do Admin, Developer ou Operacional),
-              // tentaremos encontrar qualquer meta de time para o mês
               teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time')
             }
             if (teamGoalConfig) {
@@ -969,28 +998,39 @@ export default function DashboardPage() {
         
         let sortedRankings: RankingItem[] = []
 
-        if (targetSupervisorId || isAdmin || isOperational || isDeveloper || isRecursosHumanos) {
+        if (targetSupervisorId || isAdmin || isOperational || isDeveloper || isRecursosHumanos || isUserMonitoramento) {
           const team = (isAdmin || isOperational || isDeveloper || isRecursosHumanos)
             ? allUsers.filter((u: User) => {
                 const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
                 const func = (u.funcao || "").trim().toLowerCase()
-                const isAllowedFuncao = ['corretor', 'supervisor', 'estágio', 'estagio', 'processo seletivo', 'gerente'].includes(func)
+                const isAllowedFuncao = ['corretor', 'supervisor', 'estágio', 'estagio', 'processo seletivo', 'gerente', 'administrador', 'admin', 'desenvolvedor', 'operacional'].includes(func) || isUserAdminRole(u)
                 return (isAllowedFuncao || isPJ) && u.status?.toUpperCase() !== 'INATIVO'
+              })
+            : isUserMonitoramento
+            ? allUsers.filter((u: User) => {
+                const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
+                if (isPJ) return false
+                if (isUserAdminRole(u)) return false
+                if (u.id === perfil?.id) return true
+                const func = (u.funcao || "").trim().toLowerCase()
+                return ['corretor', 'estágio', 'estagio', 'processo seletivo'].includes(func) && u.status?.toUpperCase() !== 'INATIVO'
               })
             : allUsers.filter((u: User) => {
                 const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
                 // Corretores PJ não contabilizam para a equipe do supervisor
                 if (isPJ) return false
+                // Administrador NÃO conta para a meta do supervisor
+                if (isUserAdminRole(u)) return false
                 return (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId) && u.status?.toUpperCase() !== 'INATIVO'
               })
           const teamIds = team.map((m: User) => m.id)
 
-          // Fetch proposals for the team (or all if admin/operational)
+          // Fetch proposals for the team (or all if admin/operational/monitoramento)
           let teamProposalsQuery = supabase
             .from("propostas")
             .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
 
-          if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos)) {
+          if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos || isUserMonitoramento)) {
             teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${teamIds.join(",")}),estagiario_colaborador_id.in.(${teamIds.join(",")})`)
           }
 
@@ -1188,8 +1228,79 @@ export default function DashboardPage() {
           const isPJBrokerCard = checkUserPJ(brokerUser)
           const cardVal = isPJBrokerCard ? pjCalculatedVal : numericVal
 
+          const isBrokerAdmin = isUserAdminRole(brokerUser)
+
+          // Regras de contabilização para a meta do usuário logado:
+          let countsForTeam = false
+          if (isUserAdmin || isUserOperacional || isAdmin || isOperational || isDeveloper || isRecursosHumanos) {
+            // Operacional e Administrador: todos os contratos pagos digitados na empresa inteira por qualquer usuário (incluindo Admin e PJ)
+            countsForTeam = true
+          } else if (isUserMonitoramento) {
+            // Monitoramento:
+            // - Contratos digitados pelo próprio Monitoramento;
+            // - Contratos digitados por todos os Corretores CLT, Estagiários e colaboradores em Processo Seletivo.
+            // - Contratos digitados pelo Administrador NÃO.
+            // - Corretores PJ NÃO.
+            if (!isBrokerAdmin && !isPJBrokerCard) {
+              const brokerFunc = (brokerUser?.funcao || "").trim().toLowerCase()
+              const isAllowedForMonitoramento = brokerId === perfil?.id || 
+                ['corretor', 'estágio', 'estagio', 'processo seletivo'].includes(brokerFunc) ||
+                (curr.estagiario_colaborador_id && teamIds.includes(curr.estagiario_colaborador_id))
+              if (isAllowedForMonitoramento) {
+                countsForTeam = true
+              }
+            }
+          } else {
+            // Supervisão (Supervisor):
+            // - Contratos digitados pelo próprio Supervisor;
+            // - Contratos digitados por todos os Corretores CLT, Estagiários e colaboradores em Processo Seletivo vinculados ao supervisor;
+            // - Contratos em que um membro da sua equipe foi indicado como colaborador/estagiário;
+            // - Contratos digitados pelo Administrador NÃO.
+            // - Corretores PJ NÃO.
+            if (!isBrokerAdmin && !isPJBrokerCard) {
+              const belongsToTeam = teamIds.includes(brokerId) || (curr.estagiario_colaborador_id && teamIds.includes(curr.estagiario_colaborador_id))
+              if (belongsToTeam) {
+                countsForTeam = true
+              }
+            }
+          }
+
+          if (countsForTeam) {
+            if (isPaid && isMTDPaid) {
+              teamMTDTotal += cardVal
+            }
+
+            if (isPaid && isPaidInRange) {
+              teamTotal += cardVal
+              if (isTodayPaid) teamDailyTotal += cardVal
+            }
+
+            if (isEffectiveInProcess) {
+              teamInProcessValueCalc += cardVal
+              teamInProcessCountCalc += 1
+              if (curr.status === "COM INCONSISTÊNCIA NO BANCO" || curr.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL") {
+                teamPendingInconsistencyValueCalc += cardVal
+                teamPendingInconsistencyCountCalc += 1
+              }
+            }
+
+            if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
+              teamCreatedTodayValue += cardVal
+              teamCreatedTodayCount += 1
+            }
+
+            if (isThisWeekCreated && !isCancelled && !isRetroactivePayment) {
+              teamCreatedWeekValue += cardVal
+              teamCreatedWeekCount += 1
+            }
+
+            if (isThisMonthCreated && !isCancelled && !isRetroactivePayment) {
+              teamCreatedMonthValue += cardVal
+              teamCreatedMonthCount += 1
+            }
+          }
+
           if (isPaid && isMTDPaid) {
-            teamMTDTotal += cardVal
             const isMatchUser = beneficiaryIds.includes(perfil?.id || '')
             if (isMatchUser) {
               userMTDTotal += cardVal
@@ -1197,10 +1308,8 @@ export default function DashboardPage() {
           }
 
           if (isPaid && isPaidInRange) {
-            teamTotal += cardVal
-            if (isTodayPaid) teamDailyTotal += cardVal
-            
             beneficiaryIds.forEach((bId) => {
+              if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
               const bUser = allUsers.find((u: User) => u.id === bId)
               const bIsPJ = checkUserPJ(bUser)
               const bVal = bIsPJ ? pjCalculatedVal : numericVal
@@ -1227,13 +1336,8 @@ export default function DashboardPage() {
           }
 
           if (isEffectiveInProcess) {
-            teamInProcessValueCalc += cardVal
-            teamInProcessCountCalc += 1
-            if (curr.status === "COM INCONSISTÊNCIA NO BANCO" || curr.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL") {
-              teamPendingInconsistencyValueCalc += cardVal
-              teamPendingInconsistencyCountCalc += 1
-            }
             beneficiaryIds.forEach((bId) => {
+              if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
               const bUser = allUsers.find((u: User) => u.id === bId)
               const bIsPJ = checkUserPJ(bUser)
               const bVal = bIsPJ ? pjCalculatedVal : numericVal
@@ -1265,9 +1369,8 @@ export default function DashboardPage() {
           }
 
           if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
-            teamCreatedTodayValue += cardVal
-            teamCreatedTodayCount += 1
             beneficiaryIds.forEach((bId) => {
+              if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
               const bUser = allUsers.find((u: User) => u.id === bId)
               const bIsPJ = checkUserPJ(bUser)
               const bVal = bIsPJ ? pjCalculatedVal : numericVal
@@ -1294,17 +1397,15 @@ export default function DashboardPage() {
           }
 
           if (isThisWeekCreated && !isCancelled && !isRetroactivePayment) {
-            teamCreatedWeekValue += cardVal
-            teamCreatedWeekCount += 1
+            // Already updated if countsForTeam is true
           }
 
           if (isThisMonthCreated && !isCancelled && !isRetroactivePayment) {
-            teamCreatedMonthValue += cardVal
-            teamCreatedMonthCount += 1
+            // Already updated if countsForTeam is true
           }
 
           // Accumulate Intern Collaborations & Self-Production (propria)
-          if (brokerColaboracoes[targetBrokerIdForColabs]) {
+          if (brokerColaboracoes[targetBrokerIdForColabs] && (!((isUserSupervisor || isUserMonitoramento) && !countsForTeam))) {
             const estId = isIntern ? brokerId : curr.estagiario_colaborador_id
             const estNome = isIntern ? (brokerUser?.nome || "Estagiário") : curr.estagiario_colaborador_nome
             

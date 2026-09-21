@@ -1185,49 +1185,45 @@ export default function KanbanPage() {
                             </div>
 
                             {/* 2. Dados Principais do Cliente */}
-                            <div>
-                              <div className="flex items-center justify-between">
-                                <h3 className="text-xs font-bold text-slate-900 tracking-tight line-clamp-1 group-hover:text-sky-600 transition-colors">
-                                  {ticket.cliente_nome || "Nome não informado"}
-                                </h3>
-                              </div>
+                            <div className="space-y-0.5">
+                              <h3 className="text-xs font-bold text-slate-900 tracking-tight line-clamp-1 group-hover:text-sky-600 transition-colors">
+                                {ticket.cliente_nome || "Nome não informado"}
+                              </h3>
 
-                              <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
-                                <div className="flex items-center gap-1">
-                                  <span>CPF:</span>
-                                  <span className="font-mono font-medium text-slate-700">
-                                    {isCpfRevealed ? (ticket.cliente_cpf || "---") : maskCpf(ticket.cliente_cpf)}
-                                  </span>
+                              <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                                <span>CPF:</span>
+                                <span className="font-mono font-medium text-slate-700 whitespace-nowrap">
+                                  {isCpfRevealed ? (ticket.cliente_cpf || "---") : maskCpf(ticket.cliente_cpf)}
+                                </span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleRevealCpf(ticket.id)
+                                  }}
+                                  className="text-slate-400 hover:text-slate-600 p-0.5"
+                                  title={isCpfRevealed ? "Ocultar CPF" : "Revelar CPF"}
+                                >
+                                  {isCpfRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                </button>
+                                {isCpfRevealed && ticket.cliente_cpf && (
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      toggleRevealCpf(ticket.id)
+                                      handleCopy(ticket.cliente_cpf, "CPF")
                                     }}
                                     className="text-slate-400 hover:text-slate-600 p-0.5"
-                                    title={isCpfRevealed ? "Ocultar CPF" : "Revelar CPF"}
+                                    title="Copiar CPF"
                                   >
-                                    {isCpfRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                    <Copy className="w-3 h-3" />
                                   </button>
-                                  {isCpfRevealed && ticket.cliente_cpf && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleCopy(ticket.cliente_cpf, "CPF")
-                                      }}
-                                      className="text-slate-400 hover:text-slate-600 p-0.5"
-                                      title="Copiar CPF"
-                                    >
-                                      <Copy className="w-3 h-3" />
-                                    </button>
-                                  )}
-                                </div>
+                                )}
+                              </div>
 
-                                <div className="flex items-center gap-1">
-                                  <span>Tel:</span>
-                                  <span className="font-mono font-medium text-slate-700">
-                                    {maskPhone(ticket.cliente_telefone)}
-                                  </span>
-                                </div>
+                              <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                                <span>Tel:</span>
+                                <span className="font-mono font-medium text-slate-700 whitespace-nowrap">
+                                  {maskPhone(ticket.cliente_telefone)}
+                                </span>
                               </div>
                             </div>
 
@@ -1278,44 +1274,44 @@ export default function KanbanPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleOpenCallFeedback(ticket)}
-                                className="h-7 px-2 text-[10px] gap-1 text-slate-700 hover:text-sky-700 hover:bg-sky-50 flex-1 border-slate-200"
-                                title="Registrar Ligação / Discadora"
+                                className="h-7 p-0 flex items-center justify-center text-slate-700 hover:text-sky-700 hover:bg-sky-50 flex-1 border-slate-200"
+                                title="Ligar / Registrar Ligação"
+                                aria-label="Ligar"
                               >
-                                <Phone className="w-3 h-3 text-sky-600" />
-                                Ligar
+                                <Phone className="w-3.5 h-3.5 text-sky-600" />
                               </Button>
 
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleOpenWhatsApp(ticket)}
-                                className="h-7 px-2 text-[10px] gap-1 text-emerald-700 hover:bg-emerald-50 flex-1 border-emerald-200"
-                                title="Abrir conversa no WhatsApp"
+                                className="h-7 p-0 flex items-center justify-center text-emerald-700 hover:bg-emerald-50 flex-1 border-emerald-200"
+                                title="WhatsApp"
+                                aria-label="WhatsApp"
                               >
-                                <MessageCircle className="w-3 h-3 text-emerald-600" />
-                                Whats
+                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
                               </Button>
 
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleOpenAgendar(ticket)}
-                                className="h-7 px-2 text-[10px] gap-1 text-slate-700 hover:bg-slate-50 flex-1 border-slate-200"
-                                title="Agendar Retorno com Cliente"
+                                className="h-7 p-0 flex items-center justify-center text-slate-700 hover:bg-slate-50 flex-1 border-slate-200"
+                                title="Agendar Retorno"
+                                aria-label="Agendar"
                               >
-                                <CalendarIcon className="w-3 h-3 text-slate-600" />
-                                Agendar
+                                <CalendarIcon className="w-3.5 h-3.5 text-slate-600" />
                               </Button>
 
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleOpenMoverEtapa(ticket)}
-                                className="h-7 px-2 text-[10px] gap-1 text-indigo-700 hover:bg-indigo-50 flex-1 border-indigo-200"
+                                className="h-7 p-0 flex items-center justify-center text-indigo-700 hover:bg-indigo-50 flex-1 border-indigo-200"
                                 title="Mover para outra Etapa"
+                                aria-label="Mover"
                               >
-                                <ArrowRight className="w-3 h-3 text-indigo-600" />
-                                Mover
+                                <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
                               </Button>
                             </div>
                           </div>
