@@ -774,25 +774,22 @@ export default function ProposalsPage() {
         const proposalDateStr = (() => {
           const raw = dateFilterType === "PAGAMENTO" 
             ? (proposal.data_pago_cliente || proposal.updated_at)
-            : (proposal.data_digitacao || proposal.created_at || proposal.updated_at)
+            : (proposal.created_at || proposal.data_digitacao)
           if (!raw) return null
           const str = String(raw).trim()
           if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
             const [day, month, year] = str.split('/')
             return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
           }
-          if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-            return str.slice(0, 10)
-          }
           try {
             const d = new Date(str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str)
             if (!isNaN(d.getTime())) {
-              const year = d.getFullYear()
-              const month = String(d.getMonth() + 1).padStart(2, '0')
-              const day = String(d.getDate()).padStart(2, '0')
-              return `${year}-${month}-${day}`
+              return format(d, "yyyy-MM-dd")
             }
           } catch {}
+          if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+            return str.slice(0, 10)
+          }
           return null
         })()
 
@@ -892,25 +889,22 @@ export default function ProposalsPage() {
       const proposalDateStr = (() => {
         const raw = dateFilterType === "PAGAMENTO" 
           ? (proposal.data_pago_cliente || proposal.updated_at)
-          : (proposal.data_digitacao || proposal.created_at || proposal.updated_at)
+          : (proposal.created_at || proposal.data_digitacao)
         if (!raw) return null
         const str = String(raw).trim()
         if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
           const [day, month, year] = str.split('/')
           return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
         }
-        if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-          return str.slice(0, 10)
-        }
         try {
           const d = new Date(str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str)
           if (!isNaN(d.getTime())) {
-            const year = d.getFullYear()
-            const month = String(d.getMonth() + 1).padStart(2, '0')
-            const day = String(d.getDate()).padStart(2, '0')
-            return `${year}-${month}-${day}`
+            return format(d, "yyyy-MM-dd")
           }
         } catch {}
+        if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+          return str.slice(0, 10)
+        }
         return null
       })()
 
@@ -1068,6 +1062,7 @@ export default function ProposalsPage() {
         { header: 'ADE', key: 'ade', width: 15 },
         { header: 'CORRETOR', key: 'corretor', width: 30 },
         { header: 'EQUIPE', key: 'equipe', width: 25 },
+        { header: 'ESTAGIÁRIO', key: 'estagiario', width: 30 },
         { header: 'CPF CLIENTE', key: 'cpf', width: 20 },
         { header: 'NOME CLIENTE', key: 'cliente', width: 35 },
         { header: 'BANCO', key: 'banco', width: 15 },
@@ -1090,6 +1085,7 @@ export default function ProposalsPage() {
           ade: p.ade || '-',
           corretor: p.nome_corretor || '-',
           equipe: p.equipe || '-',
+          estagiario: p.estagiario_colaborador_nome || '-',
           cpf: p.cliente_cpf,
           cliente: p.nome_cliente,
           banco: p.banco,
