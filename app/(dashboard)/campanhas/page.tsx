@@ -691,13 +691,7 @@ export default function CampaignsPage() {
       const pageSize = 500 // Lote otimizado para alta velocidade e baixo consumo de requisições
       let totalProcessed = 0
       
-      // Obter contagem exata e real-time de membros na campanha_membros
-      const { count: realCount, error: countErr } = await supabase
-        .from('campanha_membros')
-        .select('*', { count: 'exact', head: true })
-        .eq('campanha_id', campaign.id);
-
-      const actualPublicoEstimado = countErr ? (campaign.publico_estimado || 0) : (realCount || 0);
+      const actualPublicoEstimado = campaign.publico_estimado || 0;
 
       const startRange = partIndex * PART_SIZE;
       const endRange = Math.min((partIndex + 1) * PART_SIZE - 1, (actualPublicoEstimado || 0) - 1);

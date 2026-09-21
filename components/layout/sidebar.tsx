@@ -28,7 +28,8 @@ import {
   GraduationCap,
   Calculator,
   Table,
-  UserCheck
+  UserCheck,
+  Kanban
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
@@ -56,6 +57,12 @@ const allMenuItems = [
         href: "/treinamento", 
         icon: GraduationCap, 
         roles: ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Corretor", "Monitoramento", "Estágio", "Processo Seletivo", "PROCESSO SELETIVO", "Recursos Humanos", "RH"] 
+      },
+      { 
+        name: "KANBAN", 
+        href: "/kanban", 
+        icon: Kanban, 
+        roles: ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Corretor", "Monitoramento", "Estágio"] 
       },
       { 
         name: "DASHBOARD", 
