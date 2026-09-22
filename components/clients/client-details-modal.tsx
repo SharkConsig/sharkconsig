@@ -125,13 +125,14 @@ interface ClientData {
   nome: string | null;
   cpf: string;
   data_nascimento: string | null;
+  idade?: number | null;
   telefone_1: string | null;
   telefone_2: string | null;
   telefone_3: string | null;
   [key: string]: unknown;
 }
 
-type ConvenioType = 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | 'governo_ro';
+type ConvenioType = 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | 'governo_ro' | 'prefeitura_ponta_grossa';
 
 interface ConvenioProfile {
   type: ConvenioType;
@@ -908,6 +909,73 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
         })
       }
 
+      // 17. Try search in Prefeitura Ponta Grossa Clients
+      const { data: pgData } = await withRetry<ClientData | null>(async () => 
+        await supabase.from('prefeitura_ponta_grossa_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+      )
+
+      if (pgData) {
+        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
+          await supabase.from('prefeitura_ponta_grossa_matriculas').select('*').eq('cliente_id', (pgData as ClientData).id)
+        )
+        if (regError) console.error("Erro ao buscar matrículas Prefeitura Ponta Grossa:", regError)
+
+        const mappedRegs = (regData || []).map((r: Record<string, unknown>) => ({
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          orgao: (r.origem as string) || (r.orgao as string) || "PREFEITURA DE PONTA GROSSA",
+          situacao: r.situacao as string | null,
+          vinculo: (r.vinculo as string) || (r.situacao as string) || null,
+          margem_total: r.margem_total || 0.00,
+          margem_disponivel: r.margem_disponivel || 0.00,
+          uf: 'PR',
+          instituidores: []
+        }))
+
+        foundProfiles.push({
+          type: 'prefeitura_ponta_grossa',
+          client: pgData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
+      } else {
+        // Fallback: search in base_consulta_prefeitura_ponta_grossa directly
+        const { data: basePgData } = await withRetry<Record<string, unknown> | null>(async () =>
+          await supabase.from('base_consulta_prefeitura_ponta_grossa').select('*').eq('cpf', paddedCpf).maybeSingle()
+        )
+
+        if (basePgData) {
+          const mappedRegs = [{
+            id: (basePgData.id as string) || (basePgData.matricula as string) || '---',
+            numero_matricula: (basePgData.matricula as string) || '---',
+            matricula: (basePgData.matricula as string) || '---',
+            orgao: (basePgData.origem as string) || 'PREFEITURA DE PONTA GROSSA',
+            situacao: (basePgData.situacao as string) || null,
+            vinculo: (basePgData.vinculo as string) || (basePgData.situacao as string) || null,
+            margem_total: basePgData.margem_total || 0.00,
+            margem_disponivel: basePgData.margem_disponivel || 0.00,
+            uf: 'PR',
+            instituidores: []
+          }]
+
+          foundProfiles.push({
+            type: 'prefeitura_ponta_grossa',
+            client: {
+              ...basePgData,
+              nome: (basePgData.nome as string) || null,
+              cpf: basePgData.cpf as string,
+              data_nascimento: null,
+              idade: (basePgData.idade as number | undefined) ?? null,
+              telefone_1: (basePgData.telefone_1 as string) || null,
+              telefone_2: (basePgData.telefone_2 as string) || null,
+              telefone_3: (basePgData.telefone_3 as string) || null,
+            } as ClientData,
+            registrations: mappedRegs as unknown as Registration[]
+          })
+        }
+      }
+
       if (foundProfiles.length > 0) {
         setProfiles(foundProfiles)
         // Select first profile or match initialMatricula if present
@@ -1079,7 +1147,8 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                       p.type === 'governo_ba' ? 'GOVERNO BAHIA' :
                       p.type === 'governo_am' ? 'GOVERNO AMAZONAS' :
                       p.type === 'governo_ce' ? 'GOVERNO CEARÁ' :
-                      p.type === 'governo_ro' ? 'GOVERNO RONDÔNIA' : String(p.type).toUpperCase();
+                      p.type === 'governo_ro' ? 'GOVERNO RONDÔNIA' :
+                      p.type === 'prefeitura_ponta_grossa' ? 'PREFEITURA PONTA GROSSA' : String(p.type).toUpperCase();
                     
                     return (
                       <button
@@ -1130,11 +1199,25 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                     <p className="text-[12px] font-bold text-slate-900">{maskCPF(client.cpf)}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nascimento</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                      {clientType === 'prefeitura_ponta_grossa' ? 'Idade' : 'Nascimento'}
+                    </p>
                     <div className="flex items-center gap-2">
-                      <p className="text-[12px] font-bold text-slate-900">{formatDate(client.data_nascimento)}</p>
-                      {client.data_nascimento && (
-                        <Badge variant="secondary" className="text-[9px] font-bold h-4 px-1.5">{calculateAge(client.data_nascimento)} ANOS</Badge>
+                      {clientType === 'prefeitura_ponta_grossa' ? (
+                        <p className="text-[12px] font-bold text-slate-900">
+                          {client.idade !== null && client.idade !== undefined
+                            ? `${client.idade} ANOS`
+                            : ((registrations?.[0] as unknown as Record<string, unknown>)?.idade !== null && (registrations?.[0] as unknown as Record<string, unknown>)?.idade !== undefined
+                                ? `${(registrations?.[0] as unknown as Record<string, unknown>)?.idade} ANOS`
+                                : "NÃO INFORMADO")}
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-[12px] font-bold text-slate-900">{formatDate(client.data_nascimento)}</p>
+                          {client.data_nascimento && (
+                            <Badge variant="secondary" className="text-[9px] font-bold h-4 px-1.5">{calculateAge(client.data_nascimento)} ANOS</Badge>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -2670,6 +2753,86 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                                         </p>
                                         <p className="text-xl font-black text-slate-900">
                                           {formatCurrency(val)}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </>
+                        ) : clientType === 'prefeitura_ponta_grossa' ? (
+                          <>
+                            {/* Prefeitura de Ponta Grossa */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "PREFEITURA DE PONTA GROSSA"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {(((activeReg as unknown as Record<string, unknown>).situacao as string) || "NÃO INFORMADO")}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {(((activeReg as unknown as Record<string, unknown>).vinculo as string) || "NÃO INFORMADO")}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-6 mt-6">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-3.5 bg-emerald-600 rounded-full"></div>
+                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens</h4>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* Margem Total */}
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_total) || 0;
+                                  return (
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col justify-between min-h-[90px]">
+                                      <div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                                          Margem Total
+                                        </p>
+                                        <p className="text-xl font-black text-slate-900">
+                                          {formatCurrency(val)}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                {/* Margem Disponível */}
+                                {(() => {
+                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_disponivel) || 0;
+                                  const isPositive = val > 0;
+                                  return (
+                                    <div className={cn(
+                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
+                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                    )}>
+                                      <div>
+                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                          Margem Disponível
+                                        </p>
+                                        <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
+                                          {formatCurrency(val)}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
+                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
                                         </p>
                                       </div>
                                     </div>

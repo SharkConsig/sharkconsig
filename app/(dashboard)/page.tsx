@@ -1865,6 +1865,7 @@ export default function DashboardPage() {
           else if (convention.includes('CONTAGEM')) convCategory = 'PREFEITURA CONTAGEM'
           else if (convention.includes('MINAS GERAIS') || convention.includes('MG')) convCategory = 'GOVERNO MINAS GERAIS'
           else if (convention.includes('MATO GROSSO DO SUL') || convention.includes('MS')) convCategory = 'GOVERNO MATO GROSSO DO SUL'
+          else if (convention.includes('PONTA GROSSA')) convCategory = 'PREFEITURA PONTA GROSSA'
           
           if (!acc.byConvenio[convCategory]) {
             acc.byConvenio[convCategory] = { count: 0, totalValue: 0, approved: 0 }
@@ -1979,6 +1980,7 @@ export default function DashboardPage() {
           'PREFEITURA CONTAGEM',
           'GOVERNO MINAS GERAIS',
           'GOVERNO MATO GROSSO DO SUL',
+          'PREFEITURA PONTA GROSSA',
           'OUTROS'
         ]
         const byConvenio = convenioOrder

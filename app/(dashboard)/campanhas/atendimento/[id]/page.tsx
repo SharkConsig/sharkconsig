@@ -438,6 +438,7 @@ export default function CampanhaAtendimentoPage() {
         'governo_am': 'base_consulta_governo_am',
         'governo_ce': 'base_consulta_governo_ce',
         'governo_ro': 'base_consulta_governo_ro',
+        'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
       }
 
       if (convenioKey && TABLE_MAP[convenioKey || '']) {
@@ -474,6 +475,8 @@ export default function CampanhaAtendimentoPage() {
         table = 'base_consulta_governo_ce'
       } else if (campaignName.includes("GOVERNO RO") || campaignName.includes("RONDÔNIA") || campaignName.includes("RONDONIA")) {
         table = 'base_consulta_governo_ro'
+      } else if (campaignName.includes("PONTA GROSSA") || campaignName.includes("PREFEITURA PONTA GROSSA")) {
+        table = 'base_consulta_prefeitura_ponta_grossa'
       }
       
       let data = null;
@@ -704,6 +707,7 @@ export default function CampanhaAtendimentoPage() {
               { name: 'base_consulta_governo_am', convenio: 'governo_am' },
               { name: 'base_consulta_governo_ce', convenio: 'governo_ce' },
               { name: 'base_consulta_governo_ro', convenio: 'governo_ro' },
+              { name: 'base_consulta_prefeitura_ponta_grossa', convenio: 'prefeitura_ponta_grossa' },
             ];
 
             // 1. Determinar tabela preferencial de consulta
@@ -1059,10 +1063,11 @@ export default function CampanhaAtendimentoPage() {
           const isGovCe = table === 'base_consulta_governo_ce';
           const isGovAm = table === 'base_consulta_governo_am';
           const isGovBa = table === 'base_consulta_governo_ba';
+          const isPrefPontaGrossa = table === 'base_consulta_prefeitura_ponta_grossa';
 
           const mat = data.matricula || data.identificacao || data.numero_matricula || '---';
           const vinc = data.vinculo || data.situacao_funcional || '---';
-          const m35 = data.margem_35 ?? data.margem_emprestimo_consignado ?? data.margem_emprestimo ?? data.margem_disponivel_emprestimo;
+          const m35 = data.margem_35 ?? data.margem_disponivel ?? data.margem_emprestimo_consignado ?? data.margem_emprestimo ?? data.margem_disponivel_emprestimo;
           const mLiq5 = data.liquida_5 ?? data.margem_cartao_consignado ?? data.margem_cartao;
           const mBenLiq5 = data.beneficio_liquida_5 ?? data.margem_cartao_beneficio;
 
@@ -1073,17 +1078,20 @@ export default function CampanhaAtendimentoPage() {
             salario: data.salario || 0,
             orgao: data.orgao,
             regime_juridico: data.regime_juridico,
-            uf: isGovRo ? 'RO' : (isGovCe ? 'CE' : (isGovAm ? 'AM' : (isGovBa ? 'BA' : (isSantoAndre ? 'SP' : (isGovPi ? 'PI' : (isGovRr ? 'RR' : (isPrefNatal ? 'RN' : (isPrefPortoVelho ? 'RO' : data.uf)))))))),
+            uf: isPrefPontaGrossa ? 'PR' : (isGovRo ? 'RO' : (isGovCe ? 'CE' : (isGovAm ? 'AM' : (isGovBa ? 'BA' : (isSantoAndre ? 'SP' : (isGovPi ? 'PI' : (isGovRr ? 'RR' : (isPrefNatal ? 'RN' : (isPrefPortoVelho ? 'RO' : data.uf))))))))),
             matricula: mat,
             vinculo: vinc,
-            margem_disponivel_emprestimo: data.margem_disponivel_emprestimo ?? data.margem_emprestimo_consignado ?? data.margem_emprestimo,
+            situacao: data.situacao,
+            margem_total: data.margem_total,
+            margem_disponivel: data.margem_disponivel,
+            margem_disponivel_emprestimo: data.margem_disponivel ?? data.margem_disponivel_emprestimo ?? data.margem_emprestimo_consignado ?? data.margem_emprestimo,
             margem_cartao_consignado: data.margem_cartao_consignado ?? data.margem_cartao,
             margem_cartao_beneficio: data.margem_cartao_beneficio,
             margem_bruta_cartao: data.margem_bruta_cartao,
             margem_liquida_cartao: data.margem_liquida_cartao,
             instituidores: [{
                id: 'main',
-               nome: data.orgao || (isGovRr ? 'GOVERNO RR' : (isPrefNatal ? 'PREFEITURA DE NATAL' : (isPrefPortoVelho ? 'PREFEITURA PORTO VELHO' : ''))),
+               nome: data.orgao || (isPrefPontaGrossa ? 'PREFEITURA DE PONTA GROSSA' : (isGovRr ? 'GOVERNO RR' : (isPrefNatal ? 'PREFEITURA DE NATAL' : (isPrefPortoVelho ? 'PREFEITURA PORTO VELHO' : '')))),
                saldo_70: data.saldo_70,
                margem_35: m35,
                bruta_5: data.bruta_5,
@@ -1674,7 +1682,95 @@ export default function CampanhaAtendimentoPage() {
                 {activeReg && (
                   <Card className="card-shadow border border-slate-200 rounded-tl-none">
                     <CardContent className="p-8 space-y-12">
-                      {activeTable === 'base_consulta_prefeitura_porto_velho' ? (
+                      {activeTable === 'base_consulta_prefeitura_ponta_grossa' ? (
+                        <>
+                          {/* Prefeitura de Ponta Grossa */}
+                          <div className="space-y-8 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1 h-5 bg-amber-600 rounded-full"></div>
+                              <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest font-sans tracking-tight">
+                                INFORMAÇÕES DA MATRÍCULA (PREFEITURA DE PONTA GROSSA)
+                              </h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 text-left">
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || activeReg.numero_matricula || "---"}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.orgao || "PREFEITURA DE PONTA GROSSA"}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {((activeReg as any).situacao || "NÃO INFORMADO")}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
+                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.vinculo || activeReg.situacao_funcional || "NÃO INFORMADO"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                            {/* Margem Total */}
+                            {(() => {
+                              const valTotal = Number((activeReg as any).margem_total) || 0;
+                              return (
+                                <div className="p-5 border border-slate-200 bg-slate-50/70 rounded-2xl space-y-3 text-left">
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                    MARGEM TOTAL
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className="text-2xl font-black tracking-tighter leading-none mb-1 text-slate-900">
+                                      {formatCurrency(valTotal)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                                        TOTAL CADASTRADO
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Margem Disponível */}
+                            {(() => {
+                              const valDisponivel = Number((activeReg as any).margem_disponivel) || Number(activeReg.margem_disponivel_emprestimo) || (activeInst?.margem_35 || 0);
+                              const isDisponivel = valDisponivel > 0;
+                              return (
+                                <div className={cn(
+                                  "p-5 border rounded-2xl space-y-3 text-left",
+                                  isDisponivel ? "bg-emerald-50/70 border-emerald-100" : "bg-red-50/75 border-red-100"
+                                )}>
+                                  <p className={cn("text-[10px] font-bold uppercase tracking-widest", isDisponivel ? "text-emerald-600" : "text-red-600")}>
+                                    MARGEM DISPONÍVEL
+                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1 text-emerald-700", !isDisponivel && "text-red-700")}>
+                                      {formatCurrency(valDisponivel)}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <div className={cn("w-2 h-2 rounded-full", isDisponivel ? "bg-emerald-500" : "bg-red-500")}></div>
+                                      <span className={cn("text-[10px] font-bold uppercase tracking-widest", isDisponivel ? "text-emerald-600" : "text-red-600")}>
+                                        {isDisponivel ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </>
+                      ) : activeTable === 'base_consulta_prefeitura_porto_velho' ? (
                         <>
                           {/* Prefeitura de Porto Velho */}
                           <div className="space-y-8 text-left">

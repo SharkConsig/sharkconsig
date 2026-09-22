@@ -146,7 +146,8 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
     'base_consulta_governo_ba',
     'base_consulta_governo_am',
     'base_consulta_governo_ce',
-    'base_consulta_governo_ro'
+    'base_consulta_governo_ro',
+    'base_consulta_prefeitura_ponta_grossa'
   ];
 
   const results: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
@@ -287,6 +288,7 @@ export default function DistribuicaoCampanhaPage() {
         'governo_am': 'base_consulta_governo_am',
         'governo_ce': 'base_consulta_governo_ce',
         'governo_ro': 'base_consulta_governo_ro',
+        'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -322,6 +324,8 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_governo_ce';
       } else if (cNameUpper.includes('GOVERNO RO') || cNameUpper.includes('RONDÔNIA') || cNameUpper.includes('RONDONIA')) {
         targetTable = 'base_consulta_governo_ro';
+      } else if (cNameUpper.includes('PONTA GROSSA')) {
+        targetTable = 'base_consulta_prefeitura_ponta_grossa';
       }
 
       let clientsBatchList: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
@@ -509,6 +513,7 @@ export default function DistribuicaoCampanhaPage() {
         'governo_am': 'base_consulta_governo_am',
         'governo_ce': 'base_consulta_governo_ce',
         'governo_ro': 'base_consulta_governo_ro',
+        'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
       };
 
       let targetTable = 'base_consulta_siape';
@@ -544,6 +549,8 @@ export default function DistribuicaoCampanhaPage() {
         targetTable = 'base_consulta_governo_ce';
       } else if (cNameUpper.includes('GOVERNO RO') || cNameUpper.includes('RONDÔNIA') || cNameUpper.includes('RONDONIA')) {
         targetTable = 'base_consulta_governo_ro';
+      } else if (cNameUpper.includes('PONTA GROSSA')) {
+        targetTable = 'base_consulta_prefeitura_ponta_grossa';
       }
 
       let clientDetails: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];

@@ -594,6 +594,7 @@ export default function CampaignsPage() {
         'governo_rj': 'base_consulta_governo_rj',
         'governo_ms': 'base_consulta_governo_ms',
         'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
+        'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
       };
 
       if (convenioKey && TABLE_MAP[convenioKey]) {
@@ -612,6 +613,8 @@ export default function CampaignsPage() {
         targetTable = 'base_consulta_governo_rr';
       } else if (campaignName.includes('SANTO ANDRÉ') || campaignName.includes('SANTO ANDRE') || campaignName.includes('PREFEITURA SANTO ANDRE') || campaignName.includes('PREF SANTO ANDRE')) {
         targetTable = 'base_consulta_prefeitura_santo_andre';
+      } else if (campaignName.includes('PONTA GROSSA') || campaignName.includes('PREFEITURA DE PONTA GROSSA') || campaignName.includes('PREFEITURA PONTA GROSSA') || campaignName.includes('PREF PONTA GROSSA')) {
+        targetTable = 'base_consulta_prefeitura_ponta_grossa';
       } else if (campaignName.includes('NATAL')) {
         targetTable = 'base_consulta_prefeitura_natal';
       } else if (campaignName.includes('PORTO VELHO')) {
@@ -639,10 +642,13 @@ export default function CampaignsPage() {
       const isSantoAndre = targetTable === 'base_consulta_prefeitura_santo_andre';
       const isPrefNatal = targetTable === 'base_consulta_prefeitura_natal';
       const isPrefPortoVelho = targetTable === 'base_consulta_prefeitura_porto_velho';
+      const isPrefPontaGrossa = targetTable === 'base_consulta_prefeitura_ponta_grossa';
       const isMultiConvenio = (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect');
 
       const headersArray = ["CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3"];
-      if (isGovMg) {
+      if (isPrefPontaGrossa) {
+        headersArray.push("IDADE", "MATRÍCULA", "ORIGEM", "SITUAÇÃO", "VÍNCULO", "MARGEM TOTAL", "MARGEM DISPONÍVEL");
+      } else if (isGovMg) {
         headersArray.push("MATRÍCULA", "ÓRGÃO", "SALDO 70%", "MARGEM EMPRÉSTIMO", "CARTÃO CRÉDITO", "CARTÃO BENEFÍCIO");
       } else if (isGovAm) {
         headersArray.push("MATRÍCULA", "ÓRGÃO", "SECRETARIA", "CARGO", "SITUAÇÃO", "MARGEM CONSIGNÁVEL", "MARGEM CARTÃO", "MARGEM CARTÃO BENEFÍCIO", "MARGEM BENEFÍCIO SAQUE");
@@ -762,6 +768,7 @@ export default function CampaignsPage() {
           { name: 'base_consulta_governo_am', prodTable: 'governo_am_clientes', convenio: 'governo_am', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, situacao, margem_consignavel, margem_cartao, margem_cartao_beneficio, margem_cartao_beneficio_saque" },
           { name: 'base_consulta_governo_ce', prodTable: 'governo_ce_clientes', convenio: 'governo_ce', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, salario, orgao, secretaria, vinculo" },
           { name: 'base_consulta_governo_ro', prodTable: 'governo_ro_clientes', convenio: 'governo_ro', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, vinculo, salario, margem_emprestimo, margem_cartao, margem_cartao_beneficio" },
+          { name: 'base_consulta_prefeitura_ponta_grossa', prodTable: 'base_consulta_prefeitura_ponta_grossa', convenio: 'prefeitura_ponta_grossa', columns: "cpf, nome, idade, matricula, origem, situacao, vinculo, margem_total, margem_disponivel, telefone_1, telefone_2, telefone_3" },
         ];
 
         // 1. Buscar primeiro na tabela preferencial da campanha (targetTable) com lotes paralelos de 150
@@ -1078,6 +1085,22 @@ export default function CampaignsPage() {
               row.telefone_3 || "",
               (row as any).margem_bruta_cartao ?? "",
               (row as any).margem_liquida_cartao ?? ""
+            ];
+          } else if (isPrefPontaGrossa) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).idade ?? "",
+              (row as any).matricula || "",
+              (row as any).origem || "",
+              (row as any).situacao || "",
+              (row as any).vinculo || "",
+              (row as any).margem_total ?? "",
+              (row as any).margem_disponivel ?? ""
             ];
           } else if (isPrefNatal) {
             csvFields = [

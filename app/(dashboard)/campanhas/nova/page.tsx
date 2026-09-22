@@ -96,6 +96,7 @@ const TABLE_MAP: Record<string, string> = {
   'governo_ce': 'base_consulta_governo_ce',
   'governo_ro': 'base_consulta_governo_ro',
   'governo_mg': 'base_consulta_governo_mg',
+  'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
 };
 
 const TABLE_COLUMNS: Record<string, string[]> = {
@@ -156,6 +157,9 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   ],
   'base_consulta_governo_mg': [
     'cpf', 'nome', 'telefone_1', 'telefone_2', 'telefone_3', 'matricula', 'orgao', 'margem_70', 'margem_emprestimo', 'cartao_credito', 'cartao_beneficio'
+  ],
+  'base_consulta_prefeitura_ponta_grossa': [
+    'cpf', 'nome', 'idade', 'matricula', 'origem', 'situacao', 'vinculo', 'margem_total', 'margem_disponivel', 'telefone_1', 'telefone_2', 'telefone_3'
   ]
 };
 
@@ -168,6 +172,7 @@ const CONVENIOS = [
   { id: 'governo_ma', label: 'GOVERNO MARANHÃO' },
   { id: 'governo_rr', label: 'GOVERNO RORAIMA' },
   { id: 'prefeitura_santo_andre', label: 'PREFEITURA SANTO ANDRÉ' },
+  { id: 'prefeitura_ponta_grossa', label: 'PREFEITURA DE PONTA GROSSA' },
   { id: 'prefeitura_natal', label: 'PREFEITURA DE NATAL' },
   { id: 'prefeitura_porto_velho', label: 'PREFEITURA PORTO VELHO' },
   { id: 'governo_ba', label: 'GOVERNO BAHIA' },
@@ -295,6 +300,21 @@ export default function NewCampaignPage() {
         situacoes = Array.from(new Set(vinculosData?.map(i => i.vinculo).filter(Boolean) || [])).sort() as string[];
         regimes = [];
         ufs = [];
+      } else if (activeConvenio === 'prefeitura_ponta_grossa') {
+        const { data: origensData } = await supabase
+          .from(tableName)
+          .select('origem')
+          .limit(1000);
+        
+        const { data: situacoesData } = await supabase
+          .from(tableName)
+          .select('situacao')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(origensData?.map(i => i.origem).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao).filter(Boolean) || [])).sort() as string[];
+        regimes = [];
+        ufs = [];
       } else {
         const { data: orgaosData } = await supabase
           .from(tableName)
@@ -389,6 +409,20 @@ export default function NewCampaignPage() {
         saldo: 0,
         loans: 0,
         cards: 5,
+      };
+    }
+
+    if (activeConvenio === 'prefeitura_ponta_grossa') {
+      return {
+        idade: 1,
+        orgao: 2,
+        situacao: 3,
+        regime: 0,
+        uf: 0,
+        margem: 4,
+        saldo: 0,
+        loans: 0,
+        cards: 0,
       };
     }
 
@@ -600,6 +634,10 @@ export default function NewCampaignPage() {
         q = q.not("margem_disponivel_emprestimo", "is", null);
         if (mMinNum !== null) q = q.gte("margem_disponivel_emprestimo", mMinNum);
         if (mMaxNum !== null) q = q.lte("margem_disponivel_emprestimo", mMaxNum);
+      } else if (cols.includes('margem_disponivel')) {
+        q = q.not("margem_disponivel", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_disponivel", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_disponivel", mMaxNum);
       } else if (cols.includes('margem_emprestimo')) {
         q = q.not("margem_emprestimo", "is", null);
         if (mMinNum !== null) q = q.gte("margem_emprestimo", mMinNum);
@@ -616,12 +654,16 @@ export default function NewCampaignPage() {
     }
 
     // 1. Filtros de Matrícula
-    if (f.orgaos.length > 0 && cols.includes('orgao')) {
-      const codeFilters = Object.entries(ORGAOS_MAPPING)
-        .filter(([, name]) => f.orgaos.includes(name))
-        .map(([code]) => code);
-      const combinedOrgaos = Array.from(new Set([...f.orgaos, ...codeFilters]));
-      if (combinedOrgaos.length > 0) q = q.in('orgao', combinedOrgaos);
+    if (f.orgaos.length > 0) {
+      if (cols.includes('orgao')) {
+        const codeFilters = Object.entries(ORGAOS_MAPPING)
+          .filter(([, name]) => f.orgaos.includes(name))
+          .map(([code]) => code);
+        const combinedOrgaos = Array.from(new Set([...f.orgaos, ...codeFilters]));
+        if (combinedOrgaos.length > 0) q = q.in('orgao', combinedOrgaos);
+      } else if (cols.includes('origem')) {
+        q = q.in('origem', f.orgaos);
+      }
     }
     if (f.situacoes.length > 0) {
       const expandedSituacoes: string[] = [];
@@ -641,6 +683,8 @@ export default function NewCampaignPage() {
 
       if (cols.includes('situacao_funcional')) {
         q = q.in('situacao_funcional', finalSituacoes);
+      } else if (cols.includes('situacao')) {
+        q = q.in('situacao', finalSituacoes);
       } else if (cols.includes('vinculo')) {
         q = q.in('vinculo', finalSituacoes);
       }
@@ -649,24 +693,35 @@ export default function NewCampaignPage() {
     if (f.ufs.length > 0 && cols.includes('uf')) q = q.in('uf', f.ufs);
 
     // 2. Filtro de IDADE
-    const birthCol = cols.includes('data_de_nascimento') ? 'data_de_nascimento' : cols.includes('data_nascimento') ? 'data_nascimento' : null;
-    if (f.idadeMin && birthCol) {
-      const ageMin = parseInt(f.idadeMin);
-      if (!isNaN(ageMin)) {
-        const d = new Date();
-        d.setFullYear(d.getFullYear() - ageMin);
-        const dateStr = d.toISOString().split('T')[0];
-        q = q.lte(birthCol, dateStr);
+    if (cols.includes('idade')) {
+      if (f.idadeMin) {
+        const ageMin = parseInt(f.idadeMin);
+        if (!isNaN(ageMin)) q = q.gte('idade', ageMin);
       }
-    }
-    if (f.idadeMax && birthCol) {
-      const ageMax = parseInt(f.idadeMax);
-      if (!isNaN(ageMax)) {
-        const d = new Date();
-        d.setFullYear(d.getFullYear() - ageMax - 1);
-        d.setDate(d.getDate() + 1);
-        const dateStr = d.toISOString().split('T')[0];
-        q = q.gte(birthCol, dateStr);
+      if (f.idadeMax) {
+        const ageMax = parseInt(f.idadeMax);
+        if (!isNaN(ageMax)) q = q.lte('idade', ageMax);
+      }
+    } else {
+      const birthCol = cols.includes('data_de_nascimento') ? 'data_de_nascimento' : cols.includes('data_nascimento') ? 'data_nascimento' : null;
+      if (f.idadeMin && birthCol) {
+        const ageMin = parseInt(f.idadeMin);
+        if (!isNaN(ageMin)) {
+          const d = new Date();
+          d.setFullYear(d.getFullYear() - ageMin);
+          const dateStr = d.toISOString().split('T')[0];
+          q = q.lte(birthCol, dateStr);
+        }
+      }
+      if (f.idadeMax && birthCol) {
+        const ageMax = parseInt(f.idadeMax);
+        if (!isNaN(ageMax)) {
+          const d = new Date();
+          d.setFullYear(d.getFullYear() - ageMax - 1);
+          d.setDate(d.getDate() + 1);
+          const dateStr = d.toISOString().split('T')[0];
+          q = q.gte(birthCol, dateStr);
+        }
       }
     }
 
@@ -1168,7 +1223,7 @@ export default function NewCampaignPage() {
             if (activeConvenio === 'governo_rr') return null;
             if (activeConvenio === 'governo_pi') return null;
             if (activeConvenio === 'prefeitura_santo_andre') return null;
-            if ((activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') && (section.id === "3" || section.id === "4")) return null;
+            if ((activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho' || activeConvenio === 'prefeitura_ponta_grossa') && (section.id === "3" || section.id === "4")) return null;
             if (section.id === "4" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             if (section.id === "3" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             if (activeConvenio === 'governo_ma' && (section.id === "3" || section.id === "4")) return null;
@@ -1178,9 +1233,9 @@ export default function NewCampaignPage() {
             const cardNumbers = getCardNumbers();
             let sectionTitle = "";
             if (section.id === "1") {
-              sectionTitle = `${cardNumbers['orgao']}. ÓRGÃO`;
+              sectionTitle = `${cardNumbers['orgao']}. ${(activeConvenio === 'prefeitura_ponta_grossa') ? 'ORIGEM' : 'ÓRGÃO'}`;
             } else if (section.id === "2") {
-              sectionTitle = `${cardNumbers['situacao']}. ${(activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') ? 'VÍNCULO' : 'SITUAÇÃO FUNCIONAL'}`;
+              sectionTitle = `${cardNumbers['situacao']}. ${(activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') ? 'VÍNCULO' : (activeConvenio === 'prefeitura_ponta_grossa') ? 'SITUAÇÃO' : 'SITUAÇÃO FUNCIONAL'}`;
             } else if (section.id === "3") {
               sectionTitle = `${cardNumbers['regime']}. REGIME JURÍDICO`;
             } else if (section.id === "4") {
@@ -1306,8 +1361,8 @@ export default function NewCampaignPage() {
                       "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
                       (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
                     )}>
-                      {activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_natal'
-                        ? `${getCardNumbers()['margem']}. MARGEM DISPONÍVEL EMPRÉSTIMO` 
+                      {activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_ponta_grossa'
+                        ? `${getCardNumbers()['margem']}. MARGEM DISPONÍVEL` 
                         : activeConvenio === 'prefeitura_sp'
                           ? `${getCardNumbers()['margem']}. LÍQUIDA CONSIGNADO`
                           : activeConvenio === 'governo_rr' || activeConvenio === 'prefeitura_porto_velho'
@@ -1357,7 +1412,7 @@ export default function NewCampaignPage() {
             </Card>
           )}
 
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_ponta_grossa' && (
             /* 7. SALDO 70% */
             <Card className={cn(
               "card-shadow transition-all duration-300",
@@ -1408,7 +1463,7 @@ export default function NewCampaignPage() {
 
 
           {/* 8. EMPRÉSTIMOS */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_ponta_grossa' && (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1538,7 +1593,7 @@ export default function NewCampaignPage() {
           )}
 
           {/* 9. CARTÕES */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_natal' && activeConvenio !== 'prefeitura_porto_velho' ? (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_natal' && activeConvenio !== 'prefeitura_porto_velho' && activeConvenio !== 'prefeitura_ponta_grossa' ? (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""

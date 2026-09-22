@@ -61,9 +61,14 @@ function NewTicketForm() {
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const isPontaGrossa = (searchParams.get("convenio") || "").toUpperCase().includes("PONTA GROSSA");
+  const pontaGrossaMargemDisp = isPontaGrossa 
+    ? (searchParams.get("liquida5") || searchParams.get("margem_disponivel") || searchParams.get("margem") || "")
+    : "";
+
   const [originalMargins] = useState({
-    margem: searchParams.get("margem") || "",
-    liquida5: searchParams.get("liquida5") || "",
+    margem: isPontaGrossa ? "" : (searchParams.get("margem") || ""),
+    liquida5: isPontaGrossa ? pontaGrossaMargemDisp : (searchParams.get("liquida5") || ""),
     beneficio5: searchParams.get("beneficio5") || ""
   })
 
@@ -108,7 +113,7 @@ function NewTicketForm() {
     tel2: searchParams.get("tel2") || "",
     tel3: searchParams.get("tel3") || "",
     margem: "", 
-    liquida5: "", 
+    liquida5: isPontaGrossa ? pontaGrossaMargemDisp : "", 
     beneficio5: "", 
     convenio: searchParams.get("convenio") || ""
   })
@@ -229,6 +234,20 @@ function NewTicketForm() {
   };
 
   const handleInputChange = (field: string, value: string) => {
+    if (field === "convenio" && value.toUpperCase().includes("PONTA GROSSA")) {
+      const pontaGrossaMargem = searchParams.get("liquida5") || searchParams.get("margem_disponivel") || searchParams.get("margem") || "";
+      if (pontaGrossaMargem) {
+        setFormData(prev => ({
+          ...prev,
+          convenio: value,
+          liquida5: pontaGrossaMargem,
+          margem: "",
+          beneficio5: ""
+        }));
+        if (validationError) setValidationError(null);
+        return;
+      }
+    }
     setFormData(prev => ({ ...prev, [field]: value }))
     if (validationError) setValidationError(null)
   }
