@@ -39,7 +39,8 @@ import {
   Send,
   Lightbulb,
   Settings,
-  Search
+  Search,
+  ArrowLeftRight
 } from "lucide-react"
 import Link from "next/link"
 
@@ -113,6 +114,7 @@ export default function PerfilProfissionalPage() {
 
   // Estado para Gestão / Líder
   const [todosPerfis, setTodosPerfis] = useState<any[]>([])
+  const [liderSelecionadoId, setLiderSelecionadoId] = useState<string>("")
   const [lideradoSelecionadoId, setLideradoSelecionadoId] = useState<string>("")
   const [checkpointAnswers, setCheckpointAnswers] = useState<Record<string, "A" | "B" | "C" | "D" | "E">>({})
   const [salvandoCheckpoint, setSalvandoCheckpoint] = useState(false)
@@ -731,14 +733,35 @@ export default function PerfilProfissionalPage() {
             const isOp = isOperational || roleNorm === "operacional"
             const isSup = isSupervisor || roleNorm === "supervisor"
 
+            // 1. Cargos com função de liderança: Administrador, Recursos Humanos, Operacional e Supervisor
+            const isCargoLideranca = (cargo?: string) => {
+              const r = (cargo || "").toLowerCase().trim()
+              return (
+                r === "administrador" ||
+                r === "desenvolvedor" ||
+                r === "recursos humanos" ||
+                r === "rh" ||
+                r.includes("recursos humanos") ||
+                r === "operacional" ||
+                r === "supervisor"
+              )
+            }
+
+            // 2. Administrador está no topo da hierarquia (não há ninguém acima deles)
+            const isCargoAdministrador = (cargo?: string) => {
+              const r = (cargo || "").toLowerCase().trim()
+              return r === "administrador" || r === "desenvolvedor"
+            }
+
             const lideradosFiltradosPorPapel = todosPerfis.filter((p: any) => {
-              if (isAdmOuDev) return true
-
-              // Usuários não-administradores/desenvolvedores não podem ver a si mesmos
-              if (p.id === user?.id) return false
-
               const pRole = (p.role || "").toLowerCase().trim()
               const pRegime = (p.regime_contratacao || "").toUpperCase().trim()
+
+              // Administrador nunca é liderado (não há ninguém acima deles)
+              if (isCargoAdministrador(pRole)) return false
+
+              // Usuários não-administradores/desenvolvedores não podem ver a si mesmos como liderado
+              if (!isAdmOuDev && p.id === user?.id) return false
 
               const isColabCorretorCLT = (pRole === "corretor" || pRole.includes("corretor")) && pRegime === "CLT"
               const isColabCorretorPJ = (pRole === "corretor" || pRole.includes("corretor")) && (pRegime === "PJ" || (!pRegime && pRole.includes("pj")))
@@ -748,63 +771,174 @@ export default function PerfilProfissionalPage() {
               const isColabSupervisor = pRole === "supervisor"
               const isColabOperacional = pRole === "operacional"
 
+              // 3. Supervisor lidera promotores (Corretor CLT), Estágio e Processo Seletivo (e Monitoramento)
               if (isSup) {
-                return isColabCorretorCLT || isColabMonitoramento || isColabEstagio || isColabProcessoSeletivo
+                return isColabCorretorCLT || isColabEstagio || isColabProcessoSeletivo || isColabMonitoramento
               }
 
+              // Operacional lidera Supervisor e todos os liderados diretos do supervisor
               if (isOp) {
-                return isColabCorretorCLT || isColabMonitoramento || isColabEstagio || isColabProcessoSeletivo || isColabSupervisor
-              }
-
-              if (isRecHum) {
                 return (
+                  isColabSupervisor ||
                   isColabCorretorCLT ||
-                  isColabMonitoramento ||
                   isColabEstagio ||
                   isColabProcessoSeletivo ||
-                  isColabSupervisor ||
-                  isColabOperacional ||
-                  isColabCorretorPJ
+                  isColabMonitoramento
                 )
+              }
+
+              // Recursos Humanos lidera Operacional, Supervisor, PJ e promotores/estagiários/processo seletivo
+              if (isRecHum) {
+                return (
+                  isColabOperacional ||
+                  isColabSupervisor ||
+                  isColabCorretorPJ ||
+                  isColabCorretorCLT ||
+                  isColabEstagio ||
+                  isColabProcessoSeletivo ||
+                  isColabMonitoramento
+                )
+              }
+
+              if (isAdmOuDev) {
+                return true
               }
 
               return false
             })
 
-            const lideradosRespondidos = lideradosFiltradosPorPapel
+            // Lista completa com testes respondidos
+            const listaCompletaPerfis: any[] = [...todosPerfis]
+            if (user?.id && meuPerfil && !listaCompletaPerfis.some((p: any) => p.id === user.id)) {
+              listaCompletaPerfis.unshift({
+                id: user.id,
+                nome: perfil?.nome || user.email?.split("@")[0] || "Você",
+                role: userRole,
+                perfilProfissional: { calculado: meuPerfil }
+              })
+            }
+
+            const todosComTeste = listaCompletaPerfis
               .filter((p: any) => Boolean(p.perfilProfissional?.calculado))
               .sort((a: any, b: any) => (a.nome || "").localeCompare(b.nome || "", "pt-BR", { sensitivity: "base" }))
 
-            const colab = lideradosRespondidos.find((p: any) => p.id === (lideradoSelecionadoId || (lideradosRespondidos[0]?.id)))
+            // 1. Líderes disponíveis: somente quem tem cargo de liderança (Administrador, Recursos Humanos, Operacional, Supervisor)
+            const lideresRespondidos = todosComTeste.filter((p: any) => isCargoLideranca(p.role))
+
+            // 2. Liderados disponíveis: qualquer um EXCETO Administrador
+            const lideradosRespondidos = (isAdmOuDev || isRecHum)
+              ? todosComTeste.filter((p: any) => !isCargoAdministrador(p.role))
+              : (() => {
+                  const base = lideradosFiltradosPorPapel.filter((p: any) => Boolean(p.perfilProfissional?.calculado) && !isCargoAdministrador(p.role))
+                  if (lideradoSelecionadoId && !base.some((p: any) => p.id === lideradoSelecionadoId)) {
+                    const item = todosComTeste.find((p: any) => p.id === lideradoSelecionadoId && !isCargoAdministrador(p.role))
+                    if (item) return [item, ...base]
+                  }
+                  return base
+                })()
+
+            // Líder selecionado
+            const liderColab = lideresRespondidos.find((p: any) => p.id === liderSelecionadoId) ||
+              lideresRespondidos.find((p: any) => p.id === user?.id) ||
+              lideresRespondidos[0]
+            const liderCalc = liderColab?.perfilProfissional?.calculado as PerfilCalculado | undefined
+
+            // Liderado selecionado
+            const colab = lideradosRespondidos.find((p: any) => p.id === lideradoSelecionadoId) ||
+              lideradosRespondidos.find((p: any) => p.id !== liderColab?.id) ||
+              lideradosRespondidos[0]
             const calc = colab?.perfilProfissional?.calculado as PerfilCalculado | undefined
 
             return (
               <>
-                <div className="bg-slate-100/80 border border-slate-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="bg-slate-100/80 border border-slate-300 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <span className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700">
+                    <span className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 shrink-0">
                       <Users className="w-5 h-5 text-slate-800" />
                     </span>
                     <div>
-                      <span className="text-xs font-black text-slate-900 uppercase tracking-wider block">Selecione o Liderado para Analisar:</span>
-                      <span className="text-xs font-semibold text-slate-600">Exibindo guias práticos, cartão rápido e checkpoint de 30 dias</span>
+                      <span className="text-xs font-black text-slate-900 uppercase tracking-wider block">
+                        Selecione o Líder e o Liderado para Analisar:
+                      </span>
+                      <span className="text-xs font-semibold text-slate-600">
+                        Exibindo guias práticos, cartão rápido, checkpoint de 30 dias e dinâmica relacional entre os colaboradores
+                      </span>
                     </div>
                   </div>
-                  <select
-                    value={colab?.id || ""}
-                    onChange={e => setLideradoSelecionadoId(e.target.value)}
-                    className="bg-white border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer shadow-2xs"
-                  >
-                    {lideradosRespondidos.length === 0 ? (
-                      <option value="">Nenhum liderado com teste respondido</option>
-                    ) : (
-                      lideradosRespondidos.map((p: any) => (
-                        <option key={p.id} value={p.id}>
-                          {p.nome}
-                        </option>
-                      ))
-                    )}
-                  </select>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                    {/* Seletor do Líder */}
+                    <div className="flex flex-col gap-1 min-w-[200px]">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-600">
+                        Líder:
+                      </label>
+                      <select
+                        value={liderColab?.id || ""}
+                        onChange={e => setLiderSelecionadoId(e.target.value)}
+                        className="bg-white border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer shadow-2xs"
+                      >
+                        {lideresRespondidos.length === 0 ? (
+                          <option value="">Nenhum líder com teste respondido</option>
+                        ) : (
+                          lideresRespondidos.map((p: any) => (
+                            <option key={`lider-${p.id}`} value={p.id}>
+                              {p.nome} ({p.role || "Cargo não informado"}{p.id === user?.id ? " - Você" : ""})
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    {/* Botão Inverter (Líder ⇄ Liderado) */}
+                    <div className="flex sm:flex-col items-center justify-center pt-0 sm:pt-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tempLider = liderColab?.id
+                          const tempColab = colab?.id
+                          if (tempLider && tempColab) {
+                            if (isCargoAdministrador(liderColab?.role)) {
+                              alert("O usuário Administrador não pode ser definido como liderado, pois não há ninguém acima dele na hierarquia.")
+                              return
+                            }
+                            if (!isCargoLideranca(colab?.role)) {
+                              alert("O colaborador selecionado não possui cargo de liderança (Administrador, Recursos Humanos, Operacional ou Supervisor) para ser definido como Líder.")
+                              return
+                            }
+                            setLiderSelecionadoId(tempColab)
+                            setLideradoSelecionadoId(tempLider)
+                          }
+                        }}
+                        title="Inverter Líder e Liderado (Líder ⇄ Liderado)"
+                        className="p-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-200 text-slate-700 transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+                      >
+                        <ArrowLeftRight className="w-4 h-4 text-slate-700" />
+                        <span className="sm:hidden text-[11px]">Inverter</span>
+                      </button>
+                    </div>
+
+                    {/* Seletor do Liderado */}
+                    <div className="flex flex-col gap-1 min-w-[200px]">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-600">
+                        Liderado:
+                      </label>
+                      <select
+                        value={colab?.id || ""}
+                        onChange={e => setLideradoSelecionadoId(e.target.value)}
+                        className="bg-white border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer shadow-2xs"
+                      >
+                        {lideradosRespondidos.length === 0 ? (
+                          <option value="">Nenhum liderado com teste respondido</option>
+                        ) : (
+                          lideradosRespondidos.map((p: any) => (
+                            <option key={`liderado-${p.id}`} value={p.id}>
+                              {p.nome} ({p.role || "Cargo não informado"})
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Dados do Liderado Selecionado */}
@@ -817,10 +951,10 @@ export default function PerfilProfissionalPage() {
                     </p>
                   </div>
                 ) : (() => {
-                  const liderArq = meuPerfil?.arqPrimario || "Executor"
+                  const liderArq = liderCalc?.arqPrimario || meuPerfil?.arqPrimario || "Executor"
                   const colabArq = calc.arqPrimario
-            const parLiderColabKey = `${liderArq}-${colabArq}`
-            const dinamicaLiderColab = MATRIZ_LIDER_LIDERADO[parLiderColabKey]
+                  const parLiderColabKey = `${liderArq}-${colabArq}`
+                  const dinamicaLiderColab = MATRIZ_LIDER_LIDERADO[parLiderColabKey]
 
             return (
               <div className="space-y-6">
@@ -893,13 +1027,34 @@ export default function PerfilProfissionalPage() {
                 {/* Matriz Líder x Liderado */}
                 {dinamicaLiderColab && (
                   <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-4 shadow-xs">
-                    <div className="space-y-1 border-b border-slate-100 pb-3">
-                      <span className="text-xs font-black uppercase tracking-wider text-emerald-700 block">
-                        Dinâmica Relacional
-                      </span>
-                      <h4 className="text-lg font-black text-slate-900">
-                        Líder ({liderArq}) × Liderado ({colabArq})
-                      </h4>
+                    <div className="space-y-2.5 border-b border-slate-100 pb-3.5">
+                      <div>
+                        <span className="text-xs font-black uppercase tracking-wider text-emerald-700 block">
+                          Dinâmica Relacional
+                        </span>
+                        <h4 className="text-lg font-black text-slate-900">
+                          Líder ({liderArq}) × Liderado ({colabArq})
+                        </h4>
+                      </div>
+
+                      {/* Card de identificação das posições Líder × Liderado */}
+                      <div className="inline-flex flex-wrap items-center gap-2 text-xs font-semibold bg-slate-50 border border-slate-200 px-3.5 py-1.5 rounded-xl text-slate-700 shadow-2xs">
+                        <span className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-slate-900 text-white">
+                            Líder
+                          </span>
+                          <span className="font-bold text-slate-900">{liderColab?.nome}</span>
+                          <span className="text-slate-500 text-[11px]">({liderColab?.role || "Líder"})</span>
+                        </span>
+                        <span className="text-slate-400 font-bold">×</span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-600 text-white">
+                            Liderado
+                          </span>
+                          <span className="font-bold text-slate-900">{colab?.nome}</span>
+                          <span className="text-slate-500 text-[11px]">({colab?.role || "Liderado"})</span>
+                        </span>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
