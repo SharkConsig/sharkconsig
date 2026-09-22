@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase"
 import { NextResponse } from "next/server"
 import { calcularPerfil, calcularCheckpointLideranca } from "@/lib/perfil-profissional"
+import { QUESTOES_ESTAGIO, QUESTOES_TESTE, getQuestoesTeste } from "@/lib/perfil-profissional-data"
 
 export const dynamic = "force-dynamic"
 
@@ -35,16 +36,24 @@ export async function GET(request: Request) {
         page++
       }
 
-      const userRoleMap = new Map<string, string>()
+      const userMetaMap = new Map<string, { role: string; tipoTeste: string | null }>()
       users.forEach(u => {
         const role = u.user_metadata?.funcao || u.user_metadata?.role || ""
-        userRoleMap.set(u.id, role)
+        const tipoTeste = u.user_metadata?.tipo_teste_atribuido || null
+        userMetaMap.set(u.id, { role, tipoTeste })
       })
 
       const perfilMap = new Map<string, any>()
       ;(dbRows || []).forEach(row => {
-        const role = userRoleMap.get(row.user_id) || ""
-        const calculado = calcularPerfil(row.respostas || {}, row.usuario_nome, role)
+        const userMeta = userMetaMap.get(row.user_id)
+        const role = userMeta?.role || ""
+        const tipoTeste = userMeta?.tipoTeste || null
+        const questoes = tipoTeste === "QUESTOES_ESTAGIO" 
+          ? QUESTOES_ESTAGIO 
+          : tipoTeste === "QUESTOES_TESTE" 
+          ? QUESTOES_TESTE 
+          : getQuestoesTeste(role)
+        const calculado = calcularPerfil(row.respostas || {}, row.usuario_nome, questoes)
         perfilMap.set(row.user_id, {
           versao: row.versao_instrumento || "v1.0",
           dataConclusao: row.updated_at || row.created_at,
@@ -67,6 +76,7 @@ export async function GET(request: Request) {
             nome: meta.nome_completo || meta.nome || u.email?.split("@")[0] || "Colaborador",
             email: u.email,
             role: meta.funcao || meta.role || "Colaborador",
+            tipo_teste_atribuido: meta.tipo_teste_atribuido || null,
             regime_contratacao: meta.regime_contratacao || "",
             status: ((meta.status || "ATIVO") as string).toUpperCase().trim(),
             supervisor_id: meta.supervisor_id || null,
@@ -98,8 +108,10 @@ export async function GET(request: Request) {
       // Se não existir registro na tabela perfil_profissional, retorna null imediatamente
       if (!dbRow) {
         // Limpa metadado legado se existir para não haver inconsistência
+        let metaTipoTeste: string | null = null
         try {
           const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
+          metaTipoTeste = userData?.user?.user_metadata?.tipo_teste_atribuido || null
           if (userData?.user?.user_metadata?.perfil_profissional) {
             const meta = { ...userData.user.user_metadata }
             delete meta.perfil_profissional
@@ -113,6 +125,7 @@ export async function GET(request: Request) {
             success: true,
             perfil: null,
             checkpoint: null,
+            tipoTesteAtribuido: metaTipoTeste,
             dataInicioOperacao: null
           },
           { headers: { "Cache-Control": "no-store, max-age=0" } }
@@ -121,7 +134,13 @@ export async function GET(request: Request) {
 
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
       const userRole = userData?.user?.user_metadata?.funcao || userData?.user?.user_metadata?.role || ""
-      const calculado = calcularPerfil(dbRow.respostas || {}, dbRow.usuario_nome, userRole)
+      const tipoTesteAtribuido = userData?.user?.user_metadata?.tipo_teste_atribuido || null
+      const questoes = tipoTesteAtribuido === "QUESTOES_ESTAGIO"
+        ? QUESTOES_ESTAGIO
+        : tipoTesteAtribuido === "QUESTOES_TESTE"
+        ? QUESTOES_TESTE
+        : getQuestoesTeste(userRole)
+      const calculado = calcularPerfil(dbRow.respostas || {}, dbRow.usuario_nome, questoes)
 
       const perfil = {
         versao: dbRow.versao_instrumento || "v1.0",
@@ -135,6 +154,7 @@ export async function GET(request: Request) {
           success: true,
           perfil,
           checkpoint: dbRow.checkpoint_lider || null,
+          tipoTesteAtribuido,
           dataInicioOperacao: userData?.user?.user_metadata?.data_inicio_operacao || userData?.user?.created_at || null
         },
         { headers: { "Cache-Control": "no-store, max-age=0" } }
@@ -167,7 +187,13 @@ export async function POST(request: Request) {
 
       const role = body.role || userData.user.user_metadata?.funcao || userData.user.user_metadata?.role || ""
       const nome = nomeUsuario || userData.user.user_metadata?.nome || userData.user.email?.split("@")[0] || "Colaborador"
-      const perfilCalculado = calcularPerfil(respostas, nome, role)
+      const tipoAtribuido = userData.user.user_metadata?.tipo_teste_atribuido || body.tipoTeste || null
+      const questoes = tipoAtribuido === "QUESTOES_ESTAGIO"
+        ? QUESTOES_ESTAGIO
+        : tipoAtribuido === "QUESTOES_TESTE"
+        ? QUESTOES_TESTE
+        : getQuestoesTeste(role)
+      const perfilCalculado = calcularPerfil(respostas, nome, questoes)
 
       // Persiste com exclusividade na tabela perfil_profissional
       const { error: upsertErr } = await supabaseAdmin.from("perfil_profissional").upsert(
@@ -243,6 +269,37 @@ export async function POST(request: Request) {
         .eq("user_id", colaboradorId)
 
       return NextResponse.json({ success: true, checkpoint: dadosCheckpoint })
+    }
+
+    if (action === "atribuir_tipo_teste") {
+      const { userIds, tipoTeste } = body
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        return NextResponse.json({ success: false, error: "Nenhum usuário informado" }, { status: 400 })
+      }
+
+      // tipoTeste pode ser "QUESTOES_TESTE" | "QUESTOES_ESTAGIO" | "PADRAO"
+      const valorMeta = (!tipoTeste || tipoTeste === "PADRAO") ? null : tipoTeste
+
+      const promessas = userIds.map(async (uId: string) => {
+        try {
+          const { data: uData } = await supabaseAdmin.auth.admin.getUserById(uId)
+          if (uData?.user) {
+            const meta = { ...uData.user.user_metadata }
+            if (valorMeta) {
+              meta.tipo_teste_atribuido = valorMeta
+            } else {
+              delete meta.tipo_teste_atribuido
+            }
+            await supabaseAdmin.auth.admin.updateUserById(uId, { user_metadata: meta })
+          }
+        } catch (err) {
+          console.error(`[API Perfil Profissional] Erro ao atribuir teste para usuário ${uId}:`, err)
+        }
+      })
+
+      await Promise.all(promessas)
+
+      return NextResponse.json({ success: true, count: userIds.length })
     }
 
     return NextResponse.json({ success: false, error: "Ação não reconhecida" }, { status: 400 })

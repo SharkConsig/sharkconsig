@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@/context/auth-context"
 import {
   getQuestoesTeste,
+  QUESTOES_TESTE,
+  QUESTOES_ESTAGIO,
+  isRoleOrCargoEstagio,
   QUESTOES_CHECKPOINT,
   DIMENSOES_INFO,
   ARQUETIPOS_MAP,
@@ -34,7 +37,9 @@ import {
   Zap,
   Info,
   Send,
-  Lightbulb
+  Lightbulb,
+  Settings,
+  Search
 } from "lucide-react"
 import Link from "next/link"
 
@@ -70,18 +75,32 @@ export default function PerfilProfissionalPage() {
     roleNorm === "recursos humanos"
   )
 
-  // Grupo 1: Corretor (CLT e PJ), Estágio, Processo Seletivo e Monitoramento -> Somente 'MEU PERFIL'. Default: 'MEU PERFIL'
-  const canViewGestao = isGrupo3
-  const canViewLider = isGrupo3 || isGrupo2
+  const isRH = isRecursosHumanos || roleNorm === "recursos humanos" || roleNorm.includes("recursos humanos") || roleNorm === "rh"
+  const isAdminOrDev = isAdmin || isDeveloper || roleNorm === "administrador" || roleNorm === "desenvolvedor"
 
-  const [abaAtiva, setAbaAtiva] = useState<"profissional" | "lider" | "gestao">(
-    isGrupo3 ? "gestao" : (isGrupo2 ? "lider" : "profissional")
+  // Gestores com acesso à aba GERENCIAMENTO DO TESTE: Recursos Humanos e Administrador
+  const canViewGerenciamento = !isMonitor && (isAdminOrDev || isRH)
+
+  // Grupo 1: Corretor (CLT e PJ), Estágio, Processo Seletivo e Monitoramento -> Somente 'MEU PERFIL'. Default: 'MEU PERFIL'
+  const canViewGestao = isGrupo3 || isRH
+  const canViewLider = isGrupo3 || isGrupo2 || isRH
+
+  const [abaAtiva, setAbaAtiva] = useState<"profissional" | "lider" | "gestao" | "gerenciamento">(
+    (isGrupo3 || isRH) ? "gestao" : (isGrupo2 ? "lider" : "profissional")
   )
+  const [meuTipoTesteAtribuido, setMeuTipoTesteAtribuido] = useState<string | null>(null)
+
+  // Estados da Aba Gerenciamento do Teste
+  const [usuariosSelecionados, setUsuariosSelecionados] = useState<string[]>([])
+  const [buscaGerenciamento, setBuscaGerenciamento] = useState("")
+  const [filtroTipoGerenciamento, setFiltroTipoGerenciamento] = useState<"TODOS" | "QUESTOES_TESTE" | "QUESTOES_ESTAGIO" | "PADRAO">("TODOS")
+  const [salvandoAtribuicao, setSalvandoAtribuicao] = useState(false)
+  const [toastGerenciamento, setToastGerenciamento] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null)
   const tabInicializadaRef = useRef(false)
 
   useEffect(() => {
     if (!tabInicializadaRef.current && (perfil || user)) {
-      if (isGrupo3) {
+      if (isGrupo3 || isRH) {
         setAbaAtiva("gestao")
       } else if (isGrupo2) {
         setAbaAtiva("lider")
@@ -90,7 +109,7 @@ export default function PerfilProfissionalPage() {
       }
       tabInicializadaRef.current = true
     }
-  }, [isGrupo3, isGrupo2, perfil, user])
+  }, [isGrupo3, isGrupo2, isRH, perfil, user])
 
   // Estado para Gestão / Líder
   const [todosPerfis, setTodosPerfis] = useState<any[]>([])
@@ -103,7 +122,7 @@ export default function PerfilProfissionalPage() {
   useEffect(() => {
     if (!user?.id) return
     carregarDados()
-  }, [user?.id, canViewLider])
+  }, [user?.id, canViewLider, canViewGerenciamento])
 
   // Atualização instantânea dos dados ao trocar de aba sem recarregar a tela inteira (com throttle de 2s para evitar spam no banco)
   useEffect(() => {
@@ -125,22 +144,25 @@ export default function PerfilProfissionalPage() {
         cache: "no-store"
       })
       const data = await res.json()
-      if (data.success && data.perfil?.calculado) {
-        setMeuPerfil(data.perfil.calculado)
-        setDataConclusao(data.perfil.dataConclusao)
-        if (data.perfil.respostas) {
-          setRespostasTeste(data.perfil.respostas)
+      if (data.success) {
+        setMeuTipoTesteAtribuido(data.tipoTesteAtribuido || null)
+        if (data.perfil?.calculado) {
+          setMeuPerfil(data.perfil.calculado)
+          setDataConclusao(data.perfil.dataConclusao)
+          if (data.perfil.respostas) {
+            setRespostasTeste(data.perfil.respostas)
+          }
+        } else {
+          // Se a tabela estiver limpa/sem respostas, garante tela inicial do teste
+          setMeuPerfil(null)
+          setDataConclusao(null)
+          setRespostasTeste({})
+          setIndiceQuestao(0)
         }
-      } else {
-        // Se a tabela estiver limpa/sem respostas, garante tela inicial do teste
-        setMeuPerfil(null)
-        setDataConclusao(null)
-        setRespostasTeste({})
-        setIndiceQuestao(0)
       }
 
-      // 2. Se líder/gestor, carregar lista completa da equipe diretamente da tabela
-      if (canViewLider) {
+      // 2. Se líder/gestor ou com acesso a gerenciamento, carregar lista completa da equipe diretamente da tabela
+      if (canViewLider || canViewGerenciamento) {
         const resList = await fetch(`/api/perfil-profissional?all=true&_t=${Date.now()}`, {
           cache: "no-store"
         })
@@ -165,7 +187,8 @@ export default function PerfilProfissionalPage() {
 
   // Ações do Teste
   const roleUsuario = perfil?.funcao || perfil?.role || user?.user_metadata?.funcao || user?.user_metadata?.role || ""
-  const questoesTeste = getQuestoesTeste(roleUsuario)
+  const tipoTesteEfetivo = meuTipoTesteAtribuido || (isRoleOrCargoEstagio(roleUsuario) ? "QUESTOES_ESTAGIO" : "QUESTOES_TESTE")
+  const questoesTeste = tipoTesteEfetivo === "QUESTOES_ESTAGIO" ? QUESTOES_ESTAGIO : QUESTOES_TESTE
   const questaoAtual = questoesTeste[indiceQuestao]
   const respostaSelecionada = respostasTeste[questaoAtual?.numero]
 
@@ -266,6 +289,103 @@ export default function PerfilProfissionalPage() {
     }
   }
 
+  // Ações da Aba Gerenciamento do Teste
+  const atribuirTeste = async (tipo: "QUESTOES_TESTE" | "QUESTOES_ESTAGIO" | "PADRAO", userIdsAlvo?: string[]) => {
+    const ids = userIdsAlvo || usuariosSelecionados
+    if (ids.length === 0) {
+      alert("Selecione pelo menos um colaborador para definir o teste.")
+      return
+    }
+
+    setSalvandoAtribuicao(true)
+    setToastGerenciamento(null)
+    try {
+      const res = await fetch("/api/perfil-profissional", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "atribuir_tipo_teste",
+          userIds: ids,
+          tipoTeste: tipo
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setTodosPerfis(prev =>
+          prev.map(p => {
+            if (ids.includes(p.id)) {
+              return {
+                ...p,
+                tipo_teste_atribuido: tipo === "PADRAO" ? null : tipo
+              }
+            }
+            return p
+          })
+        )
+        if (user?.id && ids.includes(user.id)) {
+          setMeuTipoTesteAtribuido(tipo === "PADRAO" ? null : tipo)
+        }
+        setUsuariosSelecionados([])
+        const labelTeste = tipo === "QUESTOES_ESTAGIO" ? "QUESTOES_ESTAGIO" : tipo === "QUESTOES_TESTE" ? "QUESTOES_TESTE" : "Padrão do Cargo"
+        setToastGerenciamento({
+          tipo: "sucesso",
+          texto: `Teste definido com sucesso (${labelTeste}) para ${ids.length} colaborador(es)!`
+        })
+      } else {
+        setToastGerenciamento({
+          tipo: "erro",
+          texto: data.error || "Erro ao atualizar atribuição de teste."
+        })
+      }
+    } catch (e) {
+      console.error(e)
+      setToastGerenciamento({
+        tipo: "erro",
+        texto: "Falha de conexão ao salvar atribuição."
+      })
+    } finally {
+      setSalvandoAtribuicao(false)
+    }
+  }
+
+  const alternarSelecionarTodos = (listaIds: string[]) => {
+    if (listaIds.every(id => usuariosSelecionados.includes(id))) {
+      setUsuariosSelecionados(prev => prev.filter(id => !listaIds.includes(id)))
+    } else {
+      setUsuariosSelecionados(prev => Array.from(new Set([...prev, ...listaIds])))
+    }
+  }
+
+  const alternarSelecaoUsuario = (id: string) => {
+    setUsuariosSelecionados(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    )
+  }
+
+  const usuariosFiltradosGerenciamento = todosPerfis
+    .filter(p => {
+      if (buscaGerenciamento.trim()) {
+        const termo = buscaGerenciamento.toLowerCase().trim()
+        const nome = (p.nome || "").toLowerCase()
+        const email = (p.email || "").toLowerCase()
+        const role = (p.role || "").toLowerCase()
+        if (!nome.includes(termo) && !email.includes(termo) && !role.includes(termo)) {
+          return false
+        }
+      }
+      if (filtroTipoGerenciamento === "QUESTOES_TESTE") {
+        return p.tipo_teste_atribuido === "QUESTOES_TESTE"
+      }
+      if (filtroTipoGerenciamento === "QUESTOES_ESTAGIO") {
+        return p.tipo_teste_atribuido === "QUESTOES_ESTAGIO"
+      }
+      if (filtroTipoGerenciamento === "PADRAO") {
+        return !p.tipo_teste_atribuido
+      }
+      return true
+    })
+    .sort((a, b) => (a.nome || "").localeCompare(b.nome || ""))
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
@@ -299,9 +419,9 @@ export default function PerfilProfissionalPage() {
             </div>
           </div>
 
-          {/* Abas de Navegação (visível para Grupo 2 [Líder] e Grupo 3 [Gestão]) */}
-          {canViewLider && (
-            <div className="flex items-center bg-slate-100 border border-slate-200 p-1 rounded-xl">
+          {/* Abas de Navegação (visível para Líder, Gestão e Gerenciamento) */}
+          {(canViewLider || canViewGerenciamento) && (
+            <div className="flex flex-wrap items-center bg-slate-100 border border-slate-200 p-1 rounded-xl gap-1">
               <button
                 onClick={() => setAbaAtiva("profissional")}
                 className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
@@ -312,16 +432,18 @@ export default function PerfilProfissionalPage() {
               >
                 Meu Perfil
               </button>
-              <button
-                onClick={() => setAbaAtiva("lider")}
-                className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                  abaAtiva === "lider"
-                    ? "bg-[#0F172B] text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                }`}
-              >
-                Visão Líder
-              </button>
+              {canViewLider && (
+                <button
+                  onClick={() => setAbaAtiva("lider")}
+                  className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                    abaAtiva === "lider"
+                      ? "bg-[#0F172B] text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                  }`}
+                >
+                  Visão Líder
+                </button>
+              )}
               {canViewGestao && (
                 <button
                   onClick={() => setAbaAtiva("gestao")}
@@ -332,6 +454,18 @@ export default function PerfilProfissionalPage() {
                   }`}
                 >
                   Inteligência do Time (Gestão)
+                </button>
+              )}
+              {canViewGerenciamento && (
+                <button
+                  onClick={() => setAbaAtiva("gerenciamento")}
+                  className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                    abaAtiva === "gerenciamento"
+                      ? "bg-[#0F172B] text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                  }`}
+                >
+                  Gerenciamento do Teste
                 </button>
               )}
             </div>
@@ -1096,6 +1230,286 @@ export default function PerfilProfissionalPage() {
               </div>
             )
           })()}
+        </div>
+      )}
+
+      {/* CASO 4: Aba de Gerenciamento do Teste (Exclusivo Recursos Humanos e Administrador) */}
+      {abaAtiva === "gerenciamento" && canViewGerenciamento && (
+        <div className="w-full space-y-6">
+          {/* Banner Informativo */}
+          <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <span className="p-3 rounded-xl bg-white/10 text-white shrink-0 mt-0.5">
+                <Settings className="w-6 h-6" />
+              </span>
+              <div className="space-y-1">
+                <h2 className="text-xl font-black tracking-tight">
+                  Gerenciamento do Teste
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-300 max-w-3xl leading-relaxed">
+                  Painel de gestão para Recursos Humanos e Administradores. Selecione um ou vários usuários abaixo para definir qual versão do instrumento (<strong>QUESTOES_TESTE</strong> ou <strong>QUESTOES_ESTAGIO</strong>) o colaborador deve responder.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Toast / Alerta de Notificação */}
+          {toastGerenciamento && (
+            <div
+              className={cn(
+                "p-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-between transition-all border",
+                toastGerenciamento.tipo === "sucesso"
+                  ? "bg-emerald-50 text-emerald-900 border-emerald-200"
+                  : "bg-rose-50 text-rose-900 border-rose-200"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                {toastGerenciamento.tipo === "sucesso" ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                )}
+                <span>{toastGerenciamento.texto}</span>
+              </div>
+              <button
+                onClick={() => setToastGerenciamento(null)}
+                className="text-xs underline hover:opacity-80 ml-4 cursor-pointer font-semibold"
+              >
+                Fechar
+              </button>
+            </div>
+          )}
+
+          {/* Filtros e Busca */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={buscaGerenciamento}
+                onChange={e => setBuscaGerenciamento(e.target.value)}
+                placeholder="Buscar por nome, e-mail ou cargo..."
+                className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Filtrar:</span>
+              <select
+                value={filtroTipoGerenciamento}
+                onChange={e => setFiltroTipoGerenciamento(e.target.value as any)}
+                className="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-slate-900"
+              >
+                <option value="TODOS">Todos os Colaboradores</option>
+                <option value="QUESTOES_TESTE">Apenas QUESTOES_TESTE</option>
+                <option value="QUESTOES_ESTAGIO">Apenas QUESTOES_ESTAGIO</option>
+                <option value="PADRAO">Apenas Padrão Automático</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Barra de Ação em Massa (quando 1 ou mais selecionados) */}
+          {usuariosSelecionados.length > 0 && (
+            <div className="bg-indigo-50 border-2 border-indigo-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <span className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-black text-sm flex items-center justify-center shrink-0">
+                  {usuariosSelecionados.length}
+                </span>
+                <div>
+                  <span className="text-xs font-black text-indigo-950 uppercase tracking-wide block">
+                    {usuariosSelecionados.length === 1 ? "1 colaborador selecionado" : `${usuariosSelecionados.length} colaboradores selecionados`}
+                  </span>
+                  <span className="text-[11px] text-indigo-800 font-semibold">
+                    Escolha qual questionário aplicar para os selecionados:
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  disabled={salvandoAtribuicao}
+                  onClick={() => atribuirTeste("QUESTOES_TESTE")}
+                  className="px-3.5 py-2 rounded-lg text-xs font-bold bg-[#0F172B] hover:bg-slate-800 text-white transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  Atribuir QUESTOES_TESTE
+                </button>
+                <button
+                  disabled={salvandoAtribuicao}
+                  onClick={() => atribuirTeste("QUESTOES_ESTAGIO")}
+                  className="px-3.5 py-2 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  Atribuir QUESTOES_ESTAGIO
+                </button>
+                <button
+                  disabled={salvandoAtribuicao}
+                  onClick={() => atribuirTeste("PADRAO")}
+                  className="px-3.5 py-2 rounded-lg text-xs font-bold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Restaurar Padrão do Cargo
+                </button>
+                <button
+                  onClick={() => setUsuariosSelecionados([])}
+                  className="px-2.5 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer ml-1"
+                >
+                  Desmarcar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Tabela de Colaboradores e Configuração do Teste */}
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase tracking-wider text-[10px]">
+                    <th className="py-3.5 px-4 w-10">
+                      <input
+                        type="checkbox"
+                        checked={
+                          usuariosFiltradosGerenciamento.length > 0 &&
+                          usuariosFiltradosGerenciamento.every(u => usuariosSelecionados.includes(u.id))
+                        }
+                        onChange={() => alternarSelecionarTodos(usuariosFiltradosGerenciamento.map(u => u.id))}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                        title="Selecionar todos os listados"
+                      />
+                    </th>
+                    <th className="py-3.5 px-4">Colaborador</th>
+                    <th className="py-3.5 px-4">Cargo / Função</th>
+                    <th className="py-3.5 px-4">Atribuição do Gestor</th>
+                    <th className="py-3.5 px-4">Teste Efetivo</th>
+                    <th className="py-3.5 px-4">Status</th>
+                    <th className="py-3.5 px-4 text-right">Ação Individual</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {usuariosFiltradosGerenciamento.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-500 font-semibold">
+                        Nenhum colaborador encontrado com os filtros atuais.
+                      </td>
+                    </tr>
+                  ) : (
+                    usuariosFiltradosGerenciamento.map(p => {
+                      const isSelected = usuariosSelecionados.includes(p.id)
+                      const isEstagioCargo = isRoleOrCargoEstagio(p.role)
+                      const atribuicao = p.tipo_teste_atribuido
+                      const testeEfetivo = atribuicao || (isEstagioCargo ? "QUESTOES_ESTAGIO" : "QUESTOES_TESTE")
+                      const respondido = !!p.perfilProfissional?.calculado
+
+                      return (
+                        <tr
+                          key={p.id}
+                          className={cn(
+                            "transition-colors",
+                            isSelected ? "bg-indigo-50/50 hover:bg-indigo-50" : "hover:bg-slate-50/70"
+                          )}
+                        >
+                          <td className="py-3.5 px-4">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => alternarSelecaoUsuario(p.id)}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                            />
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-slate-900">{p.nome}</div>
+                            <div className="text-[11px] text-slate-500">{p.email}</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">
+                              {p.role || "Não definido"}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {atribuicao === "QUESTOES_ESTAGIO" ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300">
+                                QUESTOES_ESTAGIO
+                              </span>
+                            ) : atribuicao === "QUESTOES_TESTE" ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-blue-50 text-blue-900 border border-blue-300">
+                                QUESTOES_TESTE
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-semibold">
+                                Automático (Cargo)
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span
+                              className={cn(
+                                "px-2.5 py-1 rounded-md text-[11px] font-bold tracking-tight",
+                                testeEfetivo === "QUESTOES_ESTAGIO"
+                                  ? "bg-amber-100 text-amber-900"
+                                  : "bg-slate-800 text-white"
+                              )}
+                            >
+                              {testeEfetivo === "QUESTOES_ESTAGIO" ? "Estágio (36 Qs)" : "Padrão (36 Qs)"}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {respondido ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-[11px]">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                Respondido
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-amber-600 font-semibold text-[11px]">
+                                <Info className="w-3.5 h-3.5 text-amber-500" />
+                                Pendente
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="inline-flex items-center gap-1 justify-end">
+                              <button
+                                disabled={salvandoAtribuicao}
+                                onClick={() => atribuirTeste("QUESTOES_TESTE", [p.id])}
+                                title="Definir QUESTOES_TESTE para este usuário"
+                                className={cn(
+                                  "px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-all border",
+                                  atribuicao === "QUESTOES_TESTE"
+                                    ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                )}
+                              >
+                                Padrão
+                              </button>
+                              <button
+                                disabled={salvandoAtribuicao}
+                                onClick={() => atribuirTeste("QUESTOES_ESTAGIO", [p.id])}
+                                title="Definir QUESTOES_ESTAGIO para este usuário"
+                                className={cn(
+                                  "px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-all border",
+                                  atribuicao === "QUESTOES_ESTAGIO"
+                                    ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                )}
+                              >
+                                Estágio
+                              </button>
+                              {atribuicao && (
+                                <button
+                                  disabled={salvandoAtribuicao}
+                                  onClick={() => atribuirTeste("PADRAO", [p.id])}
+                                  title="Restaurar padrão do cargo"
+                                  className="px-2 py-1 rounded text-[10px] font-semibold text-slate-500 hover:text-slate-800 bg-slate-50 border border-slate-200 cursor-pointer"
+                                >
+                                  Auto
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
       </div>
