@@ -957,51 +957,37 @@ export default function KanbanPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">
-      <Header />
+      <Header title="KANBAN DE ATENDIMENTO COMERCIAL" />
       
       <main className="flex-1 p-4 lg:p-6 space-y-5 overflow-hidden flex flex-col">
-        {/* Barra Superior: Título, Métricas Consolidadas e Controles */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-lg bg-sky-600 text-white flex items-center justify-center shadow-xs">
-                <SlidersHorizontal className="h-5 w-5" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                  KANBAN DE ATENDIMENTO COMERCIAL
-                </h1>
-                <p className="text-xs text-slate-500 font-medium">
-                  Fluxo comercial em tempo real integrado aos Chamados do SharkConsig
-                </p>
-              </div>
-            </div>
-          </div>
-
+        {/* Barra Superior: Métricas Consolidadas e Controles */}
+        <div className="flex items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           {/* Métricas Rápidas */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
-            <div className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
-              <span className="text-slate-500 font-medium">Total Fichas: </span>
-              <span className="font-bold text-slate-900">{metrics.totalLeads}</span>
-            </div>
-            <div className="bg-sky-50 border border-sky-200 px-3 py-1.5 rounded-lg">
-              <span className="text-sky-700 font-medium">Pipeline: </span>
-              <span className="font-bold text-sky-900">
-                {metrics.totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-              </span>
-            </div>
-            {metrics.totalAtrasados > 0 && (
-              <div className="bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-rose-700">
-                <span className="h-2 w-2 rounded-full bg-rose-600 animate-pulse" />
-                <span className="font-bold">{metrics.totalAtrasados} Atrasados</span>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs w-full justify-between">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <div className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
+                <span className="text-slate-500 font-medium">Total Fichas: </span>
+                <span className="font-bold text-slate-900">{metrics.totalLeads}</span>
               </div>
-            )}
-            {metrics.totalAcaoEspecial > 0 && (
-              <div className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-amber-700">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span className="font-bold">{metrics.totalAcaoEspecial} Ação Especial</span>
+              <div className="bg-sky-50 border border-sky-200 px-3 py-1.5 rounded-lg">
+                <span className="text-sky-700 font-medium">Pipeline: </span>
+                <span className="font-bold text-sky-900">
+                  {metrics.totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </span>
               </div>
-            )}
+              {metrics.totalAtrasados > 0 && (
+                <div className="bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-rose-700">
+                  <span className="h-2 w-2 rounded-full bg-rose-600 animate-pulse" />
+                  <span className="font-bold">{metrics.totalAtrasados} Atrasados</span>
+                </div>
+              )}
+              {metrics.totalAcaoEspecial > 0 && (
+                <div className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-amber-700">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span className="font-bold">{metrics.totalAcaoEspecial} Ação Especial</span>
+                </div>
+              )}
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -1016,7 +1002,7 @@ export default function KanbanPage() {
         </div>
 
         {/* Barra de Filtros */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
           {/* Busca por Nome, CPF ou Telefone */}
           <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -1068,17 +1054,6 @@ export default function KanbanPage() {
               <option value="CONFLITO">🔵 Somente Conflito de Titularidade</option>
             </select>
           </div>
-
-          {/* Indicador de Papel Ativo */}
-          <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs">
-            <span className="text-slate-500 font-medium">Modo Ativo:</span>
-            <Badge variant="outline" className={cn(
-              "font-bold text-[11px]",
-              isGestor ? "bg-amber-50 text-amber-800 border-amber-300" : "bg-sky-50 text-sky-800 border-sky-300"
-            )}>
-              {isGestor ? "Painel de Gestão (Supervisão)" : "Mesa de Trabalho (Execução)"}
-            </Badge>
-          </div>
         </div>
 
         {/* Quadro das 7 Colunas do Kanban */}
@@ -1091,7 +1066,7 @@ export default function KanbanPage() {
               return (
                 <div
                   key={col.id}
-                  className="flex-1 min-w-[250px] max-w-[270px] bg-slate-100/70 border border-slate-200/90 rounded-xl flex flex-col max-h-[calc(100vh-230px)] shadow-xs"
+                  className="flex-1 min-w-[250px] max-w-[270px] bg-slate-300 border border-slate-400/70 rounded-xl flex flex-col max-h-[calc(100vh-230px)] shadow-xs"
                 >
                   {/* Cabeçalho da Coluna */}
                   <div className={cn("p-3.5 border-b rounded-t-xl border-t-4", col.borderTop, col.headerBg)}>
@@ -1099,9 +1074,6 @@ export default function KanbanPage() {
                       <h2 className="font-bold text-xs text-slate-900 tracking-tight flex items-center gap-1.5">
                         {col.title}
                       </h2>
-                      <Badge className={cn("text-[10px] font-bold px-1.5 py-0.5", col.badgeClass)}>
-                        {col.code}
-                      </Badge>
                     </div>
 
                     <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
@@ -1120,9 +1092,9 @@ export default function KanbanPage() {
                   </div>
 
                   {/* Lista de Cartões (Scroll Vertical) */}
-                  <div className="p-2 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar">
+                  <div className="p-2 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-slate-300/60 rounded-b-xl">
                     {colTickets.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-slate-400 font-medium">
+                      <div className="py-8 text-center text-xs text-slate-500 font-semibold">
                         Nenhum lead nesta etapa
                       </div>
                     ) : (
