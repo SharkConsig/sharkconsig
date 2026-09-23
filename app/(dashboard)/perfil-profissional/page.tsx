@@ -32,6 +32,7 @@ import {
   Award,
   BookOpen,
   ChevronRight,
+  ChevronDown,
   Sparkles,
   ClipboardCheck,
   Zap,
@@ -733,7 +734,7 @@ export default function PerfilProfissionalPage() {
             const isOp = isOperational || roleNorm === "operacional"
             const isSup = isSupervisor || roleNorm === "supervisor"
 
-            // 1. Cargos com função de liderança: Administrador, Recursos Humanos, Operacional, Monitoramento e Supervisor
+            // 1. Cargos com função de liderança: Administrador, Recursos Humanos, Operacional e Supervisor
             const isCargoLideranca = (cargo?: string) => {
               const r = (cargo || "").toLowerCase().trim()
               return (
@@ -743,8 +744,6 @@ export default function PerfilProfissionalPage() {
                 r === "rh" ||
                 r.includes("recursos humanos") ||
                 r === "operacional" ||
-                r === "monitoramento" ||
-                r.includes("monitor") ||
                 r === "supervisor"
               )
             }
@@ -824,11 +823,20 @@ export default function PerfilProfissionalPage() {
               .filter((p: any) => Boolean(p.perfilProfissional?.calculado))
               .sort((a: any, b: any) => (a.nome || "").localeCompare(b.nome || "", "pt-BR", { sensitivity: "base" }))
 
-            // 1. Líderes disponíveis: somente quem tem cargo de liderança (Administrador, Recursos Humanos, Operacional, Monitoramento, Supervisor)
+            // 1. Líderes disponíveis: somente quem tem cargo de liderança (Administrador, Recursos Humanos, Operacional, Supervisor)
             const lideresRespondidos = todosComTeste.filter((p: any) => isCargoLideranca(p.role))
 
-            // 2. Liderados disponíveis: constam todos os usuários com teste concluído (Supervisor, Recursos Humanos, Monitoramento, Operacional, Corretor CLT/PJ, Estágio, Processo Seletivo), EXCETO Administrador
-            const lideradosRespondidos = todosComTeste.filter((p: any) => !isCargoAdministrador(p.role))
+            // 2. Liderados disponíveis: qualquer um EXCETO Administrador
+            const lideradosRespondidos = (isAdmOuDev || isRecHum)
+              ? todosComTeste.filter((p: any) => !isCargoAdministrador(p.role))
+              : (() => {
+                  const base = lideradosFiltradosPorPapel.filter((p: any) => Boolean(p.perfilProfissional?.calculado) && !isCargoAdministrador(p.role))
+                  if (lideradoSelecionadoId && !base.some((p: any) => p.id === lideradoSelecionadoId)) {
+                    const item = todosComTeste.find((p: any) => p.id === lideradoSelecionadoId && !isCargoAdministrador(p.role))
+                    if (item) return [item, ...base]
+                  }
+                  return base
+                })()
 
             // Líder selecionado
             const liderColab = lideresRespondidos.find((p: any) => p.id === liderSelecionadoId) ||
@@ -865,21 +873,24 @@ export default function PerfilProfissionalPage() {
                       <label className="text-[10px] font-black uppercase tracking-wider text-slate-600">
                         Líder:
                       </label>
-                      <select
-                        value={liderColab?.id || ""}
-                        onChange={e => setLiderSelecionadoId(e.target.value)}
-                        className="bg-white border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer shadow-2xs"
-                      >
-                        {lideresRespondidos.length === 0 ? (
-                          <option value="">Nenhum líder com teste respondido</option>
-                        ) : (
-                          lideresRespondidos.map((p: any) => (
-                            <option key={`lider-${p.id}`} value={p.id}>
-                              {p.nome} ({p.role || "Cargo não informado"}{p.id === user?.id ? " - Você" : ""})
-                            </option>
-                          ))
-                        )}
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={liderColab?.id || ""}
+                          onChange={e => setLiderSelecionadoId(e.target.value)}
+                          className="w-full bg-white border border-slate-300 text-slate-800 text-xs font-bold rounded-xl pl-3.5 pr-9 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer shadow-2xs appearance-none"
+                        >
+                          {lideresRespondidos.length === 0 ? (
+                            <option value="">Nenhum líder com teste respondido</option>
+                          ) : (
+                            lideresRespondidos.map((p: any) => (
+                              <option key={`lider-${p.id}`} value={p.id}>
+                                {p.nome} ({p.role || "Cargo não informado"}{p.id === user?.id ? " - Você" : ""})
+                              </option>
+                            ))
+                          )}
+                        </select>
+                        <ChevronDown className="w-4 h-4 text-slate-600 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
                     </div>
 
                     {/* Botão Inverter (Líder ⇄ Liderado) */}
@@ -895,7 +906,7 @@ export default function PerfilProfissionalPage() {
                               return
                             }
                             if (!isCargoLideranca(colab?.role)) {
-                              alert("O colaborador selecionado não possui cargo de liderança (Administrador, Recursos Humanos, Operacional, Monitoramento ou Supervisor) para ser definido como Líder.")
+                              alert("O colaborador selecionado não possui cargo de liderança (Administrador, Recursos Humanos, Operacional ou Supervisor) para ser definido como Líder.")
                               return
                             }
                             setLiderSelecionadoId(tempColab)
@@ -915,21 +926,24 @@ export default function PerfilProfissionalPage() {
                       <label className="text-[10px] font-black uppercase tracking-wider text-slate-600">
                         Liderado:
                       </label>
-                      <select
-                        value={colab?.id || ""}
-                        onChange={e => setLideradoSelecionadoId(e.target.value)}
-                        className="bg-white border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer shadow-2xs"
-                      >
-                        {lideradosRespondidos.length === 0 ? (
-                          <option value="">Nenhum liderado com teste respondido</option>
-                        ) : (
-                          lideradosRespondidos.map((p: any) => (
-                            <option key={`liderado-${p.id}`} value={p.id}>
-                              {p.nome} ({p.role || "Cargo não informado"})
-                            </option>
-                          ))
-                        )}
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={colab?.id || ""}
+                          onChange={e => setLideradoSelecionadoId(e.target.value)}
+                          className="w-full bg-white border border-slate-300 text-slate-800 text-xs font-bold rounded-xl pl-3.5 pr-9 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer shadow-2xs appearance-none"
+                        >
+                          {lideradosRespondidos.length === 0 ? (
+                            <option value="">Nenhum liderado com teste respondido</option>
+                          ) : (
+                            lideradosRespondidos.map((p: any) => (
+                              <option key={`liderado-${p.id}`} value={p.id}>
+                                {p.nome} ({p.role || "Cargo não informado"})
+                              </option>
+                            ))
+                          )}
+                        </select>
+                        <ChevronDown className="w-4 h-4 text-slate-600 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1020,42 +1034,47 @@ export default function PerfilProfissionalPage() {
                 {/* Matriz Líder x Liderado */}
                 {dinamicaLiderColab && (
                   <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-4 shadow-xs">
-                    <div className="space-y-3 border-b border-slate-100 pb-4">
-                      <span className="text-xs font-black uppercase tracking-wider text-emerald-700 block">
-                        Dinâmica Relacional
-                      </span>
+                    <div className="space-y-3.5">
+                      <div>
+                        <span className="text-xs font-black uppercase tracking-wider text-emerald-700 block">
+                          DINÂMICA RELACIONAL
+                        </span>
+                      </div>
 
-                      {/* Posições, Nomes, Cargos e Características */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6 pt-1">
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-6 sm:gap-8">
                         {/* Líder */}
-                        <div className="flex items-center gap-3">
-                          <span className="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-900 text-white shrink-0">
-                            Líder
+                        <div className="flex items-start gap-3">
+                          <span className="px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-slate-900 text-white shrink-0 mt-0.5">
+                            LÍDER
                           </span>
                           <div className="min-w-0">
-                            <div className="text-base font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
-                              <span>{liderColab?.nome}</span>
-                              <span className="text-sm font-semibold text-slate-500">({liderColab?.role || "Líder"})</span>
-                            </div>
-                            <div className="text-sm sm:text-base font-black text-emerald-700 mt-0.5">
+                            <p className="text-sm font-black text-slate-900 leading-snug">
+                              {liderColab?.nome}{" "}
+                              <span className="font-normal text-slate-500 text-xs sm:text-sm">
+                                ({liderColab?.role || "Líder"})
+                              </span>
+                            </p>
+                            <p className="text-xs sm:text-sm font-black text-emerald-700 mt-0.5">
                               {liderArq}
-                            </div>
+                            </p>
                           </div>
                         </div>
 
                         {/* Liderado */}
-                        <div className="flex items-center gap-3 border-t md:border-t-0 md:border-l border-slate-200 pt-2.5 md:pt-0 md:pl-6">
-                          <span className="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-600 text-white shrink-0">
-                            Liderado
+                        <div className="flex items-start gap-3">
+                          <span className="px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-600 text-white shrink-0 mt-0.5">
+                            LIDERADO
                           </span>
                           <div className="min-w-0">
-                            <div className="text-base font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
-                              <span>{colab?.nome}</span>
-                              <span className="text-sm font-semibold text-slate-500">({colab?.role || "Liderado"})</span>
-                            </div>
-                            <div className="text-sm sm:text-base font-black text-emerald-700 mt-0.5">
+                            <p className="text-sm font-black text-slate-900 leading-snug">
+                              {colab?.nome}{" "}
+                              <span className="font-normal text-slate-500 text-xs sm:text-sm">
+                                ({colab?.role || "Liderado"})
+                              </span>
+                            </p>
+                            <p className="text-xs sm:text-sm font-black text-emerald-700 mt-0.5">
                               {colabArq}
-                            </div>
+                            </p>
                           </div>
                         </div>
                       </div>
