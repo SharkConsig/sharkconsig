@@ -560,18 +560,40 @@ export function AdminDashboard({
     setIsFinancialLoading(true)
     try {
       // 1. Fetch proposals with status in ['PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA', 'PAGAMENTO DEVOLVIDO', 'CANCELADO']
-      let propQuery = supabase
-        .from("propostas")
-        .select("*")
-        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA", "PAGAMENTO DEVOLVIDO", "CANCELADO"])
+      // Utiliza ordenação decrescente e paginação para superar o limite de 1.000 registros do Supabase
+      const allPropData: any[] = []
+      let from = 0
+      const step = 1000
+      let finished = false
 
-      if (filterUserId) {
-        propQuery = propQuery.eq("corretor_id", filterUserId)
+      while (!finished) {
+        let propQuery = supabase
+          .from("propostas")
+          .select("*")
+          .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA", "PAGAMENTO DEVOLVIDO", "CANCELADO"])
+          .order("updated_at", { ascending: false })
+          .range(from, from + step - 1)
+
+        if (filterUserId) {
+          propQuery = propQuery.eq("corretor_id", filterUserId)
+        }
+
+        const { data: pageData, error: propErr } = await propQuery
+        if (propErr) throw propErr
+
+        if (pageData && pageData.length > 0) {
+          allPropData.push(...pageData)
+          if (pageData.length < step) {
+            finished = true
+          } else {
+            from += step
+          }
+        } else {
+          finished = true
+        }
       }
 
-      const { data: propData, error: propErr } = await propQuery
-
-      if (propErr) throw propErr
+      const propData = allPropData
 
       let localReceivedIds: Record<string, boolean> = {}
       let localReceivedDates: Record<string, string> = {}
@@ -2335,7 +2357,7 @@ export function AdminDashboard({
     if (!prevStart || !prevEnd) return []
     return financialProposals.filter((proposal) => {
       if (filterUserId && String(proposal.corretor_id) !== String(filterUserId)) return false
-      const compareDate = proposal.data_pago_cliente
+      const compareDate = proposal._effectiveDate || proposal.data_pago_cliente || proposal.updated_at || proposal.created_at
       if (!compareDate) return false
 
       const formattedCompare = parseDateToYYYYMMDD(compareDate)
@@ -2587,7 +2609,7 @@ export function AdminDashboard({
     let revPreviousMonth = 0
 
     financialProposals.forEach((p) => {
-      const compareDateStr = p.data_pago_cliente
+      const compareDateStr = p._effectiveDate || p.data_pago_cliente || p.updated_at || p.created_at
       if (!compareDateStr) return
 
       const pDate = new Date(compareDateStr)
@@ -2663,7 +2685,7 @@ export function AdminDashboard({
 
   const dynamicChartData = React.useMemo(() => {
     const getProposalDate = (p: any) => {
-      const dStr = p.data_pago_cliente
+      const dStr = p._effectiveDate || p.data_pago_cliente || p.updated_at || p.created_at
       if (!dStr) return null
       const ymd = parseDateToYYYYMMDD(dStr)
       if (!ymd) return null
