@@ -156,6 +156,8 @@ const KANBAN_COLUMNS: KanbanColumnConfig[] = [
 
 interface TicketMetadata {
   kanban_stage?: KanbanStage
+  iniciado_no_kanban?: boolean
+  origem_kanban?: boolean
   proxima_acao?: string
   vencimento_acao?: string
   alerta_atrasado?: boolean
@@ -304,17 +306,104 @@ export default function KanbanPage() {
   const [isSearchingClient, setIsSearchingClient] = useState(false)
   const [clientSearchError, setClientSearchError] = useState<string | null>(null)
 
-  const handleClientSearch = () => {
+  const handleClientSearch = async () => {
     const raw = clientSearchQuery.trim()
     if (!raw) {
       setClientSearchError("Por favor, insira um CPF ou telefone.")
       return
     }
     const digits = raw.replace(/\D/g, "")
+    if (!digits && raw.length < 3) {
+      setClientSearchError("Por favor, insira um CPF ou telefone válido.")
+      return
+    }
     setClientSearchError(null)
     setIsSearchingClient(true)
-    const queryParam = digits.length >= 8 ? digits : encodeURIComponent(raw)
-    router.push(`/pesquisa?cpf=${queryParam}`)
+
+    try {
+      const cleanCPF = digits.length >= 11 ? digits.slice(0, 11) : digits
+      const queryParam = digits.length >= 8 ? digits : encodeURIComponent(raw)
+
+      // Verificar se o cliente já possui chamado cadastrado no sistema
+      let existingQuery = supabase
+        .from("chamados")
+        .select("id, status, origem, descricao, cliente_nome, cliente_cpf, cliente_telefone")
+
+      if (cleanCPF && cleanCPF.length === 11) {
+        existingQuery = existingQuery.or(`cliente_cpf.eq.${cleanCPF},cliente_telefone.ilike.%${digits}%`)
+      } else if (digits.length >= 8) {
+        existingQuery = existingQuery.or(`cliente_telefone.ilike.%${digits}%,cliente_cpf.ilike.%${digits}%`)
+      } else {
+        existingQuery = existingQuery.ilike("cliente_nome", `%${raw}%`)
+      }
+
+      const { data: existingTickets } = await existingQuery.limit(1)
+
+      if (existingTickets && existingTickets.length > 0) {
+        const ticket = existingTickets[0]
+        const currentMeta = parseMetadata(ticket.descricao)
+        const updatedMeta: TicketMetadata = {
+          ...currentMeta,
+          iniciado_no_kanban: true,
+          kanban_stage: currentMeta.kanban_stage || "EM ABORDAGEM",
+          proxima_acao: currentMeta.proxima_acao || "Iniciar primeiro contato no Kanban",
+          vencimento_acao: currentMeta.vencimento_acao || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+        }
+
+        await supabase
+          .from("chamados")
+          .update({
+            origem: "KANBAN",
+            descricao: stringifyWithMetadata(ticket.descricao, updatedMeta),
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", ticket.id)
+
+        toast.success(`Atendimento de ${ticket.cliente_nome || 'cliente'} integrado ao Kanban!`)
+      } else {
+        // Criar novo chamado registrado como KANBAN para nutrir a própria área
+        const { data: statusData } = await supabase
+          .from("status_chamados")
+          .select("id")
+          .eq("nome", "ABERTO")
+          .maybeSingle()
+
+        const newMeta: TicketMetadata = {
+          iniciado_no_kanban: true,
+          kanban_stage: "EM ABORDAGEM",
+          proxima_acao: "Iniciar primeiro contato comercial",
+          vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+        }
+
+        const initialDesc = stringifyWithMetadata("Atendimento iniciado via Kanban Comercial.", newMeta)
+
+        await supabase
+          .from("chamados")
+          .insert({
+            status: "ABERTO",
+            status_id: statusData?.id || null,
+            origem: "KANBAN",
+            cliente_nome: `CLIENTE ${raw}`,
+            cliente_cpf: cleanCPF || digits,
+            cliente_telefone: digits.length >= 10 ? digits : raw,
+            user_id: user?.id,
+            user_nome: perfil?.nome || user?.email || "Usuário",
+            user_avatar: perfil?.avatar_url || null,
+            descricao: initialDesc
+          })
+
+        toast.success("Novo atendimento iniciado no Kanban com sucesso!")
+      }
+
+      await fetchChamados(true)
+      router.push(`/pesquisa?cpf=${queryParam}&origem=KANBAN`)
+    } catch (err) {
+      console.error("Erro ao iniciar atendimento no Kanban:", err)
+      const queryParam = digits.length >= 8 ? digits : encodeURIComponent(raw)
+      router.push(`/pesquisa?cpf=${queryParam}&origem=KANBAN`)
+    } finally {
+      setIsSearchingClient(false)
+    }
   }
 
   // Filtros
@@ -383,7 +472,7 @@ export default function KanbanPage() {
     loadUsers()
   }, [])
 
-  // Carregar Chamados do Supabase
+  // Carregar Chamados do Supabase (Apenas atendimentos iniciados no KANBAN)
   const fetchChamados = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true)
     setIsRefreshing(true)
@@ -411,6 +500,7 @@ export default function KanbanPage() {
           updated_at,
           status_id
         `)
+        .or("origem.ilike.kanban,descricao.ilike.%iniciado_no_kanban%")
         .order("updated_at", { ascending: false })
         .limit(1000)
 
@@ -439,7 +529,15 @@ export default function KanbanPage() {
 
       const { data, error } = await query
       if (error) throw error
-      setTickets((data || []) as TicketItem[])
+
+      // Garantir rigorosamente que apenas atendimentos iniciados no Kanban alimentem o quadro
+      const kanbanOnly = (data || []).filter(t => {
+        if (t.origem?.toUpperCase() === "KANBAN") return true
+        const meta = parseMetadata(t.descricao)
+        return Boolean(meta.iniciado_no_kanban || meta.origem_kanban)
+      })
+
+      setTickets(kanbanOnly as TicketItem[])
     } catch (err) {
       console.error("Erro ao carregar chamados para o Kanban:", err)
       toast.error("Não foi possível carregar os chamados do Kanban.")
@@ -1024,7 +1122,7 @@ export default function KanbanPage() {
               <Button 
                 onClick={handleClientSearch}
                 disabled={isSearchingClient}
-                className="h-11 px-10 text-xs font-bold uppercase tracking-widest bg-[#3E4A6E] hover:bg-[#4D5C88] text-white w-full md:w-auto transition-colors cursor-pointer shadow-xs"
+                className="h-11 px-10 text-xs font-bold uppercase tracking-widest bg-[#1D2847] hover:bg-[#28365E] border border-white/15 text-white w-full md:w-auto transition-colors cursor-pointer shadow-xs"
               >
                 {isSearchingClient ? "Buscando..." : "BUSCAR"}
               </Button>
@@ -1046,7 +1144,7 @@ export default function KanbanPage() {
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs w-full justify-between">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <div className="bg-[#19223D]/60 border border-white/10 px-3 py-1.5 rounded-lg">
-                    <span className="text-slate-300 font-medium">Total Fichas: </span>
+                    <span className="text-slate-300 font-medium">Total de Clientes: </span>
                     <span className="font-bold text-white">{metrics.totalLeads}</span>
                   </div>
                   <div className="bg-sky-500/20 border border-sky-400/30 px-3 py-1.5 rounded-lg">
@@ -1169,8 +1267,8 @@ export default function KanbanPage() {
                         setDraggedTicket(null)
                       }}
                       className={cn(
-                        "flex-1 min-w-[250px] max-w-[270px] bg-slate-300 border border-slate-400/70 rounded-xl flex flex-col max-h-[calc(100vh-340px)] shadow-xs transition-colors",
-                        dragOverColumnId === col.id && "ring-2 ring-indigo-500 bg-slate-200"
+                        "flex-1 min-w-[250px] max-w-[270px] bg-[#28365E] border border-white/10 rounded-xl flex flex-col max-h-[calc(100vh-340px)] shadow-xs transition-colors",
+                        dragOverColumnId === col.id && "ring-2 ring-indigo-500 bg-[#324475]"
                       )}
                     >
                   {/* Cabeçalho da Coluna */}
@@ -1197,9 +1295,9 @@ export default function KanbanPage() {
                   </div>
 
                   {/* Lista de Cartões (Scroll Vertical) */}
-                  <div className="p-2 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-slate-300/60 rounded-b-xl">
+                  <div className="p-2 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-[#28365E] rounded-b-xl">
                     {colTickets.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-slate-500 font-semibold">
+                      <div className="py-8 text-center text-xs text-slate-300 font-semibold">
                         Nenhum lead nesta etapa
                       </div>
                     ) : (
@@ -1390,33 +1488,33 @@ export default function KanbanPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleOpenWhatsApp(ticket)}
-                                className="h-7 p-0 flex items-center justify-center text-emerald-700 hover:bg-emerald-50 flex-1 border-emerald-200"
+                                className="h-7 p-0 flex items-center justify-center text-emerald-600 bg-white hover:bg-emerald-500 hover:border-emerald-500 hover:text-white [&:hover>svg]:text-white flex-1 border border-emerald-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
                                 title="WhatsApp"
                                 aria-label="WhatsApp"
                               >
-                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                <MessageCircle className="w-3.5 h-3.5 transition-colors" />
                               </Button>
 
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleOpenAgendar(ticket)}
-                                className="h-7 p-0 flex items-center justify-center text-slate-700 hover:bg-slate-50 flex-1 border-slate-200"
+                                className="h-7 p-0 flex items-center justify-center text-sky-600 bg-white hover:bg-sky-500 hover:border-sky-500 hover:text-white [&:hover>svg]:text-white flex-1 border border-sky-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
                                 title="Agendar Retorno"
                                 aria-label="Agendar"
                               >
-                                <CalendarIcon className="w-3.5 h-3.5 text-slate-600" />
+                                <CalendarIcon className="w-3.5 h-3.5 transition-colors" />
                               </Button>
 
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleOpenMoverEtapa(ticket)}
-                                className="h-7 p-0 flex items-center justify-center text-indigo-700 hover:bg-indigo-50 flex-1 border-indigo-200"
+                                className="h-7 p-0 flex items-center justify-center text-indigo-600 bg-white hover:bg-indigo-600 hover:border-indigo-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-indigo-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
                                 title="Mover para outra Etapa"
                                 aria-label="Mover"
                               >
-                                <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
+                                <ArrowRight className="w-3.5 h-3.5 transition-colors" />
                               </Button>
                             </div>
                           </div>
