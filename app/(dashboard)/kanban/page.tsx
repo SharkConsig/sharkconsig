@@ -1006,7 +1006,7 @@ export default function KanbanPage() {
       
       <main className="flex-1 p-4 lg:p-6 space-y-5 overflow-hidden flex flex-col bg-[#19223D]">
         {/* Card de Busca por Cliente (Acessar Clientes) */}
-        <Card className="bg-[#171717] border border-white/10 shadow-md rounded-2xl overflow-hidden">
+        <Card className="bg-[#162649] border border-white/10 shadow-md rounded-2xl overflow-hidden">
           <CardContent className="p-3 sm:p-5">
             <div className="flex flex-col md:flex-row gap-3 sm:gap-4 bg-[#28365E] p-2.5 sm:p-3 rounded-xl border border-white/10">
               <div className="flex-1">
@@ -1038,7 +1038,7 @@ export default function KanbanPage() {
         </Card>
 
         {/* Card Principal do Kanban (Métricas, Filtros e 7 Colunas) */}
-        <Card className="bg-[#171717] border border-white/10 shadow-md rounded-2xl overflow-hidden flex-1 flex flex-col min-h-0">
+        <Card className="bg-[#162649] border border-white/10 shadow-md rounded-2xl overflow-hidden flex-1 flex flex-col min-h-0">
           <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
             {/* Barra Superior: Métricas Consolidadas e Controles */}
             <div className="flex items-center justify-between gap-4 bg-[#28365e] p-4 rounded-xl border border-white/10 shadow-xs shrink-0">
