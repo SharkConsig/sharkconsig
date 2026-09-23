@@ -302,6 +302,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, count: userIds.length })
     }
 
+    if (action === "resetar_teste") {
+      const { userIds } = body
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        return NextResponse.json({ success: false, error: "Nenhum usuário informado para resetar." }, { status: 400 })
+      }
+
+      // Exclui os registros de perfil_profissional no Supabase para permitir refazer o teste
+      const { error: delErr } = await supabaseAdmin
+        .from("perfil_profissional")
+        .delete()
+        .in("user_id", userIds)
+
+      if (delErr) {
+        console.error("[API Perfil Profissional] Erro ao deletar registros:", delErr)
+        return NextResponse.json({ success: false, error: "Erro ao resetar teste no banco de dados." }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, count: userIds.length })
+    }
+
     return NextResponse.json({ success: false, error: "Ação não reconhecida" }, { status: 400 })
   } catch (err: any) {
     console.error("[API Perfil Profissional POST] Erro:", err)

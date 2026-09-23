@@ -41,7 +41,8 @@ import {
   Lightbulb,
   Settings,
   Search,
-  ArrowLeftRight
+  ArrowLeftRight,
+  RotateCcw
 } from "lucide-react"
 import Link from "next/link"
 
@@ -97,6 +98,12 @@ export default function PerfilProfissionalPage() {
   const [buscaGerenciamento, setBuscaGerenciamento] = useState("")
   const [filtroTipoGerenciamento, setFiltroTipoGerenciamento] = useState<"TODOS" | "QUESTOES_TESTE" | "QUESTOES_ESTAGIO" | "PADRAO">("TODOS")
   const [salvandoAtribuicao, setSalvandoAtribuicao] = useState(false)
+  const [resetandoTeste, setResetandoTeste] = useState(false)
+  const [modalConfirmacaoReset, setModalConfirmacaoReset] = useState<{
+    isOpen: boolean
+    ids: string[]
+    descricao: string
+  } | null>(null)
   const [toastGerenciamento, setToastGerenciamento] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null)
   const tabInicializadaRef = useRef(false)
 
@@ -348,6 +355,80 @@ export default function PerfilProfissionalPage() {
       })
     } finally {
       setSalvandoAtribuicao(false)
+    }
+  }
+
+  const solicitarConfirmacaoReset = (userIdsAlvo?: string[], nomeIndividual?: string) => {
+    const ids = userIdsAlvo || usuariosSelecionados
+    if (ids.length === 0) {
+      alert("Selecione pelo menos um colaborador para resetar o teste.")
+      return
+    }
+    const descricao = nomeIndividual
+      ? `do colaborador "${nomeIndividual}"`
+      : `de ${ids.length} colaborador(es) selecionado(s)`
+    setModalConfirmacaoReset({
+      isOpen: true,
+      ids,
+      descricao
+    })
+  }
+
+  const executarResetarTeste = async () => {
+    if (!modalConfirmacaoReset || modalConfirmacaoReset.ids.length === 0) return
+    const ids = modalConfirmacaoReset.ids
+    setResetandoTeste(true)
+    setToastGerenciamento(null)
+
+    try {
+      const res = await fetch("/api/perfil-profissional", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "resetar_teste",
+          userIds: ids
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setTodosPerfis(prev =>
+          prev.map(p => {
+            if (ids.includes(p.id)) {
+              return {
+                ...p,
+                perfilProfissional: null,
+                checkpoint30Dias: null
+              }
+            }
+            return p
+          })
+        )
+        if (user?.id && ids.includes(user.id)) {
+          setMeuPerfil(null)
+          setDataConclusao(null)
+          setRespostasTeste({})
+          setIndiceQuestao(0)
+        }
+        setUsuariosSelecionados(prev => prev.filter(id => !ids.includes(id)))
+        setToastGerenciamento({
+          tipo: "sucesso",
+          texto: `Teste resetado com sucesso para ${ids.length} colaborador(es)! O teste está liberado para ser refeito.`
+        })
+        setModalConfirmacaoReset(null)
+      } else {
+        setToastGerenciamento({
+          tipo: "erro",
+          texto: data.error || "Erro ao resetar o teste."
+        })
+      }
+    } catch (e) {
+      console.error(e)
+      setToastGerenciamento({
+        tipo: "erro",
+        texto: "Falha de conexão ao resetar o teste."
+      })
+    } finally {
+      setResetandoTeste(false)
     }
   }
 
@@ -1518,11 +1599,20 @@ export default function PerfilProfissionalPage() {
                   Atribuir QUESTOES_ESTAGIO
                 </button>
                 <button
-                  disabled={salvandoAtribuicao}
+                  disabled={salvandoAtribuicao || resetandoTeste}
                   onClick={() => atribuirTeste("PADRAO")}
                   className="px-3.5 py-2 rounded-lg text-xs font-bold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 transition-all cursor-pointer disabled:opacity-50"
                 >
                   Restaurar Padrão do Cargo
+                </button>
+                <button
+                  disabled={salvandoAtribuicao || resetandoTeste}
+                  onClick={() => solicitarConfirmacaoReset(usuariosSelecionados)}
+                  title="Excluir o registro do teste dos selecionados e permitir refazer"
+                  className="px-3.5 py-2 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition-all cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Resetar ({usuariosSelecionados.length})
                 </button>
                 <button
                   onClick={() => setUsuariosSelecionados([])}
@@ -1670,7 +1760,7 @@ export default function PerfilProfissionalPage() {
                               </button>
                               {atribuicao && (
                                 <button
-                                  disabled={salvandoAtribuicao}
+                                  disabled={salvandoAtribuicao || resetandoTeste}
                                   onClick={() => atribuirTeste("PADRAO", [p.id])}
                                   title="Restaurar padrão do cargo"
                                   className="px-2 py-1 rounded text-[10px] font-semibold text-slate-500 hover:text-slate-800 bg-slate-50 border border-slate-200 cursor-pointer"
@@ -1678,6 +1768,14 @@ export default function PerfilProfissionalPage() {
                                   Auto
                                 </button>
                               )}
+                              <button
+                                disabled={salvandoAtribuicao || resetandoTeste}
+                                onClick={() => solicitarConfirmacaoReset([p.id], p.nome)}
+                                title="Resetar o teste deste profissional e permitir refazer"
+                                className="px-2 py-1 rounded text-[10px] font-bold text-rose-700 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 hover:border-rose-600 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
+                              >
+                                Resetar
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1686,6 +1784,49 @@ export default function PerfilProfissionalPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação para Resetar Teste */}
+      {modalConfirmacaoReset?.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                <RotateCcw className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 leading-tight">
+                  Confirmar Reset de Teste
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">Exclusão de respostas e liberação do teste</p>
+              </div>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Deseja realmente resetar o teste {modalConfirmacaoReset.descricao}? Todas as respostas salvas serão excluídas permanentemente e o profissional poderá refazer o teste do zero.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={resetandoTeste}
+                onClick={() => setModalConfirmacaoReset(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={resetandoTeste}
+                onClick={executarResetarTeste}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                {resetandoTeste ? "Resetando..." : "Confirmar e Resetar"}
+              </button>
             </div>
           </div>
         </div>
