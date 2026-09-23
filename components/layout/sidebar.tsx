@@ -62,7 +62,7 @@ const allMenuItems = [
         name: "KANBAN", 
         href: "/kanban", 
         icon: Kanban, 
-        roles: ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Corretor", "Monitoramento", "Estágio"] 
+        roles: ["Administrador", "Desenvolvedor"] 
       },
       { 
         name: "DASHBOARD", 
