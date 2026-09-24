@@ -507,11 +507,11 @@ const isUserAdminRole = (u?: User | null) => {
 export default function DashboardPage() {
   const router = useRouter()
   const { user, perfil, isCorretor, isAdmin, isOperational, isDeveloper, isRecursosHumanos } = useAuth()
-  const userRoleNormalized = (perfil?.role || "").trim().toLowerCase()
+  const userRoleNormalized = (perfil?.role || perfil?.funcao || "").trim().toLowerCase()
   const isUserMonitoramento = userRoleNormalized === 'monitoramento'
   const isUserSupervisor = userRoleNormalized === 'supervisor'
   const isUserOperacional = userRoleNormalized === 'operacional' || userRoleNormalized === 'administrativo'
-  const isUserAdmin = isAdmin || userRoleNormalized === 'administrador' || userRoleNormalized === 'admin' || userRoleNormalized === 'desenvolvedor'
+  const isUserAdmin = isAdmin || userRoleNormalized === 'administrador' || userRoleNormalized === 'admin' || userRoleNormalized === 'desenvolvedor' || (perfil?.funcao || "").trim().toLowerCase() === 'administrador'
   const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO' || isAdmin || isDeveloper
   const isEstagio = perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
   const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || perfil?.role?.toLowerCase() === 'pj' || perfil?.id === '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639'
@@ -998,8 +998,10 @@ export default function DashboardPage() {
         
         let sortedRankings: RankingItem[] = []
 
-        if (targetSupervisorId || isAdmin || isOperational || isDeveloper || isRecursosHumanos || isUserMonitoramento) {
-          const team = (isAdmin || isOperational || isDeveloper || isRecursosHumanos)
+        const isPrivilegedStatsUser = isUserAdmin || isAdmin || isOperational || isUserOperacional || isDeveloper || isRecursosHumanos
+
+        if (targetSupervisorId || isPrivilegedStatsUser || isUserMonitoramento) {
+          const team = isPrivilegedStatsUser
             ? allUsers.filter((u: User) => {
                 const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
                 const func = (u.funcao || "").trim().toLowerCase()
@@ -1041,7 +1043,7 @@ export default function DashboardPage() {
               .from("propostas")
               .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome, intervencao_operacional, intervencao_operacional_id, intervencao_operacional_nome")
 
-            if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos || isUserMonitoramento)) {
+            if (!isPrivilegedStatsUser && !isUserMonitoramento) {
               if (teamIds.length > 0) {
                 teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${teamIds.join(",")}),estagiario_colaborador_id.in.(${teamIds.join(",")}),intervencao_operacional_id.in.(${teamIds.join(",")})`)
               }
@@ -1055,7 +1057,7 @@ export default function DashboardPage() {
                 .from("propostas")
                 .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
 
-              if (!(isAdmin || isOperational || isDeveloper || isRecursosHumanos || isUserMonitoramento)) {
+              if (!isPrivilegedStatsUser && !isUserMonitoramento) {
                 if (teamIds.length > 0) {
                   fallbackQuery = fallbackQuery.or(`corretor_id.in.(${teamIds.join(",")}),estagiario_colaborador_id.in.(${teamIds.join(",")})`)
                 }
@@ -1251,8 +1253,9 @@ export default function DashboardPage() {
           const cleanType = rawType || "OUTROS"
 
           // For cards/goals: If PJ, apply percentage calculation (35% Cartão, 9% Margem)
-          const isPJBrokerCard = checkUserPJ(brokerUser)
+          const isPJBrokerCard = checkUserPJ(brokerUser) || (curr.estagiario_colaborador_id ? checkUserPJ(allUsers.find((u: User) => u.id === curr.estagiario_colaborador_id)) : false)
           const cardVal = isPJBrokerCard ? pjCalculatedVal : numericVal
+          const contractProductionVal = isPJBrokerCard ? (numericValOp || numericVal) : numericVal
 
           const isBrokerAdmin = isUserAdminRole(brokerUser)
 
@@ -1302,26 +1305,26 @@ export default function DashboardPage() {
             }
 
             if (isEffectiveInProcess) {
-              teamInProcessValueCalc += cardVal
+              teamInProcessValueCalc += contractProductionVal
               teamInProcessCountCalc += 1
               if (curr.status === "COM INCONSISTÊNCIA NO BANCO" || curr.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL") {
-                teamPendingInconsistencyValueCalc += cardVal
+                teamPendingInconsistencyValueCalc += contractProductionVal
                 teamPendingInconsistencyCountCalc += 1
               }
             }
 
             if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
-              teamCreatedTodayValue += cardVal
+              teamCreatedTodayValue += contractProductionVal
               teamCreatedTodayCount += 1
             }
 
             if (isThisWeekCreated && !isCancelled && !isRetroactivePayment) {
-              teamCreatedWeekValue += cardVal
+              teamCreatedWeekValue += contractProductionVal
               teamCreatedWeekCount += 1
             }
 
             if (isThisMonthCreated && !isCancelled && !isRetroactivePayment) {
-              teamCreatedMonthValue += cardVal
+              teamCreatedMonthValue += contractProductionVal
               teamCreatedMonthCount += 1
             }
           }
@@ -2102,8 +2105,8 @@ export default function DashboardPage() {
 
       // 4. Fetch Admin specific stats - Only if Admin, Developer, Recursos Humanos, Supervisor, Monitoramento, or Operacional
       try {
-        const userRoleForStats = perfil?.role?.toUpperCase() || "";
-        const showCompleteStats = isAdmin || isDeveloper || isRecursosHumanos || userRoleForStats === 'SUPERVISOR' || userRoleForStats === 'MONITORAMENTO' || userRoleForStats === 'OPERACIONAL';
+        const userRoleForStats = (perfil?.role || perfil?.funcao || "").trim().toUpperCase();
+        const showCompleteStats = isUserAdmin || isAdmin || isDeveloper || isRecursosHumanos || userRoleForStats === 'SUPERVISOR' || userRoleForStats === 'MONITORAMENTO' || userRoleForStats === 'OPERACIONAL' || userRoleForStats === 'ADMINISTRADOR';
 
         if (showCompleteStats) {
           const now = new Date()
@@ -2564,7 +2567,7 @@ export default function DashboardPage() {
         "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
         isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
       )}>
-        {(isAdmin || isDeveloper) && adminStats && (
+        {(isUserAdmin || isAdmin || isDeveloper) && adminStats && (
           <AdminDashboard 
             perfil={perfil} 
             isLoading={isLoading} 
@@ -2579,7 +2582,7 @@ export default function DashboardPage() {
           />
         )}
         
-        {(!isAdmin && !isDeveloper) && (
+        {(!isUserAdmin && !isAdmin && !isDeveloper) && (
           <>
             {/* Header Section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
@@ -4184,7 +4187,7 @@ export default function DashboardPage() {
                   )}
 
                   {/* RANKING COLABORADORES PJ */}
-                  {(isAdmin || isDeveloper) && colaboradoresPJList.length > 0 && (
+                  {(isUserAdmin || isAdmin || isDeveloper || isOperational || isUserOperacional) && colaboradoresPJList.length > 0 && (
                     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.6 }}>
                       <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px]">
                         <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">

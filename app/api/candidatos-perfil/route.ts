@@ -61,10 +61,13 @@ export async function GET(request: Request) {
         perfilCalculado = calcularPerfil(c.respostas, c.nome, c.cargo_pretendido)
       }
 
+      const perfilVisto = Boolean(c.perfil_visto === true || c.respostas?.perfil_visto === true)
+
       return {
         ...c,
         status: statusFinal,
-        perfilCalculado
+        perfilCalculado,
+        perfil_visto: perfilVisto
       }
     })
 
@@ -212,6 +215,65 @@ export async function PATCH(request: Request) {
       }
 
       return NextResponse.json({ success: true, novoToken, dataExpiracao })
+    }
+
+    if (action === "alternar_visto" || action === "marcar_visto") {
+      const novoVisto = typeof body.visto === "boolean" ? body.visto : true
+
+      try {
+        const supabaseAdmin = createAdminClient()
+
+        // 1. Busca respostas atuais para mesclar sem sobrescrever respostas do teste
+        let query = supabaseAdmin.from("perfil_candidatos").select("id, respostas")
+        if (id) {
+          query = query.eq("id", id)
+        } else if (token) {
+          query = query.eq("token_acesso", token)
+        }
+        const { data: cand } = await query.maybeSingle()
+
+        const respostasAtuais = (cand?.respostas && typeof cand.respostas === "object") ? { ...cand.respostas } : {}
+        respostasAtuais.perfil_visto = novoVisto
+
+        // 2. Atualiza respostas na tabela perfil_candidatos
+        const updatePayload: Record<string, any> = {
+          respostas: respostasAtuais,
+          updated_at: agora.toISOString()
+        }
+
+        let updateQuery = supabaseAdmin.from("perfil_candidatos").update(updatePayload)
+        if (id) {
+          updateQuery = updateQuery.eq("id", id)
+        } else if (token) {
+          updateQuery = updateQuery.eq("token_acesso", token)
+        }
+        await updateQuery
+
+        // Se a coluna perfil_visto existir no schema físico, atualiza também
+        try {
+          let colQuery = supabaseAdmin.from("perfil_candidatos").update({ perfil_visto: novoVisto })
+          if (id) colQuery = colQuery.eq("id", id)
+          else if (token) colQuery = colQuery.eq("token_acesso", token)
+          await colQuery
+        } catch (_) {}
+      } catch (dbErr) {
+        console.warn("[API Candidatos Perfil PATCH] Erro ao registrar visto no banco:", dbErr)
+      }
+
+      // Atualiza no fallback store
+      for (const [k, v] of fallbackCandidatosStore.entries()) {
+        if (v.id === id || v.token_acesso === token) {
+          const resp = (v.respostas && typeof v.respostas === "object") ? { ...v.respostas } : {}
+          resp.perfil_visto = novoVisto
+          v.respostas = resp
+          ;(v as any).perfil_visto = novoVisto
+          v.updated_at = agora.toISOString()
+          fallbackCandidatosStore.set(k, v)
+          break
+        }
+      }
+
+      return NextResponse.json({ success: true, visto: novoVisto })
     }
 
     return NextResponse.json({ success: false, error: "Ação não reconhecida" }, { status: 400 })

@@ -242,8 +242,9 @@ export function AdminDashboard({
     ticketStats
   } = stats || {}
 
-  const userRole = perfil?.role?.toLowerCase() || "";
-  const isOnlyAdmin = userRole === 'administrador' || userRole === 'desenvolvedor';
+  const userRole = (perfil?.role || perfil?.funcao || "").trim().toLowerCase();
+  const isOnlyAdmin = userRole === 'administrador' || userRole === 'admin' || userRole === 'desenvolvedor';
+  const canViewPJRanking = isOnlyAdmin || userRole === 'operacional';
   const isEstagio = userRole === 'estágio' || userRole === 'estagio';
   const isCorretor = userRole === 'corretor';
   const isCorretorPJ = (perfil as any)?.regime_contratacao?.trim().toLowerCase() === 'pj' || 
@@ -3970,7 +3971,7 @@ export function AdminDashboard({
               )}
 
               {/* RANKING COLABORADORES PJ */}
-              {isOnlyAdmin && colaboradoresPJList.length > 0 && (
+              {canViewPJRanking && colaboradoresPJList.length > 0 && (
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
                   <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px] border-slate-100">
                     <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
