@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronDown, LogOut, Menu, MessageSquarePlus, MessageSquareText, ClipboardList, FileEdit, LifeBuoy, X } from "lucide-react"
+import { ChevronDown, LogOut, Menu, MessageSquarePlus, MessageSquareText, ClipboardList, FileEdit, LifeBuoy, X, Sun, Moon } from "lucide-react"
 import Image from "next/image"
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
@@ -21,7 +21,9 @@ import { RHMessagePopup } from "@/components/rh/rh-message-popup"
 export function Header({ title, children, hideQuickLinks = false }: HeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const isKanban = pathname === "/kanban" || pathname?.startsWith("/kanban")
   const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
+  const [previewTheme, setPreviewTheme] = useState<"light" | "dark">("light")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { toggleSidebar, isCollapsed, isHovered, isTrainingBlocked } = useSidebar()
@@ -396,7 +398,7 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
         ) : null}
       </div>
       <div className={`flex items-center gap-2 sm:gap-4 ${isHeaderBlocked ? "pointer-events-none opacity-40 select-none" : ""}`}>
-        {isAdminUser && (
+        {isAdminUser && !isKanban && (
           <button
             id="header-historico-apoio-btn"
             onClick={() => setIsHistoryModalOpen(true)}
@@ -478,6 +480,22 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
           >
             <MessageSquareText className="w-4 h-4" />
             MENSAGEM DO RH
+          </button>
+        )}
+
+        {isKanban && (
+          <button
+            type="button"
+            onClick={() => setPreviewTheme((prev) => (prev === "light" ? "dark" : "light"))}
+            title={previewTheme === "light" ? "Modo Claro" : "Modo Escuro"}
+            aria-label="Alternar tema de cores"
+            className="h-9 w-9 rounded-xl flex items-center justify-center border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-xs transition-colors cursor-pointer mr-1 sm:mr-2"
+          >
+            {previewTheme === "light" ? (
+              <Sun className="w-4 h-4 text-amber-500" />
+            ) : (
+              <Moon className="w-4 h-4 text-indigo-500" />
+            )}
           </button>
         )}
 
