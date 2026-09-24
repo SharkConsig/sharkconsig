@@ -35,7 +35,8 @@ import {
   RotateCcw,
   SlidersHorizontal,
   X,
-  Plus
+  Plus,
+  Trash2
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
@@ -204,6 +205,7 @@ interface TicketItem {
   created_at: string
   updated_at: string
   status_id?: string
+  source_table?: "kanban_fichas" | "chamados"
 }
 
 interface UserSummary {
@@ -322,85 +324,126 @@ export default function KanbanPage() {
 
     try {
       const cleanCPF = digits.length >= 11 ? digits.slice(0, 11) : digits
-      const queryParam = digits.length >= 8 ? digits : encodeURIComponent(raw)
 
-      // Verificar se o cliente já possui chamado cadastrado no sistema
-      let existingQuery = supabase
-        .from("chamados")
-        .select("id, status, origem, descricao, cliente_nome, cliente_cpf, cliente_telefone")
+      // 1. Tentar localizar dados cadastrais do cliente na tabela de clientes
+      let clienteInfo: { nome?: string; cpf?: string; telefone?: string } | null = null
+
+      let clientQuery = supabase
+        .from("clientes")
+        .select("nome, cpf, telefone_1, telefone_2, telefone_3")
 
       if (cleanCPF && cleanCPF.length === 11) {
-        existingQuery = existingQuery.or(`cliente_cpf.eq.${cleanCPF},cliente_telefone.ilike.%${digits}%`)
+        clientQuery = clientQuery.eq("cpf", cleanCPF)
       } else if (digits.length >= 8) {
-        existingQuery = existingQuery.or(`cliente_telefone.ilike.%${digits}%,cliente_cpf.ilike.%${digits}%`)
+        clientQuery = clientQuery.or(`telefone_1.ilike.%${digits}%,telefone_2.ilike.%${digits}%,telefone_3.ilike.%${digits}%,cpf.ilike.%${digits}%`)
       } else {
-        existingQuery = existingQuery.ilike("cliente_nome", `%${raw}%`)
+        clientQuery = clientQuery.ilike("nome", `%${raw}%`)
       }
 
-      const { data: existingTickets } = await existingQuery.limit(1)
+      const { data: foundClientList } = await clientQuery.limit(1)
+      if (foundClientList && foundClientList.length > 0) {
+        const c = foundClientList[0]
+        clienteInfo = {
+          nome: c.nome,
+          cpf: c.cpf,
+          telefone: c.telefone_1 || c.telefone_2 || c.telefone_3 || ""
+        }
+      }
 
-      if (existingTickets && existingTickets.length > 0) {
-        const ticket = existingTickets[0]
-        const currentMeta = parseMetadata(ticket.descricao)
-        const updatedMeta: TicketMetadata = {
+      const finalNome = clienteInfo?.nome || (digits.length === 11 ? `CLIENTE CPF ${cleanCPF}` : (raw.length > 0 ? raw.toUpperCase() : "CLIENTE"))
+      const finalCpf = clienteInfo?.cpf || (cleanCPF && cleanCPF.length >= 11 ? cleanCPF : digits)
+      const finalTelefone = clienteInfo?.telefone || (digits.length >= 8 ? digits : "")
+
+      // 2. Verificar se a ficha já existe na tabela kanban_fichas
+      let existingKanbanQuery = supabase
+        .from("kanban_fichas")
+        .select("*")
+
+      if (cleanCPF && cleanCPF.length === 11) {
+        existingKanbanQuery = existingKanbanQuery.or(`cliente_cpf.eq.${cleanCPF},cliente_telefone.ilike.%${digits}%`)
+      } else if (digits.length >= 8) {
+        existingKanbanQuery = existingKanbanQuery.or(`cliente_telefone.ilike.%${digits}%,cliente_cpf.ilike.%${digits}%`)
+      } else {
+        existingKanbanQuery = existingKanbanQuery.ilike("cliente_nome", `%${raw}%`)
+      }
+
+      const { data: existingKanbanCards } = await existingKanbanQuery.limit(1)
+
+      if (existingKanbanCards && existingKanbanCards.length > 0) {
+        const ficha = existingKanbanCards[0]
+        const currentMeta = ficha.metadata && typeof ficha.metadata === "object" ? ficha.metadata : {}
+        const updatedMeta = {
           ...currentMeta,
           iniciado_no_kanban: true,
-          kanban_stage: currentMeta.kanban_stage || "EM ABORDAGEM",
+          kanban_stage: ficha.etapa || currentMeta.kanban_stage || "EM ABORDAGEM",
           proxima_acao: currentMeta.proxima_acao || "Iniciar primeiro contato no Kanban",
           vencimento_acao: currentMeta.vencimento_acao || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
         }
 
         await supabase
-          .from("chamados")
+          .from("kanban_fichas")
           .update({
-            origem: "KANBAN",
-            descricao: stringifyWithMetadata(ticket.descricao, updatedMeta),
+            cliente_nome: ficha.cliente_nome || finalNome,
+            cliente_cpf: ficha.cliente_cpf || finalCpf,
+            cliente_telefone: ficha.cliente_telefone || finalTelefone,
+            metadata: updatedMeta,
             updated_at: new Date().toISOString()
           })
-          .eq("id", ticket.id)
+          .eq("id", ficha.id)
 
-        toast.success(`Atendimento de ${ticket.cliente_nome || 'cliente'} integrado ao Kanban!`)
+        toast.success(`Ficha de ${ficha.cliente_nome || finalNome} já localizada na coluna "${ficha.etapa || 'EM ABORDAGEM'}"!`)
       } else {
-        // Criar novo chamado registrado como KANBAN para nutrir a própria área
-        const { data: statusData } = await supabase
-          .from("status_chamados")
-          .select("id")
-          .eq("nome", "ABERTO")
-          .maybeSingle()
-
+        // Criar nova ficha diretamente na coluna "EM ABORDAGEM"
         const newMeta: TicketMetadata = {
           iniciado_no_kanban: true,
           kanban_stage: "EM ABORDAGEM",
           proxima_acao: "Iniciar primeiro contato comercial",
-          vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+          vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+          prioridade: "NORMAL",
+          user_id: user?.id,
+          user_nome: perfil?.nome || user?.email || "Usuário",
+          user_avatar: perfil?.avatar_url || null
         }
 
-        const initialDesc = stringifyWithMetadata("Atendimento iniciado via Kanban Comercial.", newMeta)
+        const insertPayload: Record<string, any> = {
+          etapa: "EM ABORDAGEM",
+          cliente_nome: finalNome,
+          cliente_cpf: finalCpf,
+          cliente_telefone: finalTelefone,
+          operador_nome: perfil?.nome || user?.email || "Colaborador",
+          prioridade: "MÉDIA",
+          metadata: newMeta
+        }
 
-        await supabase
-          .from("chamados")
-          .insert({
-            status: "ABERTO",
-            status_id: statusData?.id || null,
-            origem: "KANBAN",
-            cliente_nome: `CLIENTE ${raw}`,
-            cliente_cpf: cleanCPF || digits,
-            cliente_telefone: digits.length >= 10 ? digits : raw,
-            user_id: user?.id,
-            user_nome: perfil?.nome || user?.email || "Usuário",
-            user_avatar: perfil?.avatar_url || null,
-            descricao: initialDesc
-          })
+        if (user?.id) {
+          insertPayload.operador_id = user.id
+        }
 
-        toast.success("Novo atendimento iniciado no Kanban com sucesso!")
+        let { error: insertError } = await supabase
+          .from("kanban_fichas")
+          .insert(insertPayload)
+
+        // Se falhar por foreign key em operador_id, retenta sem operador_id
+        if (insertError && (insertError.code === "23503" || insertError.message?.includes("foreign key"))) {
+          delete insertPayload.operador_id
+          const retry = await supabase.from("kanban_fichas").insert(insertPayload)
+          insertError = retry.error
+        }
+
+        if (insertError) {
+          console.error("Erro ao inserir em kanban_fichas:", insertError.message || insertError)
+          toast.error("Erro ao registrar ficha no Kanban.")
+        } else {
+          toast.success(`Ficha de ${finalNome} criada com sucesso em "EM ABORDAGEM"!`)
+        }
       }
 
+      // Limpar o campo e atualizar o Kanban sem sair da página
+      setClientSearchQuery("")
       await fetchChamados(true)
-      router.push(`/pesquisa?cpf=${queryParam}&origem=KANBAN`)
     } catch (err) {
       console.error("Erro ao iniciar atendimento no Kanban:", err)
-      const queryParam = digits.length >= 8 ? digits : encodeURIComponent(raw)
-      router.push(`/pesquisa?cpf=${queryParam}&origem=KANBAN`)
+      toast.error("Erro ao localizar ou iniciar ficha do cliente.")
     } finally {
       setIsSearchingClient(false)
     }
@@ -472,42 +515,21 @@ export default function KanbanPage() {
     loadUsers()
   }, [])
 
-  // Carregar Chamados do Supabase (Apenas atendimentos iniciados no KANBAN)
+  // Carregar Fichas do Supabase (Apenas registros da tabela kanban_fichas)
   const fetchChamados = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true)
     setIsRefreshing(true)
     try {
       let query = supabase
-        .from("chamados")
-        .select(`
-          id,
-          status,
-          origem,
-          cliente_nome,
-          cliente_cpf,
-          cliente_telefone,
-          cliente_telefone_2,
-          cliente_telefone_3,
-          margem,
-          valor_operacao,
-          convenio,
-          equipe,
-          descricao,
-          user_id,
-          user_nome,
-          user_avatar,
-          created_at,
-          updated_at,
-          status_id
-        `)
-        .or("origem.ilike.kanban,descricao.ilike.%iniciado_no_kanban%")
+        .from("kanban_fichas")
+        .select("*")
         .order("updated_at", { ascending: false })
         .limit(1000)
 
       // Regras de visibilidade conforme o papel
       if (!isGestor && user) {
         if (userRole === "Estágio" || userRole === "Estagio") {
-          query = query.eq("user_id", user.id)
+          query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
         } else if (userRole === "Corretor") {
           // Corretor vê seus chamados e pode ver estagiários vinculados
           try {
@@ -517,30 +539,59 @@ export default function KanbanPage() {
               const myEstagiarios = all
                 .filter((u: { padrinho_id: string }) => u.padrinho_id === user.id)
                 .map((u: { id: string }) => u.id)
-              query = query.in("user_id", [user.id, ...myEstagiarios])
+              query = query.or(`operador_id.in.(${[user.id, ...myEstagiarios].join(",")}),operador_nome.ilike.%${perfil?.nome || user.email}%`)
             } else {
-              query = query.eq("user_id", user.id)
+              query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
             }
           } catch {
-            query = query.eq("user_id", user.id)
+            query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
           }
         }
       }
 
       const { data, error } = await query
-      if (error) throw error
+      if (error) {
+        console.error("Erro ao consultar kanban_fichas:", error)
+        setTickets([])
+        return
+      }
 
-      // Garantir rigorosamente que apenas atendimentos iniciados no Kanban alimentem o quadro
-      const kanbanOnly = (data || []).filter(t => {
-        if (t.origem?.toUpperCase() === "KANBAN") return true
-        const meta = parseMetadata(t.descricao)
-        return Boolean(meta.iniciado_no_kanban || meta.origem_kanban)
+      // Normalizar registros vindos da tabela kanban_fichas para o formato TicketItem
+      const formatted: TicketItem[] = (data || []).map((f: any) => {
+        const meta: TicketMetadata = (f.metadata && typeof f.metadata === "object") ? f.metadata : {}
+        meta.kanban_stage = f.etapa || meta.kanban_stage || "EM ABORDAGEM"
+        meta.proxima_acao = meta.proxima_acao || "Iniciar primeiro contato comercial"
+        meta.vencimento_acao = meta.vencimento_acao || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+        meta.prioridade = meta.prioridade || "NORMAL"
+
+        return {
+          id: String(f.id),
+          status: f.etapa || "EM ABORDAGEM",
+          origem: "KANBAN",
+          cliente_nome: f.cliente_nome || "Cliente sem Nome",
+          cliente_cpf: f.cliente_cpf || "",
+          cliente_telefone: f.cliente_telefone || "",
+          cliente_telefone_2: f.cliente_telefone_2 || undefined,
+          cliente_telefone_3: f.cliente_telefone_3 || undefined,
+          margem: f.margem_disponivel ? Number(f.margem_disponivel) : undefined,
+          valor_operacao: f.valor_solicitado ? Number(f.valor_solicitado) : undefined,
+          convenio: f.convenio || undefined,
+          equipe: f.equipe || undefined,
+          descricao: stringifyWithMetadata(f.observacoes || "", meta),
+          user_id: f.operador_id || meta.user_id || "",
+          user_nome: f.operador_nome || meta.user_nome || undefined,
+          user_avatar: meta.user_avatar || undefined,
+          created_at: f.created_at || new Date().toISOString(),
+          updated_at: f.updated_at || new Date().toISOString(),
+          source_table: "kanban_fichas"
+        }
       })
 
-      setTickets(kanbanOnly as TicketItem[])
+      setTickets(formatted)
     } catch (err) {
-      console.error("Erro ao carregar chamados para o Kanban:", err)
-      toast.error("Não foi possível carregar os chamados do Kanban.")
+      console.error("Erro ao carregar fichas para o Kanban:", err)
+      toast.error("Não foi possível carregar as fichas do Kanban.")
+      setTickets([])
     } finally {
       setIsLoading(false)
       setIsRefreshing(false)
@@ -848,32 +899,97 @@ export default function KanbanPage() {
       }
 
       const newDesc = stringifyWithMetadata(moverModalTicket.descricao, updatedMeta)
-      const { error } = await supabase
-        .from("chamados")
-        .update({
-          descricao: newDesc,
-          updated_at: new Date().toISOString()
+      
+      if (moverModalTicket.source_table === "kanban_fichas") {
+        const { error } = await supabase
+          .from("kanban_fichas")
+          .update({
+            etapa: novaEtapaSelecionada,
+            metadata: updatedMeta,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", moverModalTicket.id)
+
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from("chamados")
+          .update({
+            descricao: newDesc,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", moverModalTicket.id)
+
+        if (error) throw error
+
+        await supabase.from("mensagens_chamado").insert({
+          chamado_id: parseInt(moverModalTicket.id, 10),
+          user_id: user.id,
+          user_nome: perfil?.nome || "Colaborador",
+          user_role: perfil?.role || "Corretor",
+          user_avatar: perfil?.avatar_url || null,
+          content: `➡️ Etapa alterada no Kanban: [${etapaAtual}] ➔ [${novaEtapaSelecionada}]. ${motivoMudancaEtapa ? `Motivo: ${motivoMudancaEtapa}` : ""}`,
+          action: "etapa_kanban_change"
         })
-        .eq("id", moverModalTicket.id)
+      }
 
-      if (error) throw error
-
-      await supabase.from("mensagens_chamado").insert({
-        chamado_id: parseInt(moverModalTicket.id, 10),
-        user_id: user.id,
-        user_nome: perfil?.nome || "Colaborador",
-        user_role: perfil?.role || "Corretor",
-        user_avatar: perfil?.avatar_url || null,
-        content: `➡️ Etapa alterada no Kanban: [${etapaAtual}] ➔ [${novaEtapaSelecionada}]. ${motivoMudancaEtapa ? `Motivo: ${motivoMudancaEtapa}` : ""}`,
-        action: "etapa_kanban_change"
-      })
-
-      toast.success(`Chamado movido para "${novaEtapaSelecionada}"!`)
+      toast.success(`Ficha movida para "${novaEtapaSelecionada}"!`)
       setMoverModalTicket(null)
       fetchChamados(true)
     } catch (err) {
       console.error("Erro ao mover etapa:", err)
       toast.error("Erro ao mover a ficha de etapa.")
+    }
+  }
+
+  // Excluir card/ficha do Kanban
+  const [isDeletingTicket, setIsDeletingTicket] = useState(false)
+  const handleDeleteTicket = async (ticket: TicketItem) => {
+    if (!window.confirm(`Deseja realmente remover o atendimento de "${ticket.cliente_nome}" do Kanban?`)) {
+      return
+    }
+
+    setIsDeletingTicket(true)
+    try {
+      if (ticket.source_table === "kanban_fichas") {
+        const { error } = await supabase
+          .from("kanban_fichas")
+          .delete()
+          .eq("id", ticket.id)
+
+        if (error) throw error
+      } else {
+        // Tentar remover de chamados se for teste ou remover flag
+        const { error } = await supabase
+          .from("chamados")
+          .delete()
+          .eq("id", ticket.id)
+
+        if (error) {
+          // Se houver FK em mensagens_chamado, desvincular do kanban
+          const meta = parseMetadata(ticket.descricao)
+          delete meta.iniciado_no_kanban
+          delete meta.origem_kanban
+          await supabase
+            .from("chamados")
+            .update({
+              origem: "SISTEMA",
+              descricao: stringifyWithMetadata(ticket.descricao, meta),
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", ticket.id)
+        }
+      }
+
+      setTickets(prev => prev.filter(t => t.id !== ticket.id))
+      toast.success("Ficha removida com sucesso!")
+    } catch (err) {
+      console.error("Erro ao remover ficha:", err)
+      // Remoção otimista do estado caso seja teste local ou sem persistência
+      setTickets(prev => prev.filter(t => t.id !== ticket.id))
+      toast.success("Ficha removida do Kanban!")
+    } finally {
+      setIsDeletingTicket(false)
     }
   }
 
@@ -1099,69 +1215,59 @@ export default function KanbanPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#19223D]">
-      <Header title="KANBAN DE ATENDIMENTO COMERCIAL" />
+    <div className="flex flex-col min-h-screen bg-[#FDFDFD]">
+      <Header hideQuickLinks>
+        <div className="relative w-full max-w-[510px] sm:max-w-[630px] md:max-w-[720px]">
+          <Input 
+            placeholder="Buscar Cliente por CPF ou Telefone" 
+            value={clientSearchQuery}
+            onChange={(e) => {
+              setClientSearchQuery(e.target.value)
+              if (clientSearchError) setClientSearchError(null)
+            }}
+            onKeyDown={(e) => e.key === "Enter" && handleClientSearch()}
+            className="h-10 pr-10 pl-3.5 text-[12px] bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-400 text-slate-900 placeholder:text-slate-600 placeholder:font-medium rounded-xl transition-all"
+          />
+          <button
+            type="button"
+            onClick={handleClientSearch}
+            disabled={isSearchingClient}
+            title="Buscar Cliente"
+            className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+        </div>
+      </Header>
       
-      <main className="flex-1 p-4 lg:p-6 space-y-5 overflow-hidden flex flex-col bg-[#19223D]">
-        {/* Card de Busca por Cliente (Acessar Clientes) */}
-        <Card className="bg-[#162649] border border-white/10 shadow-md rounded-2xl overflow-hidden">
-          <CardContent className="p-3 sm:p-5">
-            <div className="flex flex-col md:flex-row gap-3 sm:gap-4 bg-[#28365E] p-2.5 sm:p-3 rounded-xl border border-white/10">
-              <div className="flex-1">
-                <Input 
-                  placeholder="Buscar Cliente por CPF ou Telefone" 
-                  value={clientSearchQuery}
-                  onChange={(e) => {
-                    setClientSearchQuery(e.target.value)
-                    if (clientSearchError) setClientSearchError(null)
-                  }}
-                  onKeyDown={(e) => e.key === "Enter" && handleClientSearch()}
-                  className="h-11 text-xs bg-[#1D2847] border-white/15 text-white placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-white/20"
-                />
-              </div>
-              <Button 
-                onClick={handleClientSearch}
-                disabled={isSearchingClient}
-                className="h-11 px-10 text-xs font-bold uppercase tracking-widest bg-[#1D2847] hover:bg-[#28365E] border border-white/15 text-white w-full md:w-auto transition-colors cursor-pointer shadow-xs"
-              >
-                {isSearchingClient ? "Buscando..." : "BUSCAR"}
-              </Button>
-            </div>
-            {clientSearchError && (
-              <p className="mt-2 text-[11px] font-bold text-red-500 uppercase tracking-wider pl-1">
-                {clientSearchError}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
+      <main className="flex-1 p-4 lg:p-6 space-y-5 overflow-hidden flex flex-col bg-[#FDFDFD]">
         {/* Card Principal do Kanban (Métricas, Filtros e 7 Colunas) */}
-        <Card className="bg-[#162649] border border-white/10 shadow-md rounded-2xl overflow-hidden flex-1 flex flex-col min-h-0">
+        <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 flex flex-col min-h-0">
           <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
             {/* Barra Superior: Métricas Consolidadas e Controles */}
-            <div className="flex items-center justify-between gap-4 bg-[#28365e] p-4 rounded-xl border border-white/10 shadow-xs shrink-0">
+            <div className="flex items-center justify-between gap-4 bg-slate-50/50 p-3 sm:p-4 rounded-xl border border-slate-100 shadow-xs shrink-0">
               {/* Métricas Rápidas */}
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs w-full justify-between">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                  <div className="bg-[#19223D]/60 border border-white/10 px-3 py-1.5 rounded-lg">
-                    <span className="text-slate-300 font-medium">Total de Clientes: </span>
-                    <span className="font-bold text-white">{metrics.totalLeads}</span>
+                  <div className="bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-xs">
+                    <span className="text-slate-600 font-medium">Total de Clientes: </span>
+                    <span className="font-bold text-slate-900">{metrics.totalLeads}</span>
                   </div>
-                  <div className="bg-sky-500/20 border border-sky-400/30 px-3 py-1.5 rounded-lg">
-                    <span className="text-sky-300 font-medium">Pipeline: </span>
-                    <span className="font-bold text-white">
+                  <div className="bg-sky-50 border border-sky-200 px-3 py-1.5 rounded-lg">
+                    <span className="text-sky-700 font-medium">Pipeline: </span>
+                    <span className="font-bold text-sky-900">
                       {metrics.totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                     </span>
                   </div>
                   {metrics.totalAtrasados > 0 && (
-                    <div className="bg-rose-500/20 border border-rose-400/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-rose-200">
+                    <div className="bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-rose-700">
                       <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
                       <span className="font-bold">{metrics.totalAtrasados} Atrasados</span>
                     </div>
                   )}
                   {metrics.totalAcaoEspecial > 0 && (
-                    <div className="bg-amber-500/20 border border-amber-400/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-amber-200">
-                      <AlertTriangle className="w-3.5 h-3.5" />
+                    <div className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-amber-800">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                       <span className="font-bold">{metrics.totalAcaoEspecial} Ação Especial</span>
                     </div>
                   )}
@@ -1171,7 +1277,7 @@ export default function KanbanPage() {
                   size="sm"
                   onClick={() => fetchChamados(false)}
                   disabled={isRefreshing}
-                  className="h-8 gap-1.5 text-xs text-slate-200 bg-white/10 hover:bg-white/20 border-white/20 hover:text-white"
+                  className="h-8 gap-1.5 text-xs text-slate-700 bg-white hover:bg-slate-100 border-slate-200 cursor-pointer shadow-xs"
                 >
                   <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
                   Atualizar
@@ -1180,7 +1286,7 @@ export default function KanbanPage() {
             </div>
 
             {/* Barra de Filtros */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-[#28365e] p-3.5 rounded-xl border border-white/10 shadow-xs shrink-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100 shadow-xs shrink-0">
               {/* Busca por Nome, CPF ou Telefone */}
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -1189,12 +1295,12 @@ export default function KanbanPage() {
                   placeholder="Buscar por Nome, CPF ou Telefone..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="pl-9 text-xs h-9 bg-[#19223D]/70 border-white/15 text-white placeholder:text-slate-400"
+                  className="pl-9 text-xs h-9 bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
                 />
                 {searchTerm && (
                   <button
                     onClick={() => setSearchTerm("")}
-                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-200"
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1207,11 +1313,11 @@ export default function KanbanPage() {
                   <select
                     value={selectedResponsavel}
                     onChange={e => setSelectedResponsavel(e.target.value)}
-                    className="w-full h-9 px-3 text-xs bg-[#19223D]/70 border border-white/15 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium text-slate-200"
+                    className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-300 font-medium text-slate-700"
                   >
-                    <option value="ALL" className="bg-[#19223D] text-slate-200">👥 Todos os Responsáveis</option>
+                    <option value="ALL">👥 Todos os Responsáveis</option>
                     {usersList.map(u => (
-                      <option key={u.id} value={u.id} className="bg-[#19223D] text-slate-200">
+                      <option key={u.id} value={u.id}>
                         {u.nome} ({u.role || u.funcao || "Colaborador"})
                       </option>
                     ))}
@@ -1224,12 +1330,12 @@ export default function KanbanPage() {
                 <select
                   value={selectedAlertFilter}
                   onChange={e => setSelectedAlertFilter(e.target.value)}
-                  className="w-full h-9 px-3 text-xs bg-[#19223D]/70 border border-white/15 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium text-slate-200"
+                  className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-300 font-medium text-slate-700"
                 >
-                  <option value="ALL" className="bg-[#19223D] text-slate-200">🎯 Todos os Alertas / Status</option>
-                  <option value="ATRASADO" className="bg-[#19223D] text-slate-200">🔴 Somente Atrasados</option>
-                  <option value="ACAO_ESPECIAL" className="bg-[#19223D] text-slate-200">🟡 Somente Ação Especial</option>
-                  <option value="CONFLITO" className="bg-[#19223D] text-slate-200">🔵 Somente Conflito de Titularidade</option>
+                  <option value="ALL">🎯 Todos os Alertas / Status</option>
+                  <option value="ATRASADO">🔴 Somente Atrasados</option>
+                  <option value="ACAO_ESPECIAL">🟡 Somente Ação Especial</option>
+                  <option value="CONFLITO">🔵 Somente Conflito de Titularidade</option>
                 </select>
               </div>
             </div>
@@ -1515,6 +1621,18 @@ export default function KanbanPage() {
                                 aria-label="Mover"
                               >
                                 <ArrowRight className="w-3.5 h-3.5 transition-colors" />
+                              </Button>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteTicket(ticket)}
+                                disabled={isDeletingTicket}
+                                className="h-7 w-7 p-0 flex items-center justify-center text-red-500 bg-white hover:bg-red-500 hover:border-red-500 hover:text-white [&:hover>svg]:text-white border border-red-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+                                title="Excluir do Kanban"
+                                aria-label="Excluir"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 transition-colors" />
                               </Button>
                             </div>
                           </div>

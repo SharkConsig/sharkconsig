@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,43 +16,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { Loader2, GitFork, AlertCircle, CheckCircle2, RotateCcw } from "lucide-react"
+import { Loader2, GitFork, ShieldAlert, CheckCircle2, UserCheck, XCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { toast } from "react-hot-toast"
-import { useAuth } from "@/context/auth-context"
 
 interface User {
   id: string
   nome: string
-  funcao?: string
+  email?: string
   role?: string
-  status?: string
-}
-
-interface ProposalInterventionData {
-  id_lead: string
-  nome_cliente: string
-  cliente_cpf: string
-  corretor?: string
-  nome_corretor?: string
-  corretor_id?: string
-  valor_operacao?: number | string
-  valor_producao?: number | string
-  status: string
-  intervencao_operacional?: boolean
-  intervencao_operacional_id?: string
-  intervencao_operacional_nome?: string
-  intervencao_motivo?: string
-  intervencao_data?: string
-  intervencao_autor_nome?: string
+  funcao?: string
+  supervisor_nome?: string
 }
 
 interface IntervencaoOperacionalModalProps {
   isOpen: boolean
   onClose: () => void
-  proposal: ProposalInterventionData | null
-  onSuccess: () => void
+  proposal: {
+    id_lead: string
+    nome_cliente?: string
+    cliente_cpf?: string
+    corretor?: string
+    status?: string
+    intervencao_operacional?: boolean
+    intervencao_operacional_id?: string
+    intervencao_operacional_nome?: string
+    [key: string]: any
+  } | null
+  onSuccess?: () => void
 }
 
 export function IntervencaoOperacionalModal({
@@ -60,390 +52,248 @@ export function IntervencaoOperacionalModal({
   proposal,
   onSuccess,
 }: IntervencaoOperacionalModalProps) {
-  const { perfil, isAdmin, isOperational, isSupervisor, isDeveloper } = useAuth()
-  const [operationalUsers, setOperationalUsers] = useState<User[]>([])
-  const [selectedOperacionalId, setSelectedOperacionalId] = useState<string>("")
-  const [motivo, setMotivo] = useState<string>("")
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false)
+  const [users, setUsers] = useState<User[]>([])
+  const [selectedUserId, setSelectedUserId] = useState<string>("")
+  const [isInterventionActive, setIsInterventionActive] = useState<boolean>(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const canManageIntervention = isAdmin || isOperational || isSupervisor || isDeveloper
-
-  const isInterventionActive = Boolean(proposal?.intervencao_operacional)
-
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && proposal) {
       fetchUsers()
-      if (proposal?.intervencao_operacional_id) {
-        setSelectedOperacionalId(proposal.intervencao_operacional_id)
-      } else if (isOperational && perfil?.id) {
-        setSelectedOperacionalId(perfil.id)
-      } else {
-        setSelectedOperacionalId("")
-      }
-      setMotivo(proposal?.intervencao_motivo || "")
+      setIsInterventionActive(Boolean(proposal.intervencao_operacional))
+      setSelectedUserId(proposal.intervencao_operacional_id || "")
     }
-  }, [isOpen, proposal, isOperational, perfil?.id])
+  }, [isOpen, proposal])
 
   const fetchUsers = async () => {
-    setIsLoadingUsers(true)
+    setIsLoading(true)
     try {
       const response = await fetch("/api/usuarios")
       if (!response.ok) throw new Error("Falha ao buscar usuários")
       const data = await response.json()
-      if (Array.isArray(data)) {
-        // Filtrar prioritariamente quem é operacional, admin, desenvolvedor ou supervisor
-        let ops = data.filter((u: User) => {
-          const func = (u.funcao || "").trim().toLowerCase()
-          const role = (u.role || "").trim().toLowerCase()
-          const status = (u.status || "").trim().toUpperCase()
-          if (status === "INATIVO") return false
-          return (
-            func.includes("operacion") ||
-            role.includes("operacion") ||
-            func.includes("admin") ||
-            role.includes("admin") ||
-            func.includes("desenvolv") ||
-            role.includes("desenvolv") ||
-            func.includes("supervis") ||
-            role.includes("supervis")
-          )
-        })
-
-        if (ops.length === 0) {
-          ops = [...data]
-        }
-
-        // Assegurar que o operacional da proposta ou o usuário logado constem na lista com nome amigável
-        const targetIds = [proposal?.intervencao_operacional_id, perfil?.id].filter(Boolean) as string[]
-        for (const tid of targetIds) {
-          if (!ops.some((u) => u.id === tid)) {
-            const foundInAll = data.find((u: User) => u.id === tid)
-            if (foundInAll) {
-              ops.push(foundInAll)
-            } else if (tid === proposal?.intervencao_operacional_id && proposal?.intervencao_operacional_nome) {
-              ops.push({
-                id: tid,
-                nome: proposal.intervencao_operacional_nome,
-                funcao: "Operacional",
-              } as User)
-            } else if (tid === perfil?.id && perfil?.nome) {
-              ops.push({
-                id: tid,
-                nome: perfil.nome,
-                funcao: perfil.funcao || perfil.role || "Operacional",
-              } as User)
-            }
-          }
-        }
-
-        setOperationalUsers(ops)
-      }
+      setUsers(data)
     } catch (error) {
-      console.error("Erro ao carregar lista de operacionais:", error)
-      toast.error("Erro ao carregar lista de operacionais")
+      console.error("Erro ao buscar usuários:", error)
+      toast.error("Erro ao carregar lista de usuários")
     } finally {
-      setIsLoadingUsers(false)
+      setIsLoading(false)
     }
   }
 
-  const handleApply = async () => {
+  const handleSave = async () => {
     if (!proposal) return
-    if (!selectedOperacionalId) {
-      toast.error("Selecione o usuário do Operacional responsável.")
-      return
-    }
-    if (!motivo.trim()) {
-      toast.error("Informe a justificativa/motivo do retrabalho ou intervenção.")
-      return
-    }
 
-    const opUser = operationalUsers.find(u => u.id === selectedOperacionalId)
-    const opNome = opUser?.nome || "Operacional"
-    const nowIso = new Date().toISOString()
-    const digitadorNome = proposal.nome_corretor || proposal.corretor || "Digitador Original"
+    if (isInterventionActive && !selectedUserId) {
+      toast.error("Selecione um colaborador do Operacional para a intervenção.")
+      return
+    }
 
     setIsSubmitting(true)
     try {
-      const { error } = await supabase
-        .from("propostas")
-        .update({
+      let updatePayload: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+      }
+
+      let historicoDesc = ""
+
+      if (isInterventionActive) {
+        const selectedUser = users.find((u) => u.id === selectedUserId)
+        const opNome = selectedUser?.nome || proposal.intervencao_operacional_nome || "Operacional"
+        updatePayload = {
+          ...updatePayload,
           intervencao_operacional: true,
-          intervencao_operacional_id: selectedOperacionalId,
+          intervencao_operacional_id: selectedUserId,
           intervencao_operacional_nome: opNome,
-          intervencao_motivo: motivo.trim(),
-          intervencao_data: nowIso,
-          intervencao_autor_id: perfil?.id || null,
-          intervencao_autor_nome: perfil?.nome || "Gestão/Operacional",
-          updated_at: nowIso,
-        })
-        .eq("id_lead", proposal.id_lead)
-
-      if (error) throw error
-
-      // Histórico de auditoria
-      try {
-        await supabase.from("historico_propostas").insert({
-          proposta_id_lead: proposal.id_lead,
-          usuario_id: perfil?.id || "",
-          status_anterior: proposal.status,
-          status_novo: proposal.status,
-          descricao: `Intervenção Operacional registrada: 50% para "${digitadorNome}" e 50% para "${opNome}". Motivo: ${motivo.trim()}`,
-          observacoes: `Intervenção registrada por ${perfil?.nome || "Usuário"} em ${new Date().toLocaleString("pt-BR")}. Motivo: ${motivo.trim()}`,
-          tipo: "intervencao_operacional",
-          created_at: nowIso,
-        })
-      } catch (histErr) {
-        console.warn("Erro ao gravar histórico de intervenção:", histErr)
-      }
-
-      toast.success("Intervenção do Operacional registrada com sucesso!")
-      onSuccess()
-      onClose()
-    } catch (err: any) {
-      console.error("Erro ao registrar intervenção:", err)
-      if (err?.code === "42703" || err?.message?.includes("intervencao_operacional") || err?.message?.includes("column")) {
-        toast.error("Colunas não encontradas no banco. Execute o script 'supabase_intervencao_operacional.sql' no Supabase SQL Editor para habilitar o recurso.", { duration: 7000 })
+        }
+        historicoDesc = `Intervenção Operacional (50/50) ativada com ${opNome}`
       } else {
-        toast.error(err?.message || "Falha ao salvar intervenção no banco.")
-      }
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleRevert = async () => {
-    if (!proposal) return
-    const nowIso = new Date().toISOString()
-    const digitadorNome = proposal.nome_corretor || proposal.corretor || "Digitador Original"
-
-    setIsSubmitting(true)
-    try {
-      const { error } = await supabase
-        .from("propostas")
-        .update({
+        updatePayload = {
+          ...updatePayload,
           intervencao_operacional: false,
           intervencao_operacional_id: null,
           intervencao_operacional_nome: null,
-          intervencao_motivo: null,
-          intervencao_data: null,
-          intervencao_autor_id: null,
-          intervencao_autor_nome: null,
-          updated_at: nowIso,
-        })
+        }
+        historicoDesc = "Intervenção Operacional removida"
+      }
+
+      const { error } = await supabase
+        .from("propostas")
+        .update(updatePayload)
         .eq("id_lead", proposal.id_lead)
 
       if (error) throw error
 
-      // Histórico de reversão
+      // Registro no histórico de propostas
       try {
         await supabase.from("historico_propostas").insert({
           proposta_id_lead: proposal.id_lead,
-          usuario_id: perfil?.id || "",
-          status_anterior: proposal.status,
-          status_novo: proposal.status,
-          descricao: `Intervenção do Operacional revertida. 100% da produção meta retornada para "${digitadorNome}".`,
-          observacoes: `Revertido por ${perfil?.nome || "Gestão"} em ${new Date().toLocaleString("pt-BR")}`,
-          tipo: "reversao_intervencao",
-          created_at: nowIso,
+          status_anterior: proposal.status || "",
+          status_novo: proposal.status || "",
+          descricao: historicoDesc,
+          tipo: "intervencao_operacional",
+          created_at: new Date().toISOString(),
         })
       } catch (histErr) {
-        console.warn("Erro ao gravar histórico de reversão:", histErr)
+        console.warn("Aviso ao registrar histórico:", histErr)
       }
 
-      toast.success("Intervenção revertida! 100% da meta retornada ao digitador.")
-      onSuccess()
+      toast.success(
+        isInterventionActive
+          ? "Intervenção Operacional (50/50) ativada com sucesso!"
+          : "Intervenção Operacional desativada com sucesso!"
+      )
+
+      if (onSuccess) {
+        onSuccess()
+      }
       onClose()
-    } catch (err: any) {
-      console.error("Erro ao reverter intervenção:", err)
-      toast.error(err.message || "Falha ao reverter intervenção.")
+    } catch (error) {
+      console.error("Erro ao salvar intervenção:", error)
+      toast.error("Erro ao atualizar intervenção operacional")
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // Valores numéricos aproximados para exibição
-  const parseVal = (val: any) => {
-    if (!val) return 0
-    const str = String(val).replace(/[^\d,.-]/g, "")
-    if (str.includes(".") && str.includes(",")) return parseFloat(str.replace(/\./g, "").replace(",", "."))
-    if (str.includes(",")) return parseFloat(str.replace(",", "."))
-    return parseFloat(str) || 0
-  }
-
-  const valorMetaCalculado = parseVal(proposal?.valor_producao)
-  const metadeMeta = valorMetaCalculado / 2
-
-  const selectedOpUser = operationalUsers.find((u) => u.id === selectedOperacionalId)
-  const selectedDisplayName =
-    (selectedOpUser?.nome ? `${selectedOpUser.nome}${selectedOpUser.funcao ? ` (${selectedOpUser.funcao})` : ""}` : null) ||
-    (proposal?.intervencao_operacional_id === selectedOperacionalId && proposal?.intervencao_operacional_nome ? proposal.intervencao_operacional_nome : null) ||
-    (selectedOperacionalId === perfil?.id && perfil?.nome ? `${perfil.nome}${perfil.funcao || perfil.role ? ` (${perfil.funcao || perfil.role})` : ""}` : null)
+  if (!proposal) return null
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden bg-white border border-slate-200 shadow-2xl rounded-2xl">
-        <DialogHeader className="p-6 bg-slate-900 text-white">
-          <DialogTitle className="text-base font-black tracking-wider uppercase flex items-center gap-2.5">
-            <GitFork className="w-5 h-5 text-amber-400" />
-            Intervenção do Operacional
-          </DialogTitle>
-          <p className="text-[13px] text-slate-300 font-medium leading-relaxed mt-1">
-            Redistribuição de 50% da Produção Meta quando o Operacional precisa assumir a condução ou realizar retrabalho.
-          </p>
+      <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden bg-white border border-slate-200 rounded-2xl shadow-xl">
+        {/* Cabeçalho */}
+        <DialogHeader className="p-5 bg-gradient-to-r from-purple-700 via-indigo-700 to-indigo-800 text-white">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
+              <GitFork className="w-5 h-5 text-amber-300" />
+            </div>
+            <div>
+              <DialogTitle className="text-base font-bold text-white tracking-wide uppercase">
+                Intervenção Operacional (50/50)
+              </DialogTitle>
+              <p className="text-[11px] text-purple-100 font-medium">
+                Divisão de 50% da meta de produção entre Corretor e Operacional
+              </p>
+            </div>
+          </div>
         </DialogHeader>
 
-        <div className="p-6 space-y-5">
-          {/* Card com dados do contrato */}
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                CONTRATO #{proposal?.id_lead}
-              </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200/60 text-slate-700">
-                {proposal?.status}
+        <div className="p-5 space-y-4">
+          {/* Card Resumo da Proposta */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1.5">
+            <div className="flex justify-between items-center text-slate-500">
+              <span className="font-semibold text-[11px] uppercase tracking-wider">Proposta / Lead:</span>
+              <span className="font-mono font-bold text-slate-800">#{proposal.id_lead}</span>
+            </div>
+            <div className="flex justify-between items-center text-slate-700">
+              <span className="font-semibold text-[11px] uppercase tracking-wider">Cliente:</span>
+              <span className="font-bold text-slate-900 truncate max-w-[280px]">
+                {proposal.nome_cliente || "---"}
               </span>
             </div>
-            <p className="text-sm font-bold text-slate-800 leading-tight">{proposal?.nome_cliente}</p>
-            <p className="text-[11px] text-slate-500 font-medium">
-              CPF: <span className="font-semibold text-slate-700">{proposal?.cliente_cpf}</span> • Digitador:{" "}
-              <span className="font-semibold text-slate-700">{proposal?.nome_corretor || proposal?.corretor || "-"}</span>
-            </p>
-
-            {valorMetaCalculado > 0 && (
-              <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-3 gap-2 text-center">
-                <div className="bg-white p-2 rounded-lg border border-slate-100">
-                  <span className="text-[8px] font-bold uppercase text-slate-400 block tracking-wider">Meta Total</span>
-                  <span className="text-[11px] font-black text-slate-700">
-                    R$ {valorMetaCalculado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="bg-emerald-50/80 p-2 rounded-lg border border-emerald-100">
-                  <span className="text-[8px] font-bold uppercase text-emerald-600 block tracking-wider">50% Digitador</span>
-                  <span className="text-[11px] font-black text-emerald-700">
-                    R$ {metadeMeta.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="bg-amber-50/80 p-2 rounded-lg border border-amber-100">
-                  <span className="text-[8px] font-bold uppercase text-amber-600 block tracking-wider">50% Operacional</span>
-                  <span className="text-[11px] font-black text-amber-700">
-                    R$ {metadeMeta.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
-            )}
+            <div className="flex justify-between items-center text-slate-500">
+              <span className="font-semibold text-[11px] uppercase tracking-wider">Corretor Titular:</span>
+              <span className="font-bold text-slate-800">{proposal.corretor || "---"}</span>
+            </div>
           </div>
 
-          {/* Aviso se já tiver intervenção ativa */}
-          {isInterventionActive && (
-            <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200/80 flex items-start gap-3">
-              <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div className="text-[11px] text-amber-900 leading-snug">
-                <p className="font-bold">Intervenção registrada atualmente:</p>
-                <p className="mt-0.5 text-amber-800">
-                  Operacional: <span className="font-semibold">{proposal?.intervencao_operacional_nome || "Sim"}</span>
-                  {proposal?.intervencao_autor_nome && ` • Registrado por: ${proposal.intervencao_autor_nome}`}
-                </p>
-                {proposal?.intervencao_motivo && (
-                  <p className="mt-1 text-amber-950 italic">&ldquo;{proposal.intervencao_motivo}&rdquo;</p>
-                )}
-              </div>
+          {/* Toggle de Ativação da Intervenção */}
+          <div className="p-3.5 border rounded-xl bg-slate-50/50 flex items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wide block">
+                Status da Intervenção
+              </span>
+              <span className="text-[11px] text-slate-500 block">
+                {isInterventionActive
+                  ? "Ativa: A meta de produção será dividida 50% / 50%."
+                  : "Desativada: A pontuação fica 100% com o corretor titular."}
+              </span>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => setIsInterventionActive(!isInterventionActive)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                isInterventionActive ? "bg-purple-600" : "bg-slate-300"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                  isInterventionActive ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
 
-          {!canManageIntervention ? (
-            <div className="p-3 bg-red-50 rounded-lg border border-red-200 text-[11px] text-red-700 font-medium">
-              Apenas Operacional, Administradores e Supervisores possuem permissão para registrar ou alterar a intervenção.
-            </div>
-          ) : (
-            <>
-              {/* Seleção do Operacional Responsável */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">
-                  Operacional Responsável pela Intervenção <span className="text-red-500">*</span>
-                </label>
-                <Select value={selectedOperacionalId} onValueChange={setSelectedOperacionalId}>
-                  <SelectTrigger className="h-10 text-[12px] bg-white border-slate-200 rounded-lg">
-                    <SelectValue placeholder="Selecione o colaborador do Operacional">
-                      {selectedDisplayName || undefined}
-                    </SelectValue>
+          {/* Seleção do Colaborador Operacional */}
+          {isInterventionActive && (
+            <div className="space-y-1.5 animate-in fade-in-50 duration-200">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-purple-600" />
+                Operacional Responsável pela Intervenção
+              </label>
+              {isLoading ? (
+                <div className="flex items-center justify-center p-3 text-xs text-slate-500 gap-2 border rounded-lg bg-slate-50">
+                  <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+                  Carregando operadores...
+                </div>
+              ) : (
+                <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                  <SelectTrigger className="w-full h-10 text-xs bg-white border-slate-200 text-slate-800">
+                    <SelectValue placeholder="Selecione o operador responsável..." />
                   </SelectTrigger>
-                  <SelectContent className="max-h-56">
-                    {operationalUsers.map((u) => (
-                      <SelectItem key={u.id} value={u.id} className="text-[12px]">
-                        {u.nome} {u.funcao ? `(${u.funcao})` : ""}
+                  <SelectContent className="max-h-60 bg-white">
+                    {users.map((u) => (
+                      <SelectItem key={u.id} value={u.id} className="text-xs">
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <span className="font-semibold text-slate-800">{u.nome}</span>
+                          <span className="text-[10px] text-slate-400">
+                            ({u.role || u.funcao || "Colaborador"})
+                          </span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-
-              {/* Justificativa / Motivo */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">
-                  Justificativa / Motivo da Intervenção <span className="text-red-500">*</span>
-                </label>
-                <Textarea
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  placeholder="Descreva o retrabalho realizado ou motivo de o Operacional ter assumido a condução para fechamento..."
-                  className="min-h-[80px] text-[12px] bg-white border-slate-200 rounded-lg resize-none"
-                />
-                <p className="text-[11px] text-slate-400">
-                  Importante: Dúvidas e orientações comuns da rotina não justificam redistribuição. Registre apenas retrabalhos efetivos.
-                </p>
-              </div>
-            </>
+              )}
+              <p className="text-[10px] text-slate-500 italic mt-1">
+                O operador selecionado receberá metade da produção desta proposta nos relatórios e ranking.
+              </p>
+            </div>
           )}
         </div>
 
-        {/* Footer com botões de ação */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
-          {isInterventionActive && canManageIntervention ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleRevert}
-              disabled={isSubmitting}
-              className="h-10 text-[11px] font-bold text-rose-600 border-rose-200 hover:bg-rose-50 rounded-xl"
-            >
-              {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <RotateCcw className="w-3.5 h-3.5 mr-1.5" />}
-              Reverter (100% Corretor)
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onClose}
-              className="h-10 text-[13px] font-bold text-slate-500 hover:text-slate-800 rounded-xl"
-            >
-              Cancelar
-            </Button>
-          )}
-
-          <div className="flex items-center gap-2">
-            {canManageIntervention && (
-              <Button
-                type="button"
-                onClick={handleApply}
-                disabled={isSubmitting || !selectedOperacionalId || !motivo.trim()}
-                className="h-10 px-5 text-[11px] font-bold uppercase tracking-wider bg-slate-900 hover:bg-slate-800 text-white rounded-xl shadow-md transition-all active:scale-95"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                    Salvando...
-                  </>
-                ) : (
-                  <>
-                    <GitFork className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
-                    {isInterventionActive ? "Atualizar Intervenção" : "Confirmar Redistribuição (50/50)"}
-                  </>
-                )}
-              </Button>
+        {/* Rodapé de Ações */}
+        <DialogFooter className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between sm:justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="h-9 px-4 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-100 border-slate-200"
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleSave}
+            disabled={isSubmitting || (isInterventionActive && !selectedUserId)}
+            className="h-9 px-4 text-xs font-bold uppercase tracking-wider bg-purple-600 hover:bg-purple-700 text-white shadow-md flex items-center gap-1.5"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Salvar Intervenção
+              </>
             )}
-          </div>
-        </div>
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

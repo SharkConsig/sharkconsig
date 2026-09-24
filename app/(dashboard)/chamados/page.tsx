@@ -1141,14 +1141,14 @@ export default function TicketsPage() {
       })
 
       const matchesSearch = 
-        ticket.id.toString().includes(searchTerm) ||
-        ticket.cliente_nome.toLowerCase().includes(searchLower) ||
-        ticket.cliente_cpf.includes(searchTerm) ||
+        String(ticket.id ?? "").includes(searchTerm) ||
+        (ticket.cliente_nome || "").toLowerCase().includes(searchLower) ||
+        (ticket.cliente_cpf || "").includes(searchTerm) ||
         (searchDigits !== "" && ticketCpfDigits.includes(searchDigits)) ||
         matchesPhone ||
-        ticket.origem.toLowerCase().includes(searchLower) ||
+        (ticket.origem || "").toLowerCase().includes(searchLower) ||
         (normalizeConvenioName(ticket.convenio) || "").toLowerCase().includes(searchLower) ||
-        ticket.equipe.toLowerCase().includes(searchLower) ||
+        (ticket.equipe || "").toLowerCase().includes(searchLower) ||
         ticketStatusName.includes(searchLower) ||
         ticket.margem?.toString().includes(searchTerm) ||
         ticket.margem_liquida_5?.toString().includes(searchTerm) ||
@@ -1162,10 +1162,10 @@ export default function TicketsPage() {
         const ticketStatus = ticket.status_chamados?.nome || ticket.status || ""
         if (!filterStatusList.includes(ticketStatus)) return false
       }
-      if (filterOrigens.length > 0 && !filterOrigens.includes(ticket.origem)) return false
-      if (filterCliente && !ticket.cliente_nome.toLowerCase().includes(filterCliente.toLowerCase())) return false
+      if (filterOrigens.length > 0 && !filterOrigens.includes(ticket.origem || "")) return false
+      if (filterCliente && !(ticket.cliente_nome || "").toLowerCase().includes(filterCliente.toLowerCase())) return false
       if (filterConvenios.length > 0 && !filterConvenios.includes(normalizeConvenioName(ticket.convenio) as string)) return false
-      if (filterEquipes.length > 0 && !filterEquipes.includes(ticket.equipe)) return false
+      if (filterEquipes.length > 0 && !filterEquipes.includes(ticket.equipe || "")) return false
 
       // Filtro de Encaminhamento
       const isEncaminhado = !!descMeta?.enviado_para_corretor

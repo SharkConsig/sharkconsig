@@ -9,14 +9,16 @@ import { useSidebar } from "@/context/sidebar-context"
 import { supabase } from "@/lib/supabase"
 
 interface HeaderProps {
-  title: string
+  title?: string
+  children?: React.ReactNode
+  hideQuickLinks?: boolean
 }
 
 import { useAuth } from "@/context/auth-context"
 import { RHMessagingModal } from "@/components/rh/rh-messaging-modal"
 import { RHMessagePopup } from "@/components/rh/rh-message-popup"
 
-export function Header({ title }: HeaderProps) {
+export function Header({ title, children, hideQuickLinks = false }: HeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
   const isCampanhaAtendimento = pathname?.startsWith("/campanhas/atendimento/")
@@ -375,19 +377,23 @@ export function Header({ title }: HeaderProps) {
 
   return (
     <header className={`h-16 lg:h-20 border-b border-slate-200 bg-white px-4 lg:px-8 flex items-center justify-between sticky top-0 header-shadow transition-all duration-300 ${isApoioModalOpen || isHistoryModalOpen ? 'z-[210]' : 'z-[100]'}`}>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-1 min-w-0">
         <button 
           onClick={toggleSidebar}
           disabled={isCampanhaAtendimento || isHeaderBlocked}
-          className={`lg:hidden p-2 text-slate-400 hover:text-primary transition-colors ${
+          className={`lg:hidden p-2 text-slate-400 hover:text-primary transition-colors shrink-0 ${
             isCampanhaAtendimento || isHeaderBlocked ? "pointer-events-none opacity-40" : ""
           }`}
         >
           <Menu className="w-6 h-6" />
         </button>
-        <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest truncate max-w-[140px] xs:max-w-[180px] sm:max-w-[250px] md:max-w-none">
-          {title}
-        </h2>
+        {children ? (
+          <div className="flex-1 min-w-0 flex items-center">{children}</div>
+        ) : title ? (
+          <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest truncate max-w-[140px] xs:max-w-[180px] sm:max-w-[250px] md:max-w-none">
+            {title}
+          </h2>
+        ) : null}
       </div>
       <div className={`flex items-center gap-2 sm:gap-4 ${isHeaderBlocked ? "pointer-events-none opacity-40 select-none" : ""}`}>
         {isAdminUser && (
@@ -428,7 +434,7 @@ export function Header({ title }: HeaderProps) {
           </Link>
         )}
 
-        {!(isRecursosHumanos || perfil?.role === 'Recursos Humanos') && (
+        {!hideQuickLinks && !(isRecursosHumanos || perfil?.role === 'Recursos Humanos') && (
           <div className={`hidden md:flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100 mr-2 ${
             isCampanhaAtendimento ? "pointer-events-none opacity-40 cursor-not-allowed select-none" : ""
           }`}>
