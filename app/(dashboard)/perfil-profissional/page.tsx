@@ -62,20 +62,23 @@ export default function PerfilProfissionalPage() {
   const userRole = perfil?.role || (user?.user_metadata?.role as string) || (user?.user_metadata?.funcao as string) || ""
   const roleNorm = userRole.toLowerCase().trim()
 
-  // Usuário 'Monitoramento' deve ter acesso exclusivo à aba 'MEU PERFIL'
-  const isMonitor = isMonitoramento || roleNorm === "monitoramento"
+  // Usuário 'Monitoramento' atua como liderado e líder
+  const isMonitor = isMonitoramento || roleNorm === "monitoramento" || roleNorm.includes("monitor")
 
   // Grupo 3: Administrador e Desenvolvedor -> 'MEU PERFIL', 'VISÃO LÍDER' e 'INTELIGÊNCIA DO TIME (GESTÃO)'. Default: 'INTELIGÊNCIA DO TIME (GESTÃO)'
-  const isGrupo3 = !isMonitor && (isAdmin || isDeveloper || roleNorm === "administrador" || roleNorm === "desenvolvedor")
+  const isGrupo3 = (isAdmin || isDeveloper || roleNorm === "administrador" || roleNorm === "desenvolvedor")
 
-  // Grupo 2: Supervisor, Operacional e Recursos Humanos -> 'MEU PERFIL' e 'VISÃO LÍDER'. Default: 'VISÃO LÍDER'
-  const isGrupo2 = !isMonitor && !isGrupo3 && (
+  // Grupo 2: Supervisor, Operacional, Recursos Humanos e Monitoramento -> 'MEU PERFIL' e 'VISÃO LÍDER'. Default: 'VISÃO LÍDER'
+  const isGrupo2 = !isGrupo3 && (
     isSupervisor ||
-    (isOperational && !isMonitor) ||
+    isOperational ||
     isRecursosHumanos ||
+    isMonitor ||
     roleNorm === "supervisor" ||
     roleNorm === "operacional" ||
-    roleNorm === "recursos humanos"
+    roleNorm === "recursos humanos" ||
+    roleNorm === "monitoramento" ||
+    roleNorm.includes("monitor")
   )
 
   const isRH = isRecursosHumanos || roleNorm === "recursos humanos" || roleNorm.includes("recursos humanos") || roleNorm === "rh"
@@ -814,8 +817,9 @@ export default function PerfilProfissionalPage() {
             const isRecHum = isRecursosHumanos || roleNorm === "recursos humanos" || roleNorm === "rh"
             const isOp = isOperational || roleNorm === "operacional"
             const isSup = isSupervisor || roleNorm === "supervisor"
+            const isMon = isMonitoramento || roleNorm === "monitoramento" || roleNorm.includes("monitor")
 
-            // 1. Cargos com função de liderança: Administrador, Recursos Humanos, Operacional e Supervisor
+            // 1. Cargos com função de liderança: Administrador, Recursos Humanos, Operacional, Supervisor e Monitoramento
             const isCargoLideranca = (cargo?: string) => {
               const r = (cargo || "").toLowerCase().trim()
               return (
@@ -825,7 +829,9 @@ export default function PerfilProfissionalPage() {
                 r === "rh" ||
                 r.includes("recursos humanos") ||
                 r === "operacional" ||
-                r === "supervisor"
+                r === "supervisor" ||
+                r === "monitoramento" ||
+                r.includes("monitor")
               )
             }
 
@@ -856,6 +862,11 @@ export default function PerfilProfissionalPage() {
               // 3. Supervisor lidera promotores (Corretor CLT), Estágio e Processo Seletivo (e Monitoramento)
               if (isSup) {
                 return isColabCorretorCLT || isColabEstagio || isColabProcessoSeletivo || isColabMonitoramento
+              }
+
+              // 4. Monitoramento lidera promotores (Corretor CLT), Estágio e Processo Seletivo
+              if (isMon) {
+                return isColabCorretorCLT || isColabEstagio || isColabProcessoSeletivo
               }
 
               // Operacional lidera Supervisor e todos os liderados diretos do supervisor
@@ -987,7 +998,7 @@ export default function PerfilProfissionalPage() {
                               return
                             }
                             if (!isCargoLideranca(colab?.role)) {
-                              alert("O colaborador selecionado não possui cargo de liderança (Administrador, Recursos Humanos, Operacional ou Supervisor) para ser definido como Líder.")
+                              alert("O colaborador selecionado não possui cargo de liderança (Administrador, Recursos Humanos, Operacional, Supervisor ou Monitoramento) para ser definido como Líder.")
                               return
                             }
                             setLiderSelecionadoId(tempColab)

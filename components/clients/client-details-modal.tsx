@@ -9,7 +9,21 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Loader2, Eye, EyeOff, MessageCircle } from "lucide-react"
+import { 
+  Loader2, 
+  Eye, 
+  EyeOff, 
+  MessageCircle, 
+  User, 
+  FileText, 
+  TrendingUp, 
+  Landmark, 
+  CreditCard, 
+  Calendar, 
+  Copy, 
+  Check, 
+  Building 
+} from "lucide-react"
 import { cn, withRetry } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { translateOrgao } from "@/lib/orgaos-mapping"
@@ -1105,1957 +1119,848 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
     return `${day}/${month}/${year}`
   }
 
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const copyToClipboard = (text: string, label: string) => {
+    if (!text || text === "NÃO INFORMADO") return;
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedField(label);
+      setTimeout(() => setCopiedField(null), 2000);
+    }
+  };
+
+  const getConvenioName = (type: ConvenioType | string | null | undefined) => {
+    switch (type) {
+      case "siape": return "SIAPE (Federal)";
+      case "governo_sp": return "Governo de SP";
+      case "prefeitura_sp": return "Prefeitura de SP";
+      case "governo_pi": return "Governo do Piauí";
+      case "governo_ma": return "Governo do Maranhão";
+      case "governo_rr": return "Governo de Roraima";
+      case "governo_rj": return "Governo do Rio de Janeiro";
+      case "prefeitura_santo_andre": return "Prefeitura de Santo André";
+      case "prefeitura_contagem": return "Prefeitura de Contagem";
+      case "governo_mg": return "Governo de Minas Gerais";
+      case "prefeitura_natal": return "Prefeitura de Natal";
+      case "prefeitura_porto_velho": return "Prefeitura de Porto Velho";
+      case "governo_ba": return "Governo da Bahia";
+      case "governo_am": return "Governo do Amazonas";
+      case "governo_ce": return "Governo do Ceará";
+      case "governo_ro": return "Governo de Rondônia";
+      case "prefeitura_ponta_grossa": return "Prefeitura de Ponta Grossa";
+      default: return String(type || "CONVÊNIO").toUpperCase();
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[95vw] lg:max-w-7xl max-h-[90vh] overflow-y-auto p-4 sm:p-8 border border-slate-200 bg-slate-50 rounded-2xl">
-        <DialogTitle className="sr-only">Dados do Cliente</DialogTitle>
+      <DialogContent className="max-w-[95vw] lg:max-w-6xl max-h-[92vh] overflow-y-auto p-4 sm:p-7 border border-slate-200 bg-slate-50/70 rounded-2xl shadow-xl">
+        <DialogTitle className="sr-only">Ficha de Dados do Cliente</DialogTitle>
 
         {isLoading ? (
           <div className="p-20 flex flex-col items-center justify-center gap-4 text-slate-400">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-[10px] font-bold uppercase tracking-widest">Buscando dados completos...</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
+              Localizando ficha cadastral e financeira...
+            </p>
           </div>
         ) : error ? (
-          <div className="p-20 text-center">
-            <p className="text-red-500 font-bold uppercase text-[12px] tracking-widest">{error}</p>
-            <Button variant="outline" onClick={onClose} className="mt-4">Fechar</Button>
+          <div className="p-16 text-center space-y-4">
+            <p className="text-red-500 font-bold uppercase text-xs tracking-widest">{error}</p>
+            <Button variant="outline" onClick={onClose}>Fechar</Button>
           </div>
-        ) : client && (
-          <div className="space-y-6">
-            {profiles.length > 1 && (
-              <div className="flex flex-col gap-2.5 bg-white border border-slate-200 p-4 rounded-xl card-shadow">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  Convênios Vinculados a este CPF ({profiles.length})
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {profiles.map((p) => {
-                    const isActive = clientType === p.type;
-                    const convenioDisplayName = 
-                      p.type === 'siape' ? 'SIAPE' :
-                      p.type === 'governo_sp' ? 'GOVERNO SP' :
-                      p.type === 'prefeitura_sp' ? 'PREFEITURA SP' :
-                      p.type === 'governo_pi' ? 'GOVERNO PIAUÍ' :
-                      p.type === 'governo_ma' ? 'GOVERNO MARANHÃO' :
-                      p.type === 'governo_rr' ? 'GOVERNO RORAIMA' :
-                      p.type === 'governo_rj' ? 'GOVERNO RIO DE JANEIRO' :
-                      p.type === 'prefeitura_santo_andre' ? 'PREFEITURA SANTO ANDRÉ' :
-                      p.type === 'prefeitura_contagem' ? 'PREFEITURA CONTAGEM' :
-                      p.type === 'governo_mg' ? 'GOVERNO MINAS GERAIS' : 
-                      p.type === 'prefeitura_natal' ? 'PREFEITURA DE NATAL' :
-                      p.type === 'prefeitura_porto_velho' ? 'PREFEITURA DE PORTO VELHO' :
-                      p.type === 'governo_ba' ? 'GOVERNO BAHIA' :
-                      p.type === 'governo_am' ? 'GOVERNO AMAZONAS' :
-                      p.type === 'governo_ce' ? 'GOVERNO CEARÁ' :
-                      p.type === 'governo_ro' ? 'GOVERNO RONDÔNIA' :
-                      p.type === 'prefeitura_ponta_grossa' ? 'PREFEITURA PONTA GROSSA' : String(p.type).toUpperCase();
-                    
-                    return (
-                      <button
-                        key={`profile-tab-${p.type}`}
-                        type="button"
-                        onClick={() => {
-                          setClient(p.client);
-                          setClientType(p.type);
-                          setRegistrations(p.registrations);
-                          setActiveRegIndex(0);
-                        }}
-                        className={cn(
-                          "px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all border cursor-pointer",
-                          isActive 
-                            ? "bg-[#171717] text-white border-[#171717] shadow-sm font-black scale-102" 
-                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                        )}
-                      >
-                        {convenioDisplayName}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {/* Dados Pessoais - Estilo idêntico ao exemplo */}
-            <Card className="card-shadow border border-slate-200 bg-white">
-              <CardContent className="p-6 sm:p-8 space-y-8 sm:space-y-10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                    <h3 className="text-[16px] font-bold text-slate-900">Dados Pessoais</h3>
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={() => setShowSensitiveData(!showSensitiveData)}
-                    className="text-slate-500 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100 rounded-full cursor-pointer"
-                    title={showSensitiveData ? "Ocultar dados sensíveis" : "Mostrar dados sensíveis"}
-                  >
-                    {showSensitiveData ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-12">
-                  {/* Row 1 */}
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome</p>
-                    <p className="text-[13px] font-bold text-slate-900 uppercase truncate" title={client.nome || ""}>
-                      {client.nome || "NÃO INFORMADO"}
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CPF</p>
-                    <p className="text-[13px] font-bold text-slate-900">
-                      {maskCPF(client.cpf)}
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data de Nascimento</p>
-                    <div className="flex flex-col gap-0.5">
-                      <p className="text-[13px] font-bold text-slate-900">
-                        {formatDate(client.data_nascimento)}
-                      </p>
-                      {client.data_nascimento && (
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">
-                          {calculateAge(client.data_nascimento)} Anos
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Row 2 */}
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Principal</p>
-                    <div className="flex items-center gap-1.5">
-                      <p 
-                        className={cn(
-                          "text-[13px] font-bold text-slate-900",
-                          client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
-                        )}
-                        onClick={() => handlePhoneClick(client.telefone_1)}
-                      >
-                        {maskPhone(client.telefone_1)}
-                      </p>
-                      {client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && (
-                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10 cursor-pointer" />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 2</p>
-                    <div className="flex items-center gap-1.5">
-                      <p 
-                        className={cn(
-                          "text-[13px] font-bold text-slate-900",
-                          client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
-                        )}
-                        onClick={() => handlePhoneClick(client.telefone_2)}
-                      >
-                        {maskPhone(client.telefone_2)}
-                      </p>
-                      {client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && (
-                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10 cursor-pointer" />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 3</p>
-                    <div className="flex items-center gap-1.5">
-                      <p 
-                        className={cn(
-                          "text-[13px] font-bold text-slate-900",
-                          client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
-                        )}
-                        onClick={() => handlePhoneClick(client.telefone_3)}
-                      >
-                        {maskPhone(client.telefone_3)}
-                      </p>
-                      {client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && (
-                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10 cursor-pointer" />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Matrículas / Identificações Tabs */}
-            {registrations.length > 0 && (() => {
-              let allRegs: Registration[] = [];
-              
-              if (clientType === 'siape') {
-                allRegs = registrations.flatMap(reg => {
-                  const isPension = reg.situacao_funcional === 'BENEFICIARIO PENSAO';
-                  if (!reg.instituidores || reg.instituidores.length === 0) {
-                    const rawName = isPension ? "" : (reg.orgao || "");
-                    return [{ 
-                      ...reg, 
-                      currentInstituidor: isPension ? rawName : translateOrgao(rawName), 
-                      currentInstituidorId: null 
-                    }];
-                  }
-                  return reg.instituidores.map((inst) => ({
-                    ...reg,
-                    ...inst,
-                    id: reg.id,
-                    instituidor_id: inst.id,
-                    currentInstituidor: inst.nome ? (isPension ? inst.nome : translateOrgao(inst.nome)) : (isPension ? "" : translateOrgao(reg.orgao || "")),
-                    currentInstituidorId: inst.id
-                  }));
-                });
-              } else {
-                // Para Governo SP, Prefeitura SP, PI, MA
-                // registrations já são as Identificações
-                allRegs = registrations.map(reg => ({
+        ) : client && (() => {
+          let allRegs: Registration[] = [];
+          if (clientType === "siape") {
+            allRegs = registrations.flatMap(reg => {
+              const isPension = reg.situacao_funcional === "BENEFICIARIO PENSAO";
+              if (!reg.instituidores || reg.instituidores.length === 0) {
+                const rawName = isPension ? "" : (reg.orgao || "");
+                return [{
                   ...reg,
-                  displayId: reg.matricula || reg.identificacao || reg.numero_matricula || "---"
-                }));
+                  currentInstituidor: isPension ? rawName : translateOrgao(rawName),
+                  currentInstituidorId: null
+                }];
               }
+              return reg.instituidores.map((inst) => ({
+                ...reg,
+                ...inst,
+                id: reg.id,
+                instituidor_id: inst.id,
+                currentInstituidor: inst.nome ? (isPension ? inst.nome : translateOrgao(inst.nome)) : (isPension ? "" : translateOrgao(reg.orgao || "")),
+                currentInstituidorId: inst.id
+              }));
+            });
+          } else {
+            allRegs = registrations.map(reg => ({
+              ...reg,
+              displayId: reg.matricula || reg.identificacao || reg.numero_matricula || "---"
+            }));
+          }
 
-              if (allRegs.length === 0) return null;
+          const activeReg = allRegs[activeRegIndex] || allRegs[0];
 
-              const activeReg = allRegs[activeRegIndex] || allRegs[0];
+          // Extração normalizada de margens
+          const anyReg = (activeReg || {}) as Record<string, unknown>;
+          let margemEmpDisp = 0;
+          let margemEmpBruta = 0;
+          let margemRmcDisp = 0;
+          let margemRmcBruta = 0;
+          let margemRccDisp = 0;
+          let margemRccBruta = 0;
+          let saldo70Val: number | null = null;
 
-              return (
-                <div className="space-y-0">
-                  {/* Tabs Navigation */}
-                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
-                    {allRegs.map((reg, idx) => (
-                      <button
-                        key={`tab-${reg.id}-${idx}`}
-                        type="button"
-                        onClick={() => setActiveRegIndex(idx)}
-                        className={cn(
-                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px] cursor-pointer",
-                          activeRegIndex === idx
-                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black"
-                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+          if (clientType === "siape") {
+            margemEmpDisp = Number(anyReg.margem_disponivel) || 0;
+            margemEmpBruta = margemEmpDisp + (Number(anyReg.margem_utilizada) || 0);
+            saldo70Val = anyReg.saldo_70 !== undefined && anyReg.saldo_70 !== null ? Number(anyReg.saldo_70) : null;
+            margemRmcDisp = Number(anyReg.margem_cartao_credito) || 0;
+            margemRmcBruta = margemRmcDisp;
+            margemRccDisp = Number(anyReg.margem_cartao_beneficio) || 0;
+            margemRccBruta = margemRccDisp;
+          } else {
+            const lotacoes = (anyReg.governo_sp_lotacoes || anyReg.prefeitura_sp_lotacoes || anyReg.governo_pi_lotacoes || anyReg.governo_ma_lotacoes) as Lotacao[] | undefined;
+            if (Array.isArray(lotacoes) && lotacoes.length > 0) {
+              const l = lotacoes[0];
+              margemEmpDisp = Number(l.md_consignacoes ?? l.margem_disponivel_emprestimo ?? l.margem_disponivel ?? 0);
+              margemEmpBruta = Number(l.mb_consignacoes ?? l.margem_emprestimo_consignado ?? l.margem_bruta ?? margemEmpDisp);
+              margemRmcDisp = Number(l.md_cartao_credito ?? l.margem_cartao_consignado ?? 0);
+              margemRmcBruta = Number(l.mb_cartao_credito ?? l.margem_cartao_consignado ?? margemRmcDisp);
+              margemRccDisp = Number(l.md_cartao_beneficio ?? l.margem_cartao_beneficio ?? 0);
+              margemRccBruta = Number(l.mb_cartao_beneficio ?? l.margem_cartao_beneficio ?? margemRccDisp);
+            } else {
+              margemEmpDisp = Number(anyReg.margem_disponivel_emprestimo ?? anyReg.margem_liquida_emprestimo ?? anyReg.margem_disponivel ?? anyReg.margem_emprestimo ?? anyReg.margem_consignavel ?? 0);
+              margemEmpBruta = Number(anyReg.margem_bruta_emprestimo ?? anyReg.margem_bruta ?? anyReg.margem_total ?? margemEmpDisp);
+              margemRmcDisp = Number(anyReg.margem_cartao_consignado ?? anyReg.margem_cartao_credito ?? anyReg.margem_cartao ?? anyReg.margem_rmc ?? 0);
+              margemRmcBruta = Number(anyReg.margem_bruta_cartao ?? margemRmcDisp);
+              margemRccDisp = Number(anyReg.margem_cartao_beneficio ?? anyReg.margem_rcc ?? 0);
+              margemRccBruta = Number(anyReg.margem_bruta_beneficio ?? margemRccDisp);
+            }
+          }
+
+          // Extração de contratos (Empréstimos vs Cartões Consignados)
+          const rawContractsList: Contract[] = [];
+          if (activeReg) {
+            if (Array.isArray(activeReg.itens_credito)) {
+              rawContractsList.push(...activeReg.itens_credito);
+            }
+            if (Array.isArray(activeReg.instituidores)) {
+              for (const inst of activeReg.instituidores) {
+                if (Array.isArray(inst.itens_credito)) {
+                  rawContractsList.push(...inst.itens_credito);
+                }
+              }
+            }
+          }
+
+          const seenContracts = new Set<string>();
+          const deduplicatedContracts: Contract[] = [];
+          for (const c of rawContractsList) {
+            const key = `${c.numero_do_contrato || ""}_${c.banco || ""}_${c.parcela || 0}`;
+            if (!seenContracts.has(key)) {
+              seenContracts.add(key);
+              deduplicatedContracts.push(c);
+            }
+          }
+
+          const loanContracts = deduplicatedContracts.filter(c => getContractTypeInfo(c.tipo).category === "EMPRESTIMO");
+          const cardContracts = deduplicatedContracts.filter(c => {
+            const cat = getContractTypeInfo(c.tipo).category;
+            return cat === "CARTAO_CONSIGNADO" || cat === "CARTAO_BENEFICIO";
+          });
+
+          const totalLoanParcelas = loanContracts.reduce((acc, c) => acc + (Number(c.parcela) || 0), 0);
+          const totalCardParcelas = cardContracts.reduce((acc, c) => acc + (Number(c.parcela) || 0), 0);
+
+          return (
+            <div className="space-y-6">
+              {/* Cabeçalho da Ficha */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200">
+                        Ficha Cadastral e Financeira
+                      </span>
+                      <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700">
+                        {getConvenioName(clientType)}
+                      </Badge>
+                      {allRegs.length > 1 && (
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                          {allRegs.length} Matrículas
+                        </span>
+                      )}
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase">
+                      {client.nome || "CLIENTE NÃO INFORMADO"}
+                    </h2>
+                    <p className="text-xs text-slate-500 font-medium">
+                      CPF: <span className="font-mono text-slate-800 font-bold">{maskCPF(client.cpf)}</span>
+                      {client.data_nascimento && (
+                        <span className="ml-3">
+                          Nascimento: <span className="text-slate-800 font-bold">{formatDate(client.data_nascimento)}</span>
+                          {calculateAge(client.data_nascimento) !== null && ` (${calculateAge(client.data_nascimento)} anos)`}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSensitiveData(!showSensitiveData)}
+                      className="text-xs font-bold text-slate-700 border-slate-300 hover:bg-slate-100 gap-1.5"
+                      title={showSensitiveData ? "Ocultar CPF / Telefones" : "Mostrar dados completos"}
+                    >
+                      {showSensitiveData ? <Eye className="w-3.5 h-3.5 text-blue-600" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400" />}
+                      <span>{showSensitiveData ? "Ocultar Sensíveis" : "Mostrar Completo"}</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Se houver múltiplos convênios para o CPF */}
+                {profiles.length > 1 && (
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                      <Building className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Alternar Convênio ({profiles.length}):</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {profiles.map((p) => {
+                        const isActive = clientType === p.type;
+                        return (
+                          <button
+                            key={`profile-tab-${p.type}`}
+                            type="button"
+                            onClick={() => {
+                              setClient(p.client);
+                              setClientType(p.type);
+                              setRegistrations(p.registrations);
+                              setActiveRegIndex(0);
+                            }}
+                            className={cn(
+                              "px-3 py-1 text-[11px] font-bold uppercase rounded-lg border transition-all cursor-pointer",
+                              isActive
+                                ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                            )}
+                          >
+                            {getConvenioName(p.type)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SEÇÃO 1: DADOS PESSOAIS */}
+              <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">1. Dados Pessoais</h3>
+                      <p className="text-[11px] text-slate-500 font-medium">Informações de identificação civil e contatos</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-200/60 px-2 py-0.5 rounded">
+                    Seção 01
+                  </span>
+                </div>
+
+                <CardContent className="p-5 sm:p-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {/* Nome */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nome Completo</p>
+                      <p className="text-sm font-black text-slate-900 uppercase truncate" title={client.nome || ""}>
+                        {client.nome || "NÃO INFORMADO"}
+                      </p>
+                    </div>
+
+                    {/* CPF */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">CPF</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-black text-slate-900 font-mono">
+                          {maskCPF(client.cpf)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(client.cpf, "cpf")}
+                          className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded hover:bg-slate-100"
+                          title="Copiar CPF"
+                        >
+                          {copiedField === "cpf" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Data de Nascimento / Idade */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Data de Nascimento / Idade</p>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <p className="text-sm font-black text-slate-900">
+                          {formatDate(client.data_nascimento)}
+                        </p>
+                        {client.data_nascimento && (
+                          <Badge variant="secondary" className="text-[10px] font-bold bg-slate-100 text-slate-700">
+                            {calculateAge(client.data_nascimento)} anos
+                          </Badge>
                         )}
-                      >
-                        <div className="flex flex-col items-center">
-                          <span>{clientType === 'governo_sp' || clientType === 'prefeitura_sp' ? `ID ${reg.identificacao || reg.displayId}` : `Matrícula ${reg.numero_matricula || reg.identificacao || reg.displayId}`}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                      </div>
+                    </div>
 
-                  {/* Info Card */}
-                  <Card className="card-shadow bg-white border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
-                    <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
-                      <div className="space-y-8 sm:space-y-10">
-                        <div className="flex items-center gap-3">
-                          <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                          <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">
-                            {clientType === 'prefeitura_sp'
-                              ? "Informações da Identificação (PMSP)"
-                              : clientType === 'governo_sp'
-                              ? "Informações da Identificação (GOVERNO SP)"
-                              : clientType === 'siape'
-                              ? "Informações da Matrícula"
-                              : `Informações da Matrícula (${String(clientType || '').replace('prefeitura_', 'PM ').replace('governo_', 'GOV ').toUpperCase()})`}
-                          </h3>
+                    {/* Telefone Principal */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Telefone Principal (WhatsApp)</p>
+                      <div className="flex items-center gap-2">
+                        <p 
+                          className={cn(
+                            "text-sm font-black text-slate-900 font-mono",
+                            client.telefone_1 && client.telefone_1 !== "0" && client.telefone_1 !== "NÃO INFORMADO" && "cursor-pointer hover:text-emerald-600 transition-colors"
+                          )}
+                          onClick={() => handlePhoneClick(client.telefone_1)}
+                        >
+                          {maskPhone(client.telefone_1)}
+                        </p>
+                        {client.telefone_1 && client.telefone_1 !== "0" && client.telefone_1 !== "NÃO INFORMADO" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handlePhoneClick(client.telefone_1)}
+                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                              title="Abrir no WhatsApp"
+                            >
+                              <MessageCircle className="w-4 h-4 fill-emerald-600/15" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(client.telefone_1 as string, "tel1")}
+                              className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded hover:bg-slate-100"
+                              title="Copiar telefone"
+                            >
+                              {copiedField === "tel1" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Telefone 2 */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Telefone 2</p>
+                      <div className="flex items-center gap-2">
+                        <p 
+                          className={cn(
+                            "text-sm font-black text-slate-900 font-mono",
+                            client.telefone_2 && client.telefone_2 !== "0" && client.telefone_2 !== "NÃO INFORMADO" && "cursor-pointer hover:text-emerald-600 transition-colors"
+                          )}
+                          onClick={() => handlePhoneClick(client.telefone_2)}
+                        >
+                          {maskPhone(client.telefone_2)}
+                        </p>
+                        {client.telefone_2 && client.telefone_2 !== "0" && client.telefone_2 !== "NÃO INFORMADO" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handlePhoneClick(client.telefone_2)}
+                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                              title="Abrir no WhatsApp"
+                            >
+                              <MessageCircle className="w-4 h-4 fill-emerald-600/15" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(client.telefone_2 as string, "tel2")}
+                              className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded hover:bg-slate-100"
+                              title="Copiar telefone"
+                            >
+                              {copiedField === "tel2" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Telefone 3 */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Telefone 3</p>
+                      <div className="flex items-center gap-2">
+                        <p 
+                          className={cn(
+                            "text-sm font-black text-slate-900 font-mono",
+                            client.telefone_3 && client.telefone_3 !== "0" && client.telefone_3 !== "NÃO INFORMADO" && "cursor-pointer hover:text-emerald-600 transition-colors"
+                          )}
+                          onClick={() => handlePhoneClick(client.telefone_3)}
+                        >
+                          {maskPhone(client.telefone_3)}
+                        </p>
+                        {client.telefone_3 && client.telefone_3 !== "0" && client.telefone_3 !== "NÃO INFORMADO" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handlePhoneClick(client.telefone_3)}
+                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                              title="Abrir no WhatsApp"
+                            >
+                              <MessageCircle className="w-4 h-4 fill-emerald-600/15" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(client.telefone_3 as string, "tel3")}
+                              className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded hover:bg-slate-100"
+                              title="Copiar telefone"
+                            >
+                              {copiedField === "tel3" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* SEÇÃO 2: INFORMAÇÕES DE MATRÍCULAS */}
+              <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">2. Informações de Matrículas</h3>
+                      <p className="text-[11px] text-slate-500 font-medium">Vínculos funcionais, cargo, situação e remuneração</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-200/60 px-2 py-0.5 rounded">
+                    Seção 02
+                  </span>
+                </div>
+
+                <CardContent className="p-5 sm:p-6 space-y-5">
+                  {allRegs.length > 1 && (
+                    <div className="flex flex-wrap gap-2 pb-3 border-b border-slate-100">
+                      {allRegs.map((reg, idx) => {
+                        const isSelected = activeRegIndex === idx;
+                        const regNumber = reg.numero_matricula || reg.identificacao || reg.matricula || `Vínculo ${idx + 1}`;
+                        return (
+                          <button
+                            key={`reg-tab-${idx}`}
+                            type="button"
+                            onClick={() => setActiveRegIndex(idx)}
+                            className={cn(
+                              "px-3.5 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-2",
+                              isSelected
+                                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                                : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                            )}
+                          >
+                            <span>Matrícula: {regNumber}</span>
+                            {reg.situacao_funcional && (
+                              <span className={cn(
+                                "text-[9px] px-1.5 py-0.5 rounded font-black uppercase",
+                                isSelected ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"
+                              )}>
+                                {reg.situacao_funcional}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {activeReg ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Número da Matrícula / ID</p>
+                        <p className="text-sm font-black text-slate-900 font-mono">
+                          {activeReg.numero_matricula || activeReg.identificacao || activeReg.matricula || "NÃO INFORMADA"}
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Situação Funcional</p>
+                        <div>
+                          <span className={cn(
+                            "px-2.5 py-0.5 text-xs font-black uppercase rounded-md border inline-block",
+                            String(activeReg.situacao_funcional || "").includes("ATIVO")
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : String(activeReg.situacao_funcional || "").includes("APOSENT")
+                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                              : String(activeReg.situacao_funcional || "").includes("PENSAO")
+                              ? "bg-purple-50 text-purple-700 border-purple-200"
+                              : "bg-slate-100 text-slate-700 border-slate-200"
+                          )}>
+                            {activeReg.situacao_funcional || "NÃO INFORMADO"}
+                          </span>
                         </div>
                       </div>
-                        {clientType === 'siape' ? (
-                          <>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[13px] font-bold text-slate-900">{activeReg.numero_matricula}</p>
-                              </div>
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Situação Funcional</p>
-                                <p className="text-[13px] font-bold text-slate-900 uppercase">{activeReg.situacao_funcional || "NÃO INFORMADO"}</p>
-                              </div>
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Salário</p>
-                                <p className="text-[13px] font-bold text-slate-900">{formatCurrency(activeReg.salario)}</p>
-                              </div>
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                  {activeReg.situacao_funcional === 'BENEFICIARIO PENSAO' ? 'Instituidor' : 'Órgão (Vínculo)'}
-                                </p>
-                                <p className="text-[13px] font-bold text-slate-900 uppercase truncate" title={activeReg.currentInstituidor}>
-                                  {activeReg.currentInstituidor}
-                                </p>
-                              </div>
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Regime Jurídico</p>
-                                <p className="text-[13px] font-bold text-slate-900 uppercase">{activeReg.regime_juridico || "NÃO INFORMADO"}</p>
-                              </div>
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF</p>
-                                <p className="text-[13px] font-bold text-slate-900 uppercase">{activeReg.uf || "NÃO INFORMADO"}</p>
-                              </div>
-                            </div>
 
-                            {/* Margens Grid */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                              {/* Row 1: Principais */}
-                              <div className="p-3.5 bg-slate-300/60 border border-slate-400/40 rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]">
-                                <div>
-                                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Saldo 70%</p>
-                                  <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(activeReg.saldo_70)}</p>
-                                </div>
-                                <div className="flex items-center gap-1.5 invisible">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
-                                  <span className="text-[8px] font-bold uppercase tracking-widest">STATUS</span>
-                                </div>
-                              </div>
-                              <div className={cn(
-                                "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] sm:col-span-1 lg:col-span-2",
-                                (Number(activeReg.margem_35) || 0) > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
-                              )}>
-                                <div>
-                                  <p className={cn(
-                                    "text-[9px] font-bold uppercase tracking-widest",
-                                    (Number(activeReg.margem_35) || 0) > 0 ? "text-emerald-700/60" : "text-red-700/60"
-                                  )}>LÍQUIDA FACULTATIVA GLOBAL</p>
-                                  <p className={cn(
-                                    "text-[17px] font-bold tracking-tight",
-                                    (Number(activeReg.margem_35) || 0) > 0 ? "text-emerald-700" : "text-red-700"
-                                  )}>{formatCurrency(activeReg.margem_35)}</p>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <div className={cn("w-1.5 h-1.5 rounded-full", (Number(activeReg.margem_35) || 0) > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
-                                  <span className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(activeReg.margem_35) || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
-                                    {(Number(activeReg.margem_35) || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                  </span>
-                                </div>
-                              </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Salário / Remuneração</p>
+                        <p className="text-sm font-black text-slate-900 font-mono">
+                          {formatCurrency(Number(activeReg.salario || (activeReg as Record<string, unknown>).renda || 0))}
+                        </p>
+                      </div>
 
-                              {/* Row 2: 5% */}
-                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta 5%</p>
-                                <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(activeReg.bruta_5)}</p>
-                              </div>
-                              <div className={cn(
-                                "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
-                                getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                              )}>
-                                <p className={cn(
-                                  "text-[9px] font-bold uppercase tracking-widest",
-                                  getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
-                                )}>Utilizada 5%</p>
-                                <p className={cn(
-                                  "text-[17px] font-bold tracking-tight uppercase",
-                                  getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
-                                )}>
-                                  {getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5)}
-                                </p>
-                              </div>
-                              <div className={cn(
-                                "p-3.5 border rounded-xl space-y-0.5",
-                                getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                              )}>
-                                <p className={cn(
-                                  "text-[9px] font-bold uppercase tracking-widest",
-                                  getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
-                                )}>Líquida 5%</p>
-                                <div className="flex flex-col">
-                                  <p className={cn(
-                                    "text-[17px] font-bold tracking-tight",
-                                    getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
-                                  )}>{formatCurrency(activeReg.liquida_5)}</p>
-                                  <div className="flex items-center gap-1.5">
-                                    <div className={cn("w-1.5 h-1.5 rounded-full", getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "bg-red-600" : "bg-emerald-600")}></div>
-                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "text-red-600" : "text-emerald-600")}>
-                                      {getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Órgão / Vínculo</p>
+                        <p className="text-sm font-black text-slate-900 uppercase truncate" title={String(activeReg.currentInstituidor || activeReg.orgao || (activeReg as Record<string, unknown>).secretaria || "")}>
+                          {activeReg.currentInstituidor || activeReg.orgao || (activeReg as Record<string, unknown>).secretaria || getConvenioName(clientType)}
+                        </p>
+                      </div>
 
-                              {/* Row 3: Benefício */}
-                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Benefício Bruta 5%</p>
-                                <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(activeReg.beneficio_bruta_5)}</p>
-                              </div>
-                              <div className={cn(
-                                "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
-                                getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                              )}>
-                                <p className={cn(
-                                  "text-[9px] font-bold uppercase tracking-widest",
-                                  getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
-                                )}>Benefício Utilizada 5%</p>
-                                <p className={cn(
-                                  "text-[17px] font-bold tracking-tight uppercase",
-                                  getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
-                                )}>
-                                  {getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5)}
-                                </p>
-                              </div>
-                              <div className={cn(
-                                "p-3.5 border rounded-xl space-y-0.5",
-                                getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                              )}>
-                                <p className={cn(
-                                  "text-[9px] font-bold uppercase tracking-widest",
-                                  getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
-                                )}>Benefício Líquida 5%</p>
-                                <div className="flex flex-col">
-                                  <p className={cn(
-                                    "text-[17px] font-bold tracking-tight",
-                                    getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
-                                  )}>{formatCurrency(activeReg.beneficio_liquida_5)}</p>
-                                  <div className="flex items-center gap-1.5">
-                                    <div className={cn("w-1.5 h-1.5 rounded-full", getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "bg-red-600" : "bg-emerald-600")}></div>
-                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "text-red-600" : "text-emerald-600")}>
-                                      {getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'governo_sp' || clientType === 'prefeitura_sp' ? (
-                          <>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identificação</p>
-                                <p className="text-[13px] font-bold text-slate-900">{activeReg.identificacao || activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data da Nomeação</p>
-                                <p className="text-[13px] font-bold text-slate-900">{activeReg.data_nomeacao ? formatDate(activeReg.data_nomeacao) : "---"}</p>
-                              </div>
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Vínculo</p>
-                                <p className="text-[13px] font-bold text-slate-900 uppercase">
-                                  {clientType === 'governo_sp' ? (activeReg.tipo_vinculo || "NÃO INFORMADO") : (activeReg.tipo_vinculo || activeReg.situacao_funcional || "NÃO INFORMADO")}
-                                </p>
-                              </div>
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lotação</p>
-                                <p className="text-[13px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.governo_sp_lotacoes?.[0]?.lotacao || activeReg.prefeitura_sp_lotacoes?.[0]?.lotacao || "NÃO INFORMADO"}
-                                </p>
-                              </div>
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[13px] font-bold text-slate-900 uppercase truncate">
-                                  {clientType === 'prefeitura_sp' ? 'SP (PMSP)' : clientType === 'governo_sp' ? 'SP (GOV SP)' : (activeReg.regime_juridico || activeReg.orgao || "---")}
-                                </p>
-                              </div>
-                            </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Regime Jurídico / Contrato</p>
+                        <p className="text-sm font-bold text-slate-800 uppercase">
+                          {activeReg.regime_juridico || (activeReg as Record<string, unknown>).regime_contratacao || "NÃO INFORMADO"}
+                        </p>
+                      </div>
 
-                            {/* Margens Grid Gov SP / PMSP - Estilo idêntico a image.png */}
-                            {(() => {
-                              const lotacao = activeReg.governo_sp_lotacoes?.[0] || activeReg.prefeitura_sp_lotacoes?.[0];
-                              if (!lotacao) return (
-                                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed">
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase">Dados de lotação/margens não encontrados</p>
-                                </div>
-                              );
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">UF de Lotação</p>
+                        <p className="text-sm font-bold text-slate-800 uppercase">
+                          {activeReg.uf || "---"}
+                        </p>
+                      </div>
 
-                              const getMarginLogic = (bruta: number | null, liquida_db: number | null) => {
-                                const b = bruta || 0;
-                                const l = liquida_db || 0;
-                                
-                                let status: 'SIM' | 'NÃO' | 'PARCIAL' = 'NÃO';
-                                if (l <= 0) {
-                                  status = 'SIM';
-                                } else if (l < b) {
-                                  status = 'PARCIAL';
-                                } else {
-                                  status = 'NÃO';
-                                }
-                                
-                                return { 
-                                  status, 
-                                  liquida_val: l,
-                                  label: l > 0 ? 'DISPONÍVEL' : 'INDISPONÍVEL'
-                                };
-                              };
+                      {activeReg.currentInstituidor && activeReg.situacao_funcional === "BENEFICIARIO PENSAO" && (
+                        <div className="space-y-1 sm:col-span-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Instituidor da Pensão</p>
+                          <p className="text-sm font-bold text-slate-800 uppercase">
+                            {activeReg.currentInstituidor}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="py-4 text-center text-xs text-slate-400">
+                      Nenhuma matrícula encontrada para este vínculo.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
-                              const getCardLogic = (bruta: number | null, liquida_db: number | null) => {
-                                const b = bruta || 0;
-                                const l = liquida_db || 0;
-                                const used = Math.abs(l - b) > 0.01;
-                                return {
-                                  status: used ? 'SIM' : 'NÃO' as const,
-                                  liquida_val: l,
-                                  label: used ? 'INDISPONÍVEL' : 'DISPONÍVEL'
-                                };
-                              };
+              {/* SEÇÃO 3: MARGENS */}
+              <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                      <TrendingUp className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">3. Margens</h3>
+                      <p className="text-[11px] text-slate-500 font-medium">Margens consignáveis disponíveis e limites por modalidade</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-200/60 px-2 py-0.5 rounded">
+                    Seção 03
+                  </span>
+                </div>
 
-                              const consignacoes = getMarginLogic(lotacao.mb_consignacoes, lotacao.md_consignacoes);
-                              const cartao = clientType === 'governo_sp' ? getCardLogic(lotacao.mb_cartao_credito, lotacao.md_cartao_credito) : null;
-                              const beneficio = getCardLogic(lotacao.mb_cartao_beneficio, lotacao.md_cartao_beneficio);
+                <CardContent className="p-5 sm:p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {/* Margem Empréstimo */}
+                    <div className={cn(
+                      "p-4 rounded-xl border flex flex-col justify-between min-h-[110px] transition-all",
+                      margemEmpDisp > 0
+                        ? "bg-emerald-50/60 border-emerald-200"
+                        : "bg-slate-50 border-slate-200"
+                    )}>
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">
+                            Margem Empréstimo
+                          </span>
+                          <span className={cn(
+                            "text-[9px] font-black uppercase px-2 py-0.5 rounded-full border",
+                            margemEmpDisp > 0
+                              ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                              : "bg-slate-200 text-slate-600 border-slate-300"
+                          )}>
+                            {margemEmpDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                          </span>
+                        </div>
+                        <p className={cn(
+                          "text-2xl font-black tracking-tight font-mono",
+                          margemEmpDisp > 0 ? "text-emerald-700" : "text-slate-800"
+                        )}>
+                          {formatCurrency(margemEmpDisp)}
+                        </p>
+                      </div>
 
-                              return (
-                                <div className="space-y-6">
-                                  {/* Row 1: Consignações */}
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
-                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Consignações</p>
-                                      <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(lotacao.mb_consignacoes)}</p>
-                                    </div>
-                                    <div className={cn(
-                                      "p-3.5 border rounded-xl space-y-0.5",
-                                      consignacoes.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
-                                        consignacoes.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
-                                      )}>Utilizada</p>
-                                      <p className={cn("text-[17px] font-bold uppercase", 
-                                        consignacoes.status === 'SIM' ? "text-red-700" : "text-emerald-700"
-                                      )}>{consignacoes.status}</p>
-                                    </div>
-                                    <div className={cn(
-                                      "p-3.5 border rounded-xl space-y-0.5",
-                                      consignacoes.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", consignacoes.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
-                                      <div className="flex flex-col">
-                                        <p className={cn("text-[17px] font-bold", consignacoes.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
-                                        <div className="flex items-center gap-1.5">
-                                          <div className={cn("w-1.5 h-1.5 rounded-full", consignacoes.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
-                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", consignacoes.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
-                                            {consignacoes.label}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
+                      <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-medium text-slate-500">
+                        <span>Margem Bruta / Base:</span>
+                        <span className="font-bold text-slate-700 font-mono">{formatCurrency(margemEmpBruta)}</span>
+                      </div>
 
-                                  {/* Cartão Crédito (apenas para Governo SP) */}
-                                  {clientType === 'governo_sp' && cartao && (
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Crédito</p>
-                                        <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(lotacao.mb_cartao_credito)}</p>
-                                      </div>
-                                      <div className={cn(
-                                        "p-3.5 border rounded-xl space-y-0.5",
-                                        cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                                      )}>
-                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
-                                          cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
-                                        )}>Utilizada</p>
-                                        <p className={cn("text-[17px] font-bold uppercase", 
-                                          cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700"
-                                        )}>{cartao.status}</p>
-                                      </div>
-                                      <div className={cn(
-                                        "p-3.5 border rounded-xl space-y-0.5",
-                                        cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                                      )}>
-                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
-                                        <div className="flex flex-col">
-                                          <p className={cn("text-[17px] font-bold", cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(cartao.liquida_val)}</p>
-                                          <div className="flex items-center gap-1.5">
-                                            <div className={cn("w-1.5 h-1.5 rounded-full", cartao.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
-                                            <span className={cn("text-[8px] font-bold uppercase tracking-widest", cartao.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
-                                              {cartao.label}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
+                      {saldo70Val !== null && (
+                        <div className="mt-1 flex items-center justify-between text-[11px] font-medium text-slate-500">
+                          <span>Saldo 70%:</span>
+                          <span className="font-bold text-slate-700 font-mono">{formatCurrency(saldo70Val)}</span>
+                        </div>
+                      )}
+                    </div>
 
-                                  {/* Row 2: Cartão Benefício */}
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
-                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Benefício</p>
-                                      <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(lotacao.mb_cartao_beneficio)}</p>
-                                    </div>
-                                    <div className={cn(
-                                      "p-3.5 border rounded-xl space-y-0.5",
-                                      beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
-                                        beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
-                                      )}>Utilizada</p>
-                                      <p className={cn("text-[17px] font-bold uppercase", 
-                                        beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700"
-                                      )}>{beneficio.status}</p>
-                                    </div>
-                                    <div className={cn(
-                                      "p-3.5 border rounded-xl space-y-0.5",
-                                      beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
-                                      <div className="flex flex-col">
-                                        <p className={cn("text-[17px] font-bold", beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(beneficio.liquida_val)}</p>
-                                        <div className="flex items-center gap-1.5">
-                                          <div className={cn("w-1.5 h-1.5 rounded-full", beneficio.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
-                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
-                                            {beneficio.label}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </>
-                        ) : clientType === 'governo_pi' ? (
-                          <>
-                            {/* Governo PI */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase">{activeReg.vinculo || "NÃO INFORMADO"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {(() => {
-                                    const ensureArray = (val: unknown): Lotacao[] => {
-                                      if (!val) return [];
-                                      if (Array.isArray(val)) return val as Lotacao[];
-                                      return [val] as Lotacao[];
-                                    };
-                                    const lotacoes = ensureArray(activeReg.governo_pi_lotacoes);
-                                    return lotacoes?.[0]?.orgao || "---";
-                                  })()}
-                                </p>
-                              </div>
-                            </div>
+                    {/* Margem Cartão Consignado RMC */}
+                    <div className={cn(
+                      "p-4 rounded-xl border flex flex-col justify-between min-h-[110px] transition-all",
+                      margemRmcDisp > 0
+                        ? "bg-blue-50/60 border-blue-200"
+                        : "bg-slate-50 border-slate-200"
+                    )}>
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">
+                            Cartão Consignado (RMC)
+                          </span>
+                          <span className={cn(
+                            "text-[9px] font-black uppercase px-2 py-0.5 rounded-full border",
+                            margemRmcDisp > 0
+                              ? "bg-blue-100 text-blue-800 border-blue-300"
+                              : "bg-slate-200 text-slate-600 border-slate-300"
+                          )}>
+                            {margemRmcDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                          </span>
+                        </div>
+                        <p className={cn(
+                          "text-2xl font-black tracking-tight font-mono",
+                          margemRmcDisp > 0 ? "text-blue-700" : "text-slate-800"
+                        )}>
+                          {formatCurrency(margemRmcDisp)}
+                        </p>
+                      </div>
 
-                            {/* Margens Grid PI - Side-by-side as shown in ACESSAR CLIENTE */}
-                            {(() => {
-                              const ensureArray = (val: unknown): Lotacao[] => {
-                                if (!val) return [];
-                                if (Array.isArray(val)) return val as Lotacao[];
-                                return [val] as Lotacao[];
-                              };
-                              const lotacoes = ensureArray(activeReg.governo_pi_lotacoes);
-                              const lotacao = lotacoes?.[0];
-                              if (!lotacao) return (
-                                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed">
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase">Dados de margens não encontrados</p>
-                                </div>
-                              );
-                              
-                              const valConsig = lotacao.margem_disponivel_emprestimo ?? lotacao.margem_emprestimo_consignado ?? 0;
-                              const valCard = lotacao.margem_cartao_consignado ?? 0;
-                              const valBenef = lotacao.margem_cartao_beneficio ?? 0;
+                      <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-medium text-slate-500">
+                        <span>Margem Bruta / Limite:</span>
+                        <span className="font-bold text-slate-700 font-mono">{formatCurrency(margemRmcBruta)}</span>
+                      </div>
+                    </div>
 
-                              const isConsigAvailable = valConsig > 0;
-                              const isCardAvailable = valCard > 0;
-                              const isBenefAvailable = valBenef > 0;
+                    {/* Margem Cartão Benefício RCC */}
+                    <div className={cn(
+                      "p-4 rounded-xl border flex flex-col justify-between min-h-[110px] transition-all",
+                      margemRccDisp > 0
+                        ? "bg-purple-50/60 border-purple-200"
+                        : "bg-slate-50 border-slate-200"
+                    )}>
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">
+                            Cartão Benefício (RCC)
+                          </span>
+                          <span className={cn(
+                            "text-[9px] font-black uppercase px-2 py-0.5 rounded-full border",
+                            margemRccDisp > 0
+                              ? "bg-purple-100 text-purple-800 border-purple-300"
+                              : "bg-slate-200 text-slate-600 border-slate-300"
+                          )}>
+                            {margemRccDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                          </span>
+                        </div>
+                        <p className={cn(
+                          "text-2xl font-black tracking-tight font-mono",
+                          margemRccDisp > 0 ? "text-purple-700" : "text-slate-800"
+                        )}>
+                          {formatCurrency(margemRccDisp)}
+                        </p>
+                      </div>
 
-                              return (
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                  {/* Margem Disponível Empréstimo */}
-                                  <div className={cn(
-                                    "p-5 border rounded-2xl space-y-3",
-                                    isConsigAvailable ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
-                                  )}>
-                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
-                                      MARGEM DISPONÍVEL EMPRÉSTIMO
-                                    </p>
-                                    <div className="flex flex-col">
-                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isConsigAvailable ? "text-blue-700" : "text-red-700 font-bold")}>
-                                        {formatCurrency(valConsig)}
-                                      </p>
-                                      <div className="flex items-center gap-2 mt-1">
-                                        <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
-                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
-                                          {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
+                      <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-medium text-slate-500">
+                        <span>Margem Bruta / Limite:</span>
+                        <span className="font-bold text-slate-700 font-mono">{formatCurrency(margemRccBruta)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-                                  {/* Margem Cartão Consignado */}
-                                  <div className={cn(
-                                    "p-5 border rounded-2xl space-y-3",
-                                    isCardAvailable ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
-                                  )}>
-                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600 truncate")}>
-                                      MARGEM CARTÃO CONSIGNADO
-                                    </p>
-                                    <div className="flex flex-col">
-                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isCardAvailable ? "text-emerald-700" : "text-red-700 font-bold")}>
-                                        {formatCurrency(valCard)}
-                                      </p>
-                                      <div className="flex items-center gap-2 mt-1">
-                                        <div className={cn("w-2 h-2 rounded-full", isCardAvailable ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
-                                          {isCardAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
+              {/* SEÇÃO 4: CONTRATOS DE EMPRÉSTIMOS */}
+              <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                      <Landmark className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">4. Contratos de Empréstimos</h3>
+                      <p className="text-[11px] text-slate-500 font-medium">Contratos consignados ativos em folha de pagamento</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                    {loanContracts.length} {loanContracts.length === 1 ? "Contrato" : "Contratos"}
+                  </span>
+                </div>
 
-                                  {/* Margem Cartão Benefício */}
-                                  <div className={cn(
-                                    "p-5 border rounded-2xl space-y-3",
-                                    isBenefAvailable ? "bg-purple-50 border-purple-100" : "bg-red-50 border-red-100"
-                                  )}>
-                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600 truncate")}>
-                                      MARGEM CARTÃO BENEFÍCIO
-                                    </p>
-                                    <div className="flex flex-col">
-                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isBenefAvailable ? "text-purple-700" : "text-red-700 font-bold")}>
-                                        {formatCurrency(valBenef)}
-                                      </p>
-                                      <div className="flex items-center gap-2 mt-1">
-                                        <div className={cn("w-2 h-2 rounded-full", isBenefAvailable ? "bg-purple-500" : "bg-red-500")}></div>
-                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600")}>
-                                          {isBenefAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </>
-                        ) : clientType === 'governo_ma' ? (
-                          <>
-                            {/* Governo MA */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase">{activeReg.vinculo || "NÃO INFORMADO"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.governo_ma_lotacoes?.[0]?.orgao || "---"}
-                                </p>
-                              </div>
-                            </div>
+                <CardContent className="p-5 sm:p-6 space-y-4">
+                  {loanContracts.length > 0 ? (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-separate border-spacing-y-2">
+                          <thead>
+                            <tr>
+                              <th className="pb-2 pl-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Banco</th>
+                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Órgão</th>
+                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Contrato</th>
+                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Parcela</th>
+                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Prazo</th>
+                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Taxa Est.</th>
+                              <th className="pb-2 pr-4 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right">Saldo Est.</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {loanContracts.map((loan, idx) => (
+                              <LoanRow
+                                key={`loan-row-${idx}`}
+                                loan={{
+                                  banco: loan.banco,
+                                  orgao: loan.orgao,
+                                  contrato: loan.numero_do_contrato || String(loan.id || idx + 1),
+                                  parcela: Number(loan.parcela) || 0,
+                                  prazo: Number(loan.prazo) || 0,
+                                  tipo: loan.tipo
+                                }}
+                              />
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
 
-                            {/* Margens Grid MA */}
-                            {(() => {
-                              const lotacao = activeReg.governo_ma_lotacoes?.[0];
-                              if (!lotacao) return (
-                                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed">
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase">Dados de margens não encontrados</p>
-                                </div>
-                              );
-                              
-                              const valConsig = lotacao.margem_emprestimo_consignado ?? 0;
-                              const valCard = lotacao.margem_cartao_consignado ?? 0;
-                              const valBenef = lotacao.margem_cartao_beneficio ?? 0;
-
-                              const isConsigAvailable = valConsig > 0;
-                              const isCardAvailable = valCard > 0;
-                              const isBenefAvailable = valBenef > 0;
-
-                              return (
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                  {/* Margem Empréstimo Consignado */}
-                                  <div className={cn(
-                                    "p-5 border rounded-2xl space-y-3",
-                                    isConsigAvailable ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"
-                                  )}>
-                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600 truncate")}>
-                                      MARGEM EMPRÉSTIMO CONSIGNADO
-                                    </p>
-                                    <div className="flex flex-col">
-                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isConsigAvailable ? "text-blue-700" : "text-red-700 font-bold")}>
-                                        {formatCurrency(valConsig)}
-                                      </p>
-                                      <div className="flex items-center gap-2 mt-1">
-                                        <div className={cn("w-2 h-2 rounded-full", isConsigAvailable ? "bg-blue-500" : "bg-red-500")}></div>
-                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isConsigAvailable ? "text-blue-600" : "text-red-600")}>
-                                          {isConsigAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Margem Cartão Consignado */}
-                                  <div className={cn(
-                                    "p-5 border rounded-2xl space-y-3",
-                                    isCardAvailable ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
-                                  )}>
-                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600 truncate")}>
-                                      MARGEM CARTÃO CONSIGNADO
-                                    </p>
-                                    <div className="flex flex-col">
-                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isCardAvailable ? "text-emerald-700" : "text-red-700 font-bold")}>
-                                        {formatCurrency(valCard)}
-                                      </p>
-                                      <div className="flex items-center gap-2 mt-1">
-                                        <div className={cn("w-2 h-2 rounded-full", isCardAvailable ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isCardAvailable ? "text-emerald-600" : "text-red-600")}>
-                                          {isCardAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Margem Cartão Benefício */}
-                                  <div className={cn(
-                                    "p-5 border rounded-2xl space-y-3",
-                                    isBenefAvailable ? "bg-purple-50 border-purple-100" : "bg-red-50 border-red-100"
-                                  )}>
-                                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600 truncate")}>
-                                      MARGEM CARTÃO BENEFÍCIO
-                                    </p>
-                                    <div className="flex flex-col">
-                                      <p className={cn("text-2xl font-black tracking-tighter leading-none mb-1", isBenefAvailable ? "text-purple-700" : "text-red-700 font-bold")}>
-                                        {formatCurrency(valBenef)}
-                                      </p>
-                                      <div className="flex items-center gap-2 mt-1">
-                                        <div className={cn("w-2 h-2 rounded-full", isBenefAvailable ? "bg-purple-500" : "bg-red-500")}></div>
-                                        <span className={cn("text-[10px] font-bold uppercase tracking-widest", isBenefAvailable ? "text-purple-600" : "text-red-600")}>
-                                          {isBenefAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </>
-                        ) : clientType === 'governo_rr' ? (
-                          <>
-                            {/* Governo Roraima */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase">
-                                  {activeReg.regime_contratacao || "---"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Origem</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.governo_rr_instituidores?.[0]?.origem || "---"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-cyan-600 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens de Crédito</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div className={cn(
-                                  "p-4 border rounded-2xl transition-all",
-                                  (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "bg-cyan-50 border-cyan-200" : "bg-red-50 border-red-200"
-                                )}>
-                                  <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "text-cyan-700" : "text-red-700")}>
-                                    Margem Empréstimo
-                                  </p>
-                                  <p className={cn("text-xl font-black", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "text-cyan-700" : "text-red-700")}>
-                                    {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0)}
-                                  </p>
-                                  <div className="flex items-center gap-1.5 mt-2">
-                                    <div className={cn("w-1.5 h-1.5 rounded-full", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "bg-cyan-500" : "bg-red-500")}></div>
-                                    <p className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "text-cyan-600" : "text-red-600")}>
-                                      {(Number(activeReg.governo_rr_instituidores?.[0]?.margem_emprestimo) || 0) > 0 ? "Disponível" : "Indisponível"}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className={cn(
-                                  "p-4 border rounded-2xl transition-all",
-                                  (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                )}>
-                                  <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "text-emerald-700" : "text-red-700")}>
-                                    Margem Cartão
-                                  </p>
-                                  <p className={cn("text-xl font-black", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "text-emerald-700" : "text-red-700")}>
-                                    {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0)}
-                                  </p>
-                                  <div className="flex items-center gap-1.5 mt-2">
-                                    <div className={cn("w-1.5 h-1.5 rounded-full", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "bg-emerald-500" : "bg-red-500")}></div>
-                                    <p className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
-                                      {(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao) || 0) > 0 ? "Disponível" : "Indisponível"}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className={cn(
-                                  "p-4 border rounded-2xl transition-all",
-                                  (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "bg-purple-50 border-purple-200" : "bg-red-50 border-red-200"
-                                )}>
-                                  <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "text-purple-700" : "text-red-700")}>
-                                    Margem Cartão Benefício
-                                  </p>
-                                  <p className={cn("text-xl font-black", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "text-purple-700" : "text-red-700")}>
-                                    {formatCurrency(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0)}
-                                  </p>
-                                  <div className="flex items-center gap-1.5 mt-2">
-                                    <div className={cn("w-1.5 h-1.5 rounded-full", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "bg-purple-500" : "bg-red-500")}></div>
-                                    <p className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "text-purple-600" : "text-red-600")}>
-                                      {(Number(activeReg.governo_rr_instituidores?.[0]?.margem_cartao_beneficio) || 0) > 0 ? "Disponível" : "Indisponível"}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'governo_rj' ? (
-                          <>
-                            {/* Governo Rio de Janeiro */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "---"}
-                                </p>
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'prefeitura_santo_andre' ? (
-                          <>
-                            {/* Prefeitura de Santo André */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "---"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.vinculo || "---"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6 mt-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-violet-600 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens de Cartão</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="p-4 bg-[#F1F5F9] border border-slate-200 rounded-2xl">
-                                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Margem Bruta Cartão</p>
-                                  <p className="text-xl font-black text-slate-900">
-                                    {formatCurrency(Number(activeReg.margem_bruta_cartao))}
-                                  </p>
-                                </div>
-                                {(() => {
-                                  const isPositive = (Number(activeReg.margem_liquida_cartao) || 0) > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Líquida Cartão</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(Number(activeReg.margem_liquida_cartao))}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'prefeitura_contagem' ? (
-                          <>
-                            {/* Prefeitura de Contagem */}
-                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "---"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Admissão</p>
-                                <p className="text-[12px] font-bold text-slate-900">
-                                  {activeReg.data_de_admissao ? new Date(activeReg.data_de_admissao as string).toLocaleDateString('pt-BR') : "---"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.situacao_funcional || "---"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6 mt-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-rose-600 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens de Empréstimo & Cartão</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="p-4 bg-[#F1F5F9] border border-slate-200 rounded-2xl">
-                                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Margem Empréstimo Bruta</p>
-                                  <p className="text-xl font-black text-slate-900">
-                                    {formatCurrency(Number(activeReg.margem_emprestimo_bruta))}
-                                  </p>
-                                </div>
-                                {(() => {
-                                  const isPositive = (Number(activeReg.margem_emprestimo_liquida) || 0) > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Empréstimo Líquida</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(Number(activeReg.margem_emprestimo_liquida))}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                <div className="p-4 bg-[#F1F5F9] border border-slate-200 rounded-2xl">
-                                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Margem Cartão Bruta</p>
-                                  <p className="text-xl font-black text-slate-900">
-                                    {formatCurrency(Number(activeReg.margem_cartao_bruta))}
-                                  </p>
-                                </div>
-                                {(() => {
-                                  const isPositive = (Number(activeReg.margem_cartao_liquida) || 0) > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Cartão Líquida</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(Number(activeReg.margem_cartao_liquida))}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'governo_mg' ? (
-                          <>
-                            {/* Governo de Minas Gerais */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "---"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6 mt-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-amber-500 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens Disponíveis</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {/* Saldo 70% */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_70) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Saldo 70%</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Margem Empréstimo */}
-                                {(() => {
-                                  const val = Number(activeReg.margem_emprestimo) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Empréstimo</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Cartão Crédito */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).cartao_credito) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Cartão Crédito</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Cartão Benefício */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).cartao_beneficio || (activeReg as unknown as Record<string, unknown>).margem_beneficio) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Cartão Benefício</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'prefeitura_natal' ? (
-                          <>
-                            {/* Prefeitura de Natal */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase">
-                                  {activeReg.vinculo || "NÃO INFORMADO"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "---"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6 mt-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-sky-600 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens Disponíveis</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                {(() => {
-                                  const lotacao = activeReg.prefeitura_natal_lotacoes?.[0];
-                                  const val = Number(lotacao?.margem_emprestimo_consignado) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Consignado</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {(() => {
-                                  const lotacao = activeReg.prefeitura_natal_lotacoes?.[0];
-                                  const val = Number(lotacao?.margem_cartao_consignado) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Cartão Consignado</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {(() => {
-                                  const lotacao = activeReg.prefeitura_natal_lotacoes?.[0];
-                                  const val = Number(lotacao?.margem_cartao_beneficio) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Cartão Benefício</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'prefeitura_porto_velho' ? (
-                          <>
-                            {/* Prefeitura de Porto Velho */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase">
-                                  {activeReg.vinculo || "NÃO INFORMADO"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "---"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6 mt-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-emerald-600 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens Disponíveis</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {(() => {
-                                  const lotacao = activeReg.prefeitura_porto_velho_lotacoes?.[0];
-                                  const val = Number(lotacao?.margem_emprestimo) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Empréstimo</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {(() => {
-                                  const lotacao = activeReg.prefeitura_porto_velho_lotacoes?.[0];
-                                  const val = Number(lotacao?.margem_cartao_consignado) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Cartão Consignado</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'governo_ba' ? (
-                          <>
-                            {/* Governo da Bahia */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "---"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Secretaria</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {(activeReg as unknown as Record<string, unknown>).secretaria as string || "---"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação / Tipo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {((activeReg as unknown as Record<string, unknown>).situacao as string || "N/I") + " / " + ((activeReg as unknown as Record<string, unknown>).tipo_servidor as string || "N/I")}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6 mt-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-teal-600 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens Disponíveis</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_emprestimo_total) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Empréstimo Total</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                    </div>
-                                  );
-                                })()}
-
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_emprestimo_disponivel) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>Margem Empréstimo Disponível</p>
-                                      <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                        {formatCurrency(val)}
-                                      </p>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'governo_am' ? (
-                          <>
-                            {/* Governo do Amazonas */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Identificação / Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "GOVERNO DO AMAZONAS"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Secretaria / Cargo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {(((activeReg as unknown as Record<string, unknown>).secretaria as string) || "N/I") + " / " + (((activeReg as unknown as Record<string, unknown>).cargo as string) || "N/I")}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação / Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {(((activeReg as unknown as Record<string, unknown>).situacao as string) || "N/I") + " / " + (((activeReg as unknown as Record<string, unknown>).tipo_servidor as string) || "N/I")}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6 mt-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-emerald-600 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens Disponíveis</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {/* Margem Consignável */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_consignavel) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <div>
-                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                          Margem Consignável
-                                        </p>
-                                        <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                          {formatCurrency(val)}
-                                        </p>
-                                      </div>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Margem Cartão (RMC) */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_cartao) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
-                                    )}>
-                                      <div>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                          Margem Cartão (RMC)
-                                        </p>
-                                        <p className="text-xl font-black text-slate-900">
-                                          {formatCurrency(val)}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Margem Cartão Benefício (RCC) */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_cartao_beneficio) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
-                                    )}>
-                                      <div>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                          Margem Cartão Benefício (RCC)
-                                        </p>
-                                        <p className="text-xl font-black text-slate-900">
-                                          {formatCurrency(val)}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Margem Benefício Saque */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_cartao_beneficio_saque) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
-                                    )}>
-                                      <div>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                          Margem Benefício Saque
-                                        </p>
-                                        <p className="text-xl font-black text-slate-900">
-                                          {formatCurrency(val)}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'governo_ce' ? (
-                          <>
-                            {/* Governo do Ceará */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "GOVERNO DO CEARÁ"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Secretaria</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {(((activeReg as unknown as Record<string, unknown>).secretaria as string) || "N/I")}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {(((activeReg as unknown as Record<string, unknown>).vinculo as string) || "N/I")}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6 mt-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-emerald-600 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Dados Financeiros</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).salario) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
-                                    )}>
-                                      <div>
-                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-slate-400")}>
-                                          Salário Base
-                                        </p>
-                                        <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-slate-900")}>
-                                          {formatCurrency(val)}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'governo_ro' ? (
-                          <>
-                            {/* Governo de Rondônia */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Identificação / Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "GOVERNO DE RONDÔNIA"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Secretaria / Lotação</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {(((activeReg as unknown as Record<string, unknown>).secretaria as string) || "N/I")}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Cargo / Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {(((activeReg as unknown as Record<string, unknown>).cargo as string) || "N/I") + " / " + (((activeReg as unknown as Record<string, unknown>).vinculo as string) || "N/I")}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6 mt-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-emerald-600 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {/* Margem Empréstimo */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_emprestimo) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <div>
-                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                          Margem Consignável
-                                        </p>
-                                        <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                          {formatCurrency(val)}
-                                        </p>
-                                      </div>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Margem Cartão (RMC) */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_cartao) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
-                                    )}>
-                                      <div>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                          Margem Cartão (RMC)
-                                        </p>
-                                        <p className="text-xl font-black text-slate-900">
-                                          {formatCurrency(val)}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Margem Cartão Benefício (RCC) */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_cartao_beneficio) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
-                                    )}>
-                                      <div>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                          Cartão Benefício (RCC)
-                                        </p>
-                                        <p className="text-xl font-black text-slate-900">
-                                          {formatCurrency(val)}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </>
-                        ) : clientType === 'prefeitura_ponta_grossa' ? (
-                          <>
-                            {/* Prefeitura de Ponta Grossa */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.matricula || "---"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.orgao || "PREFEITURA DE PONTA GROSSA"}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {(((activeReg as unknown as Record<string, unknown>).situacao as string) || "NÃO INFORMADO")}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vínculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {(((activeReg as unknown as Record<string, unknown>).vinculo as string) || "NÃO INFORMADO")}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-6 mt-6">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-3.5 bg-emerald-600 rounded-full"></div>
-                                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Margens</h4>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {/* Margem Total */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_total) || 0;
-                                  return (
-                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col justify-between min-h-[90px]">
-                                      <div>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                          Margem Total
-                                        </p>
-                                        <p className="text-xl font-black text-slate-900">
-                                          {formatCurrency(val)}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Margem Disponível */}
-                                {(() => {
-                                  const val = Number((activeReg as unknown as Record<string, unknown>).margem_disponivel) || 0;
-                                  const isPositive = val > 0;
-                                  return (
-                                    <div className={cn(
-                                      "p-4 border rounded-2xl flex flex-col justify-between min-h-[90px]",
-                                      isPositive ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                    )}>
-                                      <div>
-                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                          Margem Disponível
-                                        </p>
-                                        <p className={cn("text-xl font-black", isPositive ? "text-emerald-700" : "text-red-700")}>
-                                          {formatCurrency(val)}
-                                        </p>
-                                      </div>
-                                      <div className="flex items-center gap-1.5 mt-2">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
-                                        <p className={cn("text-[8px] font-bold uppercase tracking-widest", isPositive ? "text-emerald-600" : "text-red-600")}>
-                                          {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </>
-                        ) : null}
-                      </CardContent>
-                    </Card>
-
-                    {/* Contratos Section */}
-                    {(clientType === 'siape' || ((activeReg.itens_credito as Contract[] || []).length > 0)) && (
-                      <div className="space-y-10 pt-4">
-                        {/* Contratos de Empréstimo */}
-                        {(() => {
-                          const contracts = (activeReg.itens_credito as Contract[] || []);
-                          const filtered = contracts.filter(c => getContractTypeInfo(c.tipo).category === "EMPRESTIMO");
-                          
-                          return (
-                            <div className="space-y-4">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Contratos de Empréstimo</h3>
-                              </div>
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-left border-separate border-spacing-y-2">
-                                  <thead>
-                                    <tr>
-                                      <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
-                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Órgão</th>
-                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Contrato</th>
-                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Parcela</th>
-                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Prazo</th>
-                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Taxa</th>
-                                      <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Saldo Est.</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {filtered.length > 0 ? (
-                                      filtered.map((contract, cIdx) => (
-                                        <LoanRow key={cIdx} loan={{
-                                          banco: contract.banco,
-                                          orgao: contract.orgao,
-                                          contrato: contract.numero_do_contrato,
-                                          parcela: contract.parcela,
-                                          prazo: contract.prazo,
-                                          tipo: contract.tipo
-                                        }} />
-                                      ))
-                                    ) : (
-                                      <tr>
-                                        <td colSpan={7} className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white rounded-xl border border-dashed border-slate-200">
-                                          Nenhum contrato de empréstimo encontrado
-                                        </td>
-                                      </tr>
-                                    )}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                          {/* Cartão Consignado Section */}
-                          {(() => {
-                            const contracts = (activeReg.itens_credito as Contract[] || []);
-                            const filtered = contracts.filter(c => getContractTypeInfo(c.tipo).category === "CARTAO_CONSIGNADO");
-                            
-                            return (
-                              <div className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1 h-5 bg-emerald-500 rounded-full"></div>
-                                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Cartão Consignado</h3>
-                                </div>
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-left border-separate border-spacing-y-2">
-                                    <thead>
-                                      <tr>
-                                        <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
-                                        <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Parcela</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {filtered.length > 0 ? (
-                                        filtered.map((card, cIdx) => {
-                                          const info = getContractTypeInfo(card.tipo);
-                                          const displayedBank = info.bank || card.banco;
-                                          
-                                          return (
-                                            <tr key={cIdx} className="bg-slate-50/50 hover:bg-slate-100/50 transition-colors">
-                                              <td className="py-3 pl-4 rounded-l-xl">
-                                                <p className="text-[11px] font-bold text-slate-700 uppercase">{displayedBank}</p>
-                                              </td>
-                                              <td className="py-3 pr-4 text-right rounded-r-xl">
-                                                <p className="text-[11px] font-black text-slate-900">{formatCurrency(card.parcela)}</p>
-                                              </td>
-                                            </tr>
-                                          );
-                                        })
-                                      ) : (
-                                        <tr>
-                                          <td colSpan={2} className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white rounded-xl border border-dashed border-slate-200">
-                                            Nenhum cartão consignado encontrado
-                                          </td>
-                                        </tr>
-                                      )}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            );
-                          })()}
-
-                          {/* Cartão Benefício Section */}
-                          {(() => {
-                            const contracts = (activeReg.itens_credito as Contract[] || []);
-                            const filtered = contracts.filter(c => getContractTypeInfo(c.tipo).category === "CARTAO_BENEFICIO");
-                            
-                            return (
-                              <div className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1 h-5 bg-purple-500 rounded-full"></div>
-                                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Cartão Benefício</h3>
-                                </div>
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-left border-separate border-spacing-y-2">
-                                    <thead>
-                                      <tr>
-                                        <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
-                                        <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Parcela</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {filtered.length > 0 ? (
-                                        filtered.map((card, cIdx) => {
-                                          const info = getContractTypeInfo(card.tipo);
-                                          const displayedBank = info.bank || card.banco;
-                                          
-                                          return (
-                                            <tr key={cIdx} className="bg-slate-50/50 hover:bg-slate-100/50 transition-colors">
-                                              <td className="py-3 pl-4 rounded-l-xl">
-                                                <p className="text-[11px] font-bold text-slate-700 uppercase">{displayedBank}</p>
-                                              </td>
-                                              <td className="py-3 pr-4 text-right rounded-r-xl">
-                                                <p className="text-[11px] font-black text-slate-900">{formatCurrency(card.parcela)}</p>
-                                              </td>
-                                            </tr>
-                                          );
-                                        })
-                                      ) : (
-                                        <tr>
-                                          <td colSpan={2} className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white rounded-xl border border-dashed border-slate-200">
-                                            Nenhum cartão benefício encontrado
-                                          </td>
-                                        </tr>
-                                      )}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            );
-                          })()}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                        <div className="text-slate-600 font-medium">
+                          Total de contratos de empréstimo: <span className="font-bold text-slate-900">{loanContracts.length}</span>
+                        </div>
+                        <div className="text-slate-600 font-medium sm:text-right">
+                          Soma das parcelas:{" "}
+                          <span className="font-black text-slate-900 text-sm font-mono">
+                            {formatCurrency(totalLoanParcelas)}
+                          </span>
+                          <span className="text-slate-400 text-[10px]"> /mês</span>
                         </div>
                       </div>
-                    )}
+                    </>
+                  ) : (
+                    <div className="py-8 px-4 text-center bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                        Nenhum contrato de empréstimo ativo encontrado para esta matrícula
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Não constam consignações de empréstimo ativas registradas nesta base.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* SEÇÃO 5: CONTRATOS DE CARTÕES CONSIGNADOS */}
+              <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                      <CreditCard className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">5. Contratos de Cartões Consignados</h3>
+                      <p className="text-[11px] text-slate-500 font-medium">Descontos de reserva de margem (RMC) e cartão benefício (RCC)</p>
+                    </div>
                   </div>
-              );
-            })()}
-          </div>
-        )}
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                    {cardContracts.length} {cardContracts.length === 1 ? "Cartão" : "Cartões"}
+                  </span>
+                </div>
+
+                <CardContent className="p-5 sm:p-6 space-y-4">
+                  {cardContracts.length > 0 ? (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-separate border-spacing-y-2">
+                          <thead>
+                            <tr>
+                              <th className="pb-2 pl-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Tipo de Cartão</th>
+                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">Banco Emissor</th>
+                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Contrato / Ref</th>
+                              <th className="pb-2 pr-4 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right">Parcela / Desconto</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cardContracts.map((card, idx) => {
+                              const info = getContractTypeInfo(card.tipo);
+                              const isRCC = info.category === "CARTAO_BENEFICIO";
+                              const displayedBank = info.bank || card.banco || "BANCO CONSIGNATÁRIO";
+
+                              return (
+                                <tr key={`card-row-${idx}`} className="bg-slate-50/70 hover:bg-slate-100/70 transition-colors">
+                                  <td className="py-3 pl-4 rounded-l-xl border-y border-l border-slate-200">
+                                    <span className={cn(
+                                      "px-2.5 py-0.5 text-[10px] font-black uppercase rounded-md border inline-block",
+                                      isRCC
+                                        ? "bg-purple-50 text-purple-700 border-purple-200"
+                                        : "bg-blue-50 text-blue-700 border-blue-200"
+                                    )}>
+                                      {isRCC ? "Cartão Benefício (RCC)" : "Cartão Consignado (RMC)"}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 text-xs font-bold text-slate-800 uppercase border-y border-slate-200">
+                                    {displayedBank}
+                                  </td>
+                                  <td className="py-3 text-xs font-mono font-bold text-slate-600 text-center border-y border-slate-200">
+                                    {card.numero_do_contrato || "---"}
+                                  </td>
+                                  <td className="py-3 pr-4 text-xs font-black text-slate-900 font-mono text-right rounded-r-xl border-y border-r border-slate-200">
+                                    {formatCurrency(Number(card.parcela) || 0)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                        <div className="text-slate-600 font-medium">
+                          Total de cartões consignados: <span className="font-bold text-slate-900">{cardContracts.length}</span>
+                        </div>
+                        <div className="text-slate-600 font-medium sm:text-right">
+                          Soma dos descontos em cartões:{" "}
+                          <span className="font-black text-slate-900 text-sm font-mono">
+                            {formatCurrency(totalCardParcelas)}
+                          </span>
+                          <span className="text-slate-400 text-[10px]"> /mês</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="py-8 px-4 text-center bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                        Nenhum contrato de cartão consignado encontrado para esta matrícula
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Não constam reservas de margem (RMC) ou cartões benefício (RCC) ativos registrados.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Botão de Fechar no Rodapé */}
+              <div className="flex justify-end pt-2">
+                <Button variant="outline" onClick={onClose} className="px-6 font-bold text-slate-700">
+                  Fechar Ficha
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
       </DialogContent>
     </Dialog>
-  )
+  );
 }
